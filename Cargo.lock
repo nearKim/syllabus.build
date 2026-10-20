@@ -275,7 +275,9 @@ version = "0.1.0"
 dependencies = [
  "curriculum-domain",
  "serde",
+ "serde_json",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
@@ -284,7 +286,9 @@ version = "0.1.0"
 dependencies = [
  "curriculum-contracts",
  "curriculum-domain",
+ "curriculum-security",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

@@ -9,5 +9,7 @@ publish.workspace = true
 [dependencies]
 curriculum-domain.workspace = true
 curriculum-contracts.workspace = true
+curriculum-security.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true

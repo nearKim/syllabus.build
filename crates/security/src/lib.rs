@@ -42,10 +42,37 @@ impl AuthenticatedPrincipal {
     }
 
     /// Enforces strict tenant isolation (`NFR-001`, `@S36`, `@S64`):
-    /// Curators and moderators do not automatically gain access to another learner's private state
-    /// or BYOK credentials.
+    /// Curators, moderators, and operators do not gain access to another learner's private state,
+    /// assessment evidence, schedules, or BYOK credentials.
     pub fn can_access_learner_private_resource(&self, resource_owner_account_id: &str) -> bool {
         self.account_id == resource_owner_account_id
+    }
+
+    /// Requires strict account ownership for private learner resources (`@S29`, `@S36`, `@S64`, `@S87`).
+    pub fn require_learner_ownership(
+        &self,
+        resource_owner_account_id: &str,
+    ) -> Result<(), SecurityError> {
+        if self.can_access_learner_private_resource(resource_owner_account_id) {
+            Ok(())
+        } else {
+            Err(SecurityError::CrossTenantAccessDenied {
+                principal_id: self.account_id.clone(),
+                owner_id: resource_owner_account_id.to_string(),
+            })
+        }
+    }
+
+    /// Checks role boundary for privileged administrative/curation/moderation operations (`CTRL-022`, `@S36`, `@S64`).
+    pub fn require_role(&self, required_role: PrincipalRole) -> Result<(), SecurityError> {
+        if self.has_role(required_role) {
+            Ok(())
+        } else {
+            Err(SecurityError::InsufficientRolePrivilege {
+                principal_id: self.account_id.clone(),
+                required_role,
+            })
+        }
     }
 }
 
@@ -59,6 +86,11 @@ pub enum SecurityError {
     CrossTenantAccessDenied {
         principal_id: String,
         owner_id: String,
+    },
+    #[error("insufficient role privilege: principal `{principal_id}` lacks required role `{required_role:?}`")]
+    InsufficientRolePrivilege {
+        principal_id: String,
+        required_role: PrincipalRole,
     },
     #[error("release decision gate `{gate_id}` ({description}) is not approved for `{env:?}`")]
     ReleaseGateBlocked {
@@ -107,9 +139,14 @@ impl AuthVerifier for DevFixedIdentityAuthVerifier {
         bearer_token: Option<&str>,
     ) -> Result<AuthenticatedPrincipal, SecurityError> {
         match bearer_token {
-            Some("invalid") => Err(SecurityError::Unauthenticated),
+            Some("invalid" | "expired" | "revoked" | "unauthenticated" | "") => {
+                Err(SecurityError::Unauthenticated)
+            }
             Some(token) if token.starts_with("dev-account:") => {
                 let id = token.trim_start_matches("dev-account:").to_string();
+                if id.is_empty() {
+                    return Err(SecurityError::Unauthenticated);
+                }
                 Ok(AuthenticatedPrincipal {
                     account_id: id,
                     roles: vec![PrincipalRole::Learner],
@@ -121,7 +158,23 @@ impl AuthVerifier for DevFixedIdentityAuthVerifier {
                 roles: vec![PrincipalRole::Curator],
                 is_development_only_identity: true,
             }),
-            _ => Ok(AuthenticatedPrincipal {
+            Some("dev-moderator") => Ok(AuthenticatedPrincipal {
+                account_id: "00000000-0000-4000-8000-000000000098".to_string(),
+                roles: vec![PrincipalRole::Moderator],
+                is_development_only_identity: true,
+            }),
+            Some("dev-operator") => Ok(AuthenticatedPrincipal {
+                account_id: "00000000-0000-4000-8000-000000000097".to_string(),
+                roles: vec![PrincipalRole::Operator],
+                is_development_only_identity: true,
+            }),
+            Some("dev-default") => Ok(AuthenticatedPrincipal {
+                account_id: self.default_account_id.clone(),
+                roles: vec![PrincipalRole::Learner],
+                is_development_only_identity: true,
+            }),
+            Some(_) => Err(SecurityError::Unauthenticated),
+            None => Ok(AuthenticatedPrincipal {
                 account_id: self.default_account_id.clone(),
                 roles: vec![PrincipalRole::Learner],
                 is_development_only_identity: true,
@@ -227,8 +280,34 @@ mod tests {
         .unwrap();
         let curator = verifier.verify_bearer_token(Some("dev-curator")).unwrap();
         assert!(curator.has_role(PrincipalRole::Curator));
+        assert!(curator.require_role(PrincipalRole::Curator).is_ok());
         assert!(
             !curator.can_access_learner_private_resource("00000000-0000-4000-8000-000000000001")
+        );
+        assert_eq!(
+            curator
+                .require_learner_ownership("00000000-0000-4000-8000-000000000001")
+                .unwrap_err(),
+            SecurityError::CrossTenantAccessDenied {
+                principal_id: "00000000-0000-4000-8000-000000000099".to_string(),
+                owner_id: "00000000-0000-4000-8000-000000000001".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn s64_moderator_cannot_access_learner_private_evidence_or_credentials() {
+        let verifier = DevFixedIdentityAuthVerifier::new(
+            AppEnvironment::Test,
+            "00000000-0000-4000-8000-000000000001",
+        )
+        .unwrap();
+        let moderator = verifier.verify_bearer_token(Some("dev-moderator")).unwrap();
+        assert!(moderator.has_role(PrincipalRole::Moderator));
+        assert!(moderator.require_role(PrincipalRole::Moderator).is_ok());
+        assert!(moderator.require_role(PrincipalRole::Curator).is_err());
+        assert!(
+            !moderator.can_access_learner_private_resource("00000000-0000-4000-8000-000000000001")
         );
     }
 
