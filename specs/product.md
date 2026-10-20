@@ -2,11 +2,13 @@
 
 **Current version:** 0.3.0  
 **Updated:** 2026-10-20  
-**Maintained file:** Curriculum_Product_Specification.md  
+**Maintained file:** specs/product.md  
 **Purpose:** complete specification for subsequent implementation with Codex.  
 **Status:** owner decisions incorporated; proposed defaults and remaining release decisions are explicit.
 
-This is the one maintained Markdown containing the latest product, pedagogy, UI, architecture, licensing policy, implementation plan, and embedded machine contracts. It supersedes the earlier versioned documents and specification ZIP. Future edits update this file in place. No companion archive is required.
+This is the one maintained Markdown (`specs/product.md`) containing the latest product, pedagogy, UI, architecture, licensing policy, implementation plan, and embedded machine contracts. It supersedes the earlier versioned documents (`Curriculum_Product_Specification.md`) and specification ZIP. Future edits update `specs/product.md` in place. No companion archive is required.
+
+Generated files may exist outside `specs/product.md` (such as extracted OpenAPI files, JSON Schemas, fixtures, design tokens, traceability CSVs, validation scripts, and generated Rust/TypeScript types), but they must never become independently maintained sources of truth. Every generated or extracted file that supports comments or metadata carries a generated-file notice (`GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md`), and CI runs `python3 scripts/extract_spec.py --check specs/product.md .` to fail the build whenever committed artifacts drift from `specs/product.md`.
 
 The software is specified as source-available for individual personal use, with third-party organizational deployments prohibited. Exact operative terms still require drafting. The application itself is not implemented or scientifically validated by this document.
 
@@ -47,12 +49,17 @@ The software is specified as source-available for individual personal use, with 
 
 ## 1. Revision changes
 
-**Current revision: 0.3.0 · Updated: 2026-10-20.** This file supersedes the prior v0.1/v0.2 documents and ZIP as the maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
+**Current revision: 0.3.0 · Updated: 2026-10-20.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
 
 ### Decisions incorporated in this revision
 
+- Establish `specs/product.md` as the single manually maintained source of truth. Embed both the core OpenAPI contract (`openapi.yaml`) and the companion application contract (`app-companion.openapi.yaml`) directly inside `specs/product.md`, require generated-file notices on extracted artifacts, enforce drift detection via `extract_spec.py --check`, and derive requirement, scenario, operation, and P0 counts dynamically from the specification scripts rather than hard-coding counts into release logic.
+- Confirm initial-release product decisions `D01` (adult self-directed learners studying AI/LLM engineering and software engineering as the initial seeded domain), `D02` (responsive web and installable PWA initially; native wrappers deferred), `D03` (provider links and approved metadata by default; explicit permissions required for full-text ingestion, embedding, model submission, and derived assessment generation), `D09` (external coding environments only at launch; no hosted arbitrary-code execution), `D10` (English first with language-tagged records and contracts), and `D12` (provider-neutral inference interface: deterministic fake provider first, OpenAI as first live provider, Anthropic and Google Gemini added before public beta, no provider-specific domain leakage, and no silent fallback from BYOK to hosted paid inference).
+- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, PostgreSQL + `pgvector`, SQLx with explicit SQL migrations, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Next.js, React, strict TypeScript, CSS variables generated from canonical UI tokens, KaTeX with accessible MathML, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
+- Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn** are **Today**, **Plan** (with synchronized **Map** and **Outline** views), **Progress**, and **Resources**.
+- Clarify prerequisite and `mastery_gated` behavior (`PED-006`): ordinary learning content is never hard-locked; learners may study ahead with visible warnings and recommended bridging work; accessing or completing dependent content never creates prerequisite evidence; only activities explicitly marked `mastery_gated` require demonstrated proficiency, an auditable learner override when an active reviewed anchor exists, or an auditable acknowledgement (`Prerequisite unverified — no reviewed anchor available`) when no reviewed anchor exists; formative practice never creates `demonstrated` status.
+- Clarify review scheduling and deterministic adoption conflict handling: `CurriculumRevision` remains immutable while review occurrences live in `ScheduleRevision` and `ReviewScheduleItem`, recalculating future entries without rewriting past learning evidence; deterministic adoption substitutes an approved eligible replacement when available or omits ineligible resources with `coverage_status: "partial"` and explicit `coverage_limitations` requiring learner review before activation.
 - Add a detailed minimalist UI specification inspired by the owner's Neo Financial reference: neutral opaque study surfaces, restrained typography, focused diagrams, a small amount of glass for navigation, and optional soft depth. Define exact starting tokens, component states, responsive behavior, and accessibility fallbacks.
-- Maintain one complete Markdown, including requirements, evidence, architecture, schemas, API, examples, acceptance scenarios, traceability, and validation instructions. No companion ZIP is required to use this revision.
 - Record **individual personal use only; third-party organizational deployments prohibited**, including nonprofit and educational deployments. The explicit organizational restriction controls the interpretation of the owner's two-part reply. Standard PolyForm Noncommercial is rejected for the software; tailored legal terms remain release work.
 - Preserve contribution participation and the official paid service through explicitly scoped development and operator rights; do not infer an organizational deployment license from those exceptions.
 - Add owner-only publication list and revision-history reads needed for My publications. Keep discovery filter controls aligned with the modeled query contract.
@@ -62,20 +69,20 @@ The prior accepted scope remains: reviewed source catalog/RAG, hosted AI and enc
 
 ### Document and contract versioning
 
-This specification is version 0.3.0. The OpenAPI document is version 0.3.0 and pins OpenAPI 3.1.2. Existing curriculum/resource/request payloads intentionally retain schema_version 0.2.0: the visual specification and additive owner read endpoints do not change those payload shapes. Their embedded schemas, fixtures, and identifiers agree. Documentation versions, API description versions, and serialized payload versions are separate version spaces.
+This specification is version 0.3.0. Both embedded OpenAPI documents (`openapi.yaml` and `app-companion.openapi.yaml`) are version 0.3.0 and pin OpenAPI 3.1.2. Existing curriculum/resource/request payloads intentionally retain `schema_version` `0.2.0`: additive optional properties (`mastery_gated`, `coverage_status`, `review_schedule_items`) and companion endpoints preserve backward compatibility with all baseline fixtures and their cryptographic digests. Documentation versions, API description versions, and serialized payload versions are separate version spaces.
 
 No application, payment integration, public deployment, or educational-efficacy study has been completed by this specification. See section 22 for actual artifact verification and remaining implementation work.
 ---
 
 ## 2. How to use the specification
 
-This is the single maintained product specification for a curriculum and study application on web and mobile. Read sections 3–6 for decisions, requirements, durable principles, and vocabulary; section 9 for the complete UI; sections 7–8 for evidence and adaptation; sections 10–17 for sharing, BYOK, operations, architecture, data, contracts, and rights. Section 18 defines implementation slices and section 19 gives the Codex handoff.
+This is the single maintained product specification (`specs/product.md`) for a curriculum and study application on web and mobile. Read sections 3–6 for decisions, requirements, durable principles, and vocabulary; section 9 for the complete UI; sections 7–8 for evidence and adaptation; sections 10–17 for sharing, BYOK, operations, architecture, data, contracts, and rights. Section 18 defines implementation slices and section 19 gives the Codex handoff.
 
-Use the stable requirement IDs, Given/When/Then acceptance scenarios, JSON Schema Draft 2020-12, and pinned OpenAPI contract. [ISO/IEC/IEEE 29148](https://www.iso.org/standard/72089.html) is the requirements-engineering reference; formal conformity to its full text is not asserted. The organization and slice workflow draw on [GitHub Spec Kit](https://github.com/github/spec-kit), without claiming that one agent specification framework is a universal standard or requiring its installation.
+Use the stable requirement IDs, Given/When/Then acceptance scenarios, JSON Schema Draft 2020-12, and pinned OpenAPI contracts. [ISO/IEC/IEEE 29148](https://www.iso.org/standard/72089.html) is the requirements-engineering reference; formal conformity to its full text is not asserted. The organization and slice workflow draw on [GitHub Spec Kit](https://github.com/github/spec-kit), without claiming that one agent specification framework is a universal standard or requiring its installation.
 
 ### Single-file authority
 
-The product rules and recorded decisions govern behavior. The embedded contracts govern their declared wire shapes. A conflict is a specification defect to resolve in this same file, not permission to invent behavior or silently weaken validation. The original split-file names occasionally identify logical components or the earlier analysis; they are not additional documents that the reader must obtain. All required machine artifacts are embedded below.
+The product rules and recorded decisions govern behavior. The embedded contracts govern their declared wire shapes. A conflict is a specification defect to resolve in `specs/product.md`, not permission to invent behavior or silently weaken validation. The original split-file names occasionally identify logical components or the earlier analysis; they are not additional documents that the reader must obtain. All required machine artifacts are embedded below.
 
 | Section / appendix | Contents |
 | --- | --- |
@@ -85,59 +92,60 @@ The product rules and recorded decisions govern behavior. The embedded contracts
 | Sections 18–22 | Implementation slices, Codex instructions, reference analysis, actual verification |
 | Appendix A | Complete acceptance scenarios, including UI scenarios |
 | Appendix B | Architecture decision records |
-| Appendix C | Six JSON Schemas and the complete modeled OpenAPI document |
+| Appendix C | Six JSON Schemas, the core OpenAPI document (`openapi.yaml`), and the companion OpenAPI document (`app-companion.openapi.yaml`) |
 | Appendix D | Complete synthetic JSON fixtures |
 | Appendix E | Requirement and supporting-control traceability CSVs |
 | Appendix F | Extraction/validation scripts and pinned validation dependencies |
 
-Embedded asset paths are intended extraction destinations for Codex and validation, not competing specification sources. The extraction script refuses unsafe paths or unintended overwrites. Generated code or runtime contract files can be checked into the implementation repository; changes to their specification must first be reflected here. Do not create another independently maintained PRD, UX specification, or dated Markdown on each revision.
+Embedded asset paths are intended extraction destinations for implementation and validation, not competing specification sources. The extraction script (`scripts/extract_spec.py`) writes generated files with generated-file notices, refuses unsafe paths or unintended overwrites, and provides `--check` mode for CI drift enforcement. Changes to any contract, fixture, token, or traceability artifact must first be reflected in `specs/product.md`. Do not create another independently maintained PRD, UX specification, companion contract, or dated Markdown on each revision.
 
 ### Product baseline and remaining defaults
 
-The owner has accepted reviewed assessment anchors, initial study reminders, public publishing/upvotes, per-topic assessment/adaptation, independent mathematical depth, minimalist UI direction, and individual-only source availability. Established server-mediated BYOK custody has been adopted under the owner's delegation. These choices need not be reopened to implement the local product.
+The owner has confirmed the initial seeded domain (`D01`), responsive web + installable PWA launch target (`D02`), provider-link and permissioned ingestion boundary (`D03`), best-effort study reminders (`D04`), server-mediated BYOK custody (`D05`), individual-only source-available policy (`D06`, `D15`), reviewed assessment anchors (`D08`), external-only coding environments (`D09`), English-first language-tagged schemas (`D10`), provider-neutral inference adapter strategy (`D12`), public publishing/upvotes (`D13`), per-topic assessment/adaptation with independent mathematical depth (`D14`), minimalist Neo Financial–inspired UI (`D17`), single canonical Markdown (`D18`), and the Rust + TypeScript polyglot monorepo stack. These choices need not be reopened to implement the product.
 
-Adults learning AI/LLM engineering, English first, responsive web plus installable PWA, externally hosted learning materials, and no application-hosted arbitrary-code runner remain proposed launch defaults. Native delivery, real providers/prices, retention/regions, and the exact legal instruments have explicit release decision points. The full UI behavior applies across web and mobile regardless of the eventual native delivery choice.
+Commercial pricing and payment vendor (`D07`), cloud/auth/secret-manager vendor and retention windows (`D11`, `D16`), and final operative legal text (`D15`, `D16`) remain deferred release decisions. They do not block local development, but production release gates must block the affected live features until those decisions are approved.
 
-Synthetic examples are not an approved catalog, real prices, real learner evidence, or adopted license terms. Gherkin describes observable requirements; executable application bindings are implementation work. Begin with T00–T04 using a deterministic model adapter and synthetic data; complete T12, T13, and T14 before the T09 public-beta gate.
+Synthetic examples are not an approved catalog, real prices, real learner evidence, or adopted license terms. Gherkin describes observable requirements; executable application bindings are implementation work. Follow the dependency-ordered execution sequence `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04 -> T05 -> T06 -> T12 -> T07 -> T08 -> T13 -> T14-Full -> T09` (with `T10` and `T11` after `T09`), starting with the Foundation Tracer Bullet across `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04`.
 ---
 
 ## 3. Decisions and release choices
 
 ## Product decisions and remaining choices
 
-**Version:** 0.3.0 · **Date:** 2026-10-20 · **Status:** user decisions incorporated; exact release policies remain explicit.
+**Version:** 0.3.0 · **Date:** 2026-10-20 · **Status:** user decisions incorporated; deferred production release gates remain explicit.
 
-The owner answered the previous four questions and added public sharing, upvotes, and per-topic proficiency adaptation. Earlier defaults have been superseded where those answers apply. Do not ask again whether reviewed assessment anchors or study reminders are wanted.
+The owner confirmed initial-release defaults for `D01`, `D02`, `D03`, `D09`, `D10`, and `D12`, resolved navigation, prerequisite gating, review scheduling, and deterministic adoption conflicts, and selected the Rust + TypeScript polyglot monorepo stack. Do not reopen these confirmed decisions during implementation.
 
 ### Confirmed intent and adopted design
 
 | ID | Decision and status | Specification treatment |
 | --- | --- | --- |
-| D04 | **Confirmed:** study reminders initially | Best-effort opt-in reminders; no exact audible alarm requirement for launch. Native alarms stay an optional later extension. |
-| D05 | **Delegated by owner:** follow established BYOK service practice | Adopt server-mediated encrypted credential custody, masked management, explicit provider/model and mode, bounded jobs, and no automatic paid fallback. This is an established pattern, not a universal standard. See [BYOK policy](#11-byok-and-routing). |
+| D01 | **Confirmed:** adult self-directed learners (`18+`) studying AI/LLM engineering and software engineering as initial seeded domain | Launch content boundary, not a permanent architectural limitation. Domain models and schemas remain subject-neutral. |
+| D02 | **Confirmed:** responsive web and installable PWA initially | Native wrappers (`T10`) remain deferred after initial launch (`T09`). |
+| D03 | **Confirmed:** provider links and approved metadata by default | Full-text ingestion, embedding, model submission, and derived assessment generation require explicit recorded permissions (`CAT-003`). |
+| D04 | **Confirmed:** study reminders initially | Best-effort opt-in reminders; no exact audible alarm requirement for launch. Native alarms stay an optional later extension (`T10`). |
+| D05 | **Delegated by owner:** follow established BYOK service practice | Adopt server-mediated encrypted credential custody, masked management, explicit provider/model and mode, bounded jobs, and no automatic paid fallback. See [BYOK policy](#11-byok-and-routing). |
 | D06 | **Confirmed:** individual personal cloning/use/modification and contributions; no commercial copying or third-party organizational deployment | Use a custom personal-use source-available license. Preserve narrowly scoped contribution and official-operator rights. Operative legal drafting remains pending; standard PolyForm Noncommercial is rejected. |
 | D08 | **Confirmed:** maintain reviewed assessment anchors | Use reviewed objective-aligned gates and diagnostics; generated practice remains a separate assurance level. |
+| D09 | **Confirmed:** external coding environments only at launch | Activities use `execution_mode: "external"`. No hosted arbitrary-code execution at launch (`CTRL-034`). |
+| D10 | **Confirmed:** English first (`en`), with all stored content and contracts language-tagged | Every resource, curriculum, request, and diagnostic carries a BCP 47 `language` tag. |
+| D12 | **Confirmed:** provider-neutral inference interface with phased providers | Implement the deterministic fake provider first, then OpenAI as the first live provider, and add Anthropic and Google Gemini through the same interface before public beta. Provider-specific request/response objects must not leak into the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
 | D13 | **Confirmed:** publish/share curricula and upvote | Private by default; public or unlisted immutable snapshots, private adapted adoption, revision-specific upvotes, and minimum moderation/privacy controls. |
 | D14 | **Confirmed:** assess topic proficiency and adjust curricula; mathematical thoroughness is configurable | Separate evidence from desired depth, sequence, outcomes, and available time. Diagnose relevant objectives and preview adaptations. Strong linear algebra does not imply less mathematics or strength in unrelated prerequisites. |
-| D15 | **Resolved:** all third-party organizational deployments are prohibited | Includes commercial, nonprofit, educational, public-research, and government deployments regardless of revenue. This boundary is not an open owner question. |
+| D15 | **Resolved:** all third-party organizational deployments are prohibited | Includes commercial, nonprofit, educational, public-research, and government deployments regardless of revenue. Final operative legal text remains a deferred release gate. |
 | D17 | **Confirmed:** minimalist Neo Financial–inspired UI, with slight glass or soft depth | Section 9 supplies adopted design defaults and accessible opaque fallbacks; the complete Mobbin gallery was not accessible for inspection. |
-| D18 | **Confirmed:** one maintained Markdown containing the latest complete specification | This file is canonical. Contracts, examples, acceptance criteria, and traceability are embedded appendices. |
+| D18 | **Confirmed:** one maintained Markdown (`specs/product.md`) containing the latest complete specification | `specs/product.md` is canonical. Contracts (`openapi.yaml` and `app-companion.openapi.yaml`), schemas, examples, acceptance criteria, and traceability are embedded appendices extracted and verified in CI. |
 
-The details in D05, D13, and D14 are engineering/product choices made under the owner's direction; they are not claims that the owner individually selected every default.
+### Deferred production release decisions
 
-### Remaining proposed defaults
+The following decisions remain deferred. They do not block local development, but production release gates in `T07`, `T09`, and `T13` must block the affected live features until approved:
 
-| ID | Decision | Proposed default | Alternative / consequence | Needed before |
+| ID | Decision | Local development treatment | Production release gate | Needed before |
 | --- | --- | --- | --- | --- |
-| D01 | Initial audience/catalog | Adults learning AI/LLM engineering | Broader subjects require broader reviewed resources and assessment coverage | Catalog/release commitments |
-| D02 | Mobile delivery | Responsive web plus installable PWA and shared backend | Native iOS/Android at launch adds distribution/device/billing work | Mobile release commitment |
-| D03 | Learning content boundary | Provider links and approved metadata; permissioned content for detailed in-app generation | A licensed content library requires acquisition and delivery arrangements | Content connectors |
-| D07 | Service pricing and failures | Separate service entitlement and inference; capped hosted credits; BYOK provider bills directly | Specific subscriptions, prices, refunds, and taxes remain a business decision | Real checkout |
-| D09 | Code execution | External/local work with attached evidence; no hosted arbitrary-code runner initially | Built-in runner needs separate sandbox and abuse/cost boundaries | Runner implementation |
-| D10 | Language | English first, language-aware schema | Multilingual launch requires reviewed translations, catalog, and assessments | Localization launch |
-| D11 | Hosting region/retention | Choose before real accounts; synthetic data during local development | Deployment and deletion obligations depend on actual countries/providers | Production data |
-| D12 | Inference providers | Provider adapter; one hosted provider and a small tested BYOK allowlist | Wider support needs routing, structured-output, privacy, and quota validation | Live integrations |
-| D16 | Public curriculum rights | Separate publishing/adaptation and official-platform hosting terms; no public content license yet adopted | CC BY-NC 4.0 is a separately evaluated option, not individual-only. Decide rights in original plan content independently from the software deployment ban | First public publication |
+| D07 | Commercial pricing, payment/tax vendor, and refund/expiration terms | Separate service entitlement and inference ledger with deterministic payment/checkout fakes | Block live credit checkout and paid hosted-credit top-ups (`FEATURE_LIVE_BILLING_ENABLED=false`) until approved | Real checkout (`T07` / `T09`) |
+| D11 | Production cloud, secret-manager, and authentication vendor | Implement provider-neutral HTTP/domain auth boundary and local/test auth + envelope encryption adapter | Block production deployment until production auth provider, KMS, and hosting region are approved | Production data (`T09`) |
+| D15 | Final operative legal text for custom personal-use license and contributor agreement | Enforce individual-only policy and non-OSI labeling in docs and release checks | Block public repository distribution and external CLA acceptance until legal text is approved | Public code release (`T09`) |
+| D16 | Final public-curriculum content license text, retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit terms-version consent, configurable retention windows, and no third-party analytics by default | Block public curriculum publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until final content license and retention periods are approved | First public publication (`T13` / `T09`) |
 
 ### Resolved permission scope and remaining legal work
 
@@ -171,7 +179,7 @@ The application will make its source available for individual personal use and c
 
 | Confirmed requirement | Interpretation |
 | --- | --- |
-| Web and mobile | Shared product behavior and synchronized learning state across screen sizes; native-versus-PWA delivery is still open |
+| Web and mobile | Shared product behavior and synchronized learning state across screen sizes; responsive web and installable PWA confirmed for initial launch (D02), with native wrappers deferred |
 | BYOK and paid hosted AI | Both modes are first-class; source material purchases are separate |
 | Public source and contributions | Individual personal cloning/modification and contributions; third-party organizational deployment prohibited; custom operative terms pending |
 | Goal-based curriculum generation | Use a seeded, reviewed catalog; support ongoing catalog updates |
@@ -188,9 +196,9 @@ The application will make its source available for individual personal use and c
 | Reviewed assessments | The owner accepts maintaining reviewed anchor questions and rubrics for important evidence gates |
 | Study reminders initially | Best-effort reminders are confirmed; precise alarms are outside initial scope |
 
-#### 1.2 Proposed initial scope
+#### 1.2 Confirmed initial launch scope
 
-The following are design recommendations, not user-confirmed constraints: adults learning AI/LLM engineering; English-first interface and metadata with language fields throughout; responsive web plus installable PWA; external providers host learning materials; in-app practice and quizzes; no hosted arbitrary-code execution in the initial release. See [open decisions](#3-decisions-and-release-choices).
+The following initial-release scope choices are confirmed (D01, D02, D03, D09, D10, D12): adult self-directed learners studying AI/LLM engineering and software engineering as the initial seeded domain (a launch content boundary, not a permanent architectural limitation); English-first interface and catalog content with all stored content and contracts remaining language-tagged; responsive web plus installable PWA initially (native wrappers deferred); provider links and approved metadata by default, with full-text ingestion, embedding, model submission, and derived assessment generation requiring explicit permissions; in-app practice and quizzes; external coding environments only at launch with no hosted arbitrary-code execution; and a provider-neutral inference interface implementing the deterministic fake provider first, OpenAI as the first live provider, and Anthropic and Google Gemini before public beta. See [decisions and release choices](#3-decisions-and-release-choices).
 
 Implement a complete vertical slice before broadening subject coverage. A small catalog that genuinely covers its stated objectives is preferable to an arbitrary resource-count target. Choose catalog size from a coverage audit.
 
@@ -322,7 +330,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | PED-003 | P0 | The scheduler shall allocate revisits in distinct study sessions and include review time in capacity calculations; the interval policy and its version shall be visible as a product heuristic. |
 | PED-004 | P0 | Instructional guidance shall respond to prerequisite evidence and independent performance, with worked examples or partial scaffolds available for novices and redundant instruction skippable with evidence. |
 | PED-005 | P0 | Each assessment item shall record objectives, answer/rubric provenance, version, evaluation method, and validation status. Private keys and unrevealed solutions shall be excluded from the learner curriculum payload. Corrected or invalidated evaluations shall preserve history and recompute affected evidence projections with an explanation. |
-| PED-006 | P0 | Completion, assisted practice, independent performance, delayed performance, and transfer evidence shall be separately represented. Opening a resource or checking a completion box shall never alone establish demonstrated competence. |
+| PED-006 | P0 | Completion, assisted practice, independent performance, delayed performance, and transfer evidence shall be separately represented. Opening a resource or checking a completion box shall never alone establish demonstrated competence. Learners may study ahead; missing prerequisite evidence shall produce a visible warning and recommended bridging work without hard-locking ordinary content, and accessing or completing dependent content shall not create prerequisite evidence. Only activities explicitly marked as `mastery_gated` may require demonstrated proficiency: when an active reviewed anchor exists, the learner shall either demonstrate the prerequisite or record an explicit override; when no reviewed anchor exists, the app shall allow continuation after explicit acknowledgement and display `"Prerequisite unverified — no reviewed anchor available"`. Formative practice shall not create `demonstrated` status, and every override or acknowledgement shall be recorded as an auditable learner decision. |
 | PED-007 | P0 | The three sequence modes shall retain required objectives, prerequisite support, practice, feedback, and review; switching modes shall not silently delete those obligations. |
 
 ### 10. Schedule and progress requirements
@@ -442,7 +450,7 @@ See [sharing policy](#10-publishing-and-adoption) for lifecycle, privacy, and mo
 | SHARE-001 | P0 | Curricula shall be private by default. An owner shall be able to publish an immutable, validated template revision as public or unlisted after reviewing and explicitly confirming the exact public projection and publication terms. |
 | SHARE-002 | P0 | Publication shall use a separate allowlisted schema and public identifiers. It shall exclude private prompts, account IDs, proficiency/attempt data, progress, schedules, notes, owned-access records, budgets, credentials, solutions, and private generation provenance. Private text shall never be copied into public title/summary fields automatically. |
 | SHARE-003 | P0 | Public templates shall be discoverable through accessible search/filter/list and diagram views; unlisted templates shall be absent from discovery and indexing surfaces controlled by the app. The UI shall state that anyone with an unlisted link can access it and that unlisted is not confidential. |
-| SHARE-004 | P0 | Adopting a published template shall create a private draft with origin attribution and a new owner. The app shall recheck current resource rights/access, the adopter's knowledge/depth/time/cost constraints, and coverage before activation. It shall not inherit the author's progress, evidence, waivers, votes, or spending authorization. |
+| SHARE-004 | P0 | Adopting a published template shall create a private draft with origin attribution and a new owner. The app shall recheck current resource rights/access, the adopter's knowledge/depth/time/cost constraints, and coverage before activation. It shall not inherit the author's progress, evidence, waivers, votes, or spending authorization. During deterministic adoption, if a referenced resource is unavailable, quarantined, or incompatible with the adopter's access policy, the app shall substitute an approved and semantically suitable replacement when one exists and satisfies the adopter's access policy; otherwise it shall omit the ineligible resource from the private draft, set `coverage_status` to `partial`, include explicit `coverage_limitations`, require learner review before activation, never silently include paid, quarantined, unavailable, or otherwise ineligible material, and never reject the whole adoption when a useful partial curriculum can be created. |
 | SHARE-005 | P0 | An authenticated, verified account shall be able to set or remove one upvote per published revision, with idempotent effects and a unique database constraint. Self-voting shall be rejected; repeated requests, concurrent writes, and forks shall not multiply a vote or inherit counts. |
 | SHARE-006 | P0 | Upvotes shall be labeled community preference and kept separate from catalog approval, factual correctness, educational review, proficiency, and efficacy. Eligibility and active moderation/rights overlays shall apply before ranking or recommendation. |
 | SHARE-007 | P0 | Publishing an edited curriculum shall create a new public revision with its own vote count. Old revision links and votes shall retain their version association while available. Republishing identical content shall reuse the version or be rejected as a duplicate under the declared policy. |
@@ -489,11 +497,13 @@ All modes include later revisits. A question such as “what is an embedding?”
 #### Software/public-beta gate
 
 - Core journeys work end-to-end on desktop and selected mobile browser/device targets.
-- All P0 acceptance criteria have bound verification, including negative cases.
+- All P0 acceptance criteria have bound verification, including negative cases. Requirement, scenario, HTTP operation, and P0 counts are derived dynamically from `scripts/check_current_spec.py` and `scripts/check_contracts.py` rather than hard-coded numbers such as 103 or 105 in release logic.
+- CI runs `scripts/extract_spec.py --check specs/product.md .` and fails if any committed extracted contract, schema, fixture, traceability table, UI token file, or generated client/server type drifts from `specs/product.md`.
 - Public/private snapshot separation, publishing/unpublishing, adoption, version-specific votes, and report handling work with privacy and abuse failure cases.
 - Topic diagnostics and adaptation preserve evidence uncertainty and chosen mathematical depth; the reviewed objective slice supplies the necessary anchor items.
 - Catalog coverage and mandatory assessment quality have been reviewed for the stated scope.
-- Resource rights, server-mediated key custody, pricing, cancellation/refunds, retention, the custom individual-use software terms, contributor grants, and publication terms are explicit. T14 UI/accessibility acceptance is complete for launch flows.
+- Resource rights, server-mediated key custody, pricing, cancellation/refunds, retention, the custom individual-use software terms, contributor grants, and publication terms are explicit. Deferred decisions (D07 commercial pricing/failed-generation policy, D11 cloud/payment/production-auth vendors, D15 retention windows, and D16 operative legal instruments) do not block local development, but explicit feature and release gates block the affected production capabilities until those decisions are approved.
+- T12, T13, and T14 UI/accessibility acceptance are complete for launch flows before T09.
 - No critical cross-tenant, secret-exposure, arbitrary-execution, or duplicate-billing issue remains.
 - Accessibility, workload feasibility, offline/conflict behavior, notification cancellation, and backups have been checked against the stated target.
 
@@ -852,7 +862,14 @@ Keep three independent dimensions, with supporting records and timestamps:
 | Learning evidence | Unassessed, assisted practice, demonstrated under criterion, needs practice | What valid assessment evidence currently supports; historical attempts remain inspectable. |
 | Review scheduling | Not scheduled, scheduled, due, deferred | When the next revisit is planned, independent of activity completion or a prior demonstration. |
 
-An objective may have been demonstrated on a recorded date while a review is due. A scheduling transition must not erase that historical demonstration. Corrections to an assessment can change the current evidence projection while preserving the original record. If the UI uses “mastery,” the product must define its operational meaning and disclose the evidence supporting it.
+An objective may have been demonstrated on a recorded date while a review is due. A scheduling transition must not erase that historical demonstration. Specifically:
+
+- `CurriculumRevision` remains immutable.
+- Activity execution state (`ProgressProjection.activities[]`) tracks what the learner has started, completed, or skipped (`self_reported_completed` or `self_reported_skipped`). Completing an activity never sets `Proficiency.objective_evidence[].status` to `demonstrated`.
+- Objective proficiency (`Proficiency.objective_evidence[]`) changes to `demonstrated` only through validated independent assessment attempts against a reviewed anchor (`reviewed_anchor_available`), or through an explicit reviewed objective-equivalence mapping. Formative practice supports learning but never creates `demonstrated` status.
+- Review occurrences are represented in `ScheduleRevision` and `ReviewScheduleItem`. Completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical curriculum and schedule revisions remain inspectable; recalculation never rewrites past learning evidence.
+
+Corrections to an assessment can change the current evidence projection while preserving the original record. If the UI uses “mastery,” the product must define its operational meaning and disclose the evidence supporting it.
 
 Do not invent universal percentage thresholds. Advancement criteria must be objective-specific, documented, and evaluated. Missing evidence means uncertainty, not failure; an expired review window means a revisit is due, not that capability has certainly disappeared.
 
@@ -1059,7 +1076,15 @@ Keep these cases distinct:
 | Learner revisits a demonstrated topic | Record new study as recap or enrichment. | Prior demonstration remains valid unless corrected; repetition is not regression. |
 | Assessment path is missing | Disclose the gap and offer a valid path or revised scope. | A missing assessment cannot satisfy a gate. |
 
-A gate controls the claim that a criterion is met; it need not hide all advanced learning material from an adult learner. Learners can explore ahead with an uncertainty notice and support, while the app continues to distinguish exploration from prerequisite satisfaction.
+Do not hard-lock ordinary learning content merely because proficiency has not been demonstrated:
+
+- Learners may study ahead on ordinary activities; missing prerequisite evidence produces a visible warning and recommended bridging work.
+- Accessing or completing dependent content does not create prerequisite evidence.
+- Only activities explicitly marked as `mastery_gated` (`mastery_gated: true`) may require demonstrated proficiency.
+- When an active reviewed anchor exists for a `mastery_gated` activity's prerequisite, the learner must either demonstrate the prerequisite or record an explicit auditable override (`prerequisite_override_recorded`).
+- When no reviewed anchor exists for a `mastery_gated` activity's prerequisite, the app allows continuation after explicit auditable acknowledgement (`unverified_prerequisite_acknowledged`) and displays `Prerequisite unverified — no reviewed anchor available`.
+- Formative practice may support learning but must not create `demonstrated` status.
+- Every override or acknowledgement is recorded as an auditable learner decision.
 
 Waiving introductory instruction does not waive a new target capability, integrated application, or later independent transfer task. If the learner has already demonstrated the same target objective under equivalent conditions, the system may credit that evidence explicitly. It must not mark the broader curriculum completed merely because a prerequisite was waived.
 
@@ -1452,7 +1477,14 @@ The action should read **Use this curriculum**, with a visible indication that i
 
 The adopter supplies or confirms their own goal, time, region, resource access, sequence, mathematical depth, and AI mode/budget if generation is needed. The app resolves their own proficiency evidence. It revalidates the template's resources and current availability, identifies prerequisite gaps, and shows the resulting effort/cost differences. A free-only adopter is never automatically charged for an author's paid resource choice.
 
-A deterministic adoption may preserve the structure without an AI request when it fits all constraints. If significant rewriting or resource selection requires a model, show the operation, quote/ceiling, and chosen inference mode through the normal generation authorization flow. Clicking a public link, voting, or viewing a template never authorizes inference spending.
+A deterministic adoption preserves the template structure without an AI request or inference spending. When a referenced resource in the public template is unavailable, quarantined, or incompatible with the adopter's access policy during deterministic adoption:
+
+- Use an approved and semantically suitable replacement from the catalog when one exists and satisfies the adopter's access policy.
+- Otherwise omit the ineligible resource from the private draft, set `coverage_status` to `partial`, include explicit `coverage_limitations`, and require learner review before activation.
+- Never silently include paid, quarantined, unavailable, or otherwise ineligible material.
+- Never reject the whole adoption when a useful partial curriculum can be created.
+
+If significant rewriting or new resource generation requires a model, show the operation, quote/ceiling, and chosen inference mode through the normal generation authorization flow. Clicking a public link, voting, or viewing a template never authorizes inference spending.
 
 The new draft has its own owner, private curriculum ID, revisions, and schedule. It retains a public origin reference and applicable attribution/license notice. It inherits no votes, completion, attempts, proficiency, waiver, credential, calendar, spending authorization, or private author text. Previously obtained evidence belonging to the adopter may be mapped using the same objective-equivalence rules as any other plan.
 
@@ -1795,7 +1827,24 @@ These are required properties to verify with representative failure cases. Numer
 
 Build a modular monolith with one shared API, a web client, durable storage, and asynchronous workers. Use separate modules for catalog/curation, curriculum generation, learning evidence/diagnostics/adaptation, scheduling, publications/moderation, identity/credentials, and usage/billing. This preserves meaningful ownership without immediately operating many distributed services.
 
-Proposed implementation stack: TypeScript; React/Next.js for responsive web/PWA; a TypeScript API and worker; PostgreSQL for transactional state, full-text retrieval, and optional pgvector embeddings. If native apps are required, React Native/Expo is a candidate client sharing contracts and appropriate domain code. Choose exact versions and deployment products during task T00 after verifying supported tooling. The requirements do not depend on one UI framework.
+Approved implementation stack: a polyglot Rust + TypeScript monorepo using a Cargo workspace for the Rust backend, a `pnpm` workspace for the TypeScript frontend, and Python solely for the specification-validation and extraction scripts:
+
+- **Repository layout:**
+  - `apps/web/` — Next.js, React, TypeScript strict mode, responsive web + installable PWA, CSS variables generated from `design/ui-tokens.json`, KaTeX with accessible MathML output, Playwright + `axe-core`.
+  - `services/api/` — Rust Axum HTTP API binary (`tokio`, `tower`, `tower-http`, `serde`, OpenTelemetry structured tracing without secrets or private curriculum contents).
+  - `services/worker/` — Rust Tokio background-worker binary consuming jobs from the PostgreSQL transactional outbox/job table (`SELECT ... FOR UPDATE SKIP LOCKED` with retry, lease/visibility timeout, dead-letter, and idempotency behavior).
+  - `crates/domain/` — Framework-independent domain rules, pure workload math, DAG acyclicity checks, proficiency/waiver state machines, and schedule recalculation.
+  - `crates/application/` — Use cases and transaction orchestration.
+  - `crates/contracts/` — Generated contract models, authoritative runtime JSON Schema Draft 2020-12 validator (`jsonschema` crate), and RFC 8785 JCS canonicalizer verified byte-for-byte against all supplied digest fixtures.
+  - `crates/persistence/` — PostgreSQL + `pgvector` repositories and explicit SQLx SQL migrations.
+  - `crates/providers/` — Provider-neutral AI adapters (`DeterministicFakeProvider`, `OpenAiProvider`, `AnthropicProvider`, `GeminiProvider`).
+  - `crates/jobs/` — Transactional outbox/job definitions and execution.
+  - `crates/security/` — Envelope-encrypted secret custody, authorization helpers, and SSRF-safe controlled egress.
+  - `crates/test-support/` — Fixtures and integration-test support.
+  - `packages/ui/` — Shared TypeScript UI system and semantic design tokens.
+  - `packages/api-client/` — OpenAPI-generated TypeScript API types and thin typed fetch client.
+  - `scripts/` — Specification extraction and validation scripts (`extract_spec.py`, `check_current_spec.py`, `check_contracts.py`).
+- **Explicitly excluded backend technologies:** Do not use Fastify, Drizzle, `pg-boss`, Lucia/Auth.js as the backend authentication implementation, or Ajv as the authoritative backend validator (Ajv may be used only for optional frontend-side validation).
 
 A durable database is necessary for the proposed cross-device state, provenance, billing, and operations. A separate vector-database service is optional. Keep the index rebuildable from permissioned source records, so retrieval infrastructure can change without becoming the system of record.
 
@@ -1898,13 +1947,13 @@ A learner can have demonstrated an objective and still have a review due. These 
 
 Render canonical documents with an allowlisted component registry. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
 
-The primary navigation is **Today / Curriculum / Progress / Explore / Settings**, with Resources available inside curriculum details and catalog views. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a module in the graph to open details without losing location. On mobile, show one module or local neighborhood and a vertical task list. Graph pan/zoom is optional; it cannot be the only navigation method.
+The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Settings**, and **Learn** contains **Today**, **Plan** (with synchronized **Map** and **Outline** views), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a module in the graph to open details without losing location. On mobile, show one module or local neighborhood and a vertical task list. Graph pan/zoom is optional; it cannot be the only navigation method.
 
 Persist offline only the minimum allowed plan/evidence data. Never cache provider credentials, unrevealed assessment solutions, or unauthorized external materials in a service worker. Show offline and pending-sync status. Use stable event IDs for offline progress and revision preconditions for mutable schedules. A stale page cannot overwrite a newer plan without a conflict response.
 
 ### 6. AI provider and cost control
 
-Use provider adapters behind a narrow interface: capability discovery, token/cost estimate, structured generation, cancellation when supported, normalized errors, and usage reconciliation. Native structured-output support is useful but does not replace validation. Providers that fail the capability/contract suite remain unavailable.
+Use provider adapters behind a narrow, provider-neutral Rust trait: capability discovery, token/cost estimate, structured generation, cancellation when supported, normalized errors, and usage reconciliation. Provider-specific request or response objects must never leak into the domain model. Implement the deterministic fake provider first, then OpenAI as the first live provider, and add Anthropic and Google Gemini through the same interface before public beta (D12). Native structured-output support is useful but does not replace validation. Providers that fail the capability/contract suite remain unavailable.
 
 Hosted mode uses a transactionally reserved usage ceiling before dispatch. Store the quote version and usage/price basis. Provider completion can remain uncertain after timeouts; reconcile before duplicating work. Internal repair or background actions are part of the original authorization and cap, not unbounded new spending.
 
@@ -1992,7 +2041,7 @@ These choices should be revisited when concrete load, device, organizational, or
 | Adaptation proposal | Proposed objective/activity/schedule changes, reasons, evidence mappings, access/effort/cost impacts | Pins base plan/schedule/profile/evidence/catalog-policy revisions; acceptance is transactional |
 | Progress event | Started/completed/skipped/reported-time/evidence-linked event | Stable client event ID scoped to account; server sequence provides ordering |
 | Progress projection | Current execution/evidence summaries | Derived from authorized events and criteria, never authored by a model |
-| Schedule revision | Study sessions, review assignments, timezone policy, capacity | Independent of curriculum revision; optimistic concurrency |
+| Schedule revision | Study sessions, review schedule items (`ReviewScheduleItem`), timezone policy, capacity | Independent of immutable `CurriculumRevision`; completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical revisions remain inspectable and past learning evidence is never rewritten |
 | Reminder occurrence | Session/version/channel/due instant and dispatch state | Stable dedupe key; invalidated by session/preference changes |
 | Credential connection | Owner, provider metadata, masked label, status, secret reference and credential version | Server-mediated encrypted vault; raw secret outside curriculum, public snapshots, queues, and ordinary query responses |
 | Generation job | Request snapshot, state, provider/model/key-version/cost authorization, provenance, outcome | Idempotency key and request fingerprint; same key/different request conflicts; no implicit mode/provider/account change |
@@ -2149,6 +2198,7 @@ These are specification artifacts, not an implemented API. They describe the cor
 | adaptation-proposal.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/adaptation-proposal.schema.json`) | Version-bound curriculum changes, qualifying waivers, and impact preview |
 | public-curriculum.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/public-curriculum.schema.json`) | Separate immutable public content with attribution and no learner history |
 | openapi.yaml (embedded asset: `specs/001-curriculum-platform/contracts/openapi.yaml`) | Core HTTP operations including diagnostics, adaptation, publication, adoption, votes, reports and owner management |
+| app-companion.openapi.yaml (embedded asset: `specs/001-curriculum-platform/contracts/app-companion.openapi.yaml`) | Companion HTTP operations for session auth, account export/deletion, curriculum list/goal-interpretation, resource version catalog/alerts, assessment assistance/reports/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and external completion import |
 
 JSON Schemas pin Draft 2020-12. The HTTP description intentionally pins OpenAPI 3.1.2 for a chosen toolchain compatibility baseline; it is not a statement that 3.1.2 is the latest OpenAPI release. The schema namespace uses example.invalid until the owner chooses a real project namespace. These schema identifiers are resolution identifiers, not live endpoints.
 
@@ -2263,25 +2313,18 @@ The API key creation field is write-only. It must be absent from all responses, 
 
 Bearer authentication is a contract boundary; it does not select an identity provider or require JWT format. Only explicitly marked public discovery/content GETs permit anonymous access. Unlisted content is accessible by an unguessable bearer link but absent from discovery. Owner management, adoption, voting, diagnostics, evidence, credentials, and all mutations require authentication. Administrative operations additionally require the stated role. Return 404 for objects that are not visible to the caller where revealing their existence would leak tenant information.
 
-### Work still required before implementation freeze
+### Companion contract and contract-first boundary
 
-This is a deliberately scoped core API draft. The following contracts still need feature-level detail after the relevant owner decisions:
+The canonical OpenAPI files (`openapi.yaml` and `app-companion.openapi.yaml`) and JSON Schemas embedded in Appendix C are authoritative over both Rust and TypeScript code:
 
-- Sign-in, account lifecycle, recovery, token/session renewal, export and deletion jobs.
-- Checkout, subscriptions/credit top-ups, payment-provider webhooks, refunds, taxes and app-store purchase policy.
-- Full catalog create/import/update/search/resource hydration, ingestion-job administration and source-license checks.
-- Curator assessment authoring, private answer/rubric schemas, hint/exposure events, item validation, reviewed diagnostic selection rules and objective-specific demonstration policies. Core diagnostic delivery/response shapes are included; production item-bank operations still need detail.
-- Curriculum listing, editable scope preview, general revision diffs and evidence-equivalence review. The included adaptation proposal is a content-change preview, not a full arbitrary curriculum editor.
-- Full schedule preview/activation, snooze, pause, recurring availability, notification delivery events and device/push-token registration.
-- External coding artifact uploads and any future sandboxed code-execution service.
-- Extended discovery filters and pagination policies, full moderation queues, service SLO load definitions and operational deployment contracts. Core owner publication listing/revision history are included in this revision.
-- Exact idempotency retention, retry/time budgets, provider adapters, model registry, pricing schedules and reservation recovery policies.
-
-Missing integration endpoints are not implicitly supplied by these schemas. The implementation tasks should create and review those contracts before their dependent feature is implemented. No complete production auth or payment integration is claimed here.
+- **Companion operations (`app-companion.openapi.yaml`):** Rather than maintaining an unembedded companion file that could drift, the 21 application-companion operations (session auth, account export/deletion, `/me/curricula`, `/curricula/goal-interpretations`, `/resources/versions`, `/curricula/{curriculum_id}/resource-alerts`, `/assessments/{assessment_id}/assistance-events`, `/assessments/{assessment_id}/reports`, `/admin/assessments/{assessment_id}/key-corrections`, admin catalog/moderation queues, `/me/billing/wallet`, `/me/billing/checkout-sessions`, `/webhooks/billing`, push subscriptions, reminder snooze, and external completion import) are canonically specified in Appendix C.8 and extracted to `specs/001-curriculum-platform/contracts/app-companion.openapi.yaml`.
+- **TypeScript boundary:** Generate frontend API types from the canonical OpenAPI specifications into `packages/api-client` and use a thin typed fetch client. Never duplicate request or response interfaces manually.
+- **Rust boundary:** Generate schema-derived data types where practical, implement Axum route handlers against the canonical contracts, validate untrusted payloads at runtime with the `jsonschema` crate (Draft 2020-12), and run OpenAPI contract tests against the live API. Never make Rust annotations or a code-first OpenAPI generator the source of truth, and do not depend on a beta Rust Axum server generator.
+- **Vendor-specific production gates:** Vendor-specific webhook envelopes, production identity-provider callbacks, and commercial tariff tables remain gated by deferred decisions `D07`, `D11`, `D15`, and `D16`.
 
 ### Validation status and source references
 
-Validated on 2026-10-20 using jsonschema 4.26.0 and openapi-spec-validator 0.9.0: six standalone schemas, the OpenAPI 3.1.2 document with 50 operations, 19 positive fixtures, 34 expected negative-schema rejections, and 49 focused semantic/reference checks. See [verification.md](#22-verification-and-limits) and its machine report for the current exact results and reproduction commands.
+Validated on 2026-10-20 using jsonschema 4.26.0 and openapi-spec-validator 0.9.0: six standalone schemas, two OpenAPI 3.1.2 documents (`openapi.yaml` with 50 core operations and `app-companion.openapi.yaml` with 21 companion operations; 71 total operations), 19 positive synthetic fixtures, 36 expected negative-schema rejections, and 52 focused semantic/reference checks. See [verification.md](#22-verification-and-limits) and its machine report for the current exact results and reproduction commands.
 
 These checks validate artifacts, selected privacy boundaries, and fixture arithmetic. They do not establish a running backend, live provider integration, actual authorization/cache behavior, a production-quality item bank, content clearance, or educational efficacy. The public-projection transformation, live concurrency, moderation and vote-abuse checks still require implementation bindings.
 
@@ -2300,7 +2343,7 @@ GET /me/publications lists owned lifecycle metadata across active, quarantined, 
 
 The existing GET /me/publications/{publication_id} remains the source of a strong management ETag for authoring/withdrawal. Neither list response supplies a lifecycle mutation token. Stable owner-bound cursors and authorization are runtime rules. The public_readable field is current metadata, rechecked on actual read. These two additive reads close the My publications navigation gap without weakening public quarantine.
 
-General account/profile/export/deletion, authentication, provider registration, production payment/webhook, device-token, and complete admin queue contracts remain scoped integration work. UI requirements for those surfaces do not imply those endpoints exist in this core description. Define them explicitly before implementing their live behavior. Initial Explore controls use only the existing supported filter parameters.
+General account/profile/export/deletion, session authentication, curriculum listing, goal interpretation, resource alerts, assessment assistance/reporting/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and completion import are modeled in `app-companion.openapi.yaml` (Appendix C.8). Vendor-specific production auth/payment callbacks remain gated on D07 and D11. Initial Explore controls use only the existing supported filter parameters.
 ---
 
 ## 16. Synthetic examples
@@ -2609,21 +2652,28 @@ These are release/legal drafting tasks. They do not block implementing private g
 
 ### Dependency and verification policy
 
-T00 → T01 → T02/T03 → T04 is the first useful slice, beginning with strict AI contracts and deterministic fixtures. T05 and T06 establish the assessment/evidence and revision semantics needed by T12. T13 depends on ownership, validated curriculum rendering, current resource eligibility, and the private adoption/adaptation path; its independent discovery and vote work may proceed once those contracts are stable. T07 and T08 provide the live inference/payment and accepted reminder features. **T09 depends on T00–T08, T12, T13, and T14**, plus T10 if native-at-launch is later selected. T14 applies across the earlier functional slices and completes their UI/accessibility gate. T11 is an ongoing efficacy/evaluation track.
+The canonical implementation and launch dependency ordering is:
+
+`T00 → T01 → T14-Core → T02 → T03 → T04 → T05 → T06 → T12 → T07 → T08 → T13 → T14-Full → T09` (with `T10` and `T11` post-`T09`).
+
+- **Foundation Tracer Bullet (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Establishes the polyglot Rust + TypeScript workspace, contract extraction/drift checks, PostgreSQL migrations, seeded catalog slice, deterministic fake provider generation, `Learn -> Plan (Map/Outline)` + `Today` UI shell, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unknown`/`unassessed`.
+- **Evidence, Scheduling, and Adaptation (`T05 → T06 → T12`):** Establishes reviewed anchor assessments, `mastery_gated` prerequisite checks and auditable overrides/acknowledgements, `ScheduleRevision` + `ReviewScheduleItem` recalculation, and objective-level diagnostics/adaptation (`T12`).
+- **AI Custody/Billing, Reminders, and Sharing (`T07 → T08 → T13`):** Establishes server-mediated encrypted BYOK custody and live provider adapters (`OpenAI` first, then `Anthropic` and `Gemini`), hosted credit reservations, PWA study reminders, and public curriculum publishing, voting, moderation, and partial deterministic adoption (`T13`).
+- **Complete UI/Accessibility and Public Beta Gate (`T14-Full → T09`):** Completes all Section 9 responsive/accessibility gates (`S69–S88`) before `T09`. `T09` depends on all P0 slices (`T00–T08`, `T12`, `T13`, `T14`), derived dynamically from `traceability.csv`.
 
 Write meaningful checks for consequential behavior, especially contracts, authorization, billing, evidence, scheduling, rights, public/private isolation, and vote/withdrawal concurrency. Use deterministic model/provider fakes for fault cases. Do not call a Gherkin file a test run or substitute mocks for live provider smoke checks before production. Avoid tests that merely repeat trivial implementation details. Operative legal drafting and remaining publication-term choices do not block local synthetic implementation, and an implemented first slice does not waive the remaining P0 release criteria.
 ---
 
 ## 19. Codex handoff
 
-Keep this file at a stable path in the implementation repository, preferably Curriculum_Product_Specification.md. It is the sole maintained specification. Codex can extract the embedded contracts, fixtures, CSVs, and validation scripts into their indicated implementation paths; those files are derived artifacts until consciously changed through this specification. No framework installation or companion archive is required.
+Keep this file at `specs/product.md` in the implementation repository. It is the sole manually maintained specification. Codex can extract the embedded contracts, fixtures, CSVs, and validation scripts into their indicated implementation paths; those files are derived artifacts until consciously changed through this specification. No framework installation or companion archive is required.
 
 [GitHub Spec Kit](https://github.com/github/spec-kit) remains an optional workflow aid. Verify current tool integration when installing it; do not let generated templates overwrite the accepted decisions. The instructions in section 20 can be placed in an implementation agent configuration as a short pointer to this file, without duplicating the specification into multiple maintained documents.
 
 ### Initial implementation prompt
 
 ```text
-Read Curriculum_Product_Specification.md as the single authoritative latest spec.
+Read specs/product.md as the single authoritative latest spec.
 Use its section index and read the relevant embedded assets. Begin T00–T04 with
 synthetic catalog/evidence and a deterministic provider. Implement one complete
 local path: goal/preferences, validated generation, immutable draft/activation,
@@ -2741,12 +2791,12 @@ No course edition, certification code, career signal, or chapter assignment from
 | Written scenarios/outlines | 88, S01–S88 |
 | Implementation slices | 15, T00–T14 |
 | Supporting controls with valid parents/tasks | 36 |
-| Integrity-checked embedded machine assets | 34 |
+| Integrity-checked embedded machine assets | 35 |
 | JSON Schema Draft 2020-12 metaschema checks | 6 schemas |
-| OpenAPI 3.1.2 validation | 50 modeled HTTP operations |
+| OpenAPI 3.1.2 validation | 71 modeled HTTP operations (50 core in `openapi.yaml` + 21 companion in `app-companion.openapi.yaml`) |
 | Positive synthetic fixtures | 19 |
-| Invalid synthetic shapes rejected | 34 negative fixtures |
-| Selected semantic/reference/arithmetic checks | 49 |
+| Invalid synthetic shapes rejected | 36 negative fixtures |
+| Selected semantic/reference/arithmetic checks | 52 |
 | Static opaque palette pairs | 30 pairs satisfy their declared contrast thresholds |
 | Single-file structure | Requirement/scenario/task/control consistency, internal links, fence balance, exact asset hashes, and no unresolved relative document dependencies |
 
@@ -2759,9 +2809,10 @@ The color checks cover specified opaque token pairs only. They do not establish 
 Copy the Appendix F extraction script to a temporary file named extract_spec.py, then run it against this Markdown and a new temporary directory. It extracts only machine assets, never another maintained Markdown, and refuses to overwrite changed files. Create a Python environment, install the extracted scripts/validation-requirements.txt, and run:
 
 ```sh
-python extract_spec.py Curriculum_Product_Specification.md /tmp/curriculum-spec-check
-python /tmp/curriculum-spec-check/scripts/check_current_spec.py Curriculum_Product_Specification.md
-python /tmp/curriculum-spec-check/scripts/check_contracts.py
+python3 scripts/extract_spec.py specs/product.md .
+python3 scripts/extract_spec.py --check specs/product.md .
+python3 scripts/check_current_spec.py specs/product.md
+python3 scripts/check_contracts.py
 ```
 
 The first validator checks the canonical document, exact embedded-asset hashes, requirement/scenario/task/control mappings, internal links, and static color tokens. The second validates the extracted API/schemas/fixtures and selected semantics; it writes a temporary docs/contract-validation-report.json. Direct validation dependencies are pinned in the embedded requirements file. Neither validator contacts a provider, spends credits, dispatches reminders, publishes a curriculum, or tests a real service.
@@ -2778,8 +2829,9 @@ The static specification retains evidence references and distinguishes supported
 
 These are complete behavior specifications. Application bindings remain implementation work.
 
-<!-- embedded-asset: specs/001-curriculum-platform/acceptance.feature sha256=26775048f186e4a5951f6e64ccbeb9891bcef5151c55c398a2e450423476d311 -->
+<!-- embedded-asset: specs/001-curriculum-platform/acceptance.feature sha256=526f3d972f0d9d65e15377df4723aefcf11557dc98550b43cce1bef214c3775f -->
 ````gherkin
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 Feature: Credible, feasible, evidence-informed curricula across web and mobile
   These are acceptance specifications. Step bindings and application assertions
   must be implemented before any scenario is described as an executed test.
@@ -2906,11 +2958,13 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And feedback explains the error and a useful next action
 
   @S15 @PED-005 @PED-006
-  Scenario: An unreviewed AI assessment cannot silently become a trusted gate
+  Scenario: An unreviewed AI assessment or formative practice cannot silently become a trusted gate
     Given an AI-generated assessment has no validated answer or rubric
-    When the app considers its use for a progress gate
-    Then it remains a draft or labeled practice item
-    And an advisory AI grade does not alone establish demonstrated competence
+    When the app considers its use for a mastery_gated activity or progress gate
+    Then it remains a draft or labeled formative practice item
+    And formative practice or an advisory AI grade does not alone establish demonstrated competence
+    And when no reviewed anchor exists for a mastery_gated prerequisite the app requires explicit acknowledgement and displays "Prerequisite unverified — no reviewed anchor available"
+    And the acknowledgement is recorded as an auditable learner decision
     And the item's objective, version, provenance, and validation state remain available
 
   @S45 @PED-002 @PED-006
@@ -3232,9 +3286,11 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
   Scenario Outline: A learner can study ahead without manufacturing a prerequisite waiver
     Given the only support for a prerequisite is <nonqualifying_support>
     And no sufficient valid independent evidence satisfies its reviewed criterion
-    When the learner asks to skip the introductory activity and study a dependent topic
-    Then the app records an explicit skip or ordering override with support still available
+    When the learner studies ahead on an ordinary activity or requests an override on a mastery_gated activity
+    Then ordinary content is not hard-locked and displays a visible missing-prerequisite warning with recommended bridging work
+    And if the activity is mastery_gated with an active reviewed anchor the learner must either demonstrate the prerequisite or record an explicit auditable override
     And it does not create a verified waiver or mark the skipped activity completed
+    And accessing or completing the dependent activity does not create prerequisite evidence
     And the prerequisite objective remains in the graph with its demonstration gate unsatisfied
     And neither the dependent objective nor the broader curriculum becomes demonstrated
     Examples:
@@ -3339,15 +3395,17 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And possession of the link grants no access to the author's private learning state
 
   @S59 @SHARE-004 @ADAPT-005 @CAT-004 @CAT-007
-  Scenario: Adopting a popular template rechecks the new learner's constraints
+  Scenario: Adopting a popular template rechecks the new learner's constraints and handles partial coverage
     Given a public template assumes paid access, demonstrated mathematics prerequisites, and more weekly time than the adopter has
     And the adopter requires free materials, requests formal mathematics, and has no qualifying prerequisite evidence
     And a referenced resource has since lost required usage permission
-    When the adopter creates a copy
+    When the adopter creates a deterministic or generated copy
     Then a new private draft belongs to the adopter and retains permitted origin attribution
     And it contains none of the author's progress, evidence, waivers, schedule, votes, credentials, or spending authorization
     And current rights, access, depth, prerequisite coverage, time, and cost constraints are checked before activation
-    And missing free alternatives or insufficient capacity produces an explained gap or infeasibility
+    And an approved semantically suitable replacement satisfying the adopter's access policy is used when available
+    And when no eligible replacement exists the ineligible resource is omitted with coverage_status set to partial, explicit coverage_limitations, and required learner review before activation
+    And paid, quarantined, unavailable, or ineligible material is never silently included and a useful partial curriculum is not rejected outright
     And popularity cannot activate the draft or supply missing gate evidence
 
   @S60 @SHARE-005 @SHARE-010
@@ -3638,9 +3696,9 @@ Curriculum revisions describe intended learning; schedule revisions place work i
 
 ## Modular service with a relational source of truth
 
-Start with a modular API/worker system and PostgreSQL-owned state, with full-text/vector indexes derived from approved records. This keeps transactional progress and billing together while allowing retrieval infrastructure and clients to change; operating separate microservices and a dedicated vector database is deferred until a measured need appears.
+Build a modular polyglot system with a Rust backend (`services/api` using Axum and `services/worker` using Tokio, organized into `crates/{domain,application,contracts,persistence,providers,jobs,security,test-support}`), a TypeScript frontend (`apps/web` using Next.js/React and `packages/{ui,api-client}`), and PostgreSQL-owned state (`sqlx` + `pgvector`), with full-text/vector indexes and transactional outbox jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) derived from approved records. This keeps transactional progress, runtime JSON Schema 2020-12 validation (`jsonschema` crate), RFC 8785 JCS hashing, and billing together while allowing retrieval infrastructure and clients to change.
 
-**Consequences:** module boundaries and authorization must remain explicit even in one deployment. PostgreSQL plus pgvector is a proposed implementation choice, not a pedagogy requirement or a universal scaling claim.
+**Consequences:** module boundaries, contract-first generation, and authorization remain explicit across Cargo crates and TypeScript packages. PostgreSQL plus `pgvector` is an engineering architecture decision, not a pedagogy requirement or a universal scaling claim.
 
 ---
 
@@ -3687,9 +3745,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.1. adaptation-proposal.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/adaptation-proposal.schema.json sha256=5acf403b324d69935e3d17a7dbb8c49d989eff59e3a48f506b2e2feaa22bff04 -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/adaptation-proposal.schema.json sha256=2ddee5c8eba3465e31494a5b30f48204385a3832102543d4887f45df6cd929db -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/adaptation-proposal.schema.json",
   "title": "Private adaptation proposal — v0.2",
@@ -3994,9 +4053,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.2. curriculum.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/curriculum.schema.json sha256=a690bcc95ddade9cb4efc2a26208bd8671557754423ebeb6f19774e73510abd2 -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/curriculum.schema.json sha256=108d5aafbdcabf6f92b2d51b6c4211a4004c94215a5af5328eb0b248ebcceed9 -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/curriculum.schema.json",
   "title": "Curriculum revision — draft contract v0.2",
@@ -4924,6 +4984,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "study_prompt"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5019,6 +5083,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "guidance_level"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5130,6 +5198,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "execution_mode"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5225,6 +5297,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "attempt_policy_ref"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5326,6 +5402,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "assessment_ref"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5413,6 +5493,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "reflection_prompt"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5529,6 +5613,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
                 "execution_mode"
               ],
               "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
             }
           },
           "required": [
@@ -5674,9 +5762,10 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.3. generation-request.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/generation-request.schema.json sha256=4438b29c0aad3a3dd2da6147ea67dd657ab41b39a5a14d939f22895fa0587fb2 -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/generation-request.schema.json sha256=48d94f4d1638a5ae6098b485297ab1436b297d1d8dc9145baf568a5fb1e0f37b -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/generation-request.schema.json",
   "title": "Curriculum generation request — draft contract v0.2",
@@ -7015,8 +7104,9 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.4. openapi.yaml
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/openapi.yaml sha256=7d45f971de2129f4c4668e23d8dc59d79bd405086d332d375e6d2ba97e73026f -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/openapi.yaml sha256=94b4a4dbe2792b2a8589c35f4859f6703712fc7d83af5f8c8023acca9de385a4 -->
 ````yaml
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 openapi: 3.1.2
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
@@ -9867,6 +9957,11 @@ components:
         activation_version:
           type: integer
           minimum: 0
+        coverage_status:
+          type: string
+          enum:
+          - complete
+          - partial
       required:
       - curriculum_id
       - active_revision_id
@@ -9912,6 +10007,8 @@ components:
           - self_reported_skipped
           - time_reported
           - note_added
+          - prerequisite_override_recorded
+          - unverified_prerequisite_acknowledged
         occurred_at:
           type: string
           minLength: 20
@@ -10548,6 +10645,12 @@ components:
             additionalProperties: false
           minItems: 0
           maxItems: 1000
+        review_schedule_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReviewScheduleItem'
+          minItems: 0
+          maxItems: 1000
         generated_at:
           type: string
           minLength: 20
@@ -10562,6 +10665,51 @@ components:
       - weekly_minutes
       - sessions
       - generated_at
+      additionalProperties: false
+    ReviewScheduleItem:
+      type: object
+      properties:
+        review_item_id:
+          type: string
+          minLength: 3
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
+        objective_id:
+          type: string
+          minLength: 3
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
+        activity_id:
+          type: string
+          minLength: 3
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
+        status:
+          type: string
+          enum:
+          - not_scheduled
+          - scheduled
+          - due
+          - deferred
+        due_at:
+          anyOf:
+          - type: string
+            minLength: 20
+            maxLength: 40
+            format: date-time
+          - type: 'null'
+        interval_policy_version:
+          type: string
+          minLength: 3
+          maxLength: 128
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
+      required:
+      - review_item_id
+      - objective_id
+      - activity_id
+      - status
+      - due_at
+      - interval_policy_version
       additionalProperties: false
     SchedulePatch:
       type: object
@@ -12236,9 +12384,10 @@ components:
 
 ### C.5. proficiency.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/proficiency.schema.json sha256=64040740bf5efa7dfb6140c06423bda5ef9b58533c0a207610435c4806af53ff -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/proficiency.schema.json sha256=11ba02fdc1b03ae86240d9c0403e1670c198709ea0683dd864b09260c89e2789 -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/proficiency.schema.json",
   "title": "Private proficiency projection — v0.2",
@@ -12523,9 +12672,10 @@ components:
 
 ### C.6. public-curriculum.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/public-curriculum.schema.json sha256=58b8b4da9f074bfcc4d67a9ae57d5b65f6b423a09f00a6f3bb176f8e408a791a -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/public-curriculum.schema.json sha256=595864dec9cf61de6e76d35c856d1f977e533aaa7cbee6110acc6761fa737223 -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/public-curriculum.schema.json",
   "title": "Public curriculum snapshot — v0.2",
@@ -12867,6 +13017,10 @@ components:
               "type": "null"
             }
           ]
+        },
+        "mastery_gated": {
+          "type": "boolean",
+          "description": "Whether this activity is marked mastery_gated in the template."
         }
       },
       "required": [
@@ -13137,9 +13291,10 @@ components:
 
 ### C.7. resource.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/resource.schema.json sha256=8b3fe82d35220e35ec5ee98d40de64773b256154480eaf88b51daeea4054a8c8 -->
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/resource.schema.json sha256=ad23d539104cf2dff6ba92c8dcdd1036cf0e97dd952412f7ad491dc7bd6b53ba -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://curriculum.example.invalid/schemas/v0.2/resource.schema.json",
   "title": "Catalog resource version — draft contract v0.2",
@@ -14140,6 +14295,788 @@ components:
     }
   ]
 }
+````
+<!-- /embedded-asset -->
+
+
+---
+
+### C.8. app-companion.openapi.yaml
+
+<!-- embedded-asset: specs/001-curriculum-platform/contracts/app-companion.openapi.yaml sha256=12b39051743f0923d44682ffb918e44befef4a6dc12d3cf42fe0667807c88c3d -->
+````yaml
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
+openapi: 3.1.2
+info:
+  title: Curriculum Platform Companion Operations API
+  version: 0.3.0
+  summary: Canonical companion contract for authentication, account data, catalog/admin queues, assessment assistance/corrections, billing checkout/webhooks, and reminder/completion integrations.
+  description: >
+    Extracted from specs/product.md Appendix C.8. Complements openapi.yaml so
+    that all application endpoints share a single canonical specification source.
+servers:
+  - url: https://api.curriculum.example.invalid/v1
+    description: Abstract specification server
+security:
+  - bearerAuth: []
+paths:
+  /auth/sessions:
+    post:
+      operationId: createAuthSession
+      summary: Authenticate learner, curator, moderator, or operator session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '200':
+          description: Authenticated session established
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+  /auth/sessions/current:
+    get:
+      operationId: getCurrentAuthSession
+      summary: Inspect current authenticated session and role claims
+      responses:
+        '200':
+          description: Active session summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+    delete:
+      operationId: deleteCurrentAuthSession
+      summary: Sign out and revoke current session token
+      responses:
+        '204':
+          description: Session terminated
+  /me/exports:
+    post:
+      operationId: createAccountExportJob
+      summary: Request an export of private curricula, schedules, and learning evidence without secrets or restricted content (PROG-005, OPS-004)
+      responses:
+        '202':
+          description: Export job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountJobStatus'
+  /me/deletion-requests:
+    post:
+      operationId: createAccountDeletionRequest
+      summary: Request account deletion, cancelling queued jobs/reminders and revoking credentials (OPS-004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeletionRequest'
+      responses:
+        '202':
+          description: Account deletion committed and cleanup initiated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountJobStatus'
+  /me/curricula:
+    get:
+      operationId: listMyCurricula
+      summary: List private curricula owned by the authenticated learner
+      responses:
+        '200':
+          description: Owned private curricula list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurriculumListResponse'
+  /curricula/goal-interpretations:
+    post:
+      operationId: createGoalInterpretation
+      summary: Propose editable target capabilities, prerequisites, depth, and exclusions before generation (GOAL-001, GOAL-004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoalInterpretationRequest'
+      responses:
+        '200':
+          description: Editable goal scope interpretation and constraint check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GoalInterpretationResponse'
+  /resources/versions:
+    get:
+      operationId: listApprovedResourceVersions
+      summary: List or search approved catalog resource versions and credibility metadata (CAT-001, CAT-008)
+      parameters:
+        - name: topic_id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: language
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Approved catalog resource versions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceVersionListResponse'
+  /curricula/{curriculum_id}/resource-alerts:
+    get:
+      operationId: listCurriculumResourceAlerts
+      summary: List stale, quarantined, or revoked resource alerts and replacement paths for a curriculum (CAT-007)
+      parameters:
+        - $ref: '#/components/parameters/CurriculumId'
+      responses:
+        '200':
+          description: Affected activities and replacement candidates
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceAlertListResponse'
+  /assessments/{assessment_id}/assistance-events:
+    post:
+      operationId: recordAssessmentAssistanceEvent
+      summary: Record staged hint request or explicit worked-solution study without a fake independent attempt (PED-002)
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentAssistanceRequest'
+      responses:
+        '200':
+          description: Recorded assistance event and revealed scaffold/solution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentAssistanceResponse'
+  /assessments/{assessment_id}/reports:
+    post:
+      operationId: reportDefectiveAssessmentItem
+      summary: Report an ambiguous or defective assessment question or rubric (PED-005)
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentIssueReportRequest'
+      responses:
+        '202':
+          description: Assessment issue report recorded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountJobStatus'
+  /admin/assessments/{assessment_id}/key-corrections:
+    post:
+      operationId: applyAssessmentKeyCorrection
+      summary: Append an attributable answer-key/rubric correction and recompute dependent proficiency and waivers (PED-005, ADAPT-008)
+      parameters:
+        - $ref: '#/components/parameters/AssessmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssessmentKeyCorrectionRequest'
+      responses:
+        '200':
+          description: Correction recorded and dependent projections recomputed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssessmentKeyCorrectionResponse'
+  /admin/catalog/proposals:
+    get:
+      operationId: listCatalogProposals
+      summary: List proposed, approved, quarantined, or stale catalog resources for curator review (CAT-002, CAT-006, OPS-001)
+      responses:
+        '200':
+          description: Curator catalog review queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProposalQueueResponse'
+  /admin/moderation/reports:
+    get:
+      operationId: listModerationReports
+      summary: List private content/vote abuse reports for moderator resolution without exposing private learner evidence (SHARE-008, OPS-001)
+      responses:
+        '200':
+          description: Moderator report queue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModerationReportQueueResponse'
+  /me/billing/wallet:
+    get:
+      operationId: getHostedCreditWallet
+      summary: Read hosted AI credit balance, active reservations, and settlement policy summary (BILL-003, BILL-004)
+      responses:
+        '200':
+          description: Hosted credit wallet summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HostedWalletResponse'
+  /me/billing/checkout-sessions:
+    post:
+      operationId: createBillingCheckoutSession
+      summary: Create a hosted-credit top-up checkout session (gated by D07/D11 in production) (BILL-003)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCheckoutSessionRequest'
+      responses:
+        '201':
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionResponse'
+  /webhooks/billing:
+    post:
+      operationId: handleBillingWebhook
+      summary: Receive signed idempotent payment-provider webhook events (BILL-003)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingWebhookPayload'
+      responses:
+        '200':
+          description: Webhook processed idempotently
+  /me/push-subscriptions:
+    post:
+      operationId: registerPushSubscription
+      summary: Register or update a Web Push subscription for opt-in study reminders (NOT-001, NOT-004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushSubscriptionRequest'
+      responses:
+        '200':
+          description: Push subscription stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushSubscriptionResponse'
+    delete:
+      operationId: deletePushSubscription
+      summary: Remove a Web Push subscription (NOT-001)
+      responses:
+        '204':
+          description: Push subscription removed
+  /me/reminders/{occurrence_id}/snooze:
+    post:
+      operationId: snoozeReminderOccurrence
+      summary: Snooze or pause a scheduled reminder occurrence respecting quiet hours (NOT-001, NOT-002)
+      parameters:
+        - name: occurrence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReminderSnoozeRequest'
+      responses:
+        '200':
+          description: Reminder occurrence updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountJobStatus'
+  /me/integrations/completions:
+    post:
+      operationId: importExternalProviderCompletion
+      summary: Import external provider completion with provenance without granting demonstrated competence (PROG-006)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalCompletionImportRequest'
+      responses:
+        '200':
+          description: External completion recorded as self/provider completion only
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountJobStatus'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  parameters:
+    CurriculumId:
+      name: curriculum_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 128
+    AssessmentId:
+      name: assessment_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 128
+  schemas:
+    CreateSessionRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        authentication_code:
+          type: string
+          minLength: 6
+          maxLength: 128
+      required:
+        - email
+        - authentication_code
+      additionalProperties: false
+    SessionResponse:
+      type: object
+      properties:
+        account_id:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+            enum: [learner, curator, moderator, operator]
+        expires_at:
+          type: string
+          format: date-time
+      required:
+        - account_id
+        - roles
+        - expires_at
+      additionalProperties: false
+    AccountDeletionRequest:
+      type: object
+      properties:
+        confirm_deletion:
+          type: boolean
+          const: true
+      required:
+        - confirm_deletion
+      additionalProperties: false
+    AccountJobStatus:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, completed, canceled]
+        requested_at:
+          type: string
+          format: date-time
+      required:
+        - job_id
+        - status
+        - requested_at
+      additionalProperties: false
+    CurriculumListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              curriculum_id:
+                type: string
+              title:
+                type: string
+              active_revision_id:
+                anyOf:
+                  - type: string
+                  - type: 'null'
+              coverage_status:
+                type: string
+                enum: [complete, partial]
+            required:
+              - curriculum_id
+              - title
+              - active_revision_id
+              - coverage_status
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    GoalInterpretationRequest:
+      type: object
+      properties:
+        goal_statement:
+          type: string
+          minLength: 3
+          maxLength: 2000
+        intended_use:
+          type: string
+          enum: [conceptual_understanding, building_applications, research_preparation, employment_preparation, exam_preparation]
+        language:
+          type: string
+          minLength: 2
+          maxLength: 35
+      required:
+        - goal_statement
+        - intended_use
+        - language
+      additionalProperties: false
+    GoalInterpretationResponse:
+      type: object
+      properties:
+        proposed_capabilities:
+          type: array
+          items:
+            type: string
+        assumed_prerequisites:
+          type: array
+          items:
+            type: string
+        explicit_exclusions:
+          type: array
+          items:
+            type: string
+        estimated_effort_minutes_range:
+          type: object
+          properties:
+            lower:
+              type: integer
+              minimum: 1
+            upper:
+              type: integer
+              minimum: 1
+          required:
+            - lower
+            - upper
+          additionalProperties: false
+      required:
+        - proposed_capabilities
+        - assumed_prerequisites
+        - explicit_exclusions
+        - estimated_effort_minutes_range
+      additionalProperties: false
+    ResourceVersionListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              resource_version_id:
+                type: string
+              title:
+                type: string
+              canonical_url:
+                type: string
+                format: uri
+              review_status:
+                type: string
+                enum: [approved]
+            required:
+              - resource_version_id
+              - title
+              - canonical_url
+              - review_status
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    ResourceAlertListResponse:
+      type: object
+      properties:
+        alerts:
+          type: array
+          items:
+            type: object
+            properties:
+              activity_id:
+                type: string
+              affected_resource_version_id:
+                type: string
+              reason:
+                type: string
+                enum: [quarantined, rights_revoked, unavailable, stale]
+              replacement_resource_version_ids:
+                type: array
+                items:
+                  type: string
+            required:
+              - activity_id
+              - affected_resource_version_id
+              - reason
+              - replacement_resource_version_ids
+            additionalProperties: false
+      required:
+        - alerts
+      additionalProperties: false
+    AssessmentAssistanceRequest:
+      type: object
+      properties:
+        event_id:
+          type: string
+        assistance_kind:
+          type: string
+          enum: [staged_hint, worked_solution_study]
+      required:
+        - event_id
+        - assistance_kind
+      additionalProperties: false
+    AssessmentAssistanceResponse:
+      type: object
+      properties:
+        event_id:
+          type: string
+        assistance_kind:
+          type: string
+          enum: [staged_hint, worked_solution_study]
+        content:
+          type: string
+        counts_as_independent_attempt:
+          type: boolean
+          const: false
+      required:
+        - event_id
+        - assistance_kind
+        - content
+        - counts_as_independent_attempt
+      additionalProperties: false
+    AssessmentIssueReportRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 2000
+      required:
+        - reason
+      additionalProperties: false
+    AssessmentKeyCorrectionRequest:
+      type: object
+      properties:
+        assessment_version_id:
+          type: string
+        correction_reason:
+          type: string
+        invalidate_prior_demonstrations:
+          type: boolean
+      required:
+        - assessment_version_id
+        - correction_reason
+        - invalidate_prior_demonstrations
+      additionalProperties: false
+    AssessmentKeyCorrectionResponse:
+      type: object
+      properties:
+        correction_id:
+          type: string
+        recomputed_attempt_count:
+          type: integer
+          minimum: 0
+        invalidated_waiver_count:
+          type: integer
+          minimum: 0
+      required:
+        - correction_id
+        - recomputed_attempt_count
+        - invalidated_waiver_count
+      additionalProperties: false
+    CatalogProposalQueueResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              resource_version_id:
+                type: string
+              status:
+                type: string
+                enum: [proposed, approved, quarantined, retired]
+              title:
+                type: string
+            required:
+              - resource_version_id
+              - status
+              - title
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    ModerationReportQueueResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              report_id:
+                type: string
+              publication_id:
+                type: string
+              publication_revision_id:
+                type: string
+              status:
+                type: string
+                enum: [open, quarantined, dismissed, resolved]
+            required:
+              - report_id
+              - publication_id
+              - publication_revision_id
+              - status
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+    HostedWalletResponse:
+      type: object
+      properties:
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        available_minor_units:
+          type: integer
+          minimum: 0
+        reserved_minor_units:
+          type: integer
+          minimum: 0
+      required:
+        - currency
+        - available_minor_units
+        - reserved_minor_units
+      additionalProperties: false
+    CreateCheckoutSessionRequest:
+      type: object
+      properties:
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        amount_minor_units:
+          type: integer
+          minimum: 100
+        idempotency_key:
+          type: string
+      required:
+        - currency
+        - amount_minor_units
+        - idempotency_key
+      additionalProperties: false
+    CheckoutSessionResponse:
+      type: object
+      properties:
+        checkout_session_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, completed, canceled, gated_pending_vendor_decision]
+      required:
+        - checkout_session_id
+        - status
+      additionalProperties: false
+    BillingWebhookPayload:
+      type: object
+      properties:
+        event_id:
+          type: string
+        event_type:
+          type: string
+        signature:
+          type: string
+      required:
+        - event_id
+        - event_type
+        - signature
+      additionalProperties: false
+    PushSubscriptionRequest:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          format: uri
+        p256dh_key:
+          type: string
+        auth_secret:
+          type: string
+      required:
+        - endpoint
+        - p256dh_key
+        - auth_secret
+      additionalProperties: false
+    PushSubscriptionResponse:
+      type: object
+      properties:
+        subscription_id:
+          type: string
+        delivery_guarantee:
+          type: string
+          const: best_effort
+      required:
+        - subscription_id
+        - delivery_guarantee
+      additionalProperties: false
+    ReminderSnoozeRequest:
+      type: object
+      properties:
+        snooze_minutes:
+          type: integer
+          minimum: 5
+          maximum: 10080
+      required:
+        - snooze_minutes
+      additionalProperties: false
+    ExternalCompletionImportRequest:
+      type: object
+      properties:
+        provider_id:
+          type: string
+        external_course_id:
+          type: string
+        completed_at:
+          type: string
+          format: date-time
+      required:
+        - provider_id
+        - external_course_id
+        - completed_at
+      additionalProperties: false
 ````
 <!-- /embedded-asset -->
 
@@ -16675,10 +17612,11 @@ Every requirement has exact scenario tags and implementation tasks. Supporting c
 
 ### E.1. traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/traceability.csv sha256=d23e1673c016aacbe20a57ae3f1bc96ca5d2a280864288ec8898dbcd2a632eb9 -->
+<!-- embedded-asset: specs/001-curriculum-platform/traceability.csv sha256=f2953eb9e2393c99f3c3c5e0607aec77fc82ef3d31b369e90e65c2c544d2c6c1 -->
 ````csv
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 requirement_id,priority,acceptance_scenarios,implementation_tasks,contract_or_component,verification_method,status
-GOAL-001,P0,S01,T03 T06,generation-request.schema.json; intake UI; scheduler,scenario bindings; constraint fixtures,specified; implementation pending
+GOAL-001,P0,S01,T03 T06,generation-request.schema.json; app-companion.openapi.yaml; intake UI; scheduler,scenario bindings; constraint fixtures,specified; implementation pending
 GOAL-002,P0,S01,T03 T06,generation-request.schema.json; intake UI; scheduler,scenario bindings; constraint fixtures,specified; implementation pending
 GOAL-003,P0,S01 S18,T03 T06,generation-request.schema.json; intake UI; scheduler,scenario bindings; constraint fixtures,specified; implementation pending
 GOAL-004,P0,S02,T03 T06,generation-request.schema.json; intake UI; scheduler,scenario bindings; constraint fixtures,specified; implementation pending
@@ -16689,7 +17627,7 @@ CAT-003,P0,S05,T02,resource.schema.json; catalog and retrieval,catalog integrati
 CAT-004,P0,S06 S59,T02 T13,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 CAT-005,P0,S06,T02,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 CAT-006,P0,S07 S62,T02 T13,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
-CAT-007,P0,S07 S59 S63,T02 T13,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
+CAT-007,P0,S07 S59 S63,T02 T13,resource.schema.json; app-companion.openapi.yaml; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 CAT-008,P0,S04,T02,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 GEN-001,P0,S08,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
 GEN-002,P0,S09,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
@@ -16700,18 +17638,18 @@ GEN-006,P0,S13,T03 T04 T06,curriculum.schema.json; generation and revision servi
 GEN-007,P0,S11,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
 GEN-008,P0,S03 S52 S54,T03 T04 T06 T12,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
 PED-001,P0,S13,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
-PED-002,P0,S14 S45,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
+PED-002,P0,S14 S45,T05 T06,app-companion.openapi.yaml; assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-003,P0,S17,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-004,P0,S18,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
-PED-005,P0,S14 S15 S46 S49 S55,T05 T06 T12,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
+PED-005,P0,S14 S15 S46 S49 S55,T05 T06 T12,openapi.yaml; app-companion.openapi.yaml; assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-006,P0,S15 S16 S45 S46 S51 S55,T05 T06 T12,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-007,P0,S19 S47,T05 T06 T12,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PROG-001,P0,S16 S21 S55,T01 T06 T12,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
 PROG-002,P0,S17 S20,T01 T06,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
 PROG-003,P0,S02 S53,T01 T06 T12,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
 PROG-004,P0,S21 S22,T01 T06,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
-PROG-005,P0,S23,T01 T06,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
-PROG-006,P1,S24,T11,progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
+PROG-005,P0,S23,T01 T06,openapi.yaml; app-companion.openapi.yaml; progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
+PROG-006,P1,S24,T11,app-companion.openapi.yaml; progress API; schedule API; evidence records,sync and scheduling integration checks,specified; implementation pending
 UI-001,P0,S25 S75,T04 T14,typed renderer; Today; map and outline,interaction and accessibility verification,specified; implementation pending
 UI-002,P0,S25 S75,T04 T14,typed renderer; Today; map and outline,interaction and accessibility verification,specified; implementation pending
 UI-003,P0,S26,T04 T14,typed renderer; Today; map and outline,interaction and accessibility verification,specified; implementation pending
@@ -16720,13 +17658,13 @@ UI-005,P0,S26,T04 T14,typed renderer; Today; map and outline,interaction and acc
 UI-006,P0,S27 S84,T04 T14,typed renderer; Today; map and outline,interaction and accessibility verification,specified; implementation pending
 BILL-001,P0,S28 S67 S74,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
 BILL-002,P0,S29 S38 S66 S82,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
-BILL-003,P0,S30,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
+BILL-003,P0,S30,T07,openapi.yaml; app-companion.openapi.yaml; credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
 BILL-004,P0,S06 S68,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
 BILL-005,P0,S28 S67 S68 S74,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
 BILL-006,P0,S31 S66,T07,credential API; provider adapter; usage ledger,secrets and billing fault simulations,specified; implementation pending
 BILL-007,P0,S66 S67 S82,T01 T03 T07,openapi.yaml; credential vault; provider registry and pinned route,tenant and credential-version isolation; downstream routing and fallback fault cases,specified; implementation pending
 BILL-008,P0,S68,T03 T04 T07,openapi.yaml; UsageRecord; concurrent authorization and cost attribution,concurrent local limits; external-charge uncertainty; ambiguous-provider reconciliation,specified; implementation pending
-NOT-001,P0,S32 S65 S83,T08 T13,notification preferences; scheduler; outbox,time/permission/cancellation integration checks,specified; implementation pending
+NOT-001,P0,S32 S65 S83,T08 T13,openapi.yaml; app-companion.openapi.yaml; notification preferences; scheduler; outbox,time/permission/cancellation integration checks,specified; implementation pending
 NOT-002,P0,S33,T08,notification preferences; scheduler; outbox,time/permission/cancellation integration checks,specified; implementation pending
 NOT-003,P0,S33 S34,T08,notification preferences; scheduler; outbox,time/permission/cancellation integration checks,specified; implementation pending
 NOT-004,P0,S34 S35 S83,T08,notification preferences; scheduler; outbox,time/permission/cancellation integration checks,specified; implementation pending
@@ -16734,7 +17672,7 @@ NOT-005,P1,S35,T08 T10,notification preferences; scheduler; outbox,time/permissi
 OPS-001,P0,S07 S36,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-002,P0,S07,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-003,P0,S37,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
-OPS-004,P0,S23 S38,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
+OPS-004,P0,S23 S38,T02 T09,app-companion.openapi.yaml; administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-005,P0,S39,T02 T04,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-006,P0,S40,T00 T02 T09 T13,source-available licensing policy; contributor grants; publication terms; release operations,"Review operative custom terms for accepted individual-only policy, contribution/official-service rights, and separate content rights",specified; implementation pending
 NFR-001,P0,S29 S36 S57 S64 S66 S87,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
@@ -16788,8 +17726,9 @@ UI-024,P0,S88,T04 T09 T13 T14,Section 9 UI components and explicit supported con
 
 ### E.2. control-traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/control-traceability.csv sha256=3f497adc4b74c5495fdb0abcf6c29efb8a45ce979a5ddf63cdb9dc3261a09d22 -->
+<!-- embedded-asset: specs/001-curriculum-platform/control-traceability.csv sha256=949b85e53ca321822408d41b3b0c12eb0132afd40b83bedebb13be409f68969d -->
 ````csv
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 control_id,parent_requirement_ids,implementation_tasks,notes
 CTRL-001,OPS-004 OPS-006 BILL-001 NOT-004 NOT-005,T00 T07 T09 T10,Release configuration and decision gates; adult-only and native launch remain proposals; best-effort study reminders are confirmed.
 CTRL-002,NFR-001 NFR-006 NFR-007 PROG-001 BILL-003,T00 T01 T02 T07 T09,Transactional state is authoritative; vector indexes are rebuildable derived data.
@@ -16839,9 +17778,10 @@ The palette is the machine-readable counterpart of section 9. Scripts validate t
 
 ### F.1. ui-tokens.json
 
-<!-- embedded-asset: design/ui-tokens.json sha256=1cdd061788acf262fe339bcb20046347051a3925f411ff19deb4692f5af754df -->
+<!-- embedded-asset: design/ui-tokens.json sha256=2e44b9bc9b19bf9565a307f4704ef30ec7b9d6e20f3c36b3cfe3f89d740331f4 -->
 ````json
 {
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "specification_version": "0.3.0",
   "status": "adopted implementation defaults; rendered accessibility still requires verification",
   "colors": {
@@ -16954,14 +17894,24 @@ The palette is the machine-readable counterpart of section 9. Scripts validate t
 
 ### F.2. extract_spec.py
 
-<!-- embedded-asset: scripts/extract_spec.py sha256=04dd323409e2c65b89573e1437245fd83349659644baba5a2a2cb63a2559702f -->
+<!-- embedded-asset: scripts/extract_spec.py sha256=5610ed9a92cf343ffcb1dae043a24d56905e9871e04206410dbe12985fe44e17 -->
 ````python
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
-"""Extract integrity-checked machine assets from the single Markdown specification."""
+"""Extract or verify integrity-checked machine assets from specs/product.md."""
 from pathlib import Path, PurePosixPath
 import argparse
 import hashlib
 import re
+import sys
+
+GENERATED_MARKER = 'GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md'
+EXAMPLES_NOTICE_REL = 'specs/001-curriculum-platform/examples/.generated-notice'
+examples_notice_text = (
+    '# ' + GENERATED_MARKER + '\n'
+    '# Synthetic JSON fixtures in this directory are extracted byte-for-byte from specs/product.md\n'
+    '# so their cryptographic SHA-256 and RFC 8785 JCS digests remain immutable.\n'
+)
 
 ASSET_RE = re.compile(
     r'^<!-- embedded-asset: (?P<path>\S+) sha256=(?P<digest>[0-9a-f]{64}) -->\n'
@@ -16983,46 +17933,69 @@ def read_assets(text):
         body = match['body']
         if hashlib.sha256(body.encode('utf-8')).hexdigest() != match['digest']:
             raise ValueError('Embedded asset integrity mismatch: ' + name)
+        if not name.startswith('specs/001-curriculum-platform/examples/'):
+            if GENERATED_MARKER not in body:
+                raise ValueError('Missing generated-file notice in embedded asset: ' + name)
         assets[name] = body
     expected = len(re.findall(r'^<!-- embedded-asset:', text, re.M))
     if not assets or len(assets) != expected:
         raise ValueError('Missing or malformed embedded asset block')
     return assets
 
-def extract(spec, output):
+def extract(spec, output, check_only=False, force=False):
     assets = read_assets(spec.read_text(encoding='utf-8'))
     root = output.resolve()
+    all_items = dict(assets)
+    all_items[EXAMPLES_NOTICE_REL] = examples_notice_text
+    drifted = []
     targets = []
-    for name, content in assets.items():
+    for name, content in all_items.items():
         path = (root / name).resolve()
         if not path.is_relative_to(root):
             raise ValueError('Asset escapes output directory: ' + name)
-        if path.exists() and path.read_text(encoding='utf-8') != content:
-            raise ValueError('Refusing to overwrite changed file: ' + str(path))
-        targets.append((path, content))
+        if check_only:
+            if not path.exists():
+                drifted.append('Missing extracted file: ' + name)
+            elif path.read_text(encoding='utf-8') != content:
+                drifted.append('Drifted extracted file: ' + name)
+        else:
+            if path.exists() and not force and path.read_text(encoding='utf-8') != content:
+                raise ValueError('Refusing to overwrite changed file without --force: ' + str(path))
+            targets.append((path, content))
+    if check_only:
+        if drifted:
+            for item in drifted:
+                print(item, file=sys.stderr)
+            raise SystemExit(1)
+        return len(assets)
     for path, content in targets:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding='utf-8', newline='\n')
-    return len(targets)
+    return len(assets)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--check', action='store_true', help='Verify extracted files match specs/product.md without writing')
+    parser.add_argument('--force', action='store_true', help='Overwrite existing extracted files from canonical specs/product.md')
     parser.add_argument('specification', type=Path)
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
-    print('Extracted', extract(args.specification, args.output), 'machine assets')
+    count = extract(args.specification, args.output, check_only=args.check, force=args.force)
+    mode = 'Verified' if args.check else 'Extracted'
+    print(mode, count, 'machine assets')
 ````
 <!-- /embedded-asset -->
 
 ### F.3. check_current_spec.py
 
-<!-- embedded-asset: scripts/check_current_spec.py sha256=87bd034d9b6ad7bb5a99a8c7cbfa4b69398d90d06866941bc01206cbd6464e96 -->
+<!-- embedded-asset: scripts/check_current_spec.py sha256=6b73e11f530ad8a331ebac771fcdd4e5d6f12682f5d3e4f3a3ed8372d0fd56f8 -->
 ````python
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
 """Check the single spec, traceability, asset integrity and static UI tokens; not the app."""
 from collections import Counter, defaultdict
 from pathlib import Path
-import csv, io, json, re, sys, unicodedata
+import csv, io, json, re, sys
 from extract_spec import read_assets
 
 BASE = 'specs/001-curriculum-platform/'
@@ -17052,7 +18025,8 @@ def prose_without_fences(text):
     return '\n'.join(result)
 
 def rows_csv(text):
-    reader = csv.DictReader(io.StringIO(text))
+    clean_lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#')]
+    reader = csv.DictReader(io.StringIO('\n'.join(clean_lines)))
     rows = list(reader)
     require(bool(rows), 'Empty trace table')
     for row in rows:
@@ -17076,6 +18050,8 @@ def validate(path):
     no_duplicates([r for r,p in definitions],'requirement IDs')
     require(all(REQ.fullmatch(r) for r,p in definitions),'Unknown requirement namespace')
     priorities = dict(definitions)
+    p0_count = sum(1 for p in priorities.values() if p == 'P0')
+    p1_count = sum(1 for p in priorities.values() if p == 'P1')
     task_list = re.findall(r'^### (T\d{2,})\b',prose,re.M)
     no_duplicates(task_list,'task IDs')
     task_ids=set(task_list)
@@ -17106,7 +18082,7 @@ def validate(path):
         require(set(row['acceptance_scenarios'].split())==mapped[r],'Exact scenario mapping mismatch '+r)
         ts=row['implementation_tasks'].split()
         require(ts and set(ts)<=task_ids,'Invalid task mapping '+r)
-        for name in re.findall(r'\b[\w.-]+\.schema\.json\b|\bopenapi\.yaml\b',row['contract_or_component']):
+        for name in re.findall(r'\b[\w.-]+\.schema\.json\b|\b(?:app-companion\.)?openapi\.yaml\b',row['contract_or_component']):
             require(BASE+'contracts/'+name in assets,'Missing contract '+name)
     controls=re.findall(r'^`(CTRL-\d{3})`\s',prose,re.M)
     no_duplicates(controls,'control definitions')
@@ -17116,7 +18092,6 @@ def validate(path):
     for row in ctr:
         require(set(row['parent_requirement_ids'].split())<=set(priorities),'Unknown control parent')
         require(set(row['implementation_tasks'].split())<=task_ids,'Unknown control task')
-    # Internal headings use the ordinary GitHub-style punctuation removal rule.
     anchors=set();seen=Counter()
     for title in re.findall(r'^#{1,6}\s+(.+)$',prose,re.M):
         title=title.strip().lower()
@@ -17140,7 +18115,22 @@ def validate(path):
             ratio=contrast(palette[fg][theme],palette[bg][theme])
             require(ratio>=minimum,f'Insufficient static contrast {theme} {fg}/{bg}: {ratio}')
             ratios.append({'theme':theme,'foreground':fg,'background':bg,'ratio':round(ratio,2),'minimum':minimum})
-    return {'passed':True,'requirements':len(priorities),'scenarios':len(scenarios),'tasks':len(task_ids),'controls':len(controls),'embedded_assets':len(assets),'static_color_pairs':len(ratios),'minimum_normal_text_ratio':min(v['ratio'] for v in ratios if v['minimum']==4.5),'minimum_non_text_ratio':min(v['ratio'] for v in ratios if v['minimum']==3),'internal_links':'passed','asset_integrity':'passed','scope':'Specification and static token checks, not runtime UI or app validation'}
+    return {
+        'passed':True,
+        'requirements':len(priorities),
+        'p0_requirements':p0_count,
+        'p1_requirements':p1_count,
+        'scenarios':len(scenarios),
+        'tasks':len(task_ids),
+        'controls':len(controls),
+        'embedded_assets':len(assets),
+        'static_color_pairs':len(ratios),
+        'minimum_normal_text_ratio':min(v['ratio'] for v in ratios if v['minimum']==4.5),
+        'minimum_non_text_ratio':min(v['ratio'] for v in ratios if v['minimum']==3),
+        'internal_links':'passed',
+        'asset_integrity':'passed',
+        'scope':'Specification and static token checks, not runtime UI or app validation'
+    }
 
 if __name__=='__main__':
     print(json.dumps(validate(Path(sys.argv[1])),indent=2))
@@ -17149,8 +18139,9 @@ if __name__=='__main__':
 
 ### F.4. check_contracts.py
 
-<!-- embedded-asset: scripts/check_contracts.py sha256=779a10c15bc25352566c1bfe153fce8bf445aea71df2466dcd7a5f72c08341ac -->
+<!-- embedded-asset: scripts/check_contracts.py sha256=719b28a79eaef50fd594c50dc6cb9d2aedae9817aba21bfb5c64b95341c0c1cc -->
 ````python
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
 """Validate specification contracts and fixtures; not application behavior."""
 from pathlib import Path
@@ -17189,7 +18180,15 @@ errors=list(OpenAPIV31SpecValidator(oas,base_uri=oas_path.as_uri()).iter_errors(
 if errors:
     report['errors'].extend([(e.message+' at '+str(list(e.path))) for e in errors])
 else:
-    report['openapi_schema_checks']=1
+    report['openapi_schema_checks']+=1
+companion_oas_path=CON/'app-companion.openapi.yaml'
+companion_oas=yaml.safe_load(companion_oas_path.read_text())
+registry=registry.with_resource(companion_oas_path.as_uri(),Resource.from_contents(companion_oas,default_specification=DRAFT202012))
+companion_errors=list(OpenAPIV31SpecValidator(companion_oas,base_uri=companion_oas_path.as_uri()).iter_errors())
+if companion_errors:
+    report['errors'].extend([('app-companion.openapi.yaml: '+e.message+' at '+str(list(e.path))) for e in companion_errors])
+else:
+    report['openapi_schema_checks']+=1
 
 def validate_ref(data,target):
     schema={'$schema':'https://json-schema.org/draft/2020-12/schema','$ref':target}
@@ -17309,6 +18308,10 @@ x=deepcopy(fixtures['publication-preview.synthetic.json']);del x['publisher']
 negative.append(('publication preview omits public identity',x,oas_uri('PublicationPreview')))
 x=deepcopy(adoption);x['planning']['template_origin']=None
 negative.append(('adoption without bound public origin',x,oas_uri('AdoptionRequest')))
+x=deepcopy(canonical);x['activities'][0]['mastery_gated']='yes'
+negative.append(('non-boolean mastery_gated rejected',x,positive_targets['curriculum.synthetic.json']))
+x=deepcopy(schedule);x['review_schedule_items']=[{'review_item_id':'rev-1','objective_id':'obj-1','activity_id':'act-1','status':'invalid_state','due_at':None,'interval_policy_version':'policy-v1'}]
+negative.append(('invalid ReviewScheduleItem status rejected',x,positive_targets['schedule.synthetic.json']))
 for name,data,target in negative:
     errors=validate_ref(data,target)
     if errors:
@@ -17443,10 +18446,20 @@ def walk_refs(value,root,source_path):
 try:
     for name,data in schemas.items():walk_refs(data,data,CON/name)
     walk_refs(oas,oas,oas_path)
+    walk_refs(companion_oas,companion_oas,companion_oas_path)
     report['semantic_checks'].append('all local and canonical JSON references resolve')
 except Exception as e:
     report['errors'].append('Reference resolution: '+repr(e))
-report['operation_count']=sum(len([m for m in methods if m in ['get','post','put','patch','delete']]) for methods in oas['paths'].values())
+sem('mastery_gated and prerequisite audit events modeled',
+    'prerequisite_override_recorded' in oas['components']['schemas']['ProgressEventRequest']['properties']['type']['enum']
+    and 'unverified_prerequisite_acknowledged' in oas['components']['schemas']['ProgressEventRequest']['properties']['type']['enum'])
+sem('ReviewScheduleItem modeled on Schedule','ReviewScheduleItem' in oas['components']['schemas'] and 'review_schedule_items' in oas['components']['schemas']['Schedule']['properties'])
+core_ops=sum(len([m for m in methods if m in ['get','post','put','patch','delete']]) for methods in oas['paths'].values())
+companion_ops=sum(len([m for m in methods if m in ['get','post','put','patch','delete']]) for methods in companion_oas['paths'].values())
+sem('companion contract operations all declare unique operationIds',companion_ops>0 and len({m['operationId'] for methods in companion_oas['paths'].values() for k,m in methods.items() if k in ['get','post','put','patch','delete']})==companion_ops)
+report['core_operation_count']=core_ops
+report['companion_operation_count']=companion_ops
+report['operation_count']=core_ops+companion_ops
 report['semantic_check_count']=len(report['semantic_checks'])
 report['passed']=not report['errors']
 (ROOT/'docs').mkdir(exist_ok=True)
@@ -17458,8 +18471,9 @@ if report['errors']:raise SystemExit(1)
 
 ### F.5. validation-requirements.txt
 
-<!-- embedded-asset: scripts/validation-requirements.txt sha256=f4f1f17054274d6b939d44804ec33a9bcec36fadfe74694d3f7f16e940f3c932 -->
+<!-- embedded-asset: scripts/validation-requirements.txt sha256=31441def349224767e9eecffac3746cdba755118b85eb71d5b409dc1e83995bf -->
 ````text
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 jsonschema==4.26.0
 openapi-spec-validator==0.9.0
 PyYAML==6.0.3
