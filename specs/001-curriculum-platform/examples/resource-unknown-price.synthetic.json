@@ -1,0 +1,95 @@
+{
+  "schema_version": "0.2.0",
+  "resource_id": "synthetic-resource-unknown-cost",
+  "resource_version_id": "synthetic-resource-unknown-cost-v1",
+  "version_number": 1,
+  "captured_at": "2026-10-20T16:00:00Z",
+  "title": "SYNTHETIC FIXTURE — Tokenization Learning Notes",
+  "provider": {
+    "provider_id": "synthetic-provider",
+    "display_name": "Synthetic Fixture Provider"
+  },
+  "authors": [
+    {
+      "name": "Synthetic Author",
+      "affiliation": null,
+      "verified_profile_url": null
+    }
+  ],
+  "canonical_url": "https://example.invalid/synthetic/tokenization",
+  "resource_type": "article",
+  "language": "en",
+  "description": "Contract validation fixture only. This is not a real educational resource, recommendation, university affiliation or license assertion.",
+  "topics": [
+    "tokenization",
+    "language models"
+  ],
+  "level": "introductory",
+  "learning_outcomes": [
+    "Explain a simple tokenization tradeoff."
+  ],
+  "prerequisites": [
+    "Basic ability to read a short Python example."
+  ],
+  "prerequisite_review_status": "verified",
+  "segments": [],
+  "access": {
+    "model": "purchase",
+    "requires_account": false,
+    "requires_trial": false,
+    "price": {
+      "status": "unknown",
+      "reason": "Synthetic example of an unknown price.",
+      "observed_at": null
+    },
+    "free_scope_description": null,
+    "assessments_included": false,
+    "certificate_included": false,
+    "subscription_ids": [],
+    "region_restrictions": [],
+    "access_evidence_url": "https://example.invalid/synthetic/access",
+    "access_verified_at": "2026-10-20T16:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "metadata_only",
+    "license_identifier": null,
+    "rights_evidence_urls": [],
+    "reviewed_at": "2026-10-20T16:00:00Z",
+    "reviewed_by": "synthetic-curator",
+    "permissions": {
+      "store_metadata": "allowed",
+      "embed_metadata": "allowed",
+      "send_metadata_to_model_provider": "allowed",
+      "fetch_fulltext": "denied",
+      "store_fulltext": "denied",
+      "embed_fulltext": "denied",
+      "send_fulltext_to_model_provider": "denied",
+      "derive_assessments": "unknown",
+      "display_excerpts": "denied",
+      "redistribute_fulltext": "denied"
+    },
+    "notes": "Values exercise a schema. They do not grant rights to any real material."
+  },
+  "review": {
+    "status": "proposed",
+    "credibility_basis": "expert_practitioner",
+    "curator_id": null,
+    "reviewed_at": null,
+    "rationale": "Synthetic approved-state fixture; never ingest into a production catalog.",
+    "evidence": []
+  },
+  "freshness": {
+    "link_checked_at": "2026-10-20T16:00:00Z",
+    "link_status": "reachable",
+    "content_checked_at": null,
+    "content_last_updated_at": null,
+    "technology_versions": [],
+    "refresh_due_at": "2026-11-20T16:00:00Z"
+  },
+  "provenance": {
+    "origin": "manual_curator",
+    "source_url": "https://example.invalid/synthetic/source",
+    "import_batch_id": null,
+    "is_synthetic_fixture": true
+  }
+}

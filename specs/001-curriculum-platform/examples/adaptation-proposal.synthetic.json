@@ -1,0 +1,69 @@
+{
+  "schema_version": "0.2.0",
+  "proposal_id": "adaptation-synthetic-001",
+  "curriculum_id": "curriculum-formal-synthetic",
+  "base_revision_id": "formal-plan-before",
+  "candidate_revision_id": "formal-plan-after",
+  "proficiency_snapshot_ref": "proficiency-snapshot-001",
+  "policy_version": "adaptation-policy-001",
+  "created_at": "2026-10-20T16:00:00Z",
+  "expires_at": "2026-10-20T17:00:00Z",
+  "proposal_sha256": "938896be1292fd64cd5bf7f71c45068b10758ef3d3253833bd17b79a4e0d6dae",
+  "instruction_preferences_applied": {
+    "math_depth": "formal",
+    "topic_math_depth_overrides": [],
+    "known_material_review": "skip_if_demonstrated"
+  },
+  "changes": [
+    {
+      "kind": "waive_instruction",
+      "objective_version_ids": [
+        "objective-matrix-shapes-v1"
+      ],
+      "activity_ids": [
+        "activity-matrix-shapes-recap"
+      ],
+      "evidence_refs": [
+        "anchor-attempt-001"
+      ],
+      "reason": "The reviewed criterion supports this one prerequisite; retain the objective and required attention derivations."
+    },
+    {
+      "kind": "add_bridge",
+      "objective_version_ids": [
+        "objective-matrix-calculus-v1"
+      ],
+      "activity_ids": [
+        "activity-matrix-calculus-bridge"
+      ],
+      "evidence_refs": [],
+      "reason": "Matrix calculus is unassessed; the formal target still requires it."
+    }
+  ],
+  "proposed_waivers": [
+    {
+      "waiver_id": "waiver-matrix-shapes-001",
+      "objective_id": "objective-matrix-shapes",
+      "objective_version_id": "objective-matrix-shapes-v1",
+      "criterion_policy_id": "criterion-matrix-shapes-v1",
+      "qualifying_evidence_refs": [
+        "anchor-attempt-001"
+      ],
+      "conditions_summary": "Synthetic reviewed evidence covers matrix dimensions only."
+    }
+  ],
+  "impact": {
+    "before_minutes": 600,
+    "after_minutes": 660,
+    "materials_access_changes": [],
+    "inference_charge_summary": "No new inference call to build this preview. Any earlier candidate generation has its own receipt.",
+    "constraint_status": "feasible",
+    "warnings": [
+      "Skipping one known prerequisite can still increase total time when another needs bridging."
+    ]
+  },
+  "unassessed_objective_version_ids": [
+    "objective-matrix-calculus-v1"
+  ],
+  "base_schedule_revision_id": "formal-schedule-before"
+}

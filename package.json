@@ -1,0 +1,19 @@
+{
+  "name": "curriculum-io",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE-PERSONAL-USE.md",
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "spec:extract": "python3 scripts/extract_spec.py --force specs/product.md .",
+    "spec:check": "python3 scripts/extract_spec.py --check specs/product.md .",
+    "spec:validate": "python3 scripts/check_current_spec.py specs/product.md",
+    "contracts:validate": "python3 scripts/check_contracts.py",
+    "codegen": "python3 scripts/generate_contracts.py",
+    "codegen:check": "python3 scripts/generate_contracts.py --check",
+    "typecheck": "pnpm -r typecheck",
+    "test:ts": "pnpm -r test",
+    "test:rust": "cargo test --workspace",
+    "verify:t00": "python3 scripts/extract_spec.py --check specs/product.md . && python3 scripts/check_current_spec.py specs/product.md && python3 scripts/check_contracts.py && python3 scripts/generate_contracts.py --check && cargo test --workspace && pnpm -r typecheck && pnpm -r test"
+  }
+}

@@ -1,0 +1,4 @@
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
+jsonschema==4.26.0
+openapi-spec-validator==0.9.0
+PyYAML==6.0.3

@@ -1,0 +1,73 @@
+/* GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md */
+/* Canonical Specification SHA-256: b7ad9df9344dd0483a8775fa04be05470a631597c22244fe2f578bbba3627c44 */
+
+:root,
+[data-theme="light"] {
+  --color-accent: #2259D4;
+  --color-accent-surface: #EAF0FF;
+  --color-action-fill: #17191C;
+  --color-action-text: #FFFFFF;
+  --color-border-control: #7D8794;
+  --color-border-subtle: #D5DAE0;
+  --color-canvas: #F7F8FA;
+  --color-danger-surface: #FFF0EE;
+  --color-danger-text: #B42318;
+  --color-success-surface: #EAF6EF;
+  --color-success-text: #166534;
+  --color-surface: #FFFFFF;
+  --color-surface-secondary: #EDF0F4;
+  --color-text-primary: #17191C;
+  --color-text-secondary: #5B636E;
+  --color-warning-surface: #FFF6DE;
+  --color-warning-text: #854D0E;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --layout-content-max: 1280px;
+  --layout-gutter-compact: 16px;
+  --layout-gutter-medium: 24px;
+  --layout-gutter-wide: 32px;
+  --layout-primary-compact-target: 48px;
+  --layout-sidebar-wide: 224px;
+  --layout-touch-target-min: 44px;
+}
+
+[data-theme="dark"] {
+  --color-accent: #9DBAFF;
+  --color-accent-surface: #1B2C4D;
+  --color-action-fill: #F4F6F8;
+  --color-action-text: #17191C;
+  --color-border-control: #8793A5;
+  --color-border-subtle: #3D4654;
+  --color-canvas: #101216;
+  --color-danger-surface: #3A2020;
+  --color-danger-text: #FFA6A0;
+  --color-success-surface: #162E23;
+  --color-success-text: #86E2AC;
+  --color-surface: #191D24;
+  --color-surface-secondary: #242A33;
+  --color-text-primary: #F4F6F8;
+  --color-text-secondary: #B5BEC9;
+  --color-warning-surface: #342B18;
+  --color-warning-text: #F3CD7A;
+}
+
+/* Solid fallback when backdrop-filter is unsupported or reduced transparency is active */
+@supports not (backdrop-filter: blur(1px)) {
+  .nav-chrome-glass {
+    background-color: var(--color-surface) !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .nav-chrome-glass {
+    background-color: var(--color-surface) !important;
+    backdrop-filter: none !important;
+  }
+}

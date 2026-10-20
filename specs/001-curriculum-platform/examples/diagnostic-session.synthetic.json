@@ -1,0 +1,20 @@
+{
+  "diagnostic_session_id": "diagnostic-synthetic-001",
+  "state": "stopped",
+  "target_objective_version_ids": [
+    "objective-matrix-shapes-v1",
+    "objective-matrix-calculus-v1"
+  ],
+  "assessed_objective_version_ids": [
+    "objective-matrix-shapes-v1"
+  ],
+  "unassessed_objective_version_ids": [
+    "objective-matrix-calculus-v1"
+  ],
+  "current_assessment_id": null,
+  "policy_version": "diagnostic-policy-001",
+  "started_at": "2026-10-20T15:50:00Z",
+  "expires_at": "2026-10-20T16:00:00Z",
+  "proficiency_snapshot_ref": "proficiency-snapshot-001",
+  "stop_reason": "learner_stopped"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "@curriculum/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@curriculum/ui": "workspace:*",
+    "@curriculum/api-client": "workspace:*"
+  }
+}

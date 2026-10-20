@@ -1,0 +1,367 @@
+{
+  "preview_id": "preview-synthetic-001",
+  "expires_at": "2026-10-20T17:00:00Z",
+  "content_sha256": "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
+  "visibility": "public",
+  "public_content": {
+    "title": "Tokenization foundations — synthetic example",
+    "summary": "A contract fixture, not a vetted learning recommendation.",
+    "audience_summary": "Learners with basic Python.",
+    "language": "en",
+    "topic_ids": [
+      "topic-tokenization"
+    ],
+    "sequence_preference": "balanced",
+    "instruction_preferences": {
+      "math_depth": "applied",
+      "topic_math_depth_overrides": [],
+      "known_material_review": "condensed"
+    },
+    "prerequisite_requirements": [],
+    "objectives": [
+      {
+        "objective_id": "objective-tokenization",
+        "title": "Explain a tokenization tradeoff",
+        "description": "Explain how a representation choice affects the resulting token sequence.",
+        "success_criterion": "Give a correct explanation for two previously unseen short examples.",
+        "level": "introductory",
+        "requirement_level": "required",
+        "topic_id": "topic-tokenization",
+        "objective_version_id": "objective-tokenization-v1"
+      }
+    ],
+    "prerequisite_edges": [],
+    "modules": [
+      {
+        "module_id": "public-module-tokenization",
+        "title": "Tokenization foundations",
+        "summary": "Synthetic module.",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "activity_ids": [
+          "public-activity-theory",
+          "public-activity-example",
+          "public-activity-coding",
+          "public-activity-quiz",
+          "public-activity-review",
+          "public-activity-reflection"
+        ]
+      }
+    ],
+    "activities": [
+      {
+        "activity_id": "public-activity-theory",
+        "type": "theory",
+        "title": "Read the synthetic concept outline",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [],
+        "resource_assignments": [
+          {
+            "resource_version_id": "synthetic-resource-tokenization-v1",
+            "role": "primary",
+            "segment_ids": [],
+            "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+          }
+        ],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 10,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 0,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 8,
+            "practice_minutes": 0,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 16,
+            "practice_minutes": 0,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": null
+      },
+      {
+        "activity_id": "public-activity-example",
+        "type": "worked_example",
+        "title": "Inspect a guided example",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [
+          "public-activity-theory"
+        ],
+        "resource_assignments": [
+          {
+            "resource_version_id": "synthetic-resource-tokenization-v1",
+            "role": "primary",
+            "segment_ids": [],
+            "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+          }
+        ],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 5,
+          "practice_minutes": 5,
+          "assessment_minutes": 0,
+          "review_minutes": 0,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 4,
+            "practice_minutes": 4,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 8,
+            "practice_minutes": 8,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": null
+      },
+      {
+        "activity_id": "public-activity-coding",
+        "type": "coding",
+        "title": "Inspect token boundaries locally",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [
+          "public-activity-example"
+        ],
+        "resource_assignments": [
+          {
+            "resource_version_id": "synthetic-resource-tokenization-v1",
+            "role": "primary",
+            "segment_ids": [],
+            "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+          }
+        ],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 15,
+          "assessment_minutes": 0,
+          "review_minutes": 0,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 12,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 24,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": null
+      },
+      {
+        "activity_id": "public-activity-quiz",
+        "type": "quiz",
+        "title": "Explain a tradeoff",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [
+          "public-activity-coding"
+        ],
+        "resource_assignments": [
+          {
+            "resource_version_id": "synthetic-resource-tokenization-v1",
+            "role": "primary",
+            "segment_ids": [],
+            "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+          }
+        ],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 5,
+          "review_minutes": 0,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 0,
+            "assessment_minutes": 4,
+            "review_minutes": 0
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 0,
+            "assessment_minutes": 8,
+            "review_minutes": 0
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": {
+          "objective_ids": [
+            "objective-tokenization"
+          ],
+          "assurance": "reviewed_anchor_available",
+          "description": "Synthetic contract illustration; no production assessment approval."
+        }
+      },
+      {
+        "activity_id": "public-activity-review",
+        "type": "review",
+        "title": "Recall the tradeoff later",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [
+          "public-activity-quiz"
+        ],
+        "resource_assignments": [
+          {
+            "resource_version_id": "synthetic-resource-tokenization-v1",
+            "role": "primary",
+            "segment_ids": [],
+            "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+          }
+        ],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 5,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 0,
+            "assessment_minutes": 0,
+            "review_minutes": 4
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 0,
+            "assessment_minutes": 0,
+            "review_minutes": 8
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": {
+          "objective_ids": [
+            "objective-tokenization"
+          ],
+          "assurance": "reviewed_anchor_available",
+          "description": "Synthetic contract illustration; no production assessment approval."
+        }
+      },
+      {
+        "activity_id": "public-activity-reflection",
+        "type": "reflection",
+        "title": "Record a remaining question",
+        "requirement_level": "required",
+        "objective_ids": [
+          "objective-tokenization"
+        ],
+        "prerequisite_activity_ids": [
+          "public-activity-review"
+        ],
+        "resource_assignments": [],
+        "duration_estimate": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 3,
+          "assessment_minutes": 0,
+          "review_minutes": 0,
+          "estimate_basis": "model",
+          "uncertainty": "high",
+          "lower_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 2,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "upper_bounds": {
+            "media_minutes": 0,
+            "reading_minutes": 0,
+            "practice_minutes": 4,
+            "assessment_minutes": 0,
+            "review_minutes": 0
+          },
+          "range_interpretation": "planning_bounds_not_confidence_interval"
+        },
+        "public_instructions": "Follow this synthetic activity to practice the stated objective. Production text must be reviewed for reusable public display.",
+        "assessment_expectation": null
+      }
+    ],
+    "certification_options": [],
+    "coverage_limitations": [],
+    "effort": {
+      "estimated_minutes": 48,
+      "range_minutes": {
+        "lower": 38,
+        "upper": 76
+      },
+      "playback_speed": 1,
+      "assumptions": [
+        "Synthetic estimates; actual study time varies."
+      ]
+    },
+    "resource_version_ids": [
+      "synthetic-resource-tokenization-v1"
+    ]
+  },
+  "publication_terms_policy_id": "synthetic-publication-terms-v1",
+  "warnings": [
+    "Synthetic fixture; not publishable in production."
+  ],
+  "publisher": {
+    "public_author_id": "public-author-synthetic-001",
+    "display_name": "Example learner"
+  },
+  "publication_terms": {
+    "policy_id": "synthetic-publication-terms-v1",
+    "content_license_id": "synthetic-unadopted-content-license",
+    "rights_scope": "eligible_original_annotations_and_structure",
+    "attribution": "Synthetic author; no external provider endorsement.",
+    "third_party_materials_excluded": true
+  },
+  "origin": null,
+  "preview_sha256": "244ce0635b334bf1909bec1ef868e66d79a085f77ec3b7fbe37ffcf1592f794e"
+}

@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "./src",
+    "paths": {
+      "@curriculum/ui": ["../../packages/ui/src/index.ts"],
+      "@curriculum/api-client": ["../../packages/api-client/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "../../packages/ui/src/**/*.ts", "../../packages/api-client/src/**/*.ts"]
+}

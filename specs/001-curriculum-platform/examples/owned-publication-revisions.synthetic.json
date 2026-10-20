@@ -1,0 +1,13 @@
+{
+  "items": [
+    {
+      "publication_revision_id": "public-revision-001",
+      "revision_number": 1,
+      "published_at": "2026-10-20T16:00:00Z",
+      "content_sha256": "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
+      "public_readable": true,
+      "upvote_count": 0
+    }
+  ],
+  "next_cursor": null
+}

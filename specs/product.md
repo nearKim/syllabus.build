@@ -97,7 +97,7 @@ The product rules and recorded decisions govern behavior. The embedded contracts
 | Appendix E | Requirement and supporting-control traceability CSVs |
 | Appendix F | Extraction/validation scripts and pinned validation dependencies |
 
-Embedded asset paths are intended extraction destinations for implementation and validation, not competing specification sources. The extraction script (`scripts/extract_spec.py`) writes generated files with generated-file notices, refuses unsafe paths or unintended overwrites, and provides `--check` mode for CI drift enforcement. Changes to any contract, fixture, token, or traceability artifact must first be reflected in `specs/product.md`. Do not create another independently maintained PRD, UX specification, companion contract, or dated Markdown on each revision.
+Embedded asset paths are intended extraction destinations for implementation and validation, not competing specification sources. The extraction script (`scripts/extract_spec.py`) writes generated files with generated-file notices, deterministically generates read-only task-specific slice context views (`specs/001-curriculum-platform/slices/*.context.md`) containing each slice's requirements, acceptance scenarios, OpenAPI operations, JSON Schemas, controls, and the canonical `specs/product.md` SHA-256 digest, refuses unsafe paths or unintended overwrites, and provides `--check` mode for CI drift enforcement. Changes to any contract, fixture, token, traceability artifact, or slice context view must first be reflected in `specs/product.md`. Do not create another independently maintained PRD, UX specification, companion contract, or dated Markdown on each revision.
 
 ### Product baseline and remaining defaults
 
@@ -105,7 +105,7 @@ The owner has confirmed the initial seeded domain (`D01`), responsive web + inst
 
 Commercial pricing and payment vendor (`D07`), cloud/auth/secret-manager vendor and retention windows (`D11`, `D16`), and final operative legal text (`D15`, `D16`) remain deferred release decisions. They do not block local development, but production release gates must block the affected live features until those decisions are approved.
 
-Synthetic examples are not an approved catalog, real prices, real learner evidence, or adopted license terms. Gherkin describes observable requirements; executable application bindings are implementation work. Follow the dependency-ordered execution sequence `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04 -> T05 -> T06 -> T12 -> T07 -> T08 -> T13 -> T14-Full -> T09` (with `T10` and `T11` after `T09`), starting with the Foundation Tracer Bullet across `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04`.
+Synthetic examples are not an approved catalog, real prices, real learner evidence, or adopted license terms. Gherkin describes observable requirements; executable application bindings are implementation work. Follow the dependency-ordered execution sequence across explicit **Private Alpha**, **Closed Beta**, and **Public Beta** release tiers: `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04` (**Private Alpha** Tracer Bullet) -> `D11 Auth Gate -> T05 -> T06 -> T12 -> T07A -> T08` (**Closed Beta**) -> `T07B -> T07C -> T07D -> T13 -> T14-Full -> T09` (**Public Beta**), with `T10` and `T11` post-`T09`.
 ---
 
 ## 3. Decisions and release choices
@@ -129,7 +129,7 @@ The owner confirmed initial-release defaults for `D01`, `D02`, `D03`, `D09`, `D1
 | D08 | **Confirmed:** maintain reviewed assessment anchors | Use reviewed objective-aligned gates and diagnostics; generated practice remains a separate assurance level. |
 | D09 | **Confirmed:** external coding environments only at launch | Activities use `execution_mode: "external"`. No hosted arbitrary-code execution at launch (`CTRL-034`). |
 | D10 | **Confirmed:** English first (`en`), with all stored content and contracts language-tagged | Every resource, curriculum, request, and diagnostic carries a BCP 47 `language` tag. |
-| D12 | **Confirmed:** provider-neutral inference interface with phased providers | Implement the deterministic fake provider first, then OpenAI as the first live provider, and add Anthropic and Google Gemini through the same interface before public beta. Provider-specific request/response objects must not leak into the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
+| D12 | **Confirmed:** provider-neutral inference interface with phased providers and `ProviderCapabilities` | Use direct official REST APIs through `reqwest` unless a separately reviewed Rust client is selected. Define an explicit `ProviderCapabilities` model (`structured_output`, `streaming`, `output_limit`, `usage_reporting`). Implement `DeterministicFakeProvider` first (Private Alpha), then OpenAI (`T07A`, Closed Beta), and add Anthropic and Google Gemini (`T07C`, before Public Beta) through the same interface. Provider-specific SDK or response types must never enter the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
 | D13 | **Confirmed:** publish/share curricula and upvote | Private by default; public or unlisted immutable snapshots, private adapted adoption, revision-specific upvotes, and minimum moderation/privacy controls. |
 | D14 | **Confirmed:** assess topic proficiency and adjust curricula; mathematical thoroughness is configurable | Separate evidence from desired depth, sequence, outcomes, and available time. Diagnose relevant objectives and preview adaptations. Strong linear algebra does not imply less mathematics or strength in unrelated prerequisites. |
 | D15 | **Resolved:** all third-party organizational deployments are prohibited | Includes commercial, nonprofit, educational, public-research, and government deployments regardless of revenue. Final operative legal text remains a deferred release gate. |
@@ -143,7 +143,7 @@ The following decisions remain deferred. They do not block local development, bu
 | ID | Decision | Local development treatment | Production release gate | Needed before |
 | --- | --- | --- | --- | --- |
 | D07 | Commercial pricing, payment/tax vendor, and refund/expiration terms | Separate service entitlement and inference ledger with deterministic payment/checkout fakes | Block live credit checkout and paid hosted-credit top-ups (`FEATURE_LIVE_BILLING_ENABLED=false`) until approved | Real checkout (`T07` / `T09`) |
-| D11 | Production cloud, secret-manager, and authentication vendor | Implement provider-neutral HTTP/domain auth boundary and local/test auth + envelope encryption adapter | Block production deployment until production auth provider, KMS, and hosting region are approved | Production data (`T09`) |
+| D11 | Production cloud, secret-manager, and authentication vendor | Implement provider-neutral HTTP/domain `AuthVerifier` boundary with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`) for Private Alpha local work | Mandatory gate before any internet-facing beta, BYOK credential storage (`T07A`), hosted billing (`T07B`/`T07D`), or public publishing (`T13`) | Internet-facing Closed Beta / `T07A` / `T07B` / `T13` / `T09` |
 | D15 | Final operative legal text for custom personal-use license and contributor agreement | Enforce individual-only policy and non-OSI labeling in docs and release checks | Block public repository distribution and external CLA acceptance until legal text is approved | Public code release (`T09`) |
 | D16 | Final public-curriculum content license text, retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit terms-version consent, configurable retention windows, and no third-party analytics by default | Block public curriculum publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until final content license and retention periods are approved | First public publication (`T13` / `T09`) |
 
@@ -492,24 +492,38 @@ For “build and evaluate a retrieval-augmented QA service,” possible objectiv
 
 All modes include later revisits. A question such as “what is an embedding?” can support retrieval practice, but a novel failure-analysis task is needed for the troubleshooting objective. No real course or book is asserted to cover an exact chapter until the catalog has verified that mapping.
 
-### 19. Release and efficacy gates
+### 19. Release tiers and efficacy gates
 
-#### Software/public-beta gate
+The full specification remains authoritative across all `105` requirements (`103` P0, `2` P1), but release gates distinguish initial architectural validation from public-platform completeness across three explicit software tiers plus a separate pedagogical evaluation workstream:
 
-- Core journeys work end-to-end on desktop and selected mobile browser/device targets.
-- All P0 acceptance criteria have bound verification, including negative cases. Requirement, scenario, HTTP operation, and P0 counts are derived dynamically from `scripts/check_current_spec.py` and `scripts/check_contracts.py` rather than hard-coded numbers such as 103 or 105 in release logic.
-- CI runs `scripts/extract_spec.py --check specs/product.md .` and fails if any committed extracted contract, schema, fixture, traceability table, UI token file, or generated client/server type drifts from `specs/product.md`.
-- Public/private snapshot separation, publishing/unpublishing, adoption, version-specific votes, and report handling work with privacy and abuse failure cases.
-- Topic diagnostics and adaptation preserve evidence uncertainty and chosen mathematical depth; the reviewed objective slice supplies the necessary anchor items.
-- Catalog coverage and mandatory assessment quality have been reviewed for the stated scope.
-- Resource rights, server-mediated key custody, pricing, cancellation/refunds, retention, the custom individual-use software terms, contributor grants, and publication terms are explicit. Deferred decisions (D07 commercial pricing/failed-generation policy, D11 cloud/payment/production-auth vendors, D15 retention windows, and D16 operative legal instruments) do not block local development, but explicit feature and release gates block the affected production capabilities until those decisions are approved.
-- T12, T13, and T14 UI/accessibility acceptance are complete for launch flows before T09.
-- No critical cross-tenant, secret-exposure, arbitrary-execution, or duplicate-billing issue remains.
-- Accessibility, workload feasibility, offline/conflict behavior, notification cancellation, and backups have been checked against the stated target.
+#### Tier 1 — Private Alpha gate (`T00 → T01 → T14-Core → T02 → T03 → T04`)
 
-#### Educational claims gate
+- Proves the end-to-end architecture locally using the development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering (with `pgvector` schema available but no vector retrieval efficacy claim until evaluated against a reviewed retrieval benchmark), and `DeterministicFakeProvider`.
+- Persists one validated, immutable `CurriculumRevision`, renders the `Plan` **Outline** plus a basic **Map** (`SafeActivityRenderer` failing closed on unknown major schema versions), activates the revision, and records one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
+- Enforces CI drift checks (`scripts/extract_spec.py --check specs/product.md .`), JSON Schema Draft 2020-12 runtime validation, and byte-for-byte RFC 8785 JCS digest verification.
 
-An initial pilot measures feasibility and usability; it does not establish causality. To claim improved learning, compare against a credible baseline using equivalent materials/time, predeclare outcomes, and measure delayed retention and novel transfer with independent assessments. Use random assignment where feasible, justify sample size, record assistance, and report attrition and uncertainty. See `research.md` for the study proposal.
+#### Tier 2 — Closed Beta gate (`D11 Auth Gate → T05 → T06 → T12 → T07A → T08`)
+
+- **Authentication & security gate (`D11`):** Production authentication vendor and KMS custody approved and active before any internet-facing beta or BYOK credential storage (`DevFixedIdentityAuthVerifier` disabled outside development).
+- **Evidence, scheduling, and adaptation (`T05`, `T06`, `T12`):** Reviewed anchor assessments, staged hints/solution-study assistance, `mastery_gated` prerequisite checks and auditable overrides/acknowledgements, `ScheduleRevision` + `ReviewScheduleItem` recalculation, and objective-level diagnostics/waivers/adaptation with independent mathematical depth.
+- **Single-provider BYOK & reminders (`T07A`, `T08`):** Server-mediated encrypted BYOK custody and OpenAI live adapter via `reqwest` (with `ProviderCapabilities` and zero hosted fallback), plus opt-in PWA best-effort study reminders.
+
+#### Tier 3 — Public Beta gate (`T07B → T07C → T07D → T13 → T14-Full → T09`)
+
+- All P0 acceptance criteria have bound verification, including negative cases, with requirement, scenario, HTTP operation, and P0 counts derived dynamically from `scripts/check_current_spec.py` and `scripts/check_contracts.py` rather than hard-coded numbers such as 103 or 105 in release logic.
+- CI runs `scripts/extract_spec.py --check specs/product.md .` and fails if any committed extracted contract, schema, fixture, traceability table, UI token file, generated slice context view, or generated client/server type drifts from `specs/product.md`.
+- **Hosted ledger, additional providers & checkout (`T07B`, `T07C`, `T07D`):** Hosted inference credit reservations/settlements (`T07B`), Anthropic and Google Gemini live providers behind the same capability interface (`T07C`), and payment checkout/webhook reconciliation (`T07D`, gated on `D07`/`D11`).
+- **Public sharing & moderation (`T13`):** Public/private snapshot separation, publishing/unpublishing, partial deterministic adoption, version-specific votes, and report handling work with privacy and abuse failure cases (gated on `D16`).
+- **Accessibility & UI completeness (`T14-Full`):** Automated accessibility regression checks plus manual WCAG 2.2 AA evaluation evidence across the 8-part manual test matrix (keyboard operation, focus, screen readers, math, zoom/reflow, reduced motion, forced colors, and Map/Outline equivalence).
+- **Release operations (`T09`):** Account export/deletion, backup/restore reapplying revocations, queue retention/pruning/crash-recovery/load verification, custom personal-use license and contributor terms (`D15`), and zero critical cross-tenant, secret-exposure, arbitrary-execution, or duplicate-billing issues.
+
+#### Pedagogical evaluation workstream and educational claims gate
+
+Software acceptance tests verify engineering behavior only and must never be treated as evidence that the product improves learning. A dedicated pedagogical evaluation workstream covers:
+1. **Catalog and retrieval relevance:** Curator-labeled retrieval benchmark comparing deterministic metadata filtering against hybrid FTS + `pgvector` before claiming vector retrieval value.
+2. **Expert curriculum-quality review:** Domain-expert audit of generated curricula for factual accuracy, prerequisite soundness, and objective-practice-assessment alignment (`@S42`).
+3. **Assessment quality:** Review of anchor item clarity, rubric inter-rater agreement, distractor quality, and answer-key correction rates (`T05`, `T12`).
+4. **Delayed learning and transfer evaluation (`T11`):** An initial pilot measures feasibility and usability; it does not establish causality. To claim improved learning, compare against a credible baseline using equivalent materials/time, predeclare outcomes, and measure delayed retention and novel transfer with independent assessments (`@S44`).
 
 ### 20. Risks and ownership
 
@@ -1945,7 +1959,7 @@ A learner can have demonstrated an objective and still have a review due. These 
 
 ### 5. Client architecture and interaction
 
-Render canonical documents with an allowlisted component registry. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
+Render canonical documents with an allowlisted component registry (`SafeActivityRenderer`). Unknown major curriculum schema versions must **fail closed**: `SafeActivityRenderer` may show an explicit unsupported-version compatibility state and a safe text outline, but must never infer or render unknown component structures. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
 
 The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Settings**, and **Learn** contains **Today**, **Plan** (with synchronized **Map** and **Outline** views), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a module in the graph to open details without losing location. On mobile, show one module or local neighborhood and a vertical task list. Graph pan/zoom is optional; it cannot be the only navigation method.
 
@@ -1953,7 +1967,7 @@ Persist offline only the minimum allowed plan/evidence data. Never cache provide
 
 ### 6. AI provider and cost control
 
-Use provider adapters behind a narrow, provider-neutral Rust trait: capability discovery, token/cost estimate, structured generation, cancellation when supported, normalized errors, and usage reconciliation. Provider-specific request or response objects must never leak into the domain model. Implement the deterministic fake provider first, then OpenAI as the first live provider, and add Anthropic and Google Gemini through the same interface before public beta (D12). Native structured-output support is useful but does not replace validation. Providers that fail the capability/contract suite remain unavailable.
+Use provider adapters behind a narrow, provider-neutral Rust trait (`InferenceProvider`) implemented over direct official REST APIs through `reqwest` unless a separately reviewed Rust client is selected. Provider-specific SDK or response types must never enter the domain model. Expose an explicit `ProviderCapabilities` model covering `structured_output` support, `streaming` support, `output_limit` (`max_input_tokens` / `max_output_tokens`), and `usage_reporting` fidelity. Implement `DeterministicFakeProvider` first (Private Alpha), then OpenAI as the first live provider (`T07A`, Closed Beta), and add Anthropic and Google Gemini through the same capability interface before Public Beta (`T07C`, D12). Native structured-output support is useful but does not replace backend JSON Schema and semantic validation. Providers that fail the capability/contract suite remain unavailable.
 
 Hosted mode uses a transactionally reserved usage ceiling before dispatch. Store the quote version and usage/price basis. Provider completion can remain uncertain after timeouts; reconcile before duplicating work. Internal repair or background actions are part of the original authorization and cap, not unbounded new spending.
 
@@ -1965,7 +1979,13 @@ Use a payment-service adapter for hosted service/credit purchases. Final checkou
 
 Recommended generation states: queued → retrieving → generating → validating → succeeded; with failed, cancel-requested, and canceled outcomes. A status endpoint reports the job and safe error category. Cancellation is cooperative: already-issued provider requests may still complete or be billed.
 
-Use an outbox or equivalent transactional enqueue mechanism for notifications and work dependent on committed records. Consumers deduplicate stable operation IDs. At dispatch, recheck session revision, completion, permission, and account status. Do not replay a backlog of expired reminders on reconnect.
+Enforce an explicit HTTP concurrency and idempotency policy:
+- `Idempotency-Key` is required **only** for retriable effect-producing commands (e.g., reservation, generation start, adaptation acceptance, publication confirmation, adoption creation, checkout session creation). It specifies deterministic response replay on matching request fingerprint, `409 Conflict` on payload mismatch, `409 Conflict` (or safe coalescing) on in-flight duplicates, bounded retention with background pruning, and retry-safe failure handling on transient `5xx` errors before commit.
+- `If-Match` is required **only** for mutations of existing versioned mutable resources (e.g., curriculum activation, schedule patch, credential rotation/deletion, publication withdrawal), returning `428 Precondition Required` when missing and `412 Precondition Failed` when stale.
+- `GET` operations require neither `Idempotency-Key` nor `If-Match`.
+- Creation and append-only event APIs follow operation-specific deduplication rules (e.g., `ProgressEventRequest` deduplicates by `(account_id, event_id)`; assessment attempts deduplicate by `(account_id, attempt_id)`; vote `PUT`/`DELETE` routes are naturally idempotent state assertions).
+
+Use a PostgreSQL transactional outbox and job queue (`SELECT ... FOR UPDATE SKIP LOCKED`) for notifications and background work dependent on committed records. Production-ready queue operations include completed/dead-letter retention and pruning, queue depth/latency/retry metrics, expired-lease reaping (`locked_until < now()`), worker-crash recovery verification, PostgreSQL autovacuum/bloat monitoring on `outbox_jobs`, and multi-worker concurrent load tests. At dispatch, recheck session revision, completion, permission, and account status. Do not replay a backlog of expired reminders on reconnect.
 
 Return structured errors with a stable code, safe explanation, correlation ID, retryability, and actionable next step. Proposed categories include invalid input, missing prerequisites, coverage gap, infeasible workload, unknown price under strict budget, stale revision, provider authentication failure, insufficient credit, rate limit, invalid generated output, and temporarily unavailable service. The exact core API enum is defined in the contract.
 
@@ -2509,19 +2529,19 @@ These are release/legal drafting tasks. They do not block implementing private g
 
 ### T01 — Identity, ownership, revisions, and durable state
 
-- [ ] Implement account ownership, learner profile, curriculum/resource revisions, progress events, and schedule revision preconditions.
+- [ ] Implement account ownership, learner profile, curriculum/resource revisions, progress events, and schedule revision preconditions behind a provider-neutral `AuthVerifier` boundary; mark the local fixed identity adapter (`DevFixedIdentityAuthVerifier`) as development-only and gate any internet-facing beta, BYOK storage, hosted billing, or public publishing on the production authentication decision (`D11`).
 - [ ] Implement role boundaries for learner, curator, operator, and public-content moderator; moderation must not grant unrestricted private-evidence access.
 - [ ] Establish separate identifiers and storage projections for private learner revisions and future public template revisions.
-- [ ] Establish idempotency, transaction boundaries, and safe audit conventions.
+- [ ] Implement HTTP concurrency rules (`Idempotency-Key` only for retriable effect-producing commands with response replay, payload mismatch `409`, in-flight duplicate handling, retention, and failure handling; `If-Match` only for mutations of existing versioned mutable resources; neither on `GET`; operation-specific deduplication on append-only events) and transactional outbox queue operations (retention/pruning, metrics, lease reaping, worker-crash recovery, autovacuum/bloat monitoring, and multi-worker load tests).
 
 **Exit:** cross-tenant negative cases, stale-revision conflict, and event retry behavior verified. No generated field can assign account ownership or learning results.
 
 ### T02 — Small reviewed catalog and rights-aware retrieval
 
 - [ ] Implement resource/permission/review records, states, verified source links, and an approval interface.
-- [ ] Seed a small, genuinely reviewed objective slice; preserve synthetic fixtures separately.
-- [ ] Add permissioned indexing, structured filtering, keyword/semantic retrieval, snapshotting, and quarantine overlays.
-- [ ] Implement freshness jobs with allowed acquisition methods and evidence-backed timestamps.
+- [ ] Seed a small, genuinely reviewed objective slice in PostgreSQL; preserve synthetic fixtures separately.
+- [ ] Implement deterministic metadata filtering first for the Private Alpha tracer bullet; keep `pgvector` schema/indexing available for hybrid retrieval, but do not claim vector retrieval value until evaluated against a reviewed retrieval benchmark.
+- [ ] Implement snapshotting, quarantine overlays, and freshness jobs with allowed acquisition methods and evidence-backed timestamps.
 
 **Exit:** every required objective in the chosen slice has an auditable path; free-only, unknown-price, no-permission, and revoked-resource scenarios pass.
 
@@ -2562,12 +2582,12 @@ These are release/legal drafting tasks. They do not block implementing private g
 
 ### T07 — BYOK and hosted paid usage
 
-- [ ] Implement the adopted D05 server-mediated encrypted custody from [BYOK policy](#11-byok-and-routing), including disclosed secret use, masking, rotation, and revocation.
-- [ ] Finalize D07 actual prices/failed-generation terms and D12 provider selection before the corresponding live integration; use deterministic provider/payment fakes during local work.
-- [ ] Implement provider adapters, write-only credentials, secret lifecycle, quotas, cost disclosure, and no-fallback behavior through every downstream route and retry.
-- [ ] Distinguish external provider billing and estimates from service charges; bound the app's own requests without claiming to cap unrelated provider-account spending.
-- [ ] Implement reservation/settlement ledger, payment integration, signed webhooks, refunds/adjustments, and reconciliation under chosen terms.
-- [ ] Extend the core API contract for the selected payment and authentication integrations rather than inventing undocumented endpoints.
+Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, `T07D`), gated on production authentication (`D11`) before any live credential storage or billing:
+
+- [ ] **T07A (BYOK custody + OpenAI live provider — Closed Beta):** Implement D05 server-mediated encrypted custody (write-only input, masking, rotation, immediate revocation), explicit `ProviderCapabilities` (`structured_output`, `streaming`, `output_limit`, `usage_reporting`), and the OpenAI adapter over direct official REST APIs via `reqwest` with strict no-fallback behavior (`allow_hosted_fallback = false`).
+- [ ] **T07B (Hosted inference ledger — Public Beta):** Implement integer minor-unit quotes, atomic credit reservations, settlements, releases, and separate attribution of external provider estimates versus hosted inference and service charges.
+- [ ] **T07C (Additional live providers — Public Beta):** Implement Anthropic and Google Gemini adapters via `reqwest` behind the same provider-neutral `InferenceProvider` and `ProviderCapabilities` boundary (not a prerequisite for the first Closed Beta).
+- [ ] **T07D (Checkout and reconciliation — Public Beta, gated on D07/D11):** Implement payment checkout sessions, signed idempotent webhooks, refunds/adjustments, and ambiguous-timeout provider reconciliation.
 
 **Exit:** invalid keys, concurrent reservations, duplicate events, cancellation, ambiguous timeouts, and invalid generations have correct financial effects. Secret scanning and tenant-isolation tests pass.
 
@@ -2600,7 +2620,7 @@ These are release/legal drafting tasks. They do not block implementing private g
 
 ### T11 — Evaluate efficacy and expand scope
 
-- [ ] Design an independently assessed study with an appropriate comparator, delayed/transfer measures, power analysis, and attrition handling.
+- [ ] Execute the four-part Pedagogical Evaluation Workstream (distinct from software acceptance tests, which never establish learning efficacy): (1) catalog and retrieval relevance benchmark, (2) expert curriculum-quality review, (3) anchor assessment quality review, and (4) independently assessed delayed learning and transfer study with an appropriate comparator, power analysis, and attrition handling.
 - [ ] Evaluate retrieval and curriculum quality on broader goals before adding subjects or resource providers.
 - [ ] Expand providers, languages, integrations, automatic code evaluation, and recommendation sophistication only with corresponding contracts and evidence.
 
@@ -2639,27 +2659,22 @@ These are release/legal drafting tasks. They do not block implementing private g
 
 ### T14 — Complete responsive UI and accessibility
 
-- [ ] Implement section 9's semantic tokens, typography, spacing, component states, themes, and restrained glass/soft-depth rules.
-- [ ] Deliver Learn/Explore/Settings navigation and compact/medium/wide layouts without obstructing large text, keyboards, or primary actions.
-- [ ] Implement the screen inventory through the relevant T03–T08/T12/T13 contracts; define remaining integration contracts before building their live surfaces.
-- [ ] Expose independent proficiency/depth/order/recap controls; preserve partial diagnostics and accessible math/code study.
-- [ ] Implement exact authorization, generation recovery, adaptation diff, publication preview, owner list/history, adoption, and vote-failure behavior.
-- [ ] Make diagram and outline information/actions equivalent and provide non-dragging pointer plus keyboard interactions.
-- [ ] Verify actual composited contrast, focus, screen readers, text scaling/reflow, solid surfaces, reduced motion, and supported-device/PWA behavior.
-- [ ] Bind S69–S88 to observable application checks; record representative visual/interaction evidence and unresolved integration limits.
+Split into `T14-Core` (Private Alpha shell) and `T14-Full` (Public Beta UI/accessibility completion, separate from `T09`):
+
+- [ ] **T14-Core (Private Alpha):** Implement section 9's semantic tokens, typography, spacing, themes, opaque study surfaces, restrained navigation glass with solid fallbacks, `Learn/Explore/Settings` navigation shell, and `SafeActivityRenderer` (failing closed on unknown major curriculum schema versions with an unsupported-version state and safe text outline).
+- [ ] **T14-Full (Public Beta, separate from T09):** Complete the screen inventory across `T03–T08`/`T12`/`T13`, independent proficiency/depth/order/recap controls, adaptation diff, publication preview, owner list/history, and non-dragging pointer + keyboard Map/Outline parity.
+- [ ] **T14-Full Accessibility Evidence:** Combine automated accessibility regression checks with manual WCAG 2.2 AA evaluation evidence across the 8-part manual test matrix: (1) keyboard operation, (2) focus visibility, (3) screen readers, (4) accessible math (KaTeX MathML), (5) zoom/reflow at `320 CSS px` and `200%` text scaling, (6) reduced motion, (7) forced colors, and (8) Map/Outline equivalence; bind `S69–S88` to observable application checks.
 
 **Exit:** every launch surface meets the section 9 acceptance and accessibility requirements; the UI renders the typed product without invented progress, evidence, costs, or unsupported functionality. This slice is P0 before T09, not optional polish.
 
 ### Dependency and verification policy
 
-The canonical implementation and launch dependency ordering is:
+The canonical implementation and release-tier dependency ordering is:
 
-`T00 → T01 → T14-Core → T02 → T03 → T04 → T05 → T06 → T12 → T07 → T08 → T13 → T14-Full → T09` (with `T10` and `T11` post-`T09`).
-
-- **Foundation Tracer Bullet (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Establishes the polyglot Rust + TypeScript workspace, contract extraction/drift checks, PostgreSQL migrations, seeded catalog slice, deterministic fake provider generation, `Learn -> Plan (Map/Outline)` + `Today` UI shell, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unknown`/`unassessed`.
-- **Evidence, Scheduling, and Adaptation (`T05 → T06 → T12`):** Establishes reviewed anchor assessments, `mastery_gated` prerequisite checks and auditable overrides/acknowledgements, `ScheduleRevision` + `ReviewScheduleItem` recalculation, and objective-level diagnostics/adaptation (`T12`).
-- **AI Custody/Billing, Reminders, and Sharing (`T07 → T08 → T13`):** Establishes server-mediated encrypted BYOK custody and live provider adapters (`OpenAI` first, then `Anthropic` and `Gemini`), hosted credit reservations, PWA study reminders, and public curriculum publishing, voting, moderation, and partial deterministic adoption (`T13`).
-- **Complete UI/Accessibility and Public Beta Gate (`T14-Full → T09`):** Completes all Section 9 responsive/accessibility gates (`S69–S88`) before `T09`. `T09` depends on all P0 slices (`T00–T08`, `T12`, `T13`, `T14`), derived dynamically from `traceability.csv`.
+- **Tier 1 — Private Alpha (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Proves the end-to-end architecture with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering (keeping `pgvector` available without claiming retrieval value before a benchmark), `DeterministicFakeProvider`, one persisted `CurriculumRevision`, `Plan` Outline plus basic Map, explicit activation, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
+- **Tier 2 — Closed Beta (`D11 Auth Gate → T05 → T06 → T12 → T07A → T08`):** Requires production authentication (`D11`) before any internet-facing beta or BYOK storage; delivers reviewed anchor assessments and `mastery_gated` rules (`T05`), `ScheduleRevision` + `ReviewScheduleItem` recalculation (`T06`), objective diagnostics/waivers/adaptation (`T12`), BYOK custody + OpenAI live adapter via `reqwest` (`T07A`), and opt-in PWA study reminders (`T08`).
+- **Tier 3 — Public Beta (`T07B → T07C → T07D → T13 → T14-Full → T09`):** Delivers the hosted inference ledger (`T07B`), Anthropic and Google Gemini adapters (`T07C`), payment checkout and webhook reconciliation (`T07D`), public sharing/discovery/partial adoption/votes/moderation (`T13`), complete UI states + automated accessibility regression checks and manual WCAG 2.2 AA evaluation evidence (`T14-Full`), and separately executed release operations, export/deletion, backup restoration, and public-beta gates (`T09`).
+- **Ongoing & Post-Launch (`T10`, `T11`, Pedagogical Evaluation Workstream):** Evaluates catalog/retrieval relevance, expert curriculum quality, anchor assessment quality, and delayed learning/transfer (`T11`), plus optional native clients/alarms (`T10`).
 
 Write meaningful checks for consequential behavior, especially contracts, authorization, billing, evidence, scheduling, rights, public/private isolation, and vote/withdrawal concurrency. Use deterministic model/provider fakes for fault cases. Do not call a Gherkin file a test run or substitute mocks for live provider smoke checks before production. Avoid tests that merely repeat trivial implementation details. Operative legal drafting and remaining publication-term choices do not block local synthetic implementation, and an implemented first slice does not waive the remaining P0 release criteria.
 ---
@@ -17894,14 +17909,18 @@ The palette is the machine-readable counterpart of section 9. Scripts validate t
 
 ### F.2. extract_spec.py
 
-<!-- embedded-asset: scripts/extract_spec.py sha256=5610ed9a92cf343ffcb1dae043a24d56905e9871e04206410dbe12985fe44e17 -->
+<!-- embedded-asset: scripts/extract_spec.py sha256=52c99f4c02089b748090edfbd82b6a93e8cfc3051675361ed71ad1424ad07d06 -->
 ````python
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
-"""Extract or verify integrity-checked machine assets from specs/product.md."""
+"""Extract or verify integrity-checked machine assets and generated slice contexts from specs/product.md."""
+from collections import defaultdict
 from pathlib import Path, PurePosixPath
 import argparse
+import csv
 import hashlib
+import io
+import json
 import re
 import sys
 
@@ -17918,6 +17937,39 @@ ASSET_RE = re.compile(
     r'(?P<fence>`{3,})[A-Za-z0-9_+.-]*\n(?P<body>.*?)^(?P=fence)\n'
     r'<!-- /embedded-asset -->', re.M | re.S
 )
+
+SLICE_METADATA = {
+    'T00': ('Slice 0 — Baseline, Polyglot Workspace, Spec Drift Gate & Contract Harness', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T01': ('Slice 1 — Identity, Tenant Isolation, HTTP Concurrency & Transactional Outbox', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T02': ('Slice 3 — Small Reviewed Catalog & Deterministic Metadata Filtering', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T03': ('Slice 4 — Goal Intake, Async Generation & Deterministic Semantic Validator', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T04': ('Slice 5 — Responsive Curriculum (Outline + Basic Map), Today View & Activation', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T05': ('Slice 6 — Practice, Reviewed Anchor Assessments, Mastery Gates & Honest Progress', 'Tier 2: Closed Beta'),
+    'T06': ('Slice 7 — Workload Math, ScheduleRevision, ReviewScheduleItem & Offline Sync', 'Tier 2: Closed Beta'),
+    'T07': ('Slices 9A–9D — BYOK Custody, Live Providers, Hosted Ledger & Checkout (Parent Task)', 'Tier 2: Closed Beta (T07A) / Tier 3: Public Beta (T07B–T07D)'),
+    'T07A': ('Slice 9A — Server-Mediated Encrypted BYOK Custody & OpenAI Live Provider (reqwest)', 'Tier 2: Closed Beta (Requires D11 Auth Gate)'),
+    'T07B': ('Slice 9B — Hosted Inference Credit Ledger, Quotes, Reservations & Settlements', 'Tier 3: Public Beta'),
+    'T07C': ('Slice 9C — Additional Live Providers (Anthropic & Google Gemini via reqwest)', 'Tier 3: Public Beta'),
+    'T07D': ('Slice 9D — Payment Checkout Sessions, Signed Webhooks & Ambiguous-Timeout Reconciliation', 'Tier 3: Public Beta (Requires D07 & D11 Gates)'),
+    'T08': ('Slice 10 — Transactional Reminder Outbox, Timezone/DST Policy & Installable PWA', 'Tier 2: Closed Beta'),
+    'T09': ('Slice 13 — Release Operations, Export/Deletion, Backup Restore & Public-Beta Gate', 'Tier 3: Public Beta'),
+    'T10': ('Slice 14 — Native Clients & Precise OS Alarms (If Selected)', 'Post-Public-Beta Extension'),
+    'T11': ('Slice 15 — Pedagogical Evaluation Workstream, Delayed Learning/Transfer Study & Scope Expansion', 'Continuous Evaluation & Post-Public-Beta'),
+    'T12': ('Slice 8 — Objective Diagnostics, Prerequisite Waivers & Curriculum Adaptation', 'Tier 2: Closed Beta'),
+    'T13': ('Slice 11 — Public Templates, Discovery, Partial Adoption, Upvotes & Moderation', 'Tier 3: Public Beta (Requires D11 & D16 Gates)'),
+    'T14': ('Slices 2 & 12 — Responsive UI Shell (T14-Core) & Complete UI/Accessibility Evidence (T14-Full)', 'Tier 1: Private Alpha (T14-Core) / Tier 3: Public Beta (T14-Full)'),
+    'T14-Core': ('Slice 2 — Design Tokens, Fail-Closed SafeActivityRenderer & Learn/Explore/Settings Shell', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T14-Full': ('Slice 12 — Complete Screen Inventory, Automated A11y Checks & Manual WCAG 2.2 AA Evidence', 'Tier 3: Public Beta (Separate from T09)'),
+}
+
+SUBSLICE_REQ_FILTER = {
+    'T07A': {'BILL-001', 'BILL-002', 'BILL-004', 'BILL-005', 'BILL-006', 'BILL-007', 'BILL-008', 'UI-018', 'NFR-001', 'NFR-002'},
+    'T07B': {'BILL-001', 'BILL-003', 'BILL-004', 'BILL-005', 'BILL-008', 'UI-013'},
+    'T07C': {'BILL-001', 'BILL-005', 'BILL-006', 'BILL-007', 'BILL-008'},
+    'T07D': {'BILL-003', 'BILL-004', 'BILL-005', 'UI-020', 'NFR-006'},
+    'T14-Core': {'UI-007', 'UI-008', 'UI-009', 'UI-010', 'UI-021', 'UI-022', 'UI-023', 'UI-024', 'NFR-002', 'NFR-003'},
+    'T14-Full': {f'UI-{i:03d}' for i in range(1, 25)} | {'NFR-002', 'NFR-003'},
+}
 
 def read_assets(text):
     assets = {}
@@ -17942,11 +17994,134 @@ def read_assets(text):
         raise ValueError('Missing or malformed embedded asset block')
     return assets
 
+def _parse_csv(text):
+    lines = [line for line in text.splitlines() if line.strip() and not line.lstrip().startswith('#')]
+    return list(csv.DictReader(io.StringIO('\n'.join(lines))))
+
+def _parse_scenarios(feature_text):
+    scenarios = {}
+    lines = feature_text.splitlines()
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith('@'):
+            tags = []
+            start = i
+            while i < len(lines) and lines[i].strip().startswith('@'):
+                tags.extend(t[1:] for t in lines[i].strip().split())
+                i += 1
+            sids = [t for t in tags if re.fullmatch(r'S\d{2,}', t)]
+            block = lines[start:i]
+            while i < len(lines) and not lines[i].strip().startswith('@'):
+                block.append(lines[i])
+                i += 1
+            if sids:
+                scenarios[sids[0]] = ('\n'.join(block)).rstrip()
+        else:
+            i += 1
+    return scenarios
+
+def build_slice_contexts(spec_text, assets):
+    spec_sha256 = hashlib.sha256(spec_text.encode('utf-8')).hexdigest()
+    req_rows = {}
+    for m in re.finditer(r'^\| ([A-Z]+-\d{3}) \| (P[01]) \| (.+?) \|$', spec_text, re.M):
+        req_rows[m.group(1)] = (m.group(2), m.group(3).strip())
+    slice_sections = {}
+    for m in re.finditer(r'^### (T\d{2}) — ([^\n]+)\n(?P<body>.*?)(?=^### |^---)', spec_text, re.M | re.S):
+        slice_sections[m.group(1)] = (m.group(2).strip(), m.group('body').strip())
+    trace_rows = _parse_csv(assets['specs/001-curriculum-platform/traceability.csv'])
+    ctrl_rows = _parse_csv(assets['specs/001-curriculum-platform/control-traceability.csv'])
+    scenarios = _parse_scenarios(assets['specs/001-curriculum-platform/acceptance.feature'])
+
+    contexts = {}
+    for slice_id, (title, tier) in sorted(SLICE_METADATA.items()):
+        parent_id = slice_id.split('-')[0][:3] if ('-' in slice_id or len(slice_id) > 3) else slice_id
+        parent_heading, parent_body = slice_sections.get(parent_id, (title, ''))
+        matched_trace = [r for r in trace_rows if parent_id in r['implementation_tasks'].split()]
+        if slice_id in SUBSLICE_REQ_FILTER:
+            allowed = SUBSLICE_REQ_FILTER[slice_id]
+            matched_trace = [r for r in matched_trace if r['requirement_id'] in allowed]
+        matched_ctrls = [c for c in ctrl_rows if parent_id in c['implementation_tasks'].split()]
+        scen_ids = sorted(
+            {s for r in matched_trace for s in r['acceptance_scenarios'].split()},
+            key=lambda x: int(x[1:])
+        )
+        contracts = sorted({
+            part.strip()
+            for r in matched_trace
+            for part in r['contract_or_component'].split(';')
+            if part.strip()
+        })
+        out = [
+            f'<!-- {GENERATED_MARKER} -->',
+            f'<!-- Specification SHA-256: {spec_sha256} -->',
+            '',
+            f'# {slice_id}: {title}',
+            '',
+            f'- **Source of Truth:** `specs/product.md` (SHA-256: `{spec_sha256}`)',
+            f'- **Release Tier:** {tier}',
+            f'- **Canonical Parent Slice:** `{parent_id}` ({parent_heading})',
+            f'- **Mapped Requirements:** {len(matched_trace)}',
+            f'- **Mapped Acceptance Scenarios:** {len(scen_ids)} ({", ".join(scen_ids) if scen_ids else "none"})',
+            f'- **Mapped Controls:** {len(matched_ctrls)} ({", ".join(c["control_id"] for c in matched_ctrls) if matched_ctrls else "none"})',
+            '',
+            '## 1. Canonical Slice Checklist (`specs/product.md` Section 18)',
+            '',
+            parent_body,
+            '',
+            '## 2. Relevant Contracts, Schemas & Components',
+            '',
+        ]
+        for c in contracts:
+            out.append(f'- `{c}`')
+        out.extend([
+            '',
+            '## 3. Mapped Product Requirements',
+            '',
+            '| ID | Priority | Scenarios | Contracts / Components | Verification Method | Normative Requirement |',
+            '| :--- | :--- | :--- | :--- | :--- | :--- |',
+        ])
+        for r in matched_trace:
+            rid = r['requirement_id']
+            prio, rtext = req_rows.get(rid, (r['priority'], ''))
+            out.append(
+                f'| `{rid}` | {prio} | `{r["acceptance_scenarios"]}` | {r["contract_or_component"]} | {r["verification_method"]} | {rtext} |'
+            )
+        out.extend([
+            '',
+            '## 4. Mapped Security, Rights & Operational Controls (`CTRL-*`)',
+            '',
+            '| Control ID | Parent Requirements | Notes |',
+            '| :--- | :--- | :--- |',
+        ])
+        for c in matched_ctrls:
+            out.append(f'| `{c["control_id"]}` | `{c["parent_requirement_ids"]}` | {c["notes"]} |')
+        out.extend([
+            '',
+            '## 5. Relevant Acceptance Scenarios (`acceptance.feature`)',
+            '',
+            '````gherkin',
+        ])
+        for sid in scen_ids:
+            if sid in scenarios:
+                out.append(scenarios[sid])
+                out.append('')
+        out.extend([
+            '````',
+            '',
+        ])
+        rel_path = f'specs/001-curriculum-platform/slices/{slice_id}.context.md'
+        contexts[rel_path] = '\n'.join(out)
+    return contexts
+
 def extract(spec, output, check_only=False, force=False):
-    assets = read_assets(spec.read_text(encoding='utf-8'))
+    spec_text = spec.read_text(encoding='utf-8')
+    assets = read_assets(spec_text)
+    slice_contexts = build_slice_contexts(spec_text, assets)
     root = output.resolve()
     all_items = dict(assets)
     all_items[EXAMPLES_NOTICE_REL] = examples_notice_text
+    all_items.update(slice_contexts)
     drifted = []
     targets = []
     for name, content in all_items.items():
@@ -17967,22 +18142,22 @@ def extract(spec, output, check_only=False, force=False):
             for item in drifted:
                 print(item, file=sys.stderr)
             raise SystemExit(1)
-        return len(assets)
+        return len(assets), len(slice_contexts)
     for path, content in targets:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding='utf-8', newline='\n')
-    return len(assets)
+    return len(assets), len(slice_contexts)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--check', action='store_true', help='Verify extracted files match specs/product.md without writing')
+    parser.add_argument('--check', action='store_true', help='Verify extracted files and slice contexts match specs/product.md without writing')
     parser.add_argument('--force', action='store_true', help='Overwrite existing extracted files from canonical specs/product.md')
     parser.add_argument('specification', type=Path)
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
-    count = extract(args.specification, args.output, check_only=args.check, force=args.force)
+    asset_count, slice_count = extract(args.specification, args.output, check_only=args.check, force=args.force)
     mode = 'Verified' if args.check else 'Extracted'
-    print(mode, count, 'machine assets')
+    print(f'{mode} {asset_count} machine assets and {slice_count} generated slice context views')
 ````
 <!-- /embedded-asset -->
 

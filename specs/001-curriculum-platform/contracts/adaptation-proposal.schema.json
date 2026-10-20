@@ -1,0 +1,301 @@
+{
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://curriculum.example.invalid/schemas/v0.2/adaptation-proposal.schema.json",
+  "title": "Private adaptation proposal — v0.2",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.2.0"
+    },
+    "proposal_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "curriculum_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "base_revision_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "candidate_revision_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "proficiency_snapshot_ref": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "policy_version": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 40,
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 40,
+      "format": "date-time"
+    },
+    "proposal_sha256": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "instruction_preferences_applied": {
+      "$ref": "./generation-request.schema.json#/$defs/instructionPreferences"
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "add_bridge",
+              "condense_instruction",
+              "retain_recap",
+              "waive_instruction",
+              "change_resource",
+              "change_target_scope"
+            ]
+          },
+          "objective_version_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "minItems": 0,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "activity_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "minItems": 0,
+            "maxItems": 200,
+            "uniqueItems": true
+          },
+          "evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "minItems": 0,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 3000
+          }
+        },
+        "required": [
+          "kind",
+          "objective_version_ids",
+          "activity_ids",
+          "evidence_refs",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 200
+    },
+    "proposed_waivers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "waiver_id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "objective_id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "objective_version_id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "criterion_policy_id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "qualifying_evidence_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true
+          },
+          "conditions_summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "waiver_id",
+          "objective_id",
+          "objective_version_id",
+          "criterion_policy_id",
+          "qualifying_evidence_refs",
+          "conditions_summary"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 200
+    },
+    "impact": {
+      "type": "object",
+      "properties": {
+        "before_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "after_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "materials_access_changes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "minItems": 0,
+          "maxItems": 100
+        },
+        "inference_charge_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "constraint_status": {
+          "type": "string",
+          "enum": [
+            "feasible",
+            "requires_changes"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "minItems": 0,
+          "maxItems": 100
+        }
+      },
+      "required": [
+        "before_minutes",
+        "after_minutes",
+        "materials_access_changes",
+        "inference_charge_summary",
+        "constraint_status",
+        "warnings"
+      ],
+      "additionalProperties": false
+    },
+    "unassessed_objective_version_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+      },
+      "minItems": 0,
+      "maxItems": 200,
+      "uniqueItems": true
+    },
+    "base_schedule_revision_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "proposal_id",
+    "curriculum_id",
+    "base_revision_id",
+    "candidate_revision_id",
+    "proficiency_snapshot_ref",
+    "policy_version",
+    "created_at",
+    "expires_at",
+    "proposal_sha256",
+    "instruction_preferences_applied",
+    "changes",
+    "proposed_waivers",
+    "impact",
+    "unassessed_objective_version_ids",
+    "base_schedule_revision_id"
+  ],
+  "additionalProperties": false,
+  "readOnly": true,
+  "description": "Server-built preview from immutable draft/evidence versions. Accept only when base revision, evidence, resources, rights and proposal hash remain current. A model cannot author qualifying waivers. Infeasible proposals cannot activate. This contract changes curriculum content only. Pin the current schedule revision to detect intervening edits; schedule-only changes use the separate schedule workflow. Acceptance invalidates obsolete sessions/reminders but does not silently commit replacement dates."
+}

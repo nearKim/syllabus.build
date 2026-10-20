@@ -1,0 +1,61 @@
+{
+  "schema_version": "0.2.0",
+  "profile_revision_id": "proficiency-snapshot-001",
+  "account_id": "synthetic-account",
+  "computed_at": "2026-10-20T16:00:00Z",
+  "policy_version": "proficiency-policy-001",
+  "objective_evidence": [
+    {
+      "objective_id": "objective-matrix-shapes",
+      "objective_version_id": "objective-matrix-shapes-v1",
+      "topic_id": "topic-linear-algebra",
+      "status": "demonstrated",
+      "evidence_support": "limited",
+      "evidence_refs": [
+        "anchor-attempt-001"
+      ],
+      "last_observed_at": "2026-10-20T15:55:00Z",
+      "refresh_recommended": false,
+      "criterion_policy_id": "criterion-matrix-shapes-v1",
+      "conditions_summary": "Reviewed synthetic anchor; no in-app assistance observed. Outside assistance cannot be guaranteed absent.",
+      "limitations": [
+        "Only the specified matrix-dimension capability is covered."
+      ]
+    },
+    {
+      "objective_id": "objective-matrix-calculus",
+      "objective_version_id": "objective-matrix-calculus-v1",
+      "topic_id": "topic-matrix-calculus",
+      "status": "unknown",
+      "evidence_support": "none",
+      "evidence_refs": [],
+      "last_observed_at": null,
+      "refresh_recommended": false,
+      "criterion_policy_id": "criterion-matrix-calculus-v1",
+      "conditions_summary": "",
+      "limitations": [
+        "No diagnostic evidence."
+      ]
+    }
+  ],
+  "topic_coverage": [
+    {
+      "topic_id": "topic-linear-algebra",
+      "assessed_objective_version_ids": [
+        "objective-matrix-shapes-v1"
+      ],
+      "unassessed_objective_version_ids": [
+        "objective-svd-v1"
+      ],
+      "coverage_label": "partial"
+    },
+    {
+      "topic_id": "topic-matrix-calculus",
+      "assessed_objective_version_ids": [],
+      "unassessed_objective_version_ids": [
+        "objective-matrix-calculus-v1"
+      ],
+      "coverage_label": "unassessed"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+# GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
+control_id,parent_requirement_ids,implementation_tasks,notes
+CTRL-001,OPS-004 OPS-006 BILL-001 NOT-004 NOT-005,T00 T07 T09 T10,Release configuration and decision gates; adult-only and native launch remain proposals; best-effort study reminders are confirmed.
+CTRL-002,NFR-001 NFR-006 NFR-007 PROG-001 BILL-003,T00 T01 T02 T07 T09,Transactional state is authoritative; vector indexes are rebuildable derived data.
+CTRL-010,CAT-001 CAT-003 CAT-005,T02,Separate learner access from operation-specific reuse permissions and provenance.
+CTRL-011,CAT-003 OPS-002,T02 T09,Approved acquisition methods and fields; metadata-only does not waive provider restrictions.
+CTRL-012,CAT-001 CAT-003 CAT-004 CAT-006 OPS-001,T02,Permission and curator approval gates precede index publication.
+CTRL-013,CAT-003 CAT-004 GEN-002 NFR-001,T02 T03,Chunk provenance and effective authorization are enforced before retrieval.
+CTRL-014,CAT-003 CAT-007 GEN-008 OPS-004 NFR-007 SHARE-008 SHARE-009,T02 T06 T09 T13,Revocation removes prohibited content and derivatives while preserving only permitted history.
+CTRL-020,CAT-001 CAT-002,T02,Resource-level credibility rubric; affiliation and ratings cannot autoapprove a work.
+CTRL-021,CAT-001 CAT-002 CAT-008 OPS-001,T02 T04,Inspectable review rationale; affiliate relationships do not influence eligibility or ranking.
+CTRL-022,CAT-006 OPS-001 NFR-001,T01 T02,Catalog lifecycle and authorized auditable administrative mutations.
+CTRL-023,CAT-005 OPS-002,T02,Source-specific refresh rules; suggested daily and weekly cadences are proposed policies.
+CTRL-024,CAT-006 CAT-007 GEN-002 GEN-008 OPS-001 NFR-007 ADAPT-006 SHARE-008,T01 T02 T03 T06 T09 T12 T13,Versioned replacement and rollback; current rights and quarantine override old snapshots.
+CTRL-030,NFR-001 BILL-002 BILL-006 OPS-001 OPS-004 PROG-001 BILL-007 ADAPT-004 SHARE-002 SHARE-004,T01 T02 T03 T07 T08 T09 T12 T13,"Tenant boundaries cover APIs, jobs, storage, retrieval, exports, notifications, and billing."
+CTRL-031,GEN-007 BILL-002 NFR-002 ADAPT-005 SHARE-010,T02 T03 T07 T12 T13,Untrusted retrieved text and model responses cannot grant authority or expose secrets.
+CTRL-032,BILL-006 NFR-002 OPS-002,T02 T07 T09,"Controlled egress includes redirect, destination-IP, and DNS-rebinding protections."
+CTRL-033,GEN-003 GEN-004 GEN-007 UI-006 NFR-002 NFR-007 SHARE-002 SHARE-010,T03 T04 T13,Typed renderer plus independent backend semantic validation; explicit compatibility states.
+CTRL-034,GEN-007 NFR-001 NFR-002 OPS-006,T03 T04 T09 T11,No arbitrary backend code execution at launch; future runners require a separately reviewed boundary.
+CTRL-040,BILL-001 BILL-002 BILL-004 BILL-007 BILL-008,T04 T07,Adopted server-mediated custody and external provider billing are disclosed before key submission; no implicit paid or downstream system-key fallback.
+CTRL-041,BILL-002 NFR-001 OPS-003 BILL-007,T01 T07 T09,"Write-only credential APIs, encrypted storage, least privilege, and secret-free diagnostics."
+CTRL-042,BILL-002 GEN-001 OPS-003 BILL-007,T03 T07 T09,Just-in-time credential access; queue payloads contain references rather than raw keys.
+CTRL-043,BILL-002 GEN-001 OPS-004 NFR-006 BILL-007,T03 T07 T09,Deletion blocks future use; issuer revocation differs; restore must reapply deletion records.
+CTRL-044,GOAL-002 CAT-005 BILL-004 OPS-005 BILL-008,T02 T03 T04 T07,"Separate service, inference, material/exam, and computing costs; disclose unknowns and avoid duplicate subscription costs."
+CTRL-045,GEN-001 BILL-001 BILL-003 BILL-005 BILL-006 BILL-007 BILL-008,T03 T07,Pinned credential mode and route apply to every request and retry; local concurrent ceilings do not cap unrelated external provider-account use.
+CTRL-046,BILL-003 BILL-005 GEN-001 BILL-007 BILL-008,T03 T07 T09,Reconcile ambiguous provider outcomes and idempotent ledger effects; failure/refund terms remain owner decisions.
+CTRL-050,GOAL-002 NOT-001,T03 T06 T08,Opt-in channels and IANA timezone plus local-time intent; notifications remain optional.
+CTRL-051,GOAL-002 NOT-001 NOT-005,T06 T08 T10,Deterministic DST and timezone policy; specific resolution behavior is proposed.
+CTRL-052,NOT-002 NOT-003 OPS-003,T06 T08 T09,Occurrence identity and obsolete-reminder suppression; no exactly-once device-delivery promise.
+CTRL-053,NOT-001 NOT-003 NOT-004 PROG-004 UI-006,T04 T06 T08,Permission/offline degradation and expired-backlog suppression preserve progress event identity.
+CTRL-054,NOT-004 NOT-005 UI-006,T04 T08 T10,Capability guidance distinguishes PWA reminders from optional native alarms.
+CTRL-060,OPS-006 SHARE-009,T00 T09 T13,Accepted individual-only source policy and organizational-deployment prohibition; operative custom terms and scoped contributor/official-service rights remain release drafting work
+CTRL-061,CAT-003 OPS-006 SHARE-009,T02 T09 T13,"Separate software, original catalog annotations, exercises, publication terms, third-party content, and trademarks; distribute only permitted seed fields."
+CTRL-062,BILL-001 BILL-003 BILL-004 OPS-004 OPS-006,T07 T09 T10,"Conditional native-release gate for storefront payments, entitlements, deletion, and BYOK presentation."
+CTRL-070,SHARE-001 SHARE-002 SHARE-009 SHARE-010 NFR-001 NFR-002,T01 T04 T13,"Server-built public allowlist and exact-preview consent; separate public identifiers, caches, indexes, and analytics from private learner state."
+CTRL-071,SHARE-001 SHARE-003 SHARE-004 SHARE-005 SHARE-007 SHARE-008 SHARE-010 NFR-001 CAT-003,T01 T02 T09 T13,Authorize and deduplicate publication lifecycle actions; current rights override caches; unlisted bearer links stay outside discovery and unnecessary telemetry.
+CTRL-072,SHARE-005 SHARE-006 SHARE-008 SHARE-010 NFR-001,T01 T09 T13,"Transactional per-revision vote uniqueness, no self-votes, abuse review and attributable reports; counts remain community preference."
+CTRL-073,ADAPT-002 ADAPT-003 ADAPT-004 ADAPT-005 ADAPT-010 SHARE-002 SHARE-004 NFR-001 PED-006,T01 T05 T12 T13,Private assessment and proficiency evidence; minimum authorized model context; backend-owned waivers and no inheritance through shared copies.

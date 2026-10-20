@@ -1,0 +1,82 @@
+{
+  "schema_version": "0.2.0",
+  "goal": {
+    "prompt": "Learn LLM attention with mathematical derivations; I know introductory linear algebra.",
+    "desired_outcomes": [
+      "Derive and implement scaled dot-product attention under explicit assumptions."
+    ],
+    "scope_mode": "focused",
+    "target_certification_ids": []
+  },
+  "learner_profile": {
+    "experience_level": "mixed",
+    "background_summary": "Can write basic Python.",
+    "self_reported_known_objective_ids": [],
+    "diagnostic_result_refs": [],
+    "preferred_language": "en",
+    "accessibility_needs": [
+      "captions"
+    ],
+    "topic_self_reports": [
+      {
+        "topic_id": "topic-linear-algebra",
+        "claim": "comfortable",
+        "notes": "Self-reported until supported by reviewed evidence."
+      }
+    ],
+    "proficiency_snapshot_ref": "proficiency-snapshot-001"
+  },
+  "constraints": {
+    "weekly_minutes": 120,
+    "start_date": "2026-10-26",
+    "target_end_date": "2026-11-08",
+    "deadline_policy": "flexible",
+    "timezone": "America/New_York",
+    "available_slots": [],
+    "max_session_minutes": 40,
+    "sequence_preference": "application_first",
+    "guidance_preference": "guided",
+    "preferred_resource_types": [
+      "article",
+      "repository"
+    ]
+  },
+  "access_policy": {
+    "mode": "free_only",
+    "owned_resource_ids": [],
+    "owned_subscription_ids": [],
+    "unknown_price_policy": "exclude",
+    "allow_trial_required_resources": false,
+    "region": "US"
+  },
+  "budgets": {
+    "materials": {
+      "currency": "USD",
+      "max_minor_units": 0
+    },
+    "compute": {
+      "currency": "USD",
+      "max_minor_units": 0
+    },
+    "inference": {
+      "currency": "USD",
+      "max_minor_units": 100
+    }
+  },
+  "inference": {
+    "mode": "hosted",
+    "model_policy_id": "synthetic-model-policy"
+  },
+  "generation_options": {
+    "include_optional_certification": false,
+    "playback_speed": 1,
+    "planning_horizon_days": 14,
+    "include_hands_on": true
+  },
+  "instruction_preferences": {
+    "math_depth": "formal",
+    "topic_math_depth_overrides": [],
+    "known_material_review": "skip_if_demonstrated"
+  },
+  "template_origin": null
+}
