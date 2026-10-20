@@ -853,6 +853,8 @@ export function getWebShellBootstrapSummary(): WebShellBootstrapSummary {
 }
 
 export {
+  buildPlanMapAndOutlineModel,
+  computeActivityDurationTriplet,
   createThemeController,
   evaluateSafeCurriculumRender,
   isSafeResourceUrl,
@@ -866,4 +868,5 @@ export {
   UI_TOKENS,
   type AppearancePreferences,
   type EnvironmentMediaPreferences,
-};
+} from "../../../packages/ui/src/index.ts";
+export * from "./tracerBulletViews.ts";

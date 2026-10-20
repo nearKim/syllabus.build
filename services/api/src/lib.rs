@@ -1,13 +1,17 @@
-//! HTTP API service router (`T00`–`T01` identity, tenant isolation, HTTP concurrency, and outbox wiring).
+//! HTTP API service router (`T00`–`T04` identity, tenant isolation, HTTP concurrency, outbox wiring,
+//! reviewed catalog filtering/reviews, goal intake, deterministic generation, and curriculum overview/activation).
 
 use axum::{
     extract::{Path, Query, State},
     http::{HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
-use curriculum_application::build_readiness_report;
+use curriculum_application::{
+    build_readiness_report, execute_generation_job, interpret_goal_request, CatalogFilterQuery,
+    CatalogReviewInput,
+};
 use curriculum_domain::ActivityExecutionStatus;
 use curriculum_jobs::{OutboxJobQueue, OutboxQueueConfig};
 use curriculum_persistence::{
@@ -95,6 +99,81 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
         )
         // Retriable command endpoint with Idempotency-Key + transactional outbox enqueue
         .route("/v1/me/exports", post(create_export_job_handler))
+        // T02: Reviewed catalog filtering, curator review & quarantine routes
+        .route(
+            "/v1/resources/versions",
+            get(list_or_filter_catalog_resources_handler),
+        )
+        .route(
+            "/v1/catalog/resources",
+            get(list_or_filter_catalog_resources_handler),
+        )
+        .route(
+            "/v1/catalog/resources/{resource_version_id}/reviews",
+            post(review_catalog_resource_handler),
+        )
+        .route(
+            "/v1/admin/resources/{resource_version_id}/reviews",
+            post(review_catalog_resource_handler),
+        )
+        .route(
+            "/v1/catalog/resources/{resource_version_id}/quarantine",
+            post(quarantine_catalog_resource_handler),
+        )
+        // T03: Goal intake & async curriculum generation routes
+        .route("/v1/goals/interpret", post(interpret_goal_handler))
+        .route(
+            "/v1/curricula/goal-interpretations",
+            post(interpret_goal_handler),
+        )
+        .route("/v1/generations", post(start_generation_handler))
+        .route(
+            "/v1/curricula/generation-jobs",
+            post(start_generation_handler),
+        )
+        .route(
+            "/v1/generations/{job_id}",
+            get(get_generation_job_handler),
+        )
+        .route(
+            "/v1/generation-jobs/{job_id}",
+            get(get_generation_job_handler),
+        )
+        .route(
+            "/v1/curricula/generation-jobs/{job_id}",
+            get(get_generation_job_handler),
+        )
+        .route(
+            "/v1/generations/{job_id}/cancel",
+            post(cancel_generation_job_handler),
+        )
+        .route(
+            "/v1/generation-jobs/{job_id}/cancel",
+            post(cancel_generation_job_handler),
+        )
+        // T04: Curricula list, overview, revision inspection, activation & resource alerts
+        .route("/v1/curricula", get(list_my_curricula_handler))
+        .route("/v1/me/curricula", get(list_my_curricula_handler))
+        .route(
+            "/v1/curricula/{curriculum_id}",
+            get(get_curriculum_overview_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/revisions/{revision_id}",
+            get(get_curriculum_revision_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/revisions/{revision_id}/activate",
+            post(activate_curriculum_revision_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/active-revision",
+            put(put_active_revision_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/resource-alerts",
+            get(get_curriculum_resource_alerts_handler),
+        )
         .with_state(state)
 }
 
@@ -502,6 +581,399 @@ async fn create_export_job_handler(
             );
             (StatusCode::ACCEPTED, Json(response_body)).into_response()
         }
+        Err(err) => error_response(err),
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct CatalogFilterQueryDto {
+    pub topic: Option<String>,
+    pub free_only: Option<bool>,
+    pub budget_currency: Option<String>,
+    pub max_budget_minor_units: Option<u64>,
+    pub owned_subscription_id: Option<String>,
+    pub allow_paid_fallback: Option<bool>,
+    pub include_optional_certification: Option<bool>,
+}
+
+async fn list_or_filter_catalog_resources_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Query(q): Query<CatalogFilterQueryDto>,
+) -> Response {
+    if let Err(err) = authenticate_request(&state, &headers) {
+        return error_response(err);
+    }
+
+    let filter = CatalogFilterQuery {
+        topic: Some(q.topic.unwrap_or_else(|| "rag-python".to_string())),
+        objective_ids: Vec::new(),
+        free_only: q.free_only.unwrap_or(true),
+        budget_currency: Some(q.budget_currency.unwrap_or_else(|| "USD".to_string())),
+        max_budget_minor_units: Some(q.max_budget_minor_units.unwrap_or(0)),
+        owned_subscription_ids: q.owned_subscription_id.into_iter().collect(),
+        allow_paid_fallback: q.allow_paid_fallback.unwrap_or(false),
+        include_optional_certification: q.include_optional_certification.unwrap_or(false),
+        allow_synthetic_fixtures_for_test: false,
+    };
+
+    match state.store.filter_catalog_resources(&filter) {
+        Ok(outcome) => (StatusCode::OK, Json(outcome)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn review_catalog_resource_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(resource_version_id): Path<String>,
+    Json(input): Json<CatalogReviewInput>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .review_catalog_resource(&principal, &resource_version_id, input)
+    {
+        Ok(updated) => (StatusCode::OK, Json(updated)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuarantineRequestDto {
+    pub reason: String,
+    #[serde(default)]
+    pub replacement_resource_version_id: Option<String>,
+}
+
+async fn quarantine_catalog_resource_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(resource_version_id): Path<String>,
+    Json(req): Json<QuarantineRequestDto>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.quarantine_resource_version(
+        &principal,
+        &resource_version_id,
+        &req.reason,
+        req.replacement_resource_version_id,
+        "2026-10-20T18:00:00Z",
+    ) {
+        Ok(overlay) => (StatusCode::OK, Json(overlay)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn interpret_goal_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    if let Err(err) = authenticate_request(&state, &headers) {
+        return error_response(err);
+    }
+    match interpret_goal_request(&payload) {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn start_generation_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+
+    let idem_key = extract_header_str(&headers, "idempotency-key");
+    let operation_id = "startGeneration";
+
+    match state.store.begin_idempotent_command(
+        &principal.account_id,
+        operation_id,
+        idem_key,
+        &payload,
+        10_000,
+        86_400_000,
+    ) {
+        Ok(IdempotencyBeginOutcome::Replayed(stored)) => {
+            let status = StatusCode::from_u16(stored.status_code).unwrap_or(StatusCode::ACCEPTED);
+            let mut resp = (status, Json(stored.body)).into_response();
+            resp.headers_mut()
+                .insert("Idempotency-Replayed", HeaderValue::from_static("true"));
+            resp
+        }
+        Ok(IdempotencyBeginOutcome::Acquired) => {
+            let key_str = idem_key.unwrap_or_default();
+            let sanitized_key: String = key_str
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect();
+            let job_id = payload
+                .get("job_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("gen-job-{sanitized_key}"));
+            let curriculum_id = payload
+                .get("curriculum_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("cur-{sanitized_key}"));
+            let revision_id = payload
+                .get("revision_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("rev-{sanitized_key}-v1"));
+
+            let _ = state.outbox.enqueue(
+                job_id.clone(),
+                principal.account_id.clone(),
+                "curriculum_generation",
+                payload.clone(),
+                10_000,
+            );
+
+            match execute_generation_job(
+                &state.store,
+                &principal,
+                &job_id,
+                &curriculum_id,
+                &revision_id,
+                &payload,
+            ) {
+                Ok(job) => {
+                    let mut body = serde_json::to_value(&job).unwrap_or(Value::Null);
+                    body["generation_id"] = json!(job.job_id);
+                    state.store.complete_idempotent_command(
+                        &principal.account_id,
+                        operation_id,
+                        key_str,
+                        202,
+                        body.clone(),
+                    );
+                    let mut resp = (StatusCode::ACCEPTED, Json(body)).into_response();
+                    if let Ok(hv) = HeaderValue::from_str(&job.etag) {
+                        resp.headers_mut().insert(axum::http::header::ETAG, hv);
+                    }
+                    resp
+                }
+                Err(err) => {
+                    let status_u16 = err.http_status_code();
+                    let err_body = json!({
+                        "error": {
+                            "code": err.error_code(),
+                            "message": err.to_string(),
+                        }
+                    });
+                    state.store.complete_idempotent_command(
+                        &principal.account_id,
+                        operation_id,
+                        key_str,
+                        status_u16,
+                        err_body,
+                    );
+                    error_response(err)
+                }
+            }
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_generation_job_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.get_generation_job(&principal, &job_id) {
+        Ok(job) => {
+            let etag = job.etag.clone();
+            let mut body = serde_json::to_value(&job).unwrap_or(Value::Null);
+            body["generation_id"] = json!(job.job_id);
+            let mut resp = (StatusCode::OK, Json(body)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn cancel_generation_job_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.cancel_generation_job(&principal, &job_id) {
+        Ok(job) => {
+            let mut body = serde_json::to_value(&job).unwrap_or(Value::Null);
+            body["generation_id"] = json!(job.job_id);
+            (StatusCode::OK, Json(body)).into_response()
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn list_my_curricula_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.list_my_curricula(&principal) {
+        Ok(items) => (StatusCode::OK, Json(json!({ "items": items }))).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_curriculum_overview_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.get_curriculum_overview(&principal, &curriculum_id) {
+        Ok(overview) => {
+            let etag = overview.etag.clone();
+            let mut resp = (StatusCode::OK, Json(overview)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_curriculum_revision_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((curriculum_id, revision_id)): Path<(String, String)>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.get_curriculum_revision_by_curriculum_and_id(
+        &principal,
+        &curriculum_id,
+        &revision_id,
+    ) {
+        Ok((rev, etag)) => {
+            let mut body = serde_json::to_value(&rev).unwrap_or(Value::Null);
+            body["etag"] = json!(etag);
+            let mut resp = (StatusCode::OK, Json(body)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn activate_curriculum_revision_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((curriculum_id, revision_id)): Path<(String, String)>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    match state
+        .store
+        .activate_curriculum_revision(&principal, &curriculum_id, &revision_id, if_match)
+    {
+        Ok((updated, next_etag)) => {
+            let mut body = serde_json::to_value(&updated).unwrap_or(Value::Null);
+            body["active_revision_id"] = json!(updated.revision_id);
+            body["etag"] = json!(next_etag);
+            let mut resp = (StatusCode::OK, Json(body)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&next_etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PutActiveRevisionRequestDto {
+    pub revision_id: String,
+}
+
+async fn put_active_revision_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+    Json(req): Json<PutActiveRevisionRequestDto>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    match state.store.activate_curriculum_revision(
+        &principal,
+        &curriculum_id,
+        &req.revision_id,
+        if_match,
+    ) {
+        Ok((updated, next_etag)) => {
+            let mut body = serde_json::to_value(&updated).unwrap_or(Value::Null);
+            body["active_revision_id"] = json!(updated.revision_id);
+            body["etag"] = json!(next_etag);
+            let mut resp = (StatusCode::OK, Json(body)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&next_etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_curriculum_resource_alerts_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .list_curriculum_resource_alerts(&principal, &curriculum_id)
+    {
+        Ok(alerts) => (StatusCode::OK, Json(json!({ "items": alerts }))).into_response(),
         Err(err) => error_response(err),
     }
 }
@@ -1088,5 +1560,500 @@ mod tests {
         assert_eq!(inflight_resp.status(), StatusCode::CONFLICT);
         let inflight_body = read_body_json(inflight_resp).await;
         assert_eq!(inflight_body["error"]["code"], "idempotency_in_flight");
+    }
+
+    #[tokio::test]
+    async fn private_alpha_tracer_bullet_end_to_end_flow() {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+
+        // 1. Auth Session for Learner A
+        let auth_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/session")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "email": "learner.a@example.com",
+                            "authentication_code": "123456"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(auth_resp.status(), StatusCode::OK);
+        let auth_body = read_body_json(auth_resp).await;
+        assert_eq!(
+            auth_body["account_id"],
+            "00000000-0000-4000-8000-000000000001"
+        );
+        let session_token = auth_body["session_token"].as_str().unwrap().to_string();
+
+        // 2. Goal Intake (POST /v1/goals/interpret)
+        let goal_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/goals/interpret")
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "goal_text": "Learn LLM Engineering with Python",
+                            "weekly_minutes": 180,
+                            "target_weeks": 4,
+                            "free_only": true,
+                            "prior_skills": ["python"],
+                            "owned_subscriptions": [],
+                            "certification_required": false
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(goal_resp.status(), StatusCode::OK);
+        let goal_body = read_body_json(goal_resp).await;
+        assert_eq!(goal_body["goal_specification"]["free_only"], true);
+        assert_eq!(
+            goal_body["goal_specification"]["weekly_available_minutes"],
+            180
+        );
+        let generation_request = goal_body["normalized_generation_request"].clone();
+
+        // 3. Submit Async Generation Job with Idempotency-Key (POST /v1/generations)
+        let missing_idem_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/generations")
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&generation_request).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(missing_idem_resp.status(), StatusCode::BAD_REQUEST);
+
+        let gen_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/generations")
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("idempotency-key", "idem-alpha-gen-001")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&generation_request).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(gen_resp.status(), StatusCode::ACCEPTED);
+        let gen_body = read_body_json(gen_resp).await;
+        let job_id = gen_body["job_id"].as_str().unwrap().to_string();
+        assert_eq!(gen_body["status"], "succeeded");
+        let curriculum_id = gen_body["curriculum_id"].as_str().unwrap().to_string();
+        let revision_id = gen_body["revision_id"].as_str().unwrap().to_string();
+
+        // Replay identical POST /v1/generations with same Idempotency-Key returns 202 + Idempotency-Replayed: true
+        let gen_replay = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/generations")
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("idempotency-key", "idem-alpha-gen-001")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&generation_request).unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(gen_replay.status(), StatusCode::ACCEPTED);
+        assert_eq!(
+            gen_replay
+                .headers()
+                .get("Idempotency-Replayed")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "true"
+        );
+        let replay_body = read_body_json(gen_replay).await;
+        assert_eq!(replay_body["job_id"], job_id);
+
+        // 4. Poll Generation Status (GET /v1/generations/{job_id})
+        let poll_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/generations/{}", job_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(poll_resp.status(), StatusCode::OK);
+        let poll_body = read_body_json(poll_resp).await;
+        assert_eq!(poll_body["status"], "succeeded");
+        assert_eq!(
+            poll_body["candidate_sha256"],
+            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+        );
+
+        // 5. Inspect Curriculum Overview & Draft Revision (is_active == false prior to explicit activation)
+        let overview_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/curricula/{}", curriculum_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(overview_resp.status(), StatusCode::OK);
+        assert_eq!(
+            overview_resp.headers().get("ETag").unwrap().to_str().unwrap(),
+            "\"cur-act-v0\""
+        );
+        let overview_body = read_body_json(overview_resp).await;
+        assert!(overview_body["active_revision_id"].is_null());
+        assert_eq!(overview_body["revisions"][0]["revision_id"], revision_id);
+        assert_eq!(overview_body["revisions"][0]["is_active"], false);
+
+        let rev_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/curricula/{}/revisions/{}",
+                        curriculum_id, revision_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rev_resp.status(), StatusCode::OK);
+        let rev_body = read_body_json(rev_resp).await;
+        assert_eq!(rev_body["is_active"], false);
+        assert_eq!(rev_body["payload"]["total_estimated_minutes"], 48);
+        assert_eq!(
+            rev_body["payload"]["activities"].as_array().unwrap().len(),
+            6
+        );
+
+        // 6. Activate Curriculum Revision with If-Match optimistic concurrency
+        let activate_missing_if_match = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/curricula/{}/revisions/{}/activate",
+                        curriculum_id, revision_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            activate_missing_if_match.status(),
+            StatusCode::PRECONDITION_REQUIRED
+        );
+
+        let activate_ok = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/curricula/{}/revisions/{}/activate",
+                        curriculum_id, revision_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("if-match", "\"cur-act-v0\"")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(activate_ok.status(), StatusCode::OK);
+        assert_eq!(
+            activate_ok.headers().get("ETag").unwrap().to_str().unwrap(),
+            "\"cur-act-v1\""
+        );
+        let activate_body = read_body_json(activate_ok).await;
+        assert_eq!(activate_body["is_active"], true);
+
+        // Stale If-Match returns 412 Precondition Failed (stale_revision)
+        let activate_stale = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/curricula/{}/revisions/{}/activate",
+                        curriculum_id, revision_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("if-match", "\"cur-act-v0\"")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(activate_stale.status(), StatusCode::PRECONDITION_FAILED);
+        let stale_body = read_body_json(activate_stale).await;
+        assert_eq!(stale_body["error"]["code"], "stale_revision");
+
+        // 7. Inspect & Update Weekly Schedule with If-Match optimistic concurrency
+        let sched_get = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/schedules/{}", curriculum_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sched_get.status(), StatusCode::OK);
+        assert_eq!(
+            sched_get.headers().get("ETag").unwrap().to_str().unwrap(),
+            "\"sched-v1\""
+        );
+
+        let sched_patch = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri(format!("/v1/schedules/{}", curriculum_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("if-match", "\"sched-v1\"")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "weekly_available_minutes": 180,
+                            "required_minutes": 120,
+                            "fixed_deadline": false
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sched_patch.status(), StatusCode::OK);
+        assert_eq!(
+            sched_patch.headers().get("ETag").unwrap().to_str().unwrap(),
+            "\"sched-v2\""
+        );
+        let sched_patch_body = read_body_json(sched_patch).await;
+        assert_eq!(sched_patch_body["etag_version"], 2);
+        assert_eq!(sched_patch_body["weekly_available_minutes"], 180);
+
+        // 8. Record Activity Completion (POST /v1/curricula/{curriculum_id}/progress-events) & Verify SelfReported Proficiency
+        let progress_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/v1/curricula/{}/progress-events", curriculum_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "event_id": "idem-alpha-progress-001",
+                            "objective_id": "objective-tokenization",
+                            "activity_id": "activity-theory",
+                            "status": "self_reported_completed",
+                            "time_spent_minutes": 15
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(progress_resp.status(), StatusCode::CREATED);
+        let progress_body = read_body_json(progress_resp).await;
+        assert_eq!(
+            progress_body["objective_proficiency_status"],
+            "self_reported"
+        );
+        assert_ne!(
+            progress_body["objective_proficiency_status"],
+            "demonstrated"
+        );
+
+        let prof_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/me/proficiency")
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(prof_resp.status(), StatusCode::OK);
+        let prof_body = read_body_json(prof_resp).await;
+        assert_eq!(
+            prof_body["objectives"]["objective-tokenization"],
+            "self_reported"
+        );
+        assert_eq!(prof_body["total_time_spent_minutes"], 15);
+
+        // 9. Curator Quarantines Resource -> Resource Alert Surfaces Without Mutating Revision Payload
+        let quarantine_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/catalog/resources/synthetic-resource-tokenization-v1/quarantine")
+                    .header("authorization", "Bearer dev-curator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "reason": "Broken upstream anchor detected during freshness sweep"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(quarantine_resp.status(), StatusCode::OK);
+
+        let alerts_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/curricula/{}/resource-alerts", curriculum_id))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(alerts_resp.status(), StatusCode::OK);
+        let alerts_body = read_body_json(alerts_resp).await;
+        let alerts = alerts_body["items"].as_array().unwrap();
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(
+            alerts[0]["resource_version_id"],
+            "synthetic-resource-tokenization-v1"
+        );
+        assert_eq!(alerts[0]["severity"], "warning");
+
+        // Verify historical revision candidate_sha256 is unchanged after quarantine (@S07, @S10)
+        let rev_after_quarantine = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/curricula/{}/revisions/{}",
+                        curriculum_id, revision_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session_token))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rev_after_quarantine.status(), StatusCode::OK);
+        let rev_after_body = read_body_json(rev_after_quarantine).await;
+        assert_eq!(
+            rev_after_body["candidate_sha256"],
+            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+        );
+    }
+
+    #[tokio::test]
+    async fn t02_t03_catalog_filter_review_and_generation_cancel_routes() {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state);
+
+        // 1. GET /v1/catalog/resources with free_only=true excludes unknown-price and paid resources (@S05)
+        let cat_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/catalog/resources?topic=rag-python&free_only=true")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cat_resp.status(), StatusCode::OK);
+        let cat_body = read_body_json(cat_resp).await;
+        let items = cat_body["eligible_resources"].as_array().unwrap();
+        assert!(!items.is_empty());
+        assert!(items
+            .iter()
+            .all(|item| item["resource_version_id"] != "res-rag-unknown-price-v1"
+                && item["resource_version_id"] != "res-rag-paid-book-v1"
+                && item["is_synthetic_fixture"] == false));
+
+        // 2. Curator approval without complete rubric evidence returns 422 (missing_review_rubric_evidence)
+        let bad_review_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/catalog/resources/res-rag-unknown-price-v1/reviews")
+                    .header("authorization", "Bearer dev-curator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "decision": "approved",
+                            "rationale": "Missing rubric scores"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_review_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let bad_review_body = read_body_json(bad_review_resp).await;
+        assert_eq!(
+            bad_review_body["error"]["code"],
+            "missing_review_rubric_evidence"
+        );
     }
 }

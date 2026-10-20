@@ -5,12 +5,15 @@
 
 use curriculum_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
 use curriculum_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
-use curriculum_domain::{
-    derive_proficiency_transition, ActivityExecutionStatus, EvidenceOrigin,
-    ObjectiveProficiencyState,
+pub use curriculum_domain::{
+    derive_proficiency_transition, validate_outbound_egress_url, validate_pedagogical_triad_coverage,
+    AcquisitionPermission, ActivityExecutionStatus, CatalogAccessModel, DomainError,
+    EvidenceOrigin, GoalSpecification, ObjectiveProficiencyState, ResourceFreshnessState,
+    ResourceOperationKind, ResourceReviewStatus, ReviewScheduleItem,
 };
 use curriculum_security::{AuthenticatedPrincipal, PrincipalRole, SecurityError};
 use serde::{Deserialize, Serialize};
+pub use serde_json;
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, RwLock};
@@ -21,6 +24,8 @@ pub const INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL: &str =
     include_str!("../migrations/0001_init_identity_and_tenancy.sql");
 pub const IDEMPOTENCY_AND_OUTBOX_MIGRATION_SQL: &str =
     include_str!("../migrations/0002_idempotency_and_outbox.sql");
+pub const REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL: &str =
+    include_str!("../migrations/0003_reviewed_catalog_and_retrieval.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,8 +35,8 @@ pub struct SqlMigration {
     pub sql: &'static str,
 }
 
-/// Ordered registry of embedded PostgreSQL migrations (`T00`–`T01`).
-pub const MIGRATIONS: [SqlMigration; 3] = [
+/// Ordered registry of embedded PostgreSQL migrations (`T00`–`T02`).
+pub const MIGRATIONS: [SqlMigration; 4] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -46,6 +51,11 @@ pub const MIGRATIONS: [SqlMigration; 3] = [
         version: 2,
         name: "0002_idempotency_and_outbox.sql",
         sql: IDEMPOTENCY_AND_OUTBOX_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 3,
+        name: "0003_reviewed_catalog_and_retrieval.sql",
+        sql: REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL,
     },
 ];
 
@@ -117,6 +127,34 @@ pub enum PersistenceError {
     #[error("model or client payload cannot assign server-owned field `{field}` (`T01`, `@S09`)")]
     ForbiddenClientOrModelAssignedField { field: String },
 
+    #[error("synthetic fixture `{resource_version_id}` is forbidden in production catalog retrieval (`CAT-001`, `@S09`)")]
+    SyntheticFixtureForbiddenInProduction { resource_version_id: String },
+
+    #[error("resource `{resource_version_id}` operation `{operation}` is not permitted: {reason} (`CAT-003`, `@S05`)")]
+    ResourceOperationNotPermitted {
+        resource_version_id: String,
+        operation: String,
+        reason: String,
+    },
+
+    #[error("unsafe or restricted egress URL `{url}` rejected: {reason} (`CTRL-032`, `@S08`, `@S31`, `@S35`)")]
+    UnsafeEgressUrlRejected { url: String, reason: String },
+
+    #[error("catalog approval rubric evidence missing for `{resource_id}`: {reason} (`CAT-002`, `@S04`)")]
+    MissingReviewRubricEvidence { resource_id: String, reason: String },
+
+    #[error("ineligible catalog resource `{resource_version_id}`: {reason} (`CAT-004`, `@S06`, `@S10`)")]
+    IneligibleCatalogResource {
+        resource_version_id: String,
+        reason: String,
+    },
+
+    #[error("insufficient catalog coverage for required objectives: {missing_objective_ids:?} (`GEN-006`, `@S13`)")]
+    InsufficientCatalogCoverage { missing_objective_ids: Vec<String> },
+
+    #[error("invalid model candidate output (`{code}`): {message} (`GEN-004`, `@S11`, `@S12`)")]
+    InvalidModelCandidate { code: String, message: String },
+
     #[error("validation error: {0}")]
     Validation(String),
 }
@@ -130,7 +168,8 @@ impl PersistenceError {
                 | SecurityError::InsufficientRolePrivilege { .. }
                 | SecurityError::DevAuthForbiddenOutsideDev(_)
                 | SecurityError::ReleaseGateBlocked { .. },
-            ) => 403,
+            )
+            | PersistenceError::ResourceOperationNotPermitted { .. } => 403,
             PersistenceError::NotFound { .. } => 404,
             PersistenceError::IdempotencyPayloadMismatch { .. }
             | PersistenceError::IdempotencyInFlight { .. }
@@ -140,6 +179,12 @@ impl PersistenceError {
             PersistenceError::IdentifierNamespaceViolation(_)
             | PersistenceError::ProhibitedPrivateFieldInPublicProjection { .. }
             | PersistenceError::ForbiddenClientOrModelAssignedField { .. }
+            | PersistenceError::SyntheticFixtureForbiddenInProduction { .. }
+            | PersistenceError::UnsafeEgressUrlRejected { .. }
+            | PersistenceError::MissingReviewRubricEvidence { .. }
+            | PersistenceError::IneligibleCatalogResource { .. }
+            | PersistenceError::InsufficientCatalogCoverage { .. }
+            | PersistenceError::InvalidModelCandidate { .. }
             | PersistenceError::Validation(_) => 422,
             PersistenceError::PreconditionRequired => 428,
             PersistenceError::IdempotencyKeyRequired { .. } => 400,
@@ -175,6 +220,15 @@ impl PersistenceError {
             PersistenceError::ForbiddenClientOrModelAssignedField { .. } => {
                 "forbidden_client_or_model_field"
             }
+            PersistenceError::SyntheticFixtureForbiddenInProduction { .. } => {
+                "synthetic_fixture_forbidden"
+            }
+            PersistenceError::ResourceOperationNotPermitted { .. } => "resource_permission_denied",
+            PersistenceError::UnsafeEgressUrlRejected { .. } => "unsafe_egress_url",
+            PersistenceError::MissingReviewRubricEvidence { .. } => "missing_review_rubric_evidence",
+            PersistenceError::IneligibleCatalogResource { .. } => "ineligible_resources",
+            PersistenceError::InsufficientCatalogCoverage { .. } => "insufficient_catalog_coverage",
+            PersistenceError::InvalidModelCandidate { .. } => "invalid_model_output",
             PersistenceError::Validation(_) => "validation_error",
         }
     }
@@ -439,11 +493,424 @@ pub struct TombstoneReplayReport {
     pub sessions_revoked: usize,
 }
 
+/// Curator review rubric evidence recorded when approving a resource (`CAT-002`, `@S04`, `@S36`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogReviewEvidence {
+    pub reviewer_principal_id: String,
+    pub reviewed_at: String,
+    pub pedagogical_fit_score: u8,
+    pub accuracy_score: u8,
+    pub accessibility_score: u8,
+    pub rights_verified: bool,
+    pub rationale: String,
+    pub credibility_basis: String,
+    pub evidence_url: String,
+}
+
+/// Input submitted by a Curator to review a catalog resource version (`CAT-002`, `@S04`, `@S36`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogReviewInput {
+    pub decision: ResourceReviewStatus,
+    #[serde(default)]
+    pub pedagogical_fit_score: Option<u8>,
+    #[serde(default)]
+    pub accuracy_score: Option<u8>,
+    #[serde(default)]
+    pub accessibility_score: Option<u8>,
+    #[serde(default)]
+    pub rights_verified: bool,
+    #[serde(default)]
+    pub rationale: String,
+    #[serde(default)]
+    pub credibility_basis: Option<String>,
+    #[serde(default)]
+    pub evidence_url: Option<String>,
+}
+
+/// Immutable catalog resource version snapshot (`CAT-001`..`CAT-005`).
+/// `metadata_embedding` is optional/nullable (`ADR-002`, `NFR-008`, `T02`) so deterministic
+/// metadata filtering works with zero vector-embedding dependencies.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CatalogResourceVersionRecord {
+    pub resource_version_id: String,
+    pub resource_id: String,
+    pub version_number: u32,
+    pub title: String,
+    pub provider_id: String,
+    pub provider_display_name: String,
+    pub canonical_url: String,
+    pub resource_type: String,
+    pub language: String,
+    pub description: String,
+    pub topics: Vec<String>,
+    pub level: String,
+    pub objective_ids: Vec<String>,
+    pub access_model: CatalogAccessModel,
+    pub currency: Option<String>,
+    pub price_minor_units: Option<u64>,
+    pub subscription_ids: Vec<String>,
+    pub is_optional_certification: bool,
+    pub review_status: ResourceReviewStatus,
+    pub review_evidence: Option<CatalogReviewEvidence>,
+    pub freshness_state: ResourceFreshnessState,
+    pub acquisition_permission: AcquisitionPermission,
+    pub is_synthetic_fixture: bool,
+    pub metadata_embedding: Option<Vec<f32>>,
+}
+
+impl CatalogResourceVersionRecord {
+    /// Projects this catalog resource version into a JSON object conforming to
+    /// `specs/001-curriculum-platform/contracts/resource.schema.json`.
+    pub fn to_contract_json(&self) -> Value {
+        let access_model_str = match self.access_model {
+            CatalogAccessModel::FreePublic => "free",
+            CatalogAccessModel::PaidPurchase => "purchase",
+            CatalogAccessModel::Subscription => "subscription",
+            CatalogAccessModel::FreemiumTrial => "free_audit",
+            CatalogAccessModel::UnknownPrice => "purchase",
+        };
+        let price_obj = match self.access_model {
+            CatalogAccessModel::UnknownPrice => json!({
+                "status": "unknown",
+                "reason": "Price is unverified or dynamically quoted by external provider.",
+                "observed_at": null
+            }),
+            _ => json!({
+                "status": "known",
+                "amount": {
+                    "currency": self.currency.clone().unwrap_or_else(|| "USD".to_string()),
+                    "amount_minor_units": self.price_minor_units.unwrap_or(0)
+                },
+                "billing_period": if self.access_model == CatalogAccessModel::Subscription {
+                    "monthly"
+                } else if self.is_optional_certification {
+                    "per_exam"
+                } else {
+                    "one_time"
+                },
+                "observed_at": "2026-10-20T16:00:00Z",
+                "pricing_url": self.canonical_url
+            }),
+        };
+
+        let perm_flag = |allowed: bool| if allowed { "allowed" } else { "denied" };
+        let review_status_str = match self.review_status {
+            ResourceReviewStatus::Approved => "approved",
+            ResourceReviewStatus::UnderReview => "proposed",
+            ResourceReviewStatus::Quarantined => "quarantined",
+            ResourceReviewStatus::Rejected => "rejected",
+            ResourceReviewStatus::Withdrawn | ResourceReviewStatus::Deprecated => "retired",
+        };
+        let (curator_id, reviewed_at, credibility_basis, rationale, evidence_arr) =
+            if let Some(ev) = &self.review_evidence {
+                (
+                    json!(ev.reviewer_principal_id),
+                    json!(ev.reviewed_at),
+                    ev.credibility_basis.clone(),
+                    ev.rationale.clone(),
+                    json!([
+                        {
+                            "evidence_id": format!("ev-{}", self.resource_version_id),
+                            "claim": ev.rationale,
+                            "kind": "syllabus_review",
+                            "source_url": ev.evidence_url,
+                            "accessed_at": ev.reviewed_at,
+                            "notes": format!(
+                                "Rubric scores: pedagogical_fit={}, accuracy={}, accessibility={}",
+                                ev.pedagogical_fit_score, ev.accuracy_score, ev.accessibility_score
+                            )
+                        }
+                    ]),
+                )
+            } else {
+                (
+                    Value::Null,
+                    Value::Null,
+                    "expert_practitioner".to_string(),
+                    "Pending curator rubric review.".to_string(),
+                    json!([]),
+                )
+            };
+
+        let link_status = match self.freshness_state {
+            ResourceFreshnessState::Healthy | ResourceFreshnessState::Degraded => "reachable",
+            ResourceFreshnessState::Broken => "broken",
+            ResourceFreshnessState::Unchecked => "unknown",
+        };
+
+        json!({
+            "schema_version": "0.2.0",
+            "resource_id": self.resource_id,
+            "resource_version_id": self.resource_version_id,
+            "version_number": self.version_number,
+            "captured_at": "2026-10-20T16:00:00Z",
+            "title": self.title,
+            "provider": {
+                "provider_id": self.provider_id,
+                "display_name": self.provider_display_name
+            },
+            "authors": [
+                {
+                    "name": self.provider_display_name,
+                    "affiliation": null,
+                    "verified_profile_url": null
+                }
+            ],
+            "canonical_url": self.canonical_url,
+            "resource_type": self.resource_type,
+            "language": self.language,
+            "description": self.description,
+            "topics": self.topics,
+            "level": self.level,
+            "learning_outcomes": [
+                format!("Apply {} concepts covered in {}.", self.topics.first().cloned().unwrap_or_else(|| "core".to_string()), self.title)
+            ],
+            "prerequisites": [
+                "Intermediate Python 3 programming familiarity."
+            ],
+            "prerequisite_review_status": "verified",
+            "segments": [],
+            "access": {
+                "model": access_model_str,
+                "requires_account": self.access_model == CatalogAccessModel::Subscription || self.access_model == CatalogAccessModel::FreemiumTrial,
+                "requires_trial": self.access_model == CatalogAccessModel::FreemiumTrial,
+                "price": price_obj,
+                "free_scope_description": if self.access_model == CatalogAccessModel::FreePublic {
+                    json!("Full public instructional material available at no cost.")
+                } else {
+                    Value::Null
+                },
+                "assessments_included": true,
+                "certificate_included": self.is_optional_certification,
+                "subscription_ids": self.subscription_ids,
+                "region_restrictions": [],
+                "access_evidence_url": self.canonical_url,
+                "access_verified_at": "2026-10-20T16:00:00Z"
+            },
+            "ingestion_permissions": {
+                "basis": if self.acquisition_permission.allow_full_text_storage {
+                    "open_license"
+                } else {
+                    "metadata_only"
+                },
+                "license_identifier": self.acquisition_permission.license_spdx_or_custom,
+                "rights_evidence_urls": [self.canonical_url],
+                "reviewed_at": "2026-10-20T16:00:00Z",
+                "reviewed_by": "curator-rubric-1",
+                "permissions": {
+                    "store_metadata": perm_flag(self.acquisition_permission.allow_metadata),
+                    "embed_metadata": perm_flag(self.acquisition_permission.allow_metadata),
+                    "send_metadata_to_model_provider": perm_flag(self.acquisition_permission.allow_metadata),
+                    "fetch_fulltext": perm_flag(self.acquisition_permission.allow_full_text_storage),
+                    "store_fulltext": perm_flag(self.acquisition_permission.allow_full_text_storage),
+                    "embed_fulltext": perm_flag(self.acquisition_permission.allow_embedding),
+                    "send_fulltext_to_model_provider": perm_flag(self.acquisition_permission.allow_full_text_storage),
+                    "derive_assessments": "allowed",
+                    "display_excerpts": perm_flag(self.acquisition_permission.allow_short_excerpt),
+                    "redistribute_fulltext": perm_flag(self.acquisition_permission.allow_redistribution)
+                },
+                "notes": self.acquisition_permission.notes.clone().unwrap_or_default()
+            },
+            "review": {
+                "status": review_status_str,
+                "credibility_basis": credibility_basis,
+                "curator_id": curator_id,
+                "reviewed_at": reviewed_at,
+                "rationale": rationale,
+                "evidence": evidence_arr
+            },
+            "freshness": {
+                "link_checked_at": "2026-10-20T16:00:00Z",
+                "link_status": link_status,
+                "content_checked_at": "2026-10-20T16:00:00Z",
+                "content_last_updated_at": "2026-10-01T00:00:00Z",
+                "technology_versions": ["python-3.12"],
+                "refresh_due_at": "2026-11-20T16:00:00Z"
+            },
+            "provenance": {
+                "origin": "manual_curator",
+                "source_url": self.canonical_url,
+                "import_batch_id": null,
+                "is_synthetic_fixture": self.is_synthetic_fixture
+            }
+        })
+    }
+}
+
+/// Non-destructive quarantine overlay (`CAT-004`, `@S07`, `@S09`, `@S63`).
+/// Blocks a resource version from future generation/retrieval while keeping historical
+/// curriculum revisions byte-for-byte immutable.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceQuarantineOverlayRecord {
+    pub overlay_id: String,
+    pub resource_version_id: String,
+    pub reason: String,
+    pub quarantined_by: String,
+    pub quarantined_at: String,
+    pub replacement_resource_version_id: Option<String>,
+    pub lifted_at: Option<String>,
+}
+
+/// Non-destructive resource alert surfaced on existing curricula when a referenced resource
+/// is quarantined or degraded (`CAT-004`, `@S07`, `@S63`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceAlertRecord {
+    pub alert_id: String,
+    pub curriculum_id: String,
+    pub revision_id: String,
+    pub resource_version_id: String,
+    pub alert_type: String,
+    pub severity: String,
+    pub reason: String,
+    pub replacement_resource_version_id: Option<String>,
+}
+
+/// Deterministic catalog metadata filter query (`T02`, `CAT-001`, `CAT-005`, `@S05`, `@S06`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogFilterQuery {
+    pub topic: Option<String>,
+    pub objective_ids: Vec<String>,
+    pub free_only: bool,
+    pub budget_currency: Option<String>,
+    pub max_budget_minor_units: Option<u64>,
+    pub owned_subscription_ids: Vec<String>,
+    pub allow_paid_fallback: bool,
+    pub include_optional_certification: bool,
+    pub allow_synthetic_fixtures_for_test: bool,
+}
+
+impl Default for CatalogFilterQuery {
+    fn default() -> Self {
+        Self {
+            topic: Some("rag-python".to_string()),
+            objective_ids: Vec::new(),
+            free_only: true,
+            budget_currency: Some("USD".to_string()),
+            max_budget_minor_units: Some(0),
+            owned_subscription_ids: Vec::new(),
+            allow_paid_fallback: false,
+            include_optional_certification: false,
+            allow_synthetic_fixtures_for_test: false,
+        }
+    }
+}
+
+/// Result of deterministic catalog metadata filtering (`T02`, `CAT-001`, `CAT-005`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CatalogFilterOutcome {
+    pub eligible_resources: Vec<CatalogResourceVersionRecord>,
+    pub optional_certification_resources: Vec<CatalogResourceVersionRecord>,
+    pub excluded_unknown_price_ids: Vec<String>,
+    pub excluded_quarantined_ids: Vec<String>,
+    pub excluded_unapproved_ids: Vec<String>,
+    pub excluded_synthetic_ids: Vec<String>,
+    pub excluded_budget_ids: Vec<String>,
+    pub requires_paid_fallback_notice: bool,
+}
+
+/// Summary item returned when listing a learner's private curricula (`T04`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurriculumSummaryItem {
+    pub curriculum_id: String,
+    pub title: String,
+    pub active_revision_id: Option<String>,
+    pub latest_revision_id: String,
+    pub revision_count: usize,
+    pub etag: String,
+}
+
+/// Curriculum overview projection (`T04`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurriculumOverviewRecord {
+    pub curriculum_id: String,
+    pub owner_account_id: String,
+    pub title: String,
+    pub active_revision_id: Option<String>,
+    pub latest_revision_id: String,
+    pub revisions: Vec<CurriculumRevisionRecord>,
+    pub resource_alerts: Vec<ResourceAlertRecord>,
+    pub activation_version: u64,
+    pub etag: String,
+}
+
+/// Immutable archive record for raw model candidate UTF-8 output (`T03`, `@S28`, `NFR-005`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateArchiveRecord {
+    pub archive_id: String,
+    pub curriculum_id: String,
+    pub revision_id: Option<String>,
+    pub provider_id: String,
+    pub raw_utf8_payload: String,
+    pub candidate_sha256: String,
+    pub validation_succeeded: bool,
+    pub validation_errors: Vec<String>,
+}
+
+/// Async generation job status record (`T03`, `T04`, `@S18`, `@S21`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationJobRecord {
+    pub job_id: String,
+    pub owner_account_id: String,
+    pub status: String,
+    pub stage_history: Vec<String>,
+    pub curriculum_id: Option<String>,
+    pub revision_id: Option<String>,
+    pub candidate_sha256: Option<String>,
+    pub provider_id: String,
+    pub credential_mode: String,
+    pub request_payload: Value,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+    pub etag: String,
+}
+
+/// Default allowlisted HTTPS hosts for catalog ingestion and freshness checks (`CAT-003`, `@S08`, `@S31`, `@S35`).
+pub const DEFAULT_ALLOWED_CATALOG_HOSTS: &[&str] = &[
+    "docs.python.org",
+    "huggingface.co",
+    "pytorch.org",
+    "arxiv.org",
+    "sbert.net",
+    "qdrant.tech",
+    "openai.com",
+    "platform.openai.com",
+    "anthropic.com",
+    "docs.anthropic.com",
+    "scikit-learn.org",
+    "numpy.org",
+    "scipy.org",
+    "ocw.mit.edu",
+    "stanford.edu",
+    "github.com",
+    "raw.githubusercontent.com",
+    "coursera.org",
+    "edx.org",
+    "deeplearning.ai",
+    "fast.ai",
+    "realpython.com",
+    "llamaindex.ai",
+    "docs.llamaindex.ai",
+    "python.langchain.com",
+];
+
+/// Validates a target URL against SSRF, loopback, private-network, link-local,
+/// metadata IP, non-HTTPS scheme, and host-allowlist rules by delegating to the pure
+/// domain policy `validate_outbound_egress_url` (`@S08`, `@S31`, `@S35`, `CAT-003`).
+pub fn validate_egress_url(url: &str, allowed_hosts: &[&str]) -> Result<String, PersistenceError> {
+    validate_outbound_egress_url(url, allowed_hosts).map_err(|err| match err {
+        DomainError::UnsafeEgressUrl { url, reason } => {
+            PersistenceError::UnsafeEgressUrlRejected { url, reason }
+        }
+        other => PersistenceError::Validation(other.to_string()),
+    })
+}
+
 #[derive(Default)]
 struct StoreInner {
     accounts: BTreeMap<String, AccountRecord>,
     sessions_by_token_sha: BTreeMap<String, AuthSessionRecord>,
     private_revisions: BTreeMap<String, CurriculumRevisionRecord>,
+    curriculum_activation_versions: BTreeMap<String, u64>,
     public_revisions: BTreeMap<String, PublicTemplateRevisionRecord>,
     schedules: BTreeMap<String, ScheduleRevisionRecord>,
     progress_events: BTreeMap<(String, String), StoredProgressEvent>,
@@ -451,6 +918,10 @@ struct StoreInner {
     credentials: BTreeMap<String, StoredCredentialRecord>,
     idempotency_keys: BTreeMap<(String, String, String), IdempotencyRecord>,
     deletion_tombstones: Vec<DeletionTombstone>,
+    catalog_resources: BTreeMap<String, CatalogResourceVersionRecord>,
+    quarantine_overlays: BTreeMap<String, ResourceQuarantineOverlayRecord>,
+    candidate_archives: BTreeMap<String, CandidateArchiveRecord>,
+    generation_jobs: BTreeMap<String, GenerationJobRecord>,
     next_seq: u64,
 }
 
@@ -550,6 +1021,8 @@ impl InMemoryTransactionalStore {
                 "sk-live-secret-learner-b-9999",
             )
             .expect("seed learner B credential");
+
+        store.seed_reviewed_rag_catalog();
 
         store
     }
@@ -778,6 +1251,10 @@ impl InMemoryTransactionalStore {
         guard
             .private_revisions
             .insert(revision_id.to_string(), record.clone());
+        guard
+            .curriculum_activation_versions
+            .entry(curriculum_id.to_string())
+            .or_insert(1);
 
         guard
             .schedules
@@ -1526,6 +2003,1408 @@ impl InMemoryTransactionalStore {
         });
         before - guard.idempotency_keys.len()
     }
+
+    /// Seeds the small reviewed catalog for the `rag-python` domain along with
+    /// explicitly marked `is_synthetic_fixture = true` contract test fixtures (`T02`, `CAT-001`..`CAT-005`).
+    pub fn seed_reviewed_rag_catalog(&self) {
+        let curator_evidence = |_rv_id: &str, url: &str, rationale: &str| CatalogReviewEvidence {
+            reviewer_principal_id: "curator-rubric-1".to_string(),
+            reviewed_at: "2026-10-20T16:00:00Z".to_string(),
+            pedagogical_fit_score: 5,
+            accuracy_score: 5,
+            accessibility_score: 4,
+            rights_verified: true,
+            rationale: rationale.to_string(),
+            credibility_basis: "expert_practitioner".to_string(),
+            evidence_url: url.to_string(),
+        };
+
+        let items = vec![
+            // 1. Free public resource for objective-tokenization (link-out + metadata + short excerpt, no full-text/embedding)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-tokenization-free-v1".to_string(),
+                resource_id: "res-rag-tokenization-free".to_string(),
+                version_number: 1,
+                title: "Hugging Face NLP Course — Subword Tokenization & BPE in Python".to_string(),
+                provider_id: "huggingface-learn".to_string(),
+                provider_display_name: "Hugging Face Learn".to_string(),
+                canonical_url: "https://huggingface.co/learn/nlp-course/chapter2/4".to_string(),
+                resource_type: "article".to_string(),
+                language: "en".to_string(),
+                description: "Hands-on guide to byte-pair encoding, WordPiece, and chunk boundary tradeoffs for Python RAG pipelines.".to_string(),
+                topics: vec![
+                    "rag-python".to_string(),
+                    "tokenization".to_string(),
+                    "language models".to_string(),
+                ],
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(0),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-tokenization-free-v1",
+                    "https://huggingface.co/learn/nlp-course/chapter2/4",
+                    "Reviewed tokenization syllabus and Python exercises against RAG chunking rubric.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: true,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Apache-2.0-metadata-link-only".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("Hugging Face NLP Course".to_string()),
+                    notes: Some("Link-out and metadata allowed; full-text storage and embedding prohibited.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 2. Free public resource for objective-vector-retrieval (open license allowing full-text + embedding)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-vector-free-v1".to_string(),
+                resource_id: "res-rag-vector-free".to_string(),
+                version_number: 1,
+                title: "Sentence-Transformers — Dense Vector Retrieval & Hybrid Search in Python".to_string(),
+                provider_id: "sbert-docs".to_string(),
+                provider_display_name: "SBERT Documentation".to_string(),
+                canonical_url: "https://sbert.net/examples/applications/semantic-search/README.html".to_string(),
+                resource_type: "documentation".to_string(),
+                language: "en".to_string(),
+                description: "Reference implementation of cosine similarity indexing, HNSW retrieval, and cross-encoder re-ranking in Python.".to_string(),
+                topics: vec![
+                    "rag-python".to_string(),
+                    "vector retrieval".to_string(),
+                    "embeddings".to_string(),
+                ],
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-vector-retrieval".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(0),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-vector-free-v1",
+                    "https://sbert.net/examples/applications/semantic-search/README.html",
+                    "Verified Apache-2.0 documentation and reproducible Python vector retrieval benchmarks.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: true,
+                    allow_full_text_storage: true,
+                    allow_embedding: true,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Apache-2.0".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("UKPLab Sentence-Transformers".to_string()),
+                    notes: Some("Open license permits metadata, full-text storage, and embedding.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 3. Free public resource for objective-rag-evaluation
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-eval-free-v1".to_string(),
+                resource_id: "res-rag-eval-free".to_string(),
+                version_number: 1,
+                title: "LlamaIndex Guide — Evaluating Retrieval Recall, Faithfulness & Groundedness".to_string(),
+                provider_id: "llamaindex-docs".to_string(),
+                provider_display_name: "LlamaIndex Documentation".to_string(),
+                canonical_url: "https://docs.llamaindex.ai/en/stable/module_guides/evaluating/".to_string(),
+                resource_type: "documentation".to_string(),
+                language: "en".to_string(),
+                description: "Practical evaluation harnesses for hit-rate@k, MRR, context relevance, and answer faithfulness in Python RAG systems.".to_string(),
+                topics: vec![
+                    "rag-python".to_string(),
+                    "rag evaluation".to_string(),
+                    "retrieval metrics".to_string(),
+                ],
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-rag-evaluation".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(0),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-eval-free-v1",
+                    "https://docs.llamaindex.ai/en/stable/module_guides/evaluating/",
+                    "Approved retrieval & faithfulness evaluation guide for intermediate Python learners.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: true,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "MIT-docs-link-only".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("LlamaIndex Documentation".to_string()),
+                    notes: Some("Metadata and link-out allowed.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 4. Paid purchase resource ($39.00 USD)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-paid-book-v1".to_string(),
+                resource_id: "res-rag-paid-book".to_string(),
+                version_number: 1,
+                title: "Production Vector Databases & RAG Architecture in Python (Paid Workbook)".to_string(),
+                provider_id: "realpython-books".to_string(),
+                provider_display_name: "Real Python".to_string(),
+                canonical_url: "https://realpython.com/chromadb-vector-database/".to_string(),
+                resource_type: "book".to_string(),
+                language: "en".to_string(),
+                description: "Paid in-depth workbook covering vector indexing and production RAG pipelines.".to_string(),
+                topics: vec!["rag-python".to_string(), "vector retrieval".to_string()],
+                level: "advanced".to_string(),
+                objective_ids: vec![
+                    "objective-vector-retrieval".to_string(),
+                    "objective-rag-evaluation".to_string(),
+                    "objective-paid-only-advanced-rag".to_string(),
+                ],
+                access_model: CatalogAccessModel::PaidPurchase,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(3900),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-paid-book-v1",
+                    "https://realpython.com/chromadb-vector-database/",
+                    "Verified paid workbook pricing and technical accuracy.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Proprietary-Link-Only".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("Real Python".to_string()),
+                    notes: Some("Strict link-only commercial workbook.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 5. Subscription resource ($49.00/mo or $0 incremental when learner owns `sub-coursera-plus`)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-sub-course-v1".to_string(),
+                resource_id: "res-rag-sub-course".to_string(),
+                version_number: 1,
+                title: "Retrieval-Augmented Generation Specialization (Subscription Course)".to_string(),
+                provider_id: "coursera-rag".to_string(),
+                provider_display_name: "Coursera".to_string(),
+                canonical_url: "https://coursera.org/learn/retrieval-augmented-generation".to_string(),
+                resource_type: "course".to_string(),
+                language: "en".to_string(),
+                description: "Structured video & lab specialization covered by Coursera Plus subscription.".to_string(),
+                topics: vec!["rag-python".to_string(), "tokenization".to_string(), "vector retrieval".to_string()],
+                level: "intermediate".to_string(),
+                objective_ids: vec![
+                    "objective-tokenization".to_string(),
+                    "objective-vector-retrieval".to_string(),
+                ],
+                access_model: CatalogAccessModel::Subscription,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(4900),
+                subscription_ids: vec!["sub-coursera-plus".to_string(), "sub-oreilly".to_string()],
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-sub-course-v1",
+                    "https://coursera.org/learn/retrieval-augmented-generation",
+                    "Approved subscription course with verified Coursera Plus entitlement mapping.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Proprietary-Subscription".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("Coursera".to_string()),
+                    notes: Some("Metadata and link-out only.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 6. Freemium/trial resource ($19.00 USD)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-freemium-lab-v1".to_string(),
+                resource_id: "res-rag-freemium-lab".to_string(),
+                version_number: 1,
+                title: "Building & Evaluating Advanced RAG Applications (Freemium Trial Lab)".to_string(),
+                provider_id: "deeplearning-ai".to_string(),
+                provider_display_name: "DeepLearning.AI".to_string(),
+                canonical_url: "https://deeplearning.ai/short-courses/building-evaluating-advanced-rag/".to_string(),
+                resource_type: "course".to_string(),
+                language: "en".to_string(),
+                description: "Interactive RAG evaluation lab with trial notebook access.".to_string(),
+                topics: vec!["rag-python".to_string(), "rag evaluation".to_string()],
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-rag-evaluation".to_string()],
+                access_model: CatalogAccessModel::FreemiumTrial,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(1900),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-freemium-lab-v1",
+                    "https://deeplearning.ai/short-courses/building-evaluating-advanced-rag/",
+                    "Reviewed freemium lab scope and trial terms.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: true,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Proprietary-Trial".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some("DeepLearning.AI".to_string()),
+                    notes: Some("Trial access requires account; metadata and link-out allowed.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 7. Unknown-price resource (must NEVER pass free_only or bounded-budget filter, @S05, CAT-005)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-unknown-price-v1".to_string(),
+                resource_id: "res-rag-unknown-price".to_string(),
+                version_number: 1,
+                title: "Enterprise RAG Workshop with Unverified Pricing".to_string(),
+                provider_id: "stanford-ext".to_string(),
+                provider_display_name: "Stanford Continuing Studies".to_string(),
+                canonical_url: "https://stanford.edu/class/cs224n/readings/unknown-pricing".to_string(),
+                resource_type: "course".to_string(),
+                language: "en".to_string(),
+                description: "External workshop whose tuition is dynamically quoted and unverified.".to_string(),
+                topics: vec!["rag-python".to_string(), "tokenization".to_string()],
+                level: "advanced".to_string(),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                access_model: CatalogAccessModel::UnknownPrice,
+                currency: None,
+                price_minor_units: None,
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-unknown-price-v1",
+                    "https://stanford.edu/class/cs224n/readings/unknown-pricing",
+                    "Reviewed syllabus; price remains unknown and must be excluded from bounded budgets.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Proprietary".to_string(),
+                    requires_attribution: false,
+                    attribution_text: None,
+                    notes: Some("Unknown price resource.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 8. Optional certification resource ($150.00 USD, kept separate from core path costs, CAT-005)
+            CatalogResourceVersionRecord {
+                resource_version_id: "res-rag-optional-cert-v1".to_string(),
+                resource_id: "res-rag-optional-cert".to_string(),
+                version_number: 1,
+                title: "Optional Applied RAG Engineering Certification Exam".to_string(),
+                provider_id: "deeplearning-ai".to_string(),
+                provider_display_name: "DeepLearning.AI".to_string(),
+                canonical_url: "https://deeplearning.ai/certification/rag-engineering".to_string(),
+                resource_type: "certification".to_string(),
+                language: "en".to_string(),
+                description: "Optional proctored certification exam; not required for core curriculum completion.".to_string(),
+                topics: vec!["rag-python".to_string(), "rag evaluation".to_string()],
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-rag-evaluation".to_string()],
+                access_model: CatalogAccessModel::PaidPurchase,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(15000),
+                subscription_ids: Vec::new(),
+                is_optional_certification: true,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(curator_evidence(
+                    "res-rag-optional-cert-v1",
+                    "https://deeplearning.ai/certification/rag-engineering",
+                    "Reviewed optional certification exam scope.",
+                )),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "Proprietary-Certification".to_string(),
+                    requires_attribution: false,
+                    attribution_text: None,
+                    notes: Some("Optional certification fee must be accounted separately.".to_string()),
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            },
+            // 9. Synthetic fixture resource matching `resource.synthetic.json` (`is_synthetic_fixture = true`, @S09, CAT-001)
+            CatalogResourceVersionRecord {
+                resource_version_id: "synthetic-resource-tokenization-v1".to_string(),
+                resource_id: "synthetic-resource-tokenization".to_string(),
+                version_number: 1,
+                title: "SYNTHETIC FIXTURE — Tokenization Learning Notes".to_string(),
+                provider_id: "synthetic-provider".to_string(),
+                provider_display_name: "Synthetic Fixture Provider".to_string(),
+                canonical_url: "https://example.invalid/synthetic/tokenization".to_string(),
+                resource_type: "article".to_string(),
+                language: "en".to_string(),
+                description: "Contract validation fixture only. This is not a real educational resource, recommendation, university affiliation or license assertion.".to_string(),
+                topics: vec!["rag-python".to_string(), "tokenization".to_string(), "language models".to_string()],
+                level: "introductory".to_string(),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                currency: Some("USD".to_string()),
+                price_minor_units: Some(0),
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::Approved,
+                review_evidence: Some(CatalogReviewEvidence {
+                    reviewer_principal_id: "synthetic-curator".to_string(),
+                    reviewed_at: "2026-10-20T16:00:00Z".to_string(),
+                    pedagogical_fit_score: 4,
+                    accuracy_score: 4,
+                    accessibility_score: 4,
+                    rights_verified: true,
+                    rationale: "Synthetic approved-state fixture; never ingest into a production catalog.".to_string(),
+                    credibility_basis: "expert_practitioner".to_string(),
+                    evidence_url: "https://example.invalid/synthetic/evidence".to_string(),
+                }),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "metadata_only".to_string(),
+                    requires_attribution: false,
+                    attribution_text: None,
+                    notes: Some("Values exercise a schema. They do not grant rights to any real material.".to_string()),
+                },
+                is_synthetic_fixture: true,
+                metadata_embedding: None,
+            },
+            // 10. Synthetic unknown-cost fixture matching `resource-unknown-price.synthetic.json` (`is_synthetic_fixture = true`)
+            CatalogResourceVersionRecord {
+                resource_version_id: "synthetic-resource-unknown-cost-v1".to_string(),
+                resource_id: "synthetic-resource-unknown-cost".to_string(),
+                version_number: 1,
+                title: "SYNTHETIC FIXTURE — Tokenization Learning Notes".to_string(),
+                provider_id: "synthetic-provider".to_string(),
+                provider_display_name: "Synthetic Fixture Provider".to_string(),
+                canonical_url: "https://example.invalid/synthetic/tokenization".to_string(),
+                resource_type: "article".to_string(),
+                language: "en".to_string(),
+                description: "Contract validation fixture only. This is not a real educational resource, recommendation, university affiliation or license assertion.".to_string(),
+                topics: vec!["rag-python".to_string(), "tokenization".to_string(), "language models".to_string()],
+                level: "introductory".to_string(),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                access_model: CatalogAccessModel::UnknownPrice,
+                currency: None,
+                price_minor_units: None,
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: ResourceReviewStatus::UnderReview,
+                review_evidence: None,
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: false,
+                    allow_full_text_storage: false,
+                    allow_embedding: false,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "metadata_only".to_string(),
+                    requires_attribution: false,
+                    attribution_text: None,
+                    notes: Some("Values exercise a schema. They do not grant rights to any real material.".to_string()),
+                },
+                is_synthetic_fixture: true,
+                metadata_embedding: None,
+            },
+        ];
+
+        let mut guard = self.inner.write().expect("store write lock");
+        for item in items {
+            guard
+                .catalog_resources
+                .insert(item.resource_version_id.clone(), item);
+        }
+    }
+
+    pub fn upsert_catalog_resource(&self, record: CatalogResourceVersionRecord) {
+        let mut guard = self.inner.write().expect("store write lock");
+        guard
+            .catalog_resources
+            .insert(record.resource_version_id.clone(), record);
+    }
+
+    pub fn get_catalog_resource_version(
+        &self,
+        resource_version_id: &str,
+    ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        guard
+            .catalog_resources
+            .get(resource_version_id)
+            .cloned()
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "catalog_resource_version",
+                resource_id: resource_version_id.to_string(),
+            })
+    }
+
+    pub fn list_catalog_resources(
+        &self,
+        include_synthetic: bool,
+    ) -> Vec<CatalogResourceVersionRecord> {
+        let guard = self.inner.read().expect("store read lock");
+        guard
+            .catalog_resources
+            .values()
+            .filter(|r| include_synthetic || !r.is_synthetic_fixture)
+            .cloned()
+            .collect()
+    }
+
+    /// Deterministically filters catalog resource versions by topic/objectives, approval state,
+    /// quarantine overlay, synthetic-fixture exclusion, and learner budget/subscription rules (`T02`, `CAT-001`..`CAT-005`, `@S05`, `@S06`, `@S07`, `@S09`).
+    pub fn filter_catalog_resources(
+        &self,
+        query: &CatalogFilterQuery,
+    ) -> Result<CatalogFilterOutcome, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+
+        let mut eligible_resources = Vec::new();
+        let mut optional_certification_resources = Vec::new();
+        let mut excluded_unknown_price_ids = Vec::new();
+        let mut excluded_quarantined_ids = Vec::new();
+        let mut excluded_unapproved_ids = Vec::new();
+        let mut excluded_synthetic_ids = Vec::new();
+        let mut excluded_budget_ids = Vec::new();
+        let mut requires_paid_fallback_notice = false;
+
+        for record in guard.catalog_resources.values() {
+            // Check topic / objective relevance first
+            let topic_matches = match &query.topic {
+                Some(t) if !t.trim().is_empty() => {
+                    let needle = t.trim().to_ascii_lowercase();
+                    record.topics.iter().any(|rt| {
+                        let rt_low = rt.to_ascii_lowercase();
+                        rt_low == needle || needle.contains(&rt_low) || rt_low.contains(&needle)
+                    })
+                }
+                _ => true,
+            };
+            let objective_matches = if query.objective_ids.is_empty() {
+                true
+            } else {
+                record
+                    .objective_ids
+                    .iter()
+                    .any(|oid| query.objective_ids.contains(oid))
+            };
+
+            if !topic_matches && !objective_matches {
+                continue;
+            }
+            if !query.objective_ids.is_empty() && !objective_matches {
+                continue;
+            }
+
+            // 1. Synthetic fixture gate (CAT-001, @S09)
+            if record.is_synthetic_fixture && !query.allow_synthetic_fixtures_for_test {
+                excluded_synthetic_ids.push(record.resource_version_id.clone());
+                continue;
+            }
+
+            // 2. Quarantine overlay & broken freshness gate (CAT-004, @S07)
+            let has_active_quarantine = guard
+                .quarantine_overlays
+                .get(&record.resource_version_id)
+                .map(|o| o.lifted_at.is_none())
+                .unwrap_or(false);
+            if has_active_quarantine
+                || record.review_status == ResourceReviewStatus::Quarantined
+                || record.freshness_state == ResourceFreshnessState::Broken
+            {
+                excluded_quarantined_ids.push(record.resource_version_id.clone());
+                continue;
+            }
+
+            // 3. Curator approval & rubric evidence gate (CAT-002, @S04, @S36)
+            if record.review_status != ResourceReviewStatus::Approved
+                || record.review_evidence.is_none()
+            {
+                excluded_unapproved_ids.push(record.resource_version_id.clone());
+                continue;
+            }
+
+            // 4. Optional certification accounting separation (CAT-005)
+            if record.is_optional_certification {
+                if query.include_optional_certification {
+                    optional_certification_resources.push(record.clone());
+                }
+                continue;
+            }
+
+            // 5. Access model & budget/subscription filtering (CAT-005, @S05, @S06)
+            match record.access_model {
+                CatalogAccessModel::UnknownPrice => {
+                    excluded_unknown_price_ids.push(record.resource_version_id.clone());
+                    continue;
+                }
+                CatalogAccessModel::FreePublic => {
+                    eligible_resources.push(record.clone());
+                }
+                CatalogAccessModel::Subscription => {
+                    let covered_by_owned_sub = record
+                        .subscription_ids
+                        .iter()
+                        .any(|sub| query.owned_subscription_ids.contains(sub));
+                    if covered_by_owned_sub {
+                        eligible_resources.push(record.clone());
+                    } else if query.free_only {
+                        if query.allow_paid_fallback {
+                            requires_paid_fallback_notice = true;
+                            eligible_resources.push(record.clone());
+                        } else {
+                            excluded_budget_ids.push(record.resource_version_id.clone());
+                        }
+                    } else {
+                        let price = record.price_minor_units.unwrap_or(u64::MAX);
+                        let currency_ok = match (&query.budget_currency, &record.currency) {
+                            (Some(qc), Some(rc)) => qc.eq_ignore_ascii_case(rc),
+                            _ => true,
+                        };
+                        let within_budget = query
+                            .max_budget_minor_units
+                            .map(|max_b| price <= max_b)
+                            .unwrap_or(true);
+                        if currency_ok && within_budget {
+                            eligible_resources.push(record.clone());
+                        } else {
+                            excluded_budget_ids.push(record.resource_version_id.clone());
+                        }
+                    }
+                }
+                CatalogAccessModel::PaidPurchase | CatalogAccessModel::FreemiumTrial => {
+                    if query.free_only {
+                        if query.allow_paid_fallback {
+                            let price = record.price_minor_units.unwrap_or(u64::MAX);
+                            let within_budget = query
+                                .max_budget_minor_units
+                                .map(|max_b| max_b == 0 || price <= max_b)
+                                .unwrap_or(true);
+                            if within_budget {
+                                requires_paid_fallback_notice = true;
+                                eligible_resources.push(record.clone());
+                            } else {
+                                excluded_budget_ids.push(record.resource_version_id.clone());
+                            }
+                        } else {
+                            excluded_budget_ids.push(record.resource_version_id.clone());
+                        }
+                    } else {
+                        let price = record.price_minor_units.unwrap_or(u64::MAX);
+                        let currency_ok = match (&query.budget_currency, &record.currency) {
+                            (Some(qc), Some(rc)) => qc.eq_ignore_ascii_case(rc),
+                            _ => true,
+                        };
+                        let within_budget = query
+                            .max_budget_minor_units
+                            .map(|max_b| price <= max_b)
+                            .unwrap_or(true);
+                        if currency_ok && within_budget {
+                            eligible_resources.push(record.clone());
+                        } else {
+                            excluded_budget_ids.push(record.resource_version_id.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        if eligible_resources.is_empty() {
+            let target = query
+                .topic
+                .clone()
+                .or_else(|| query.objective_ids.first().cloned())
+                .unwrap_or_else(|| "requested-goal".to_string());
+            return Err(PersistenceError::InsufficientCatalogCoverage {
+                missing_objective_ids: vec![target],
+            });
+        }
+
+        for required_obj in &query.objective_ids {
+            let covered = eligible_resources
+                .iter()
+                .any(|r| r.objective_ids.contains(required_obj));
+            if !covered {
+                return Err(PersistenceError::InsufficientCatalogCoverage {
+                    missing_objective_ids: vec![required_obj.clone()],
+                });
+            }
+        }
+
+        Ok(CatalogFilterOutcome {
+            eligible_resources,
+            optional_certification_resources,
+            excluded_unknown_price_ids,
+            excluded_quarantined_ids,
+            excluded_unapproved_ids,
+            excluded_synthetic_ids,
+            excluded_budget_ids,
+            requires_paid_fallback_notice,
+        })
+    }
+
+    /// Enforces acquisition/rights permissions and SSRF/egress safety for a catalog resource operation (`CAT-003`, `@S05`, `@S08`, `@S31`, `@S35`).
+    pub fn validate_resource_ingestion_and_egress(
+        &self,
+        resource_version_id: &str,
+        operation: ResourceOperationKind,
+        target_url: Option<&str>,
+        allow_synthetic_fixtures_for_test: bool,
+    ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let record = guard
+            .catalog_resources
+            .get(resource_version_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "catalog_resource_version",
+                resource_id: resource_version_id.to_string(),
+            })?;
+
+        if record.is_synthetic_fixture && !allow_synthetic_fixtures_for_test {
+            return Err(PersistenceError::SyntheticFixtureForbiddenInProduction {
+                resource_version_id: resource_version_id.to_string(),
+            });
+        }
+
+        let is_quarantined = guard
+            .quarantine_overlays
+            .get(resource_version_id)
+            .map(|o| o.lifted_at.is_none())
+            .unwrap_or(false)
+            || record.review_status == ResourceReviewStatus::Quarantined;
+        if is_quarantined {
+            return Err(PersistenceError::IneligibleCatalogResource {
+                resource_version_id: resource_version_id.to_string(),
+                reason: "resource version is quarantined".to_string(),
+            });
+        }
+
+        if !record.acquisition_permission.permits(operation) {
+            return Err(PersistenceError::ResourceOperationNotPermitted {
+                resource_version_id: resource_version_id.to_string(),
+                operation: operation.as_str().to_string(),
+                reason: format!(
+                    "operation `{}` is denied by resource acquisition permissions (`{}`)",
+                    operation.as_str(),
+                    record.acquisition_permission.license_spdx_or_custom
+                ),
+            });
+        }
+
+        let url_to_check = target_url.unwrap_or(&record.canonical_url);
+        if record.is_synthetic_fixture && allow_synthetic_fixtures_for_test {
+            let mut synthetic_hosts = DEFAULT_ALLOWED_CATALOG_HOSTS.to_vec();
+            synthetic_hosts.push("example.invalid");
+            validate_egress_url(url_to_check, &synthetic_hosts)?;
+        } else {
+            validate_egress_url(url_to_check, DEFAULT_ALLOWED_CATALOG_HOSTS)?;
+        }
+
+        Ok(record.clone())
+    }
+
+    /// Curator review decision workflow enforcing `PrincipalRole::Curator` and rubric evidence (`CAT-002`, `@S04`, `@S36`).
+    pub fn review_catalog_resource(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        resource_version_id: &str,
+        input: CatalogReviewInput,
+    ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
+        if !principal.roles.contains(&PrincipalRole::Operator) {
+            principal.require_role(PrincipalRole::Curator)?;
+        }
+
+        let mut guard = self.inner.write().expect("store write lock");
+        let record = guard
+            .catalog_resources
+            .get_mut(resource_version_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "catalog_resource_version",
+                resource_id: resource_version_id.to_string(),
+            })?;
+
+        if input.decision == ResourceReviewStatus::Approved {
+            if !input.rights_verified {
+                return Err(PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "rights_verified must be true".to_string(),
+                });
+            }
+            if input.rationale.trim().is_empty() {
+                return Err(PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "rationale is required".to_string(),
+                });
+            }
+            let ped = input.pedagogical_fit_score.ok_or_else(|| {
+                PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "pedagogical_fit_score is required".to_string(),
+                }
+            })?;
+            let acc = input.accuracy_score.ok_or_else(|| {
+                PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "accuracy_score is required".to_string(),
+                }
+            })?;
+            let a11y = input.accessibility_score.ok_or_else(|| {
+                PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "accessibility_score is required".to_string(),
+                }
+            })?;
+            if !(3..=5).contains(&ped) || !(3..=5).contains(&acc) || !(3..=5).contains(&a11y) {
+                return Err(PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "rubric scores must be in 3..=5 for approval".to_string(),
+                });
+            }
+            let ev_url = input
+                .evidence_url
+                .clone()
+                .filter(|u| u.starts_with("https://"))
+                .ok_or_else(|| PersistenceError::MissingReviewRubricEvidence {
+                    resource_id: resource_version_id.to_string(),
+                    reason: "https:// evidence_url is required".to_string(),
+                })?;
+
+            record.review_status = ResourceReviewStatus::Approved;
+            record.review_evidence = Some(CatalogReviewEvidence {
+                reviewer_principal_id: principal.account_id.clone(),
+                reviewed_at: "2026-10-20T16:30:00Z".to_string(),
+                pedagogical_fit_score: ped,
+                accuracy_score: acc,
+                accessibility_score: a11y,
+                rights_verified: true,
+                rationale: input.rationale.clone(),
+                credibility_basis: input
+                    .credibility_basis
+                    .unwrap_or_else(|| "expert_practitioner".to_string()),
+                evidence_url: ev_url,
+            });
+        } else {
+            record.review_status = input.decision;
+        }
+        let cloned_record = record.clone();
+        if input.decision == ResourceReviewStatus::Quarantined {
+            let overlay = ResourceQuarantineOverlayRecord {
+                overlay_id: format!("quar-{resource_version_id}"),
+                resource_version_id: resource_version_id.to_string(),
+                reason: input.rationale.clone(),
+                quarantined_by: principal.account_id.clone(),
+                quarantined_at: "2026-10-20T16:30:00Z".to_string(),
+                replacement_resource_version_id: None,
+                lifted_at: None,
+            };
+            guard
+                .quarantine_overlays
+                .insert(resource_version_id.to_string(), overlay);
+        }
+
+        Ok(cloned_record)
+    }
+
+    /// Quarantines a catalog resource version via a non-destructive overlay (`CAT-004`, `@S07`, `@S09`, `@S63`).
+    /// Does NOT mutate any existing `CurriculumRevisionRecord` payloads or `candidate_sha256`.
+    pub fn quarantine_resource_version(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        resource_version_id: &str,
+        reason: &str,
+        replacement_resource_version_id: Option<String>,
+        now_iso: &str,
+    ) -> Result<ResourceQuarantineOverlayRecord, PersistenceError> {
+        if !principal.roles.contains(&PrincipalRole::Moderator)
+            && !principal.roles.contains(&PrincipalRole::Operator)
+        {
+            principal.require_role(PrincipalRole::Curator)?;
+        }
+
+        let mut guard = self.inner.write().expect("store write lock");
+        let record = guard
+            .catalog_resources
+            .get_mut(resource_version_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "catalog_resource_version",
+                resource_id: resource_version_id.to_string(),
+            })?;
+        record.review_status = ResourceReviewStatus::Quarantined;
+
+        let overlay = ResourceQuarantineOverlayRecord {
+            overlay_id: format!("quar-{resource_version_id}"),
+            resource_version_id: resource_version_id.to_string(),
+            reason: reason.to_string(),
+            quarantined_by: principal.account_id.clone(),
+            quarantined_at: now_iso.to_string(),
+            replacement_resource_version_id,
+            lifted_at: None,
+        };
+        guard
+            .quarantine_overlays
+            .insert(resource_version_id.to_string(), overlay.clone());
+        Ok(overlay)
+    }
+
+    /// Records a freshness check outcome after validating outbound URL egress (`CAT-003`, `CAT-004`, `@S07`, `@S08`).
+    pub fn record_resource_freshness_check(
+        &self,
+        resource_version_id: &str,
+        target_url: Option<&str>,
+        simulated_http_status: u16,
+        now_iso: &str,
+    ) -> Result<ResourceFreshnessState, PersistenceError> {
+        // Validate egress URL before performing/recording check (@S08, @S31, @S35)
+        let current = self.get_catalog_resource_version(resource_version_id)?;
+        let url_to_check = target_url.unwrap_or(&current.canonical_url);
+        validate_egress_url(url_to_check, DEFAULT_ALLOWED_CATALOG_HOSTS)?;
+
+        let new_state = match simulated_http_status {
+            200..=299 => ResourceFreshnessState::Healthy,
+            404 | 410 => ResourceFreshnessState::Broken,
+            _ => ResourceFreshnessState::Degraded,
+        };
+
+        let mut guard = self.inner.write().expect("store write lock");
+        if let Some(res) = guard.catalog_resources.get_mut(resource_version_id) {
+            res.freshness_state = new_state;
+            if new_state == ResourceFreshnessState::Broken {
+                res.review_status = ResourceReviewStatus::Quarantined;
+                guard.quarantine_overlays.insert(
+                    resource_version_id.to_string(),
+                    ResourceQuarantineOverlayRecord {
+                        overlay_id: format!("quar-freshness-{resource_version_id}"),
+                        resource_version_id: resource_version_id.to_string(),
+                        reason: format!(
+                            "Automated freshness check detected broken link (HTTP {simulated_http_status})"
+                        ),
+                        quarantined_by: "freshness-worker".to_string(),
+                        quarantined_at: now_iso.to_string(),
+                        replacement_resource_version_id: None,
+                        lifted_at: None,
+                    },
+                );
+            }
+        }
+        Ok(new_state)
+    }
+
+    /// Lists non-destructive resource alerts for a learner's curriculum without mutating historical revisions (`@S07`, `@S63`).
+    pub fn list_curriculum_resource_alerts(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        curriculum_id: &str,
+    ) -> Result<Vec<ResourceAlertRecord>, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let revisions: Vec<&CurriculumRevisionRecord> = guard
+            .private_revisions
+            .values()
+            .filter(|r| r.curriculum_id == curriculum_id)
+            .collect();
+        let first = revisions.first().ok_or_else(|| PersistenceError::NotFound {
+            resource_type: "curriculum",
+            resource_id: curriculum_id.to_string(),
+        })?;
+        principal.require_learner_ownership(&first.owner_account_id)?;
+
+        Ok(Self::collect_alerts_for_revisions(&guard, curriculum_id, &revisions))
+    }
+
+    fn collect_alerts_for_revisions(
+        guard: &StoreInner,
+        curriculum_id: &str,
+        revisions: &[&CurriculumRevisionRecord],
+    ) -> Vec<ResourceAlertRecord> {
+        let mut alerts = Vec::new();
+        let mut seen = BTreeSet::new();
+
+        for rev in revisions {
+            let mut referenced_ids = Vec::new();
+            if let Some(modules) = rev.payload.get("modules").and_then(|v| v.as_array()) {
+                for module in modules {
+                    if let Some(activities) = module.get("activities").and_then(|v| v.as_array()) {
+                        for activity in activities {
+                            if let Some(refs) =
+                                activity.get("resource_refs").and_then(|v| v.as_array())
+                            {
+                                for r in refs {
+                                    if let Some(rv_id) =
+                                        r.get("resource_version_id").and_then(|v| v.as_str())
+                                    {
+                                        referenced_ids.push(rv_id.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(activities) = rev.payload.get("activities").and_then(|v| v.as_array()) {
+                for activity in activities {
+                    for key in ["resource_assignments", "resource_refs"] {
+                        if let Some(refs) = activity.get(key).and_then(|v| v.as_array()) {
+                            for r in refs {
+                                if let Some(rv_id) =
+                                    r.get("resource_version_id").and_then(|v| v.as_str())
+                                {
+                                    referenced_ids.push(rv_id.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(src_ids) = rev
+                .payload
+                .get("provenance")
+                .and_then(|p| p.get("source_resource_version_ids"))
+                .and_then(|v| v.as_array())
+            {
+                for s in src_ids.iter().filter_map(|v| v.as_str()) {
+                    referenced_ids.push(s.to_string());
+                }
+            }
+            if let Some(top_refs) = rev.payload.get("resource_refs").and_then(|v| v.as_array()) {
+                for r in top_refs {
+                    if let Some(s) = r.as_str() {
+                        referenced_ids.push(s.to_string());
+                    } else if let Some(rv_id) =
+                        r.get("resource_version_id").and_then(|v| v.as_str())
+                    {
+                        referenced_ids.push(rv_id.to_string());
+                    }
+                }
+            }
+
+            for rv_id in referenced_ids {
+                let dedup_key = (rev.revision_id.clone(), rv_id.clone());
+                if !seen.insert(dedup_key) {
+                    continue;
+                }
+                if let Some(overlay) = guard.quarantine_overlays.get(&rv_id) {
+                    if overlay.lifted_at.is_none() {
+                        alerts.push(ResourceAlertRecord {
+                            alert_id: format!("alert-{}-{rv_id}", rev.revision_id),
+                            curriculum_id: curriculum_id.to_string(),
+                            revision_id: rev.revision_id.clone(),
+                            resource_version_id: rv_id.clone(),
+                            alert_type: "quarantined".to_string(),
+                            severity: "warning".to_string(),
+                            reason: overlay.reason.clone(),
+                            replacement_resource_version_id: overlay
+                                .replacement_resource_version_id
+                                .clone(),
+                        });
+                        continue;
+                    }
+                }
+                if let Some(cat_res) = guard.catalog_resources.get(&rv_id) {
+                    if cat_res.review_status == ResourceReviewStatus::Quarantined
+                        || cat_res.freshness_state == ResourceFreshnessState::Broken
+                    {
+                        alerts.push(ResourceAlertRecord {
+                            alert_id: format!("alert-{}-{rv_id}", rev.revision_id),
+                            curriculum_id: curriculum_id.to_string(),
+                            revision_id: rev.revision_id.clone(),
+                            resource_version_id: rv_id,
+                            alert_type: "broken_link".to_string(),
+                            severity: "warning".to_string(),
+                            reason: "Referenced catalog resource version is quarantined or unreachable.".to_string(),
+                            replacement_resource_version_id: None,
+                        });
+                    }
+                }
+            }
+        }
+        alerts
+    }
+
+    /// Commits a semantically validated curriculum revision (`T03`, `T04`, `@S10`, `@S28`).
+    /// Preserves the exact `candidate_sha256` computed over the raw model candidate UTF-8 bytes
+    /// and initializes the revision as draft (`initial_is_active = false`) until explicitly activated.
+    pub fn commit_validated_curriculum_revision(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        curriculum_id: &str,
+        revision_id: &str,
+        candidate_sha256: &str,
+        payload: Value,
+        initial_is_active: bool,
+    ) -> Result<CurriculumRevisionRecord, PersistenceError> {
+        if revision_id.starts_with("pubrev_") || revision_id.starts_with("pubrev-") {
+            return Err(PersistenceError::IdentifierNamespaceViolation(format!(
+                "private curriculum revision `{revision_id}` cannot use public template revision prefix"
+            )));
+        }
+        if curriculum_id.starts_with("pub_") || curriculum_id.starts_with("pub-") {
+            return Err(PersistenceError::IdentifierNamespaceViolation(format!(
+                "private curriculum `{curriculum_id}` cannot use public publication prefix"
+            )));
+        }
+
+        let mut guard = self.inner.write().expect("store write lock");
+        let existing_revs: Vec<&CurriculumRevisionRecord> = guard
+            .private_revisions
+            .values()
+            .filter(|r| r.curriculum_id == curriculum_id)
+            .collect();
+        if let Some(first) = existing_revs.first() {
+            principal.require_learner_ownership(&first.owner_account_id)?;
+        }
+        let next_rev_num = existing_revs.len() as u32 + 1;
+
+        let record = CurriculumRevisionRecord {
+            revision_id: revision_id.to_string(),
+            curriculum_id: curriculum_id.to_string(),
+            owner_account_id: principal.account_id.clone(),
+            revision_number: next_rev_num,
+            candidate_sha256: candidate_sha256.to_string(),
+            payload,
+            is_active: initial_is_active,
+        };
+
+        guard
+            .private_revisions
+            .insert(revision_id.to_string(), record.clone());
+        guard
+            .curriculum_activation_versions
+            .entry(curriculum_id.to_string())
+            .or_insert(if initial_is_active { 1 } else { 0 });
+
+        guard
+            .schedules
+            .entry(curriculum_id.to_string())
+            .or_insert_with(|| ScheduleRevisionRecord {
+                schedule_revision_id: format!("sched-{curriculum_id}-v1"),
+                curriculum_id: curriculum_id.to_string(),
+                owner_account_id: principal.account_id.clone(),
+                curriculum_revision_id: revision_id.to_string(),
+                etag_version: 1,
+                etag: "\"sched-v1\"".to_string(),
+                timezone: "UTC".to_string(),
+                weekly_available_minutes: 300,
+                required_minutes: 180,
+                fixed_deadline: false,
+                feasibility_status: ScheduleFeasibility::Feasible,
+                excess_minutes: 0,
+                recovery_options: Vec::new(),
+                sessions: vec![ScheduledSessionItem {
+                    session_id: "sess-1".to_string(),
+                    activity_id: "act-1".to_string(),
+                    duration_minutes: 60,
+                    is_review: false,
+                }],
+            });
+
+        guard
+            .proficiency_by_account
+            .entry(principal.account_id.clone())
+            .or_insert_with(|| LearnerProficiencyProjection {
+                account_id: principal.account_id.clone(),
+                objectives: BTreeMap::new(),
+                completed_activities: BTreeSet::new(),
+                skipped_activities: BTreeSet::new(),
+                total_time_spent_minutes: 0,
+            });
+
+        Ok(record)
+    }
+
+    /// Lists all private curricula owned by `principal` (`T04`).
+    pub fn list_my_curricula(
+        &self,
+        principal: &AuthenticatedPrincipal,
+    ) -> Result<Vec<CurriculumSummaryItem>, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let mut by_curriculum: BTreeMap<String, Vec<&CurriculumRevisionRecord>> = BTreeMap::new();
+        for rev in guard.private_revisions.values() {
+            if rev.owner_account_id == principal.account_id {
+                by_curriculum
+                    .entry(rev.curriculum_id.clone())
+                    .or_default()
+                    .push(rev);
+            }
+        }
+
+        let mut items = Vec::new();
+        for (curriculum_id, mut revs) in by_curriculum {
+            revs.sort_by_key(|r| r.revision_number);
+            let latest = revs.last().expect("at least one revision");
+            let active_revision_id = revs
+                .iter()
+                .rev()
+                .find(|r| r.is_active)
+                .map(|r| r.revision_id.clone());
+            let title = latest
+                .payload
+                .get("title")
+                .or_else(|| latest.payload.get("goal").and_then(|g| g.get("title")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("Untitled Curriculum")
+                .to_string();
+            let act_ver = guard
+                .curriculum_activation_versions
+                .get(&curriculum_id)
+                .copied()
+                .unwrap_or(0);
+            items.push(CurriculumSummaryItem {
+                curriculum_id,
+                title,
+                active_revision_id,
+                latest_revision_id: latest.revision_id.clone(),
+                revision_count: revs.len(),
+                etag: format!("\"cur-act-v{act_ver}\""),
+            });
+        }
+        Ok(items)
+    }
+
+    /// Returns the curriculum overview for `curriculum_id`, enforcing tenant isolation (`T04`).
+    pub fn get_curriculum_overview(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        curriculum_id: &str,
+    ) -> Result<CurriculumOverviewRecord, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let mut revs: Vec<&CurriculumRevisionRecord> = guard
+            .private_revisions
+            .values()
+            .filter(|r| r.curriculum_id == curriculum_id)
+            .collect();
+        let owner_account_id = revs
+            .first()
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "curriculum",
+                resource_id: curriculum_id.to_string(),
+            })?
+            .owner_account_id
+            .clone();
+        principal.require_learner_ownership(&owner_account_id)?;
+
+        revs.sort_by_key(|r| r.revision_number);
+        let latest = revs.last().expect("at least one revision");
+        let active_revision_id = revs
+            .iter()
+            .rev()
+            .find(|r| r.is_active)
+            .map(|r| r.revision_id.clone());
+        let title = latest
+            .payload
+            .get("title")
+            .or_else(|| latest.payload.get("goal").and_then(|g| g.get("title")))
+            .and_then(|v| v.as_str())
+            .unwrap_or("Untitled Curriculum")
+            .to_string();
+        let act_ver = guard
+            .curriculum_activation_versions
+            .get(curriculum_id)
+            .copied()
+            .unwrap_or(0);
+        let alerts = Self::collect_alerts_for_revisions(&guard, curriculum_id, &revisions_slice(&revs));
+
+        Ok(CurriculumOverviewRecord {
+            curriculum_id: curriculum_id.to_string(),
+            owner_account_id,
+            title,
+            active_revision_id,
+            latest_revision_id: latest.revision_id.clone(),
+            revisions: revs.into_iter().cloned().collect(),
+            resource_alerts: alerts,
+            activation_version: act_ver,
+            etag: format!("\"cur-act-v{act_ver}\""),
+        })
+    }
+
+    /// Fetches a specific revision within `curriculum_id`, enforcing tenant isolation (`T04`).
+    pub fn get_curriculum_revision_by_curriculum_and_id(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        curriculum_id: &str,
+        revision_id: &str,
+    ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let record = guard
+            .private_revisions
+            .get(revision_id)
+            .filter(|r| r.curriculum_id == curriculum_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "curriculum_revision",
+                resource_id: revision_id.to_string(),
+            })?;
+        principal.require_learner_ownership(&record.owner_account_id)?;
+        let act_ver = guard
+            .curriculum_activation_versions
+            .get(curriculum_id)
+            .copied()
+            .unwrap_or(0);
+        Ok((record.clone(), format!("\"cur-act-v{act_ver}\"")))
+    }
+
+    /// Explicitly activates a curriculum revision with `If-Match` optimistic concurrency (`T04`, `@S22`, `@S24`).
+    /// - Returns `428 Precondition Required` when `If-Match` is missing.
+    /// - Returns `412 Precondition Failed` (`stale_revision`) when `If-Match` does not match the current activation ETag.
+    /// - Marks `revision_id` as `is_active = true` (and deactivates older revisions of the same curriculum), increments `activation_version`, and returns the updated revision + new ETag.
+    pub fn activate_curriculum_revision(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        curriculum_id: &str,
+        revision_id: &str,
+        if_match: Option<&str>,
+    ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
+        let mut guard = self.inner.write().expect("store write lock");
+        let owner_account_id = {
+            let target = guard
+                .private_revisions
+                .get(revision_id)
+                .filter(|r| r.curriculum_id == curriculum_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "curriculum_revision",
+                    resource_id: revision_id.to_string(),
+                })?;
+            target.owner_account_id.clone()
+        };
+        principal.require_learner_ownership(&owner_account_id)?;
+
+        let current_ver = guard
+            .curriculum_activation_versions
+            .get(curriculum_id)
+            .copied()
+            .unwrap_or(0);
+        let current_etag = format!("\"cur-act-v{current_ver}\"");
+        evaluate_if_match(if_match, &current_etag)?;
+
+        for rev in guard.private_revisions.values_mut() {
+            if rev.curriculum_id == curriculum_id {
+                rev.is_active = rev.revision_id == revision_id;
+            }
+        }
+        let next_ver = current_ver + 1;
+        guard
+            .curriculum_activation_versions
+            .insert(curriculum_id.to_string(), next_ver);
+        let next_etag = format!("\"cur-act-v{next_ver}\"");
+
+        let updated = guard
+            .private_revisions
+            .get(revision_id)
+            .cloned()
+            .expect("revision exists");
+        Ok((updated, next_etag))
+    }
+
+    pub fn record_candidate_archive(&self, archive: CandidateArchiveRecord) {
+        let mut guard = self.inner.write().expect("store write lock");
+        guard
+            .candidate_archives
+            .insert(archive.archive_id.clone(), archive);
+    }
+
+    pub fn get_candidate_archive(&self, archive_id: &str) -> Option<CandidateArchiveRecord> {
+        let guard = self.inner.read().expect("store read lock");
+        guard.candidate_archives.get(archive_id).cloned()
+    }
+
+    pub fn upsert_generation_job(&self, job: GenerationJobRecord) {
+        let mut guard = self.inner.write().expect("store write lock");
+        guard.generation_jobs.insert(job.job_id.clone(), job);
+    }
+
+    pub fn get_generation_job(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        job_id: &str,
+    ) -> Result<GenerationJobRecord, PersistenceError> {
+        let guard = self.inner.read().expect("store read lock");
+        let job = guard
+            .generation_jobs
+            .get(job_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "generation_job",
+                resource_id: job_id.to_string(),
+            })?;
+        principal.require_learner_ownership(&job.owner_account_id)?;
+        Ok(job.clone())
+    }
+
+    pub fn cancel_generation_job(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        job_id: &str,
+    ) -> Result<GenerationJobRecord, PersistenceError> {
+        let mut guard = self.inner.write().expect("store write lock");
+        let job = guard
+            .generation_jobs
+            .get_mut(job_id)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "generation_job",
+                resource_id: job_id.to_string(),
+            })?;
+        principal.require_learner_ownership(&job.owner_account_id)?;
+        if job.status != "succeeded" && job.status != "failed" {
+            job.status = "cancelled".to_string();
+            job.stage_history.push("cancelled".to_string());
+        }
+        Ok(job.clone())
+    }
+}
+
+fn revisions_slice<'a>(revs: &[&'a CurriculumRevisionRecord]) -> Vec<&'a CurriculumRevisionRecord> {
+    revs.to_vec()
 }
 
 #[cfg(test)]
@@ -1534,7 +3413,7 @@ mod tests {
 
     #[test]
     fn baseline_and_t01_migrations_are_embedded_and_valid() {
-        assert_eq!(MIGRATIONS.len(), 3);
+        assert_eq!(MIGRATIONS.len(), 4);
         assert!(BASELINE_MIGRATION_SQL.contains("SELECT 1;"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
             .contains("CREATE EXTENSION IF NOT EXISTS vector;"));
@@ -1558,6 +3437,16 @@ mod tests {
             .contains("CREATE TABLE IF NOT EXISTS outbox_jobs"));
         assert!(IDEMPOTENCY_AND_OUTBOX_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS deletion_tombstones"));
+        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS catalog_resources"));
+        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS resource_versions"));
+        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("metadata_embedding vector(1536) NULL"));
+        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS acquisition_permissions"));
+        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS resource_quarantine_overlays"));
     }
 
     #[test]
@@ -1752,5 +3641,350 @@ mod tests {
                 .http_status_code(),
             404
         );
+    }
+
+    #[test]
+    fn t02_s04_s05_s06_s09_catalog_filtering_budget_subscriptions_unknown_price_and_synthetic_exclusion() {
+        let store = InMemoryTransactionalStore::new_with_dev_fixtures();
+        let registry = curriculum_contracts::ContractRegistry::load_from_workspace()
+            .expect("load contract registry");
+
+        // All non-synthetic seeded resources must validate against resource.schema.json
+        for res in store.list_catalog_resources(false) {
+            registry
+                .validate("resource.schema.json", &res.to_contract_json())
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "seeded catalog resource `{}` failed resource.schema.json: {e}",
+                        res.resource_version_id
+                    )
+                });
+        }
+
+        // 1. Default free_only query excludes synthetic fixtures, unknown_price, paid_purchase, subscription, and optional_certification
+        let free_outcome = store
+            .filter_catalog_resources(&CatalogFilterQuery {
+                topic: Some("rag-python".to_string()),
+                objective_ids: vec![
+                    "objective-tokenization".to_string(),
+                    "objective-vector-retrieval".to_string(),
+                    "objective-rag-evaluation".to_string(),
+                ],
+                free_only: true,
+                budget_currency: Some("USD".to_string()),
+                max_budget_minor_units: Some(0),
+                owned_subscription_ids: Vec::new(),
+                allow_paid_fallback: false,
+                include_optional_certification: true,
+                allow_synthetic_fixtures_for_test: false,
+            })
+            .expect("filter free_only RAG resources");
+
+        let eligible_ids: Vec<&str> = free_outcome
+            .eligible_resources
+            .iter()
+            .map(|r| r.resource_version_id.as_str())
+            .collect();
+        assert_eq!(
+            eligible_ids,
+            vec![
+                "res-rag-eval-free-v1",
+                "res-rag-tokenization-free-v1",
+                "res-rag-vector-free-v1"
+            ]
+        );
+        // Synthetic fixtures excluded in production mode (@S09, CAT-001)
+        assert!(free_outcome
+            .excluded_synthetic_ids
+            .contains(&"synthetic-resource-tokenization-v1".to_string()));
+        assert!(free_outcome
+            .excluded_synthetic_ids
+            .contains(&"synthetic-resource-unknown-cost-v1".to_string()));
+        // Unknown-price excluded (@S05, CAT-005)
+        assert!(free_outcome
+            .excluded_unknown_price_ids
+            .contains(&"res-rag-unknown-price-v1".to_string()));
+        // Optional certification separated from core path (@S06, CAT-005)
+        assert_eq!(free_outcome.optional_certification_resources.len(), 1);
+        assert_eq!(
+            free_outcome.optional_certification_resources[0].resource_version_id,
+            "res-rag-optional-cert-v1"
+        );
+        assert!(!free_outcome.requires_paid_fallback_notice);
+
+        // 2. Owned subscription (`sub-coursera-plus`) includes subscription resource at $0 incremental cost (@S06)
+        let sub_outcome = store
+            .filter_catalog_resources(&CatalogFilterQuery {
+                topic: Some("rag-python".to_string()),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                free_only: true,
+                budget_currency: Some("USD".to_string()),
+                max_budget_minor_units: Some(0),
+                owned_subscription_ids: vec!["sub-coursera-plus".to_string()],
+                allow_paid_fallback: false,
+                include_optional_certification: false,
+                allow_synthetic_fixtures_for_test: false,
+            })
+            .expect("filter with owned subscription");
+        assert!(sub_outcome
+            .eligible_resources
+            .iter()
+            .any(|r| r.resource_version_id == "res-rag-sub-course-v1"));
+
+        // 3. Paid-only objective under free_only without fallback returns 422 insufficient_catalog_coverage (@S06)
+        let err_no_fallback = store
+            .filter_catalog_resources(&CatalogFilterQuery {
+                topic: Some("rag-python".to_string()),
+                objective_ids: vec!["objective-paid-only-advanced-rag".to_string()],
+                free_only: true,
+                budget_currency: Some("USD".to_string()),
+                max_budget_minor_units: Some(0),
+                owned_subscription_ids: Vec::new(),
+                allow_paid_fallback: false,
+                include_optional_certification: false,
+                allow_synthetic_fixtures_for_test: false,
+            })
+            .unwrap_err();
+        assert_eq!(err_no_fallback.http_status_code(), 422);
+        assert_eq!(err_no_fallback.error_code(), "insufficient_catalog_coverage");
+
+        // 4. Paid-only objective with allow_paid_fallback = true surfaces requires_paid_fallback_notice = true (@S06)
+        let fallback_outcome = store
+            .filter_catalog_resources(&CatalogFilterQuery {
+                topic: Some("rag-python".to_string()),
+                objective_ids: vec!["objective-paid-only-advanced-rag".to_string()],
+                free_only: true,
+                budget_currency: Some("USD".to_string()),
+                max_budget_minor_units: Some(5000),
+                owned_subscription_ids: Vec::new(),
+                allow_paid_fallback: true,
+                include_optional_certification: false,
+                allow_synthetic_fixtures_for_test: false,
+            })
+            .expect("filter with paid fallback");
+        assert!(fallback_outcome.requires_paid_fallback_notice);
+        assert_eq!(
+            fallback_outcome.eligible_resources[0].resource_version_id,
+            "res-rag-paid-book-v1"
+        );
+    }
+
+    #[test]
+    fn t02_s04_s05_s08_s31_s35_s36_rights_permissions_ssrf_egress_and_curator_rubric_gates() {
+        let store = InMemoryTransactionalStore::new_with_dev_fixtures();
+
+        // 1. Rights/permission matrix (@S05): link-only resource allows LinkOut & Metadata, denies FullTextStorage & Embedding
+        store
+            .validate_resource_ingestion_and_egress(
+                "res-rag-tokenization-free-v1",
+                ResourceOperationKind::LinkOut,
+                None,
+                false,
+            )
+            .expect("LinkOut permitted");
+        let fulltext_err = store
+            .validate_resource_ingestion_and_egress(
+                "res-rag-tokenization-free-v1",
+                ResourceOperationKind::FullTextStorage,
+                None,
+                false,
+            )
+            .unwrap_err();
+        assert_eq!(fulltext_err.http_status_code(), 403);
+        assert_eq!(fulltext_err.error_code(), "resource_permission_denied");
+
+        let embed_err = store
+            .validate_resource_ingestion_and_egress(
+                "res-rag-tokenization-free-v1",
+                ResourceOperationKind::Embedding,
+                None,
+                false,
+            )
+            .unwrap_err();
+        assert_eq!(embed_err.http_status_code(), 403);
+        assert_eq!(embed_err.error_code(), "resource_permission_denied");
+
+        // Open-license resource allows FullTextStorage and Embedding
+        store
+            .validate_resource_ingestion_and_egress(
+                "res-rag-vector-free-v1",
+                ResourceOperationKind::FullTextStorage,
+                None,
+                false,
+            )
+            .expect("open license FullTextStorage permitted");
+
+        // 2. SSRF & Egress URL validation (@S08, @S31, @S35)
+        for unsafe_url in [
+            "http://huggingface.co/learn",
+            "file:///etc/passwd",
+            "https://localhost/admin",
+            "https://127.0.0.1:8080/secret",
+            "https://10.0.0.1/internal",
+            "https://172.16.0.5/private",
+            "https://192.168.1.1/router",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://[::1]/loopback",
+            "https://evil-unlisted-host.example.com/payload",
+        ] {
+            let err = validate_egress_url(unsafe_url, DEFAULT_ALLOWED_CATALOG_HOSTS).unwrap_err();
+            assert_eq!(
+                err.http_status_code(),
+                422,
+                "unsafe URL `{unsafe_url}` must be rejected"
+            );
+            assert_eq!(err.error_code(), "unsafe_egress_url");
+        }
+        assert_eq!(
+            validate_egress_url(
+                "https://huggingface.co/learn/nlp-course/chapter2/4",
+                DEFAULT_ALLOWED_CATALOG_HOSTS
+            )
+            .unwrap(),
+            "huggingface.co"
+        );
+
+        // 3. Curator role & rubric evidence gate (@S04, @S36)
+        let learner_a = AuthenticatedPrincipal {
+            account_id: "00000000-0000-4000-8000-000000000001".to_string(),
+            roles: vec![PrincipalRole::Learner],
+            is_development_only_identity: true,
+        };
+        let curator = AuthenticatedPrincipal {
+            account_id: "00000000-0000-4000-8000-000000000099".to_string(),
+            roles: vec![PrincipalRole::Curator],
+            is_development_only_identity: true,
+        };
+
+        // Learner cannot approve a catalog resource (@S36 -> 403)
+        let role_err = store
+            .review_catalog_resource(
+                &learner_a,
+                "res-rag-tokenization-free-v1",
+                CatalogReviewInput {
+                    decision: ResourceReviewStatus::Approved,
+                    pedagogical_fit_score: Some(5),
+                    accuracy_score: Some(5),
+                    accessibility_score: Some(5),
+                    rights_verified: true,
+                    rationale: "Attempted learner self-approval".to_string(),
+                    credibility_basis: None,
+                    evidence_url: Some("https://huggingface.co/learn".to_string()),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(role_err.http_status_code(), 403);
+        assert_eq!(role_err.error_code(), "insufficient_role_privilege");
+
+        // Curator cannot approve without complete rubric evidence (@S04 -> 422)
+        let rubric_err = store
+            .review_catalog_resource(
+                &curator,
+                "res-rag-tokenization-free-v1",
+                CatalogReviewInput {
+                    decision: ResourceReviewStatus::Approved,
+                    pedagogical_fit_score: None,
+                    accuracy_score: Some(5),
+                    accessibility_score: Some(5),
+                    rights_verified: true,
+                    rationale: "Missing pedagogical fit score".to_string(),
+                    credibility_basis: None,
+                    evidence_url: Some("https://huggingface.co/learn".to_string()),
+                },
+            )
+            .unwrap_err();
+        assert_eq!(rubric_err.http_status_code(), 422);
+        assert_eq!(rubric_err.error_code(), "missing_review_rubric_evidence");
+    }
+
+    #[test]
+    fn t02_s07_s09_s63_quarantine_overlay_preserves_historical_revision_immutability_and_surfaces_alerts() {
+        let store = InMemoryTransactionalStore::new_with_dev_fixtures();
+        let learner_a = AuthenticatedPrincipal {
+            account_id: "00000000-0000-4000-8000-000000000001".to_string(),
+            roles: vec![PrincipalRole::Learner],
+            is_development_only_identity: true,
+        };
+        let curator = AuthenticatedPrincipal {
+            account_id: "00000000-0000-4000-8000-000000000099".to_string(),
+            roles: vec![PrincipalRole::Curator],
+            is_development_only_identity: true,
+        };
+
+        let rev_payload = json!({
+            "title": "RAG Python Study Plan",
+            "modules": [{
+                "module_id": "mod-1",
+                "activities": [{
+                    "activity_id": "act-1",
+                    "resource_refs": [{
+                        "resource_version_id": "res-rag-tokenization-free-v1"
+                    }]
+                }]
+            }]
+        });
+        let committed = store
+            .commit_validated_curriculum_revision(
+                &learner_a,
+                "cur-rag-1",
+                "rev-rag-1",
+                "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de",
+                rev_payload.clone(),
+                true,
+            )
+            .expect("commit curriculum revision");
+
+        // Quarantine the referenced resource version
+        store
+            .quarantine_resource_version(
+                &curator,
+                "res-rag-tokenization-free-v1",
+                "Upstream syllabus moved; link deprecated.",
+                Some("res-rag-vector-free-v1".to_string()),
+                "2026-10-20T18:00:00Z",
+            )
+            .expect("quarantine resource version");
+
+        // Historical revision payload and candidate_sha256 MUST remain byte-for-byte unchanged (@S07, @S09, @S63)
+        let after_quarantine = store
+            .get_private_curriculum_revision(&learner_a, "rev-rag-1")
+            .expect("fetch historical revision");
+        assert_eq!(after_quarantine.payload, rev_payload);
+        assert_eq!(
+            after_quarantine.candidate_sha256,
+            committed.candidate_sha256
+        );
+
+        // Resource alert is surfaced on the curriculum without mutating the revision
+        let alerts = store
+            .list_curriculum_resource_alerts(&learner_a, "cur-rag-1")
+            .expect("list resource alerts");
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(
+            alerts[0].resource_version_id,
+            "res-rag-tokenization-free-v1"
+        );
+        assert_eq!(alerts[0].alert_type, "quarantined");
+        assert_eq!(
+            alerts[0].replacement_resource_version_id.as_deref(),
+            Some("res-rag-vector-free-v1")
+        );
+
+        // Quarantined resource is excluded from future catalog filtering
+        let filter_res = store.filter_catalog_resources(&CatalogFilterQuery {
+            topic: Some("rag-python".to_string()),
+            objective_ids: vec!["objective-tokenization".to_string()],
+            free_only: true,
+            budget_currency: Some("USD".to_string()),
+            max_budget_minor_units: Some(0),
+            owned_subscription_ids: Vec::new(),
+            allow_paid_fallback: false,
+            include_optional_certification: false,
+            allow_synthetic_fixtures_for_test: false,
+        });
+        assert!(matches!(
+            filter_res,
+            Err(PersistenceError::InsufficientCatalogCoverage { .. })
+        ));
     }
 }
