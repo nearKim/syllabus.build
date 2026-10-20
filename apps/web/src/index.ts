@@ -855,7 +855,9 @@ export function getWebShellBootstrapSummary(): WebShellBootstrapSummary {
 export {
   buildPlanMapAndOutlineModel,
   computeActivityDurationTriplet,
+  createAssessmentSessionController,
   createThemeController,
+  evaluateMasteryGateInterstitial,
   evaluateSafeCurriculumRender,
   isSafeResourceUrl,
   renderAccessibleMathFormula,
@@ -867,6 +869,12 @@ export {
   resolveThemePalette,
   UI_TOKENS,
   type AppearancePreferences,
+  type AssessmentSessionController,
+  type AssessmentSessionModel,
   type EnvironmentMediaPreferences,
+  type MasteryGateModalState,
 } from "../../../packages/ui/src/index.ts";
 export * from "./tracerBulletViews.ts";
+export * from "./scheduleAndOffline.ts";
+export * from "./diagnosticsAndAdaptation.ts";
+export * from "./byokAndReminders.ts";

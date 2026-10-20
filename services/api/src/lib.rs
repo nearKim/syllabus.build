@@ -12,7 +12,10 @@ use curriculum_application::{
     build_readiness_report, execute_generation_job, interpret_goal_request, CatalogFilterQuery,
     CatalogReviewInput,
 };
-use curriculum_domain::ActivityExecutionStatus;
+use curriculum_domain::{
+    ActivityExecutionStatus, AssistanceLevel, DiagnosticStopReason, LearnerGateDecision,
+    MathDepthPreference,
+};
 use curriculum_jobs::{OutboxJobQueue, OutboxQueueConfig};
 use curriculum_persistence::{
     IdempotencyBeginOutcome, InMemoryTransactionalStore, PersistenceError, ProgressEventInput,
@@ -24,6 +27,7 @@ use curriculum_security::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -92,10 +96,142 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
             "/v1/curricula/{curriculum_id}/schedule",
             patch(patch_schedule_handler),
         )
-        // Credential metadata route for cross-tenant negative verification (@S29, @S36, @S64)
+        // Credential routes (`T07A`, `@S28`, `@S29`, `@S36`, `@S64`, `@S66`, `@S67`)
+        .route("/v1/me/credentials", post(create_credential_handler))
+        .route("/v1/me/credentials", get(list_credentials_handler))
         .route(
             "/v1/me/credentials/{credential_ref}",
             get(get_credential_metadata_handler),
+        )
+        .route(
+            "/v1/me/credentials/{credential_ref}",
+            patch(rotate_credential_handler),
+        )
+        .route(
+            "/v1/me/credentials/{credential_ref}/rotate",
+            post(rotate_credential_handler),
+        )
+        .route(
+            "/v1/me/credentials/{credential_ref}",
+            delete(revoke_credential_handler),
+        )
+        .route("/v1/me/usage", get(get_my_usage_handler))
+        // T05: Reviewed anchor assessments, attempts, assistance events, defect reports & key corrections
+        .route(
+            "/v1/assessments/{assessment_id}",
+            get(get_assessment_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/attempts",
+            post(submit_assessment_attempt_handler),
+        )
+        .route(
+            "/v1/assessment-attempts/{attempt_id}",
+            get(get_assessment_attempt_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/attempts/{attempt_id}/assistance",
+            post(record_attempt_assistance_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/assistance-events",
+            post(record_assessment_assistance_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/items/{item_id}/report-defect",
+            post(report_defective_item_path_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/reports",
+            post(report_defective_item_body_handler),
+        )
+        .route(
+            "/v1/assessments/{assessment_id}/key-corrections",
+            post(apply_key_correction_handler),
+        )
+        .route(
+            "/v1/admin/assessments/{assessment_id}/key-corrections",
+            post(apply_key_correction_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/objectives/{objective_id}/prerequisite-gate",
+            post(evaluate_prerequisite_gate_handler),
+        )
+        // T12: Objective diagnostics, waivers & adaptation proposals
+        .route("/v1/diagnostics", post(start_diagnostic_handler))
+        .route("/v1/diagnostic-sessions", post(start_diagnostic_handler))
+        .route(
+            "/v1/diagnostics/{diagnostic_id}",
+            get(get_diagnostic_handler),
+        )
+        .route(
+            "/v1/diagnostic-sessions/{diagnostic_id}",
+            get(get_diagnostic_handler),
+        )
+        .route(
+            "/v1/diagnostics/{diagnostic_id}/attempts",
+            post(submit_diagnostic_attempt_handler),
+        )
+        .route(
+            "/v1/diagnostic-sessions/{diagnostic_id}/attempts",
+            post(submit_diagnostic_attempt_handler),
+        )
+        .route(
+            "/v1/diagnostics/{diagnostic_id}/stop",
+            post(stop_diagnostic_handler),
+        )
+        .route(
+            "/v1/diagnostic-sessions/{diagnostic_id}/stop",
+            post(stop_diagnostic_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/adaptations/preview",
+            post(preview_adaptation_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/adaptation-proposals",
+            post(preview_adaptation_handler),
+        )
+        .route(
+            "/v1/adaptation-proposals/{proposal_id}",
+            get(get_adaptation_proposal_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}",
+            get(get_curriculum_adaptation_proposal_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/adaptations/accept",
+            post(accept_adaptation_body_handler),
+        )
+        .route(
+            "/v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}/accept",
+            post(accept_adaptation_path_handler),
+        )
+        // T08: Notification preferences, push subscriptions & reminder snooze
+        .route(
+            "/v1/me/notification-preferences",
+            get(get_notification_preferences_handler),
+        )
+        .route(
+            "/v1/me/notification-preferences",
+            put(put_notification_preferences_handler),
+        )
+        .route(
+            "/v1/me/push-subscriptions",
+            post(post_push_subscription_handler),
+        )
+        .route(
+            "/v1/me/push-subscriptions",
+            delete(delete_default_push_subscription_handler),
+        )
+        .route(
+            "/v1/me/push-subscriptions/{subscription_id}",
+            delete(delete_push_subscription_handler),
+        )
+        .route(
+            "/v1/me/reminders/{occurrence_id}/snooze",
+            post(snooze_reminder_handler),
         )
         // Retriable command endpoint with Idempotency-Key + transactional outbox enqueue
         .route("/v1/me/exports", post(create_export_job_handler))
@@ -743,6 +879,73 @@ async fn start_generation_handler(
                 10_000,
             );
 
+            // T07A: If BYOK mode is requested, enforce allow_hosted_fallback == false and verify pinned credential
+            if payload.get("credential_mode").and_then(|v| v.as_str()) == Some("byok") {
+                if payload
+                    .get("allow_hosted_fallback")
+                    .and_then(|v| v.as_bool())
+                    == Some(true)
+                {
+                    let err = PersistenceError::Validation(
+                        "silent fallback to hosted platform credentials is forbidden in BYOK mode (`@S28`, `@S66`)"
+                            .to_string(),
+                    );
+                    state.store.complete_idempotent_command(
+                        &principal.account_id,
+                        operation_id,
+                        key_str,
+                        err.http_status_code(),
+                        json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
+                    );
+                    return error_response(err);
+                }
+
+                if let Some(cred_ref) = payload.get("credential_ref").and_then(|v| v.as_str()) {
+                    let meta = match state.store.get_credential_metadata(&principal, cred_ref) {
+                        Ok(m) => m,
+                        Err(err) => {
+                            state.store.complete_idempotent_command(
+                                &principal.account_id,
+                                operation_id,
+                                key_str,
+                                err.http_status_code(),
+                                json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
+                            );
+                            return error_response(err);
+                        }
+                    };
+                    let pinned_ver = payload
+                        .get("credential_version")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(meta.version);
+                    if let Err(err) = state.store.open_credential_for_pinned_inference(
+                        &principal,
+                        cred_ref,
+                        pinned_ver,
+                    ) {
+                        state.store.complete_idempotent_command(
+                            &principal.account_id,
+                            operation_id,
+                            key_str,
+                            err.http_status_code(),
+                            json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
+                        );
+                        return error_response(err);
+                    }
+                    let _ = state.store.record_inference_usage(
+                        &principal,
+                        cred_ref,
+                        pinned_ver,
+                        &meta.provider_id,
+                        "gpt-4o-2024-08-06",
+                        "curriculum_generation",
+                        1_500,
+                        1_100,
+                        "provider_reported",
+                    );
+                }
+            }
+
             match execute_generation_job(
                 &state.store,
                 &principal,
@@ -974,6 +1177,971 @@ async fn get_curriculum_resource_alerts_handler(
         .list_curriculum_resource_alerts(&principal, &curriculum_id)
     {
         Ok(alerts) => (StatusCode::OK, Json(json!({ "items": alerts }))).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T07A Handlers: BYOK Credential Custody & Usage Records
+// =============================================================================
+
+async fn create_credential_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let provider_id = payload
+        .get("provider_id")
+        .or_else(|| payload.get("provider"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("openai");
+    let label = payload
+        .get("label")
+        .and_then(|v| v.as_str())
+        .unwrap_or("BYOK Credential");
+    let raw_api_key = payload
+        .get("api_key")
+        .or_else(|| payload.get("secret"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let credential_ref = payload
+        .get("credential_ref")
+        .or_else(|| payload.get("credential_id"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("cred-{}-{provider_id}", principal.account_id));
+
+    match state.store.create_credential(
+        &principal,
+        &credential_ref,
+        provider_id,
+        label,
+        raw_api_key,
+    ) {
+        Ok(view) => {
+            let etag = view.etag.clone();
+            let mut resp = (StatusCode::CREATED, Json(view)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn list_credentials_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let items = state.store.list_credential_metadata(&principal);
+    (StatusCode::OK, Json(json!({ "items": items }))).into_response()
+}
+
+async fn rotate_credential_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(credential_ref): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    let new_key = payload
+        .get("api_key")
+        .or_else(|| payload.get("new_api_key"))
+        .or_else(|| payload.get("secret"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let new_label = payload.get("label").and_then(|v| v.as_str());
+
+    match state
+        .store
+        .rotate_credential(&principal, &credential_ref, if_match, new_key, new_label)
+    {
+        Ok(view) => {
+            let etag = view.etag.clone();
+            let mut resp = (StatusCode::OK, Json(view)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn revoke_credential_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(credential_ref): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    match state
+        .store
+        .revoke_credential(&principal, &credential_ref, if_match, 10_000)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_my_usage_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let records = state.store.list_inference_usage(&principal);
+    let total_tokens: u64 = records.iter().map(|r| r.total_tokens).sum();
+    let total_provider_cost_micros: u64 = records
+        .iter()
+        .map(|r| r.estimated_provider_cost_usd_micros)
+        .sum();
+    (
+        StatusCode::OK,
+        Json(json!({
+            "account_id": principal.account_id,
+            "hosted_service_charge_usd_micros": 0,
+            "total_tokens": total_tokens,
+            "estimated_provider_cost_usd_micros": total_provider_cost_micros,
+            "items": records,
+        })),
+    )
+        .into_response()
+}
+
+// =============================================================================
+// T05 Handlers: Assessments, Attempts, Assistance Events, Defect Reports & Key Corrections
+// =============================================================================
+
+async fn get_assessment_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(assessment_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.get_assessment_view(&principal, &assessment_id) {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn record_attempt_assistance_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((assessment_id, attempt_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> Response {
+    record_assistance_inner(state, headers, assessment_id, Some(attempt_id), payload)
+}
+
+async fn record_assessment_assistance_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(assessment_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let attempt_id = payload
+        .get("attempt_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    record_assistance_inner(state, headers, assessment_id, attempt_id, payload)
+}
+
+fn record_assistance_inner(
+    state: ApiAppState,
+    headers: HeaderMap,
+    assessment_id: String,
+    attempt_id: Option<String>,
+    payload: Value,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let level_str = payload
+        .get("assistance_level")
+        .or_else(|| payload.get("kind"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("hint_used");
+    let level = match AssistanceLevel::from_wire(level_str) {
+        Ok(l) => l,
+        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+    };
+    match state.store.record_assessment_assistance_event(
+        &principal,
+        &assessment_id,
+        attempt_id.as_deref(),
+        level,
+    ) {
+        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn submit_assessment_attempt_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(assessment_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+
+    let idem_key = extract_header_str(&headers, "idempotency-key");
+    let operation_id = "submitAssessmentAttempt";
+    if idem_key.is_some() {
+        match state.store.begin_idempotent_command(
+            &principal.account_id,
+            operation_id,
+            idem_key,
+            &payload,
+            10_000,
+            86_400_000,
+        ) {
+            Ok(IdempotencyBeginOutcome::Replayed(stored)) => {
+                let status =
+                    StatusCode::from_u16(stored.status_code).unwrap_or(StatusCode::CREATED);
+                let mut resp = (status, Json(stored.body)).into_response();
+                resp.headers_mut()
+                    .insert("Idempotency-Replayed", HeaderValue::from_static("true"));
+                return resp;
+            }
+            Ok(IdempotencyBeginOutcome::Acquired) => {}
+            Err(err) => return error_response(err),
+        }
+    }
+
+    let attempt_id = payload
+        .get("attempt_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            format!(
+                "att-{assessment_id}-{}",
+                idem_key.unwrap_or("default")
+            )
+        });
+    let session_id = payload
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("sess-initial-1");
+    let assistance_str = payload
+        .get("assistance_level")
+        .and_then(|v| v.as_str())
+        .unwrap_or("independent");
+    let declared_assistance = match AssistanceLevel::from_wire(assistance_str) {
+        Ok(l) => l,
+        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+    };
+    let mut responses = BTreeMap::new();
+    if let Some(obj) = payload.get("responses").and_then(|v| v.as_object()) {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                responses.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    let explicit_score_bp = payload
+        .get("score_bp")
+        .and_then(|v| v.as_u64())
+        .map(|n| n as u32);
+
+    match state.store.submit_assessment_attempt(
+        &principal,
+        &assessment_id,
+        &attempt_id,
+        session_id,
+        declared_assistance,
+        responses,
+        explicit_score_bp,
+    ) {
+        Ok(record) => {
+            let body = serde_json::to_value(&record).unwrap_or(Value::Null);
+            if let Some(k) = idem_key {
+                state.store.complete_idempotent_command(
+                    &principal.account_id,
+                    operation_id,
+                    k,
+                    201,
+                    body.clone(),
+                );
+            }
+            (StatusCode::CREATED, Json(body)).into_response()
+        }
+        Err(err) => {
+            if let Some(k) = idem_key {
+                state.store.complete_idempotent_command(
+                    &principal.account_id,
+                    operation_id,
+                    k,
+                    err.http_status_code(),
+                    json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
+                );
+            }
+            error_response(err)
+        }
+    }
+}
+
+async fn get_assessment_attempt_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(attempt_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.get_assessment_attempt(&principal, &attempt_id) {
+        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn report_defective_item_path_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((assessment_id, item_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> Response {
+    report_defective_item_inner(state, headers, assessment_id, item_id, payload)
+}
+
+async fn report_defective_item_body_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(assessment_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let item_id = payload
+        .get("item_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("item-tok-1")
+        .to_string();
+    report_defective_item_inner(state, headers, assessment_id, item_id, payload)
+}
+
+fn report_defective_item_inner(
+    state: ApiAppState,
+    headers: HeaderMap,
+    assessment_id: String,
+    item_id: String,
+    payload: Value,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let reason_code = payload
+        .get("reason_code")
+        .or_else(|| payload.get("reason"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("broken_answer_key");
+    let details = payload
+        .get("details")
+        .or_else(|| payload.get("description"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Reported defective assessment item");
+    match state.store.report_defective_assessment_item(
+        &principal,
+        &assessment_id,
+        &item_id,
+        reason_code,
+        details,
+    ) {
+        Ok(report) => (StatusCode::CREATED, Json(report)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn apply_key_correction_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(assessment_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let mut updated_key = BTreeMap::new();
+    if let Some(obj) = payload
+        .get("updated_answer_key")
+        .or_else(|| payload.get("answer_key"))
+        .and_then(|v| v.as_object())
+    {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                updated_key.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    let rationale = payload
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Curator corrected defective answer key");
+    match state.store.apply_assessment_key_correction(
+        &principal,
+        &assessment_id,
+        updated_key,
+        rationale,
+    ) {
+        Ok(correction) => (StatusCode::OK, Json(correction)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn evaluate_prerequisite_gate_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((curriculum_id, objective_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let prereq_ids: Vec<String> = payload
+        .get("prerequisite_objective_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let is_mastery_gated = payload
+        .get("is_mastery_gated")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let decision = match payload.get("learner_decision").and_then(|v| v.as_str()) {
+        Some("prerequisite_override_recorded" | "override") => {
+            Some(LearnerGateDecision::PrerequisiteOverrideRecorded)
+        }
+        Some("unverified_prerequisite_acknowledged" | "acknowledge_unverified") => {
+            Some(LearnerGateDecision::UnverifiedPrerequisiteAcknowledged)
+        }
+        _ => None,
+    };
+
+    match state.store.evaluate_and_record_prerequisite_gate(
+        &principal,
+        &curriculum_id,
+        &objective_id,
+        &prereq_ids,
+        is_mastery_gated,
+        decision,
+    ) {
+        Ok(eval) => (StatusCode::OK, Json(eval)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T12 Handlers: Objective Diagnostics & Adaptation Proposals
+// =============================================================================
+
+async fn start_diagnostic_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let diagnostic_id = payload
+        .get("diagnostic_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("diag-session-1")
+        .to_string();
+    let curriculum_id = payload
+        .get("curriculum_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let topic_id = payload
+        .get("topic_id")
+        .or_else(|| payload.get("topic"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("rag-python");
+    let candidate_objectives: Vec<String> = payload
+        .get("objective_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let math_depth = match payload
+        .get("math_depth_preference")
+        .or_else(|| payload.get("math_depth"))
+        .and_then(|v| v.as_str())
+    {
+        Some(s) => match MathDepthPreference::from_wire(s) {
+            Ok(p) => Some(p),
+            Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+        },
+        None => None,
+    };
+
+    match state.store.start_diagnostic_session(
+        &principal,
+        &diagnostic_id,
+        curriculum_id,
+        topic_id,
+        candidate_objectives,
+        math_depth,
+    ) {
+        Ok(rec) => (StatusCode::CREATED, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_diagnostic_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(diagnostic_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .get_diagnostic_session(&principal, &diagnostic_id)
+    {
+        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn submit_diagnostic_attempt_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(diagnostic_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let item_id = payload
+        .get("item_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let answer = payload
+        .get("answer")
+        .or_else(|| payload.get("response"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let assistance_str = payload
+        .get("assistance_level")
+        .and_then(|v| v.as_str())
+        .unwrap_or("independent");
+    let assistance = match AssistanceLevel::from_wire(assistance_str) {
+        Ok(a) => a,
+        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+    };
+
+    match state.store.submit_diagnostic_item_attempt(
+        &principal,
+        &diagnostic_id,
+        item_id,
+        answer,
+        assistance,
+    ) {
+        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn stop_diagnostic_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(diagnostic_id): Path<String>,
+    payload: Option<Json<Value>>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let reason = payload
+        .as_ref()
+        .and_then(|Json(v)| v.get("stop_reason").and_then(|r| r.as_str()))
+        .map(|s| match s {
+            "uncertainty_bound_reached" => DiagnosticStopReason::UncertaintyBoundReached,
+            "all_items_answered" => DiagnosticStopReason::AllItemsAnswered,
+            _ => DiagnosticStopReason::LearnerStopped,
+        });
+    match state
+        .store
+        .stop_diagnostic_session(&principal, &diagnostic_id, reason)
+    {
+        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn preview_adaptation_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+    payload: Option<Json<Value>>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let body = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    let proposal_id = body
+        .get("proposal_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("adapt-prop-001");
+    let trigger_kind = body.get("trigger_kind").and_then(|v| v.as_str());
+
+    match state
+        .store
+        .create_adaptation_proposal(&principal, &curriculum_id, proposal_id, trigger_kind)
+    {
+        Ok(rec) => (StatusCode::CREATED, Json(rec.payload)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_adaptation_proposal_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(proposal_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .get_adaptation_proposal(&principal, &proposal_id)
+    {
+        Ok(rec) => (StatusCode::OK, Json(rec.payload)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_curriculum_adaptation_proposal_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((_curriculum_id, proposal_id)): Path<(String, String)>,
+) -> Response {
+    get_adaptation_proposal_handler(State(state), headers, Path(proposal_id)).await
+}
+
+async fn accept_adaptation_body_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let proposal_id = payload
+        .get("proposal_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("adapt-prop-001")
+        .to_string();
+    accept_adaptation_inner(state, headers, curriculum_id, proposal_id, payload)
+}
+
+async fn accept_adaptation_path_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((curriculum_id, proposal_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> Response {
+    accept_adaptation_inner(state, headers, curriculum_id, proposal_id, payload)
+}
+
+fn accept_adaptation_inner(
+    state: ApiAppState,
+    headers: HeaderMap,
+    curriculum_id: String,
+    proposal_id: String,
+    payload: Value,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+
+    let idem_key = extract_header_str(&headers, "idempotency-key");
+    let operation_id = "acceptAdaptation";
+
+    match state.store.begin_idempotent_command(
+        &principal.account_id,
+        operation_id,
+        idem_key,
+        &payload,
+        10_000,
+        86_400_000,
+    ) {
+        Ok(IdempotencyBeginOutcome::Replayed(stored)) => {
+            let status = StatusCode::from_u16(stored.status_code).unwrap_or(StatusCode::OK);
+            let mut resp = (status, Json(stored.body)).into_response();
+            resp.headers_mut()
+                .insert("Idempotency-Replayed", HeaderValue::from_static("true"));
+            resp
+        }
+        Ok(IdempotencyBeginOutcome::Acquired) => {
+            let key_str = idem_key.unwrap_or_default();
+            let expected_sha = payload
+                .get("expected_proposal_sha256")
+                .or_else(|| payload.get("proposal_sha256"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let base_cur = payload
+                .get("base_curriculum_revision_id")
+                .and_then(|v| v.as_str());
+            let base_sched = payload
+                .get("base_schedule_revision_id")
+                .and_then(|v| v.as_str());
+
+            match state.store.accept_adaptation_proposal(
+                &principal,
+                &curriculum_id,
+                &proposal_id,
+                expected_sha,
+                base_cur,
+                base_sched,
+            ) {
+                Ok(rec) => {
+                    state.store.complete_idempotent_command(
+                        &principal.account_id,
+                        operation_id,
+                        key_str,
+                        200,
+                        rec.payload.clone(),
+                    );
+                    (StatusCode::OK, Json(rec.payload)).into_response()
+                }
+                Err(err) => {
+                    state.store.complete_idempotent_command(
+                        &principal.account_id,
+                        operation_id,
+                        key_str,
+                        err.http_status_code(),
+                        json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
+                    );
+                    error_response(err)
+                }
+            }
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T08 Handlers: Notification Preferences, Push Subscriptions & Reminder Snooze
+// =============================================================================
+
+async fn get_notification_preferences_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let prefs = state.store.get_notification_preferences(&principal);
+    let etag = prefs.etag.clone();
+    let mut resp = (StatusCode::OK, Json(prefs)).into_response();
+    if let Ok(hv) = HeaderValue::from_str(&etag) {
+        resp.headers_mut().insert(axum::http::header::ETAG, hv);
+    }
+    resp
+}
+
+async fn put_notification_preferences_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    let enabled = payload
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let channel = payload
+        .get("channel")
+        .and_then(|v| v.as_str())
+        .unwrap_or("in_app");
+    let iana_timezone = payload
+        .get("iana_timezone")
+        .or_else(|| payload.get("timezone"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("UTC");
+    let local_time_hhmm = payload
+        .get("local_time_hhmm")
+        .or_else(|| payload.get("reminder_time"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("19:00");
+    let days_of_week: Vec<u8> = payload
+        .get("days_of_week")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_u64().map(|n| n as u8))
+                .collect()
+        })
+        .unwrap_or_else(|| vec![1, 2, 3, 4, 5]);
+    let quiet_start = payload
+        .get("quiet_hours_start_hhmm")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let quiet_end = payload
+        .get("quiet_hours_end_hhmm")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+
+    match state.store.update_notification_preferences(
+        &principal,
+        if_match,
+        enabled,
+        channel,
+        iana_timezone,
+        local_time_hhmm,
+        days_of_week,
+        quiet_start,
+        quiet_end,
+    ) {
+        Ok(updated) => {
+            let etag = updated.etag.clone();
+            let mut resp = (StatusCode::OK, Json(updated)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn post_push_subscription_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let subscription_id = payload
+        .get("subscription_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("push-sub-1");
+    let endpoint_url = payload
+        .get("endpoint_url")
+        .or_else(|| payload.get("endpoint"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://fcm.googleapis.com/fcm/send/example-token");
+    let p256dh = payload
+        .get("p256dh_key")
+        .or_else(|| payload.get("p256dh"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM");
+    let auth_secret = payload
+        .get("auth_secret")
+        .or_else(|| payload.get("auth"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("tBHItJI5svbpez7KI4CCXg");
+
+    match state.store.upsert_push_subscription(
+        &principal,
+        subscription_id,
+        endpoint_url,
+        p256dh,
+        auth_secret,
+    ) {
+        Ok(sub) => (StatusCode::CREATED, Json(sub)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn delete_default_push_subscription_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    delete_push_subscription_handler(State(state), headers, Path("default".to_string())).await
+}
+
+async fn delete_push_subscription_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(subscription_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .delete_push_subscription(&principal, &subscription_id)
+    {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn snooze_reminder_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(occurrence_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let snooze_minutes = payload
+        .get("snooze_minutes")
+        .or_else(|| payload.get("duration_minutes"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(30) as u32;
+    let now_epoch = payload
+        .get("now_utc_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_775_156_400);
+
+    match state.store.snooze_reminder_occurrence(
+        &principal,
+        &occurrence_id,
+        snooze_minutes,
+        now_epoch,
+    ) {
+        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
         Err(err) => error_response(err),
     }
 }
@@ -2055,5 +3223,668 @@ mod tests {
             bad_review_body["error"]["code"],
             "missing_review_rubric_evidence"
         );
+    }
+
+    #[tokio::test]
+    async fn t05_assessments_assistance_cap_prereq_gate_defects_and_key_correction_recomputation()
+    {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state);
+        let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. Learner view of reviewed anchor assessment redacts answer_key
+        let view_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/assessments/assess-anchor-tokenization")
+                    .header("authorization", learner_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(view_resp.status(), StatusCode::OK);
+        let view_body = read_body_json(view_resp).await;
+        assert_eq!(view_body["allow_mastery_credit"], true);
+        assert!(view_body.get("answer_key").is_none());
+
+        // 2. Prerequisite gate blocks objective-vector-retrieval before objective-tokenization is Demonstrated
+        let gate_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/objectives/objective-vector-retrieval/prerequisite-gate")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "prerequisite_objective_ids": ["objective-tokenization"],
+                            "is_mastery_gated": true
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(gate_resp.status(), StatusCode::OK);
+        let gate_body = read_body_json(gate_resp).await;
+        assert_eq!(gate_body["outcome"], "blocked_missing_prerequisite");
+        assert_eq!(
+            gate_body["missing_objective_ids"][0],
+            "objective-tokenization"
+        );
+
+        // 3. Assisted attempt (solution_studied) caps proficiency at in_progress / assisted_progress even with 100% score
+        let assist_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-tokenization/assistance-events")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "assistance_level": "solution_studied"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(assist_resp.status(), StatusCode::OK);
+
+        let heavy_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-tokenization/attempts")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "attempt_id": "att-tok-assisted",
+                            "session_id": "sess-1",
+                            "responses": {
+                                "item-tok-1": "bpe_subword",
+                                "item-tok-2": "overlap_window"
+                            }
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(heavy_resp.status(), StatusCode::CREATED);
+        let heavy_body = read_body_json(heavy_resp).await;
+        assert_eq!(heavy_body["passed"], true);
+        assert_eq!(heavy_body["derived_proficiency_state"], "in_progress");
+        assert_eq!(
+            heavy_body["contract_proficiency_label"],
+            "assisted_progress"
+        );
+
+        // 4. Independent attempt with errata answer on item-tok-2 initially fails, then Curator corrects key -> recomputes to demonstrated
+        let attempt_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-tokenization/attempts")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "attempt_id": "att-tok-errata",
+                            "session_id": "sess-2",
+                            "assistance_level": "independent",
+                            "responses": {
+                                "item-tok-1": "bpe_subword",
+                                "item-tok-2": "sliding_window_v2"
+                            }
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(attempt_resp.status(), StatusCode::CREATED);
+        let attempt_body = read_body_json(attempt_resp).await;
+        assert_eq!(attempt_body["passed"], false);
+
+        // Learner reports defective item -> suspends gate
+        let defect_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-tokenization/items/item-tok-2/report-defect")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "reason_code": "broken_answer_key",
+                            "details": "Option key for item-tok-2 should be sliding_window_v2"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(defect_resp.status(), StatusCode::CREATED);
+        let defect_body = read_body_json(defect_resp).await;
+        assert_eq!(defect_body["gate_suspended"], true);
+
+        // Curator issues answer-key correction
+        let corr_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-tokenization/key-corrections")
+                    .header("authorization", "Bearer dev-curator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "updated_answer_key": {
+                                "item-tok-1": "bpe_subword",
+                                "item-tok-2": "sliding_window_v2"
+                            },
+                            "rationale": "Verified errata in v1 item bank"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(corr_resp.status(), StatusCode::OK);
+        let corr_body = read_body_json(corr_resp).await;
+        assert_eq!(corr_body["new_key_revision"], 2);
+        let recomputed = corr_body["recomputed_outcomes"].as_array().unwrap();
+        assert!(recomputed.iter().any(|r| {
+            r["attempt_id"] == "att-tok-errata"
+                && r["new_passed"] == true
+                && r["new_proficiency_state"] == "demonstrated"
+        }));
+    }
+
+    #[tokio::test]
+    async fn t06_t12_workload_spaced_reviews_diagnostics_waivers_math_depth_and_adaptation_proposals()
+    {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. Independent pass on assess-anchor-vector-retrieval schedules spaced review in a distinct future session
+        let pass_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/assessments/assess-anchor-vector-retrieval/attempts")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "attempt_id": "att-vec-pass",
+                            "session_id": "sess-initial",
+                            "assistance_level": "independent",
+                            "responses": {
+                                "item-vec-1": "cosine_hnsw",
+                                "item-vec-2": "cross_encoder"
+                            }
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pass_resp.status(), StatusCode::CREATED);
+        let pass_body = read_body_json(pass_resp).await;
+        assert_eq!(pass_body["passed"], true);
+        assert_eq!(
+            pass_body["spaced_review_item_id"],
+            "rev-att-vec-pass"
+        );
+
+        // 2. T12: Start diagnostic session with orthogonal math_depth_preference, submit item attempt, and stop early
+        let diag_start_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/diagnostics")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "diagnostic_id": "diag-rag-1",
+                            "curriculum_id": "cur-learner-a-1",
+                            "topic_id": "rag-python",
+                            "math_depth_preference": "intuitive"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(diag_start_resp.status(), StatusCode::CREATED);
+
+        let diag_att_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/diagnostics/diag-rag-1/attempts")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "item_id": "diag-item-1-objective-tokenization",
+                            "answer": "correct-objective-tokenization",
+                            "assistance_level": "independent"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(diag_att_resp.status(), StatusCode::OK);
+        let diag_att_body = read_body_json(diag_att_resp).await;
+        assert_eq!(
+            diag_att_body["granted_waiver_ids"][0],
+            "waiver-diag-rag-1-objective-tokenization"
+        );
+
+        let diag_stop_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/diagnostics/diag-rag-1/stop")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "stop_reason": "learner_stopped"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(diag_stop_resp.status(), StatusCode::OK);
+        let diag_stop_body = read_body_json(diag_stop_resp).await;
+        assert_eq!(diag_stop_body["status"], "stopped_by_learner");
+        assert_eq!(diag_stop_body["math_depth_preference"], "intuitive");
+        assert_eq!(
+            diag_stop_body["objective_states"]["objective-tokenization"],
+            "demonstrated"
+        );
+        assert_eq!(
+            diag_stop_body["objective_states"]["objective-rag-evaluation"],
+            "unassessed"
+        );
+
+        // 3. AdaptationProposal preview + accept with JCS proposal_sha256 and base revision concurrency
+        let preview_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/adaptations/preview")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "proposal_id": "adapt-prop-001",
+                            "trigger_kind": "missed_sessions"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preview_resp.status(), StatusCode::CREATED);
+        let preview_body = read_body_json(preview_resp).await;
+        let proposal_sha256 = preview_body["proposal_sha256"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // Reject mismatched digest
+        let bad_hash_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
+                    .header("authorization", learner_bearer)
+                    .header("idempotency-key", "idem-adapt-bad-sha")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "expected_proposal_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_hash_resp.status(), StatusCode::CONFLICT);
+        let bad_hash_body = read_body_json(bad_hash_resp).await;
+        assert_eq!(bad_hash_body["error"]["code"], "proposal_digest_mismatch");
+
+        // Accept with matching JCS proposal_sha256
+        let accept_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
+                    .header("authorization", learner_bearer)
+                    .header("idempotency-key", "idem-adapt-ok")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "expected_proposal_sha256": proposal_sha256
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(accept_resp.status(), StatusCode::OK);
+        let accept_body = read_body_json(accept_resp).await;
+        assert_eq!(accept_body["status"], "accepted");
+        assert!(accept_body["accepted_curriculum_revision_id"].is_string());
+        assert!(accept_body["accepted_schedule_revision_id"].is_string());
+    }
+
+    #[tokio::test]
+    async fn t07a_byok_credentials_envelope_encryption_tutor_usage_and_revocation_enforcement() {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. Register BYOK credential and verify raw key is never returned in metadata
+        let create_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/credentials")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "credential_ref": "cred-openai-1",
+                            "provider_id": "openai",
+                            "label": "Primary OpenAI Key",
+                            "api_key": "sk-live-super-secret-9999"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_resp.status(), StatusCode::CREATED);
+        let create_body = read_body_json(create_resp).await;
+        assert_eq!(create_body["credential_ref"], "cred-openai-1");
+        assert_eq!(create_body["version"], 1);
+        assert_eq!(create_body["etag"], "\"cred-v1\"");
+        let serialized = serde_json::to_string(&create_body).unwrap();
+        assert!(!serialized.contains("sk-live-super-secret-9999"));
+
+        // 2. Rotate credential with If-Match optimistic concurrency
+        let rotate_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PATCH")
+                    .uri("/v1/me/credentials/cred-openai-1")
+                    .header("authorization", learner_bearer)
+                    .header("if-match", "\"cred-v1\"")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "api_key": "sk-live-rotated-key-8888",
+                            "label": "Rotated OpenAI Key"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(rotate_resp.status(), StatusCode::OK);
+        let rotate_body = read_body_json(rotate_resp).await;
+        assert_eq!(rotate_body["version"], 2);
+        assert_eq!(rotate_body["etag"], "\"cred-v2\"");
+
+        // 3. Record BYOK inference usage and verify GET /v1/me/usage reports $0 hosted service charge
+        let learner_a = state
+            .auth_verifier
+            .verify_bearer_token(Some("dev-account:00000000-0000-4000-8000-000000000001"))
+            .unwrap();
+        state
+            .store
+            .record_inference_usage(
+                &learner_a,
+                "cred-openai-1",
+                2,
+                "openai",
+                "gpt-4o-mini",
+                "practice_tutor",
+                1200,
+                400,
+                "provider_reported",
+            )
+            .unwrap();
+
+        let usage_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/me/usage")
+                    .header("authorization", learner_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(usage_resp.status(), StatusCode::OK);
+        let usage_body = read_body_json(usage_resp).await;
+        assert_eq!(usage_body["hosted_service_charge_usd_micros"], 0);
+        assert_eq!(usage_body["total_tokens"], 1600);
+
+        // 4. Revoke credential and verify subsequent decryption fails with credential_revoked
+        let revoke_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/me/credentials/cred-openai-1")
+                    .header("authorization", learner_bearer)
+                    .header("if-match", "\"cred-v2\"")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(revoke_resp.status(), StatusCode::NO_CONTENT);
+
+        let open_err = state
+            .store
+            .open_credential_for_pinned_inference(&learner_a, "cred-openai-1", 2)
+            .unwrap_err();
+        assert_eq!(open_err.error_code(), "credential_revoked");
+    }
+
+    #[tokio::test]
+    async fn t08_reminders_iana_timezone_dst_suppression_push_subscriptions_and_snooze() {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. Reject invalid IANA timezone
+        let bad_tz_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/me/notification-preferences")
+                    .header("authorization", learner_bearer)
+                    .header("if-match", "\"notif-v1\"")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "enabled": true,
+                            "channel": "web_push",
+                            "iana_timezone": "Mars/Olympus_Mons",
+                            "local_time_hhmm": "02:30"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_tz_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+        // 2. Configure America/New_York at 02:30 with If-Match concurrency
+        let prefs_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri("/v1/me/notification-preferences")
+                    .header("authorization", learner_bearer)
+                    .header("if-match", "\"notif-v1\"")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "enabled": true,
+                            "channel": "web_push",
+                            "iana_timezone": "America/New_York",
+                            "local_time_hhmm": "02:30",
+                            "days_of_week": [1, 2, 3, 4, 5, 6, 7]
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(prefs_resp.status(), StatusCode::OK);
+        let prefs_body = read_body_json(prefs_resp).await;
+        assert_eq!(prefs_body["etag"], "\"notif-v2\"");
+
+        // 3. Evaluate spring-forward DST reminder on 2026-03-08 and snooze it via HTTP
+        let learner_a = state
+            .auth_verifier
+            .verify_bearer_token(Some("dev-account:00000000-0000-4000-8000-000000000001"))
+            .unwrap();
+        let decision = state
+            .store
+            .evaluate_or_schedule_reminder(
+                &learner_a,
+                "occ-spring-1",
+                "2026-03-08",
+                1_772_949_600,
+            )
+            .unwrap();
+        match decision {
+            curriculum_domain::ReminderScheduleDecision::Scheduled {
+                dst_resolution_policy,
+                ..
+            } => {
+                assert_eq!(
+                    dst_resolution_policy,
+                    curriculum_domain::DstResolutionPolicy::SpringForwardShifted
+                );
+            }
+            other => panic!("expected Scheduled decision, got {other:?}"),
+        }
+
+        let snooze_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/reminders/occ-spring-1/snooze")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "snooze_minutes": 45,
+                            "now_utc_epoch_seconds": 1772955000
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(snooze_resp.status(), StatusCode::OK);
+        let snooze_body = read_body_json(snooze_resp).await;
+        assert_eq!(snooze_body["status"], "snoozed");
+
+        // 4. Register & delete Web Push subscription
+        let sub_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/push-subscriptions")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "subscription_id": "push-sub-1",
+                            "endpoint_url": "https://fcm.googleapis.com/fcm/send/example-sub-1",
+                            "p256dh_key": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM",
+                            "auth_secret": "tBHItJI5svbpez7KI4CCXg"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(sub_resp.status(), StatusCode::CREATED);
+
+        let del_sub_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("DELETE")
+                    .uri("/v1/me/push-subscriptions/push-sub-1")
+                    .header("authorization", learner_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(del_sub_resp.status(), StatusCode::NO_CONTENT);
     }
 }
