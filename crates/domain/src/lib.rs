@@ -47,6 +47,16 @@ pub enum DomainError {
     ByokPolicyViolation(String),
     #[error("reminder schedule error: {0}")]
     ReminderScheduleError(String),
+    #[error("billing ledger invariant violation: {0}")]
+    BillingLedgerInvariantViolation(String),
+    #[error("public sharing invariant violation: {0}")]
+    PublicSharingInvariantViolation(String),
+    #[error("account lifecycle invariant violation: {0}")]
+    AccountLifecycleInvariantViolation(String),
+    #[error("pedagogical evaluation invariant violation: {0}")]
+    PedagogicalEvaluationViolation(String),
+    #[error("native capability boundary violation: {0}")]
+    NativeCapabilityBoundaryViolation(String),
 }
 
 /// Bounds (`min_minutes <= point_minutes <= max_minutes`) for a single workload component.
@@ -1762,6 +1772,916 @@ fn last_sunday_of_month(y: i32, m: u32) -> u32 {
     last_day - wday
 }
 
+// =============================================================================
+// T07B & T07D: Hosted Inference Credit Ledger, Quotes, Reservations & Reconciliation
+// =============================================================================
+
+/// Monetary amount in minor currency units (e.g., USD cents or micro-cents) (`BILL-001`, `BILL-003`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MoneyMinorUnits {
+    pub currency: String,
+    pub amount_minor_units: i64,
+}
+
+impl MoneyMinorUnits {
+    pub fn usd(amount_minor_units: i64) -> Self {
+        Self {
+            currency: "USD".to_string(),
+            amount_minor_units,
+        }
+    }
+
+    pub fn validate_non_negative(&self) -> Result<(), DomainError> {
+        if self.currency != "USD" {
+            return Err(DomainError::BillingLedgerInvariantViolation(format!(
+                "unsupported currency `{}` (expected USD)",
+                self.currency
+            )));
+        }
+        if self.amount_minor_units < 0 {
+            return Err(DomainError::BillingLedgerInvariantViolation(format!(
+                "monetary amount must be non-negative, got {}",
+                self.amount_minor_units
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Four distinct, non-conflatable cost buckets (`BILL-004`, `@S06`, `@S28`, `@S52`, `@S59`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CostBucketKind {
+    ServiceAccess,
+    HostedAiInference,
+    ExternalByokEstimate,
+    LearningMaterialsAndExams,
+}
+
+impl CostBucketKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ServiceAccess => "service_access",
+            Self::HostedAiInference => "hosted_ai_inference",
+            Self::ExternalByokEstimate => "external_byok_estimate",
+            Self::LearningMaterialsAndExams => "learning_materials_and_exams",
+        }
+    }
+}
+
+/// Explicit four-bucket cost presentation ensuring service access, hosted AI inference,
+/// external BYOK estimates, and learning materials/exams are never conflated (`BILL-004`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FourCostBucketBreakdown {
+    pub currency: String,
+    pub service_access_minor_units: i64,
+    pub hosted_ai_inference_minor_units: i64,
+    pub external_byok_estimate_minor_units: i64,
+    pub learning_materials_and_exams_minor_units: i64,
+}
+
+impl FourCostBucketBreakdown {
+    pub fn validate(&self) -> Result<(), DomainError> {
+        if self.currency != "USD" {
+            return Err(DomainError::BillingLedgerInvariantViolation(format!(
+                "unsupported currency `{}` in four-bucket breakdown",
+                self.currency
+            )));
+        }
+        if self.service_access_minor_units < 0
+            || self.hosted_ai_inference_minor_units < 0
+            || self.external_byok_estimate_minor_units < 0
+            || self.learning_materials_and_exams_minor_units < 0
+        {
+            return Err(DomainError::BillingLedgerInvariantViolation(
+                "cost bucket amounts must be non-negative".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BillingModeKind {
+    HostedCredits,
+    Byok,
+}
+
+impl BillingModeKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::HostedCredits => "hosted_credits",
+            Self::Byok => "byok",
+        }
+    }
+}
+
+/// Pre-execution usage quote bounding the maximum reservable & settlable hosted charge (`BILL-003`, `@S30`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageQuote {
+    pub quote_id: String,
+    pub account_id: String,
+    pub operation_kind: String,
+    pub billing_mode: BillingModeKind,
+    pub provider_id: String,
+    pub model_id: String,
+    pub currency: String,
+    pub estimated_minor_units: i64,
+    pub max_reservable_minor_units: i64,
+    pub external_byok_estimated_minor_units: i64,
+    pub learning_materials_estimated_minor_units: i64,
+    pub pricing_snapshot_version: String,
+    pub expires_at_epoch_seconds: i64,
+}
+
+impl UsageQuote {
+    pub fn validate(&self, now_epoch_seconds: i64) -> Result<(), DomainError> {
+        if self.estimated_minor_units < 0 || self.max_reservable_minor_units < 0 {
+            return Err(DomainError::BillingLedgerInvariantViolation(
+                "quote minor units cannot be negative".to_string(),
+            ));
+        }
+        if self.max_reservable_minor_units < self.estimated_minor_units {
+            return Err(DomainError::BillingLedgerInvariantViolation(format!(
+                "quote max_reservable_minor_units ({}) cannot be less than estimated_minor_units ({})",
+                self.max_reservable_minor_units, self.estimated_minor_units
+            )));
+        }
+        if self.billing_mode == BillingModeKind::Byok && self.max_reservable_minor_units != 0 {
+            return Err(DomainError::BillingLedgerInvariantViolation(
+                "BYOK quote must have zero hosted reservable minor units".to_string(),
+            ));
+        }
+        if now_epoch_seconds > self.expires_at_epoch_seconds {
+            return Err(DomainError::BillingLedgerInvariantViolation(format!(
+                "usage quote `{}` expired at {}",
+                self.quote_id, self.expires_at_epoch_seconds
+            )));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReservationStatus {
+    Reserved,
+    Settled,
+    Released,
+    Expired,
+}
+
+impl ReservationStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Reserved => "reserved",
+            Self::Settled => "settled",
+            Self::Released => "released",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+/// Pre-execution credit reservation against a wallet (`BILL-005`, `BILL-008`, `@S28`, `@S68`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditReservation {
+    pub reservation_id: String,
+    pub account_id: String,
+    pub quote_id: String,
+    pub idempotency_key: String,
+    pub operation_kind: String,
+    pub provider_id: String,
+    pub model_id: String,
+    pub currency: String,
+    pub reserved_minor_units: i64,
+    pub settled_minor_units: i64,
+    pub released_minor_units: i64,
+    pub status: ReservationStatus,
+    pub expires_at_epoch_seconds: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LedgerEntryKind {
+    TopUpCredit,
+    ReservationHold,
+    ReservationSettlement,
+    ReservationRelease,
+    RefundDebit,
+    ChargebackDebit,
+    ReconciliationRelease,
+}
+
+impl LedgerEntryKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::TopUpCredit => "top_up_credit",
+            Self::ReservationHold => "reservation_hold",
+            Self::ReservationSettlement => "reservation_settlement",
+            Self::ReservationRelease => "reservation_release",
+            Self::RefundDebit => "refund_debit",
+            Self::ChargebackDebit => "chargeback_debit",
+            Self::ReconciliationRelease => "reconciliation_release",
+        }
+    }
+}
+
+/// Immutable double-entry ledger line item (`BILL-001`, `BILL-005`, `NFR-006`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LedgerEntry {
+    pub ledger_entry_id: String,
+    pub account_id: String,
+    pub entry_kind: LedgerEntryKind,
+    pub cost_bucket: CostBucketKind,
+    pub currency: String,
+    pub delta_available_minor_units: i64,
+    pub delta_reserved_minor_units: i64,
+    pub balance_after_available_minor_units: i64,
+    pub balance_after_reserved_minor_units: i64,
+    pub quote_id: Option<String>,
+    pub reservation_id: Option<String>,
+    pub checkout_session_id: Option<String>,
+    pub webhook_event_id: Option<String>,
+    pub description: String,
+    pub created_at_iso: String,
+}
+
+/// Validates and computes `(new_available, new_reserved)` when placing a pre-execution hold.
+pub fn authorize_credit_reservation(
+    available_minor_units: i64,
+    reserved_minor_units: i64,
+    quote: &UsageQuote,
+    requested_reserve_minor_units: i64,
+    now_epoch_seconds: i64,
+) -> Result<(i64, i64), DomainError> {
+    quote.validate(now_epoch_seconds)?;
+    if quote.billing_mode != BillingModeKind::HostedCredits {
+        return Err(DomainError::BillingLedgerInvariantViolation(
+            "credit reservations are only permitted for hosted_credits quotes".to_string(),
+        ));
+    }
+    if requested_reserve_minor_units <= 0 {
+        return Err(DomainError::BillingLedgerInvariantViolation(
+            "requested reservation minor units must be positive".to_string(),
+        ));
+    }
+    if requested_reserve_minor_units > quote.max_reservable_minor_units {
+        return Err(DomainError::BillingLedgerInvariantViolation(format!(
+            "requested reservation ({}) exceeds quote max_reservable_minor_units ({})",
+            requested_reserve_minor_units, quote.max_reservable_minor_units
+        )));
+    }
+    if available_minor_units < requested_reserve_minor_units {
+        return Err(DomainError::BillingLedgerInvariantViolation(format!(
+            "insufficient available hosted credits: available={}, required={}",
+            available_minor_units, requested_reserve_minor_units
+        )));
+    }
+    Ok((
+        available_minor_units - requested_reserve_minor_units,
+        reserved_minor_units + requested_reserve_minor_units,
+    ))
+}
+
+/// Computes `(settled_minor_units, released_minor_units)` capped strictly at `reserved_minor_units`
+/// so settled charges never exceed the pre-authorized quote/reservation (`BILL-003`, `BILL-005`, `@S30`).
+pub fn compute_reservation_settlement(
+    reserved_minor_units: i64,
+    actual_usage_minor_units: i64,
+) -> Result<(i64, i64), DomainError> {
+    if reserved_minor_units < 0 || actual_usage_minor_units < 0 {
+        return Err(DomainError::BillingLedgerInvariantViolation(
+            "reserved and actual usage minor units must be non-negative".to_string(),
+        ));
+    }
+    let settled = actual_usage_minor_units.min(reserved_minor_units);
+    let released = reserved_minor_units - settled;
+    Ok((settled, released))
+}
+
+/// Outcome observed when reconciling an in-flight or timed-out provider call (`BILL-008`, `NFR-006`, `@S43`, `@S68`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmbiguousProviderOutcome {
+    ProviderConfirmedNoOutput,
+    UnconfirmedTimeoutWithoutCommittedOutput,
+    ProviderConfirmedCompleted { actual_usage_minor_units: i64 },
+}
+
+/// Evaluates whether an ambiguous/timed-out reservation should be released or settled.
+/// Invariant (`BILL-008`, `@S43`, `@S68`): Never settle a charge unless the committed curriculum/revision
+/// artifact was durably persisted AND the provider confirmed completion.
+pub fn evaluate_ambiguous_timeout_reconciliation(
+    reserved_minor_units: i64,
+    committed_artifact_persisted: bool,
+    outcome: AmbiguousProviderOutcome,
+) -> Result<(ReservationStatus, i64, i64), DomainError> {
+    if reserved_minor_units < 0 {
+        return Err(DomainError::BillingLedgerInvariantViolation(
+            "reserved_minor_units cannot be negative".to_string(),
+        ));
+    }
+    match (committed_artifact_persisted, outcome) {
+        (true, AmbiguousProviderOutcome::ProviderConfirmedCompleted { actual_usage_minor_units }) => {
+            let (settled, released) =
+                compute_reservation_settlement(reserved_minor_units, actual_usage_minor_units)?;
+            Ok((ReservationStatus::Settled, settled, released))
+        }
+        _ => Ok((ReservationStatus::Released, 0, reserved_minor_units)),
+    }
+}
+
+// =============================================================================
+// T13: Public Templates, Sanitization, Preview Digest, Moderation & Partial Adoption
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModerationVisibilityState {
+    Private,
+    Unlisted,
+    Public,
+    Withdrawn,
+    Quarantined,
+    Removed,
+}
+
+impl ModerationVisibilityState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Private => "private",
+            Self::Unlisted => "unlisted",
+            Self::Public => "public",
+            Self::Withdrawn => "withdrawn",
+            Self::Quarantined => "quarantined",
+            Self::Removed => "removed",
+        }
+    }
+
+    pub fn from_wire(raw: &str) -> Result<Self, DomainError> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "private" => Ok(Self::Private),
+            "unlisted" => Ok(Self::Unlisted),
+            "public" => Ok(Self::Public),
+            "withdrawn" => Ok(Self::Withdrawn),
+            "quarantined" => Ok(Self::Quarantined),
+            "removed" => Ok(Self::Removed),
+            other => Err(DomainError::PublicSharingInvariantViolation(format!(
+                "unsupported moderation/publication visibility `{other}`"
+            ))),
+        }
+    }
+
+    pub fn is_listed_in_public_discovery(&self) -> bool {
+        matches!(self, Self::Public)
+    }
+
+    pub fn is_readable_via_direct_link(&self) -> bool {
+        matches!(self, Self::Public | Self::Unlisted)
+    }
+}
+
+/// Pure domain sanitizer rules for public/unlisted curriculum snapshots (`SHARE-001`, `SHARE-002`, `SHARE-009`, `@S56`, `@S57`).
+#[derive(Debug, Clone, Default)]
+pub struct PublicSnapshotSanitizer;
+
+impl PublicSnapshotSanitizer {
+    pub const PRIVATE_LEARNER_FIELD_MARKERS: &'static [&'static str] = &[
+        "account_id",
+        "owner_account_id",
+        "email",
+        "private_notes",
+        "learner_notes",
+        "attempt_history",
+        "attempts",
+        "schedule_revisions",
+        "reminder_preferences",
+        "notification_preferences",
+        "provider_credentials",
+        "byok_credentials",
+        "proficiency_records",
+        "waivers",
+        "diagnostic_sessions",
+        "billing_wallet",
+        "session_tokens",
+    ];
+
+    pub const RESTRICTED_RESOURCE_FIELD_MARKERS: &'static [&'static str] = &[
+        "full_text_excerpt",
+        "transcript_body",
+        "embedded_body",
+        "raw_content_excerpt",
+    ];
+
+    pub fn is_private_learner_field(field_name: &str) -> bool {
+        Self::PRIVATE_LEARNER_FIELD_MARKERS.contains(&field_name)
+    }
+
+    pub fn is_restricted_third_party_field(field_name: &str) -> bool {
+        Self::RESTRICTED_RESOURCE_FIELD_MARKERS.contains(&field_name)
+    }
+
+    /// Verifies that no private learner field keys remain and that any restricted third-party
+    /// fields have been withheld as `null` rather than omitted (`@S57`, `@S63`).
+    pub fn validate_sanitized_field_keys(
+        present_field_keys: &[String],
+        non_null_restricted_keys: &[String],
+    ) -> Result<(), DomainError> {
+        for key in present_field_keys {
+            if Self::is_private_learner_field(key) {
+                return Err(DomainError::PublicSharingInvariantViolation(format!(
+                    "private learner field `{key}` must be stripped from public snapshot"
+                )));
+            }
+        }
+        if let Some(leaked) = non_null_restricted_keys.first() {
+            return Err(DomainError::PublicSharingInvariantViolation(format!(
+                "restricted third-party resource field `{leaked}` must be withheld as null"
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Preview digest and consent verifier for publication confirmation (`SHARE-001`, `SHARE-009`, `@S56`, `@S79`, `@S83`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicationPreviewDigest {
+    pub preview_sha256: String,
+    pub content_sha256: String,
+    pub visibility: String,
+}
+
+impl PublicationPreviewDigest {
+    pub fn validate_publication_confirmation(
+        &self,
+        expected_preview_sha256: &str,
+        current_computed_preview_sha256: &str,
+        accept_publication_terms: bool,
+    ) -> Result<(), DomainError> {
+        if !accept_publication_terms {
+            return Err(DomainError::PublicSharingInvariantViolation(
+                "accept_publication_terms must be true to publish a curriculum template"
+                    .to_string(),
+            ));
+        }
+        if expected_preview_sha256.len() != 64
+            || !expected_preview_sha256
+                .chars()
+                .all(|c| c.is_ascii_hexdigit())
+        {
+            return Err(DomainError::PublicSharingInvariantViolation(
+                "expected_preview_sha256 must be a 64-character hex SHA-256 digest".to_string(),
+            ));
+        }
+        if expected_preview_sha256 != self.preview_sha256
+            || expected_preview_sha256 != current_computed_preview_sha256
+        {
+            return Err(DomainError::PublicSharingInvariantViolation(format!(
+                "stale or mismatched expected_preview_sha256: expected `{}`, preview was `{}`, current state computed `{}`",
+                expected_preview_sha256, self.preview_sha256, current_computed_preview_sha256
+            )));
+        }
+        Ok(())
+    }
+}
+
+/// Provenance binding stored on an adopted private curriculum (`SHARE-004`, `@S59`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdoptionOriginBinding {
+    pub source_publication_id: String,
+    pub source_publication_revision_id: String,
+    pub source_revision_number: u32,
+    pub adopted_at_iso: String,
+    pub selected_module_ids: Vec<String>,
+    pub auto_included_prerequisite_module_ids: Vec<String>,
+}
+
+/// Result of computing the transitive prerequisite closure for full or partial template adoption
+/// (`SHARE-004`, `ADAPT-005`, `@S59`, `@S72`, `@S73`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartialAdoptionClosure {
+    pub ordered_module_ids: Vec<String>,
+    pub auto_included_prerequisite_module_ids: Vec<String>,
+    pub ordered_objective_ids: Vec<String>,
+    pub initial_proficiency_states: BTreeMap<String, ObjectiveProficiencyState>,
+}
+
+/// Computes the transitive module and objective prerequisite closure for a selected subset
+/// of modules (or all modules when `selected_module_ids` is empty), verifies DAG acyclicity,
+/// and initializes every adopted objective to `ObjectiveProficiencyState::Unassessed` (`@S59`).
+pub fn compute_partial_adoption_closure(
+    module_edges: &[(String, Vec<String>)],
+    module_objectives: &BTreeMap<String, Vec<String>>,
+    objective_edges: &[(String, Vec<String>)],
+    selected_module_ids: &[String],
+) -> Result<PartialAdoptionClosure, DomainError> {
+    let topological_modules = validate_dag_acyclic(module_edges)?;
+    let topological_objectives = validate_dag_acyclic(objective_edges)?;
+
+    let module_prereq_map: BTreeMap<String, Vec<String>> = module_edges.iter().cloned().collect();
+    let objective_prereq_map: BTreeMap<String, Vec<String>> =
+        objective_edges.iter().cloned().collect();
+
+    let requested_set: BTreeSet<String> = if selected_module_ids.is_empty() {
+        topological_modules.iter().cloned().collect()
+    } else {
+        let mut s = BTreeSet::new();
+        for mid in selected_module_ids {
+            if !module_prereq_map.contains_key(mid) {
+                return Err(DomainError::PublicSharingInvariantViolation(format!(
+                    "unknown selected_module_id `{mid}` in partial adoption request"
+                )));
+            }
+            s.insert(mid.clone());
+        }
+        s
+    };
+
+    let mut closure_modules = BTreeSet::new();
+    let mut queue: VecDeque<String> = requested_set.iter().cloned().collect();
+    while let Some(curr) = queue.pop_front() {
+        if closure_modules.insert(curr.clone()) {
+            if let Some(prereqs) = module_prereq_map.get(&curr) {
+                for prereq in prereqs {
+                    if !closure_modules.contains(prereq) {
+                        queue.push_back(prereq.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let ordered_module_ids: Vec<String> = topological_modules
+        .into_iter()
+        .filter(|m| closure_modules.contains(m))
+        .collect();
+
+    let auto_included_prerequisite_module_ids: Vec<String> = ordered_module_ids
+        .iter()
+        .filter(|m| !requested_set.contains(*m))
+        .cloned()
+        .collect();
+
+    let mut closure_objectives = BTreeSet::new();
+    let mut obj_queue = VecDeque::new();
+    for mid in &ordered_module_ids {
+        if let Some(objs) = module_objectives.get(mid) {
+            for oid in objs {
+                obj_queue.push_back(oid.clone());
+            }
+        }
+    }
+    while let Some(oid) = obj_queue.pop_front() {
+        if closure_objectives.insert(oid.clone()) {
+            if let Some(prereqs) = objective_prereq_map.get(&oid) {
+                for prereq in prereqs {
+                    if !closure_objectives.contains(prereq) {
+                        obj_queue.push_back(prereq.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    let ordered_objective_ids: Vec<String> = topological_objectives
+        .into_iter()
+        .filter(|o| closure_objectives.contains(o))
+        .collect();
+
+    let mut initial_proficiency_states = BTreeMap::new();
+    for oid in &ordered_objective_ids {
+        initial_proficiency_states.insert(oid.clone(), ObjectiveProficiencyState::Unassessed);
+    }
+
+    Ok(PartialAdoptionClosure {
+        ordered_module_ids,
+        auto_included_prerequisite_module_ids,
+        ordered_objective_ids,
+        initial_proficiency_states,
+    })
+}
+
+// =============================================================================
+// T09: Account Deletion Impact & Tombstone Policy
+// =============================================================================
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccountDeletionImpact {
+    pub deleted_account_id: String,
+    pub withdrawn_publication_ids: Vec<String>,
+    pub preserved_adopter_curriculum_ids: Vec<String>,
+    pub tombstone_keys: Vec<String>,
+}
+
+pub fn evaluate_account_deletion_impact(
+    account_id: &str,
+    owned_publication_ids: &[String],
+    adopter_curriculum_ids: &[String],
+) -> Result<AccountDeletionImpact, DomainError> {
+    if account_id.trim().is_empty() {
+        return Err(DomainError::AccountLifecycleInvariantViolation(
+            "account_id cannot be empty".to_string(),
+        ));
+    }
+    let mut tombstone_keys = vec![format!("account:{account_id}")];
+    for pub_id in owned_publication_ids {
+        tombstone_keys.push(format!("publication:{pub_id}"));
+    }
+    Ok(AccountDeletionImpact {
+        deleted_account_id: account_id.to_string(),
+        withdrawn_publication_ids: owned_publication_ids.to_vec(),
+        preserved_adopter_curriculum_ids: adopter_curriculum_ids.to_vec(),
+        tombstone_keys,
+    })
+}
+
+// =============================================================================
+// T11: Pedagogical Evaluation Workstream & Benchmark Harness (`NFR-008`, `PROG-006`)
+// =============================================================================
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetrievalBenchmarkCase {
+    pub query_id: String,
+    pub retrieved_resource_ids: Vec<String>,
+    pub relevant_resource_ids: Vec<String>,
+    pub unlicensed_or_broken_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetrievalBenchmarkSummary {
+    pub mean_precision_bp: u32,
+    pub mean_recall_bp: u32,
+    pub zero_unlicensed_or_broken: bool,
+    pub passed: bool,
+}
+
+/// Evaluates Part 1 of the Pedagogical Evaluation Workstream: Retrieval Benchmark (`@S42`, `@S62`).
+pub fn evaluate_retrieval_benchmark(
+    cases: &[RetrievalBenchmarkCase],
+    min_precision_bp: u32,
+    min_recall_bp: u32,
+) -> Result<RetrievalBenchmarkSummary, DomainError> {
+    if cases.is_empty() {
+        return Err(DomainError::PedagogicalEvaluationViolation(
+            "retrieval benchmark requires at least one case".to_string(),
+        ));
+    }
+    let mut total_precision_bp: u64 = 0;
+    let mut total_recall_bp: u64 = 0;
+    let mut zero_unlicensed_or_broken = true;
+
+    for case in cases {
+        if case.retrieved_resource_ids.is_empty() || case.relevant_resource_ids.is_empty() {
+            return Err(DomainError::PedagogicalEvaluationViolation(format!(
+                "retrieval benchmark case `{}` cannot have empty retrieved or relevant sets",
+                case.query_id
+            )));
+        }
+        if case.unlicensed_or_broken_count > 0 {
+            zero_unlicensed_or_broken = false;
+        }
+        let relevant_set: BTreeSet<&String> = case.relevant_resource_ids.iter().collect();
+        let hits = case
+            .retrieved_resource_ids
+            .iter()
+            .filter(|id| relevant_set.contains(id))
+            .count() as u64;
+        let p_bp = (hits * 10_000) / (case.retrieved_resource_ids.len() as u64);
+        let r_bp = (hits * 10_000) / (case.relevant_resource_ids.len() as u64);
+        total_precision_bp += p_bp;
+        total_recall_bp += r_bp;
+    }
+
+    let mean_precision_bp = (total_precision_bp / (cases.len() as u64)) as u32;
+    let mean_recall_bp = (total_recall_bp / (cases.len() as u64)) as u32;
+    let passed = zero_unlicensed_or_broken
+        && mean_precision_bp >= min_precision_bp
+        && mean_recall_bp >= min_recall_bp;
+
+    Ok(RetrievalBenchmarkSummary {
+        mean_precision_bp,
+        mean_recall_bp,
+        zero_unlicensed_or_broken,
+        passed,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurriculumExpertRubricScore {
+    pub rater_id: String,
+    pub prerequisite_coherence_bp: u32,
+    pub workload_realism_bp: u32,
+    pub pedagogical_triad_bp: u32,
+    pub citation_grounding_bp: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurriculumExpertRubricEvaluation {
+    pub composite_score_bp: u32,
+    pub inter_rater_spread_bp: u32,
+    pub passed: bool,
+}
+
+/// Evaluates Part 2 of the Pedagogical Evaluation Workstream: Curriculum Generation Expert Rubric (`@S42`).
+pub fn evaluate_curriculum_expert_rubric(
+    scores: &[CurriculumExpertRubricScore],
+    min_composite_bp: u32,
+    max_inter_rater_spread_bp: u32,
+) -> Result<CurriculumExpertRubricEvaluation, DomainError> {
+    if scores.len() < 2 {
+        return Err(DomainError::PedagogicalEvaluationViolation(
+            "curriculum expert rubric requires at least two independent raters".to_string(),
+        ));
+    }
+    let mut rater_averages = Vec::with_capacity(scores.len());
+    for s in scores {
+        let avg = (s.prerequisite_coherence_bp
+            + s.workload_realism_bp
+            + s.pedagogical_triad_bp
+            + s.citation_grounding_bp)
+            / 4;
+        rater_averages.push(avg);
+    }
+    let min_rater = *rater_averages.iter().min().unwrap_or(&0);
+    let max_rater = *rater_averages.iter().max().unwrap_or(&0);
+    let inter_rater_spread_bp = max_rater.saturating_sub(min_rater);
+    let sum: u64 = rater_averages.iter().map(|v| *v as u64).sum();
+    let composite_score_bp = (sum / (rater_averages.len() as u64)) as u32;
+    let passed = composite_score_bp >= min_composite_bp
+        && inter_rater_spread_bp <= max_inter_rater_spread_bp;
+
+    Ok(CurriculumExpertRubricEvaluation {
+        composite_score_bp,
+        inter_rater_spread_bp,
+        passed,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchorAssessmentPsychometricInput {
+    pub item_id: String,
+    pub sample_size: u32,
+    pub difficulty_p_bp: u32,
+    pub discrimination_r_pb_bp: i32,
+    pub open_defect_reports: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AnchorAssessmentPsychometricEvaluation {
+    pub item_id: String,
+    pub calibration_healthy: bool,
+    pub quarantine_recommended: bool,
+    pub reason: String,
+}
+
+/// Evaluates Part 3 of the Pedagogical Evaluation Workstream: Assessment Item Review & Psychometrics (`@S42`, `@S50`).
+pub fn evaluate_anchor_item_psychometrics(
+    input: &AnchorAssessmentPsychometricInput,
+) -> Result<AnchorAssessmentPsychometricEvaluation, DomainError> {
+    if input.sample_size == 0 || input.difficulty_p_bp > 10_000 {
+        return Err(DomainError::PedagogicalEvaluationViolation(format!(
+            "invalid psychometric parameters for item `{}`",
+            input.item_id
+        )));
+    }
+    if input.open_defect_reports > 0 || input.discrimination_r_pb_bp < 0 {
+        return Ok(AnchorAssessmentPsychometricEvaluation {
+            item_id: input.item_id.clone(),
+            calibration_healthy: false,
+            quarantine_recommended: true,
+            reason: "negative discrimination or open answer-key defect report".to_string(),
+        });
+    }
+    let difficulty_ok = (1_500..=9_000).contains(&input.difficulty_p_bp);
+    let discrimination_ok = input.discrimination_r_pb_bp >= 2_000;
+    let calibration_healthy = difficulty_ok && discrimination_ok;
+    Ok(AnchorAssessmentPsychometricEvaluation {
+        item_id: input.item_id.clone(),
+        calibration_healthy,
+        quarantine_recommended: !calibration_healthy,
+        reason: if calibration_healthy {
+            "item within acceptable difficulty (0.15..=0.90) and point-biserial (>= 0.20) bounds"
+                .to_string()
+        } else {
+            "item outside target difficulty or discrimination bounds; flag for curator review"
+                .to_string()
+        },
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DelayedRetentionTransferCohortMetrics {
+    pub cohort_id: String,
+    pub sample_size: u32,
+    pub delayed_7d_retention_bp: u32,
+    pub delayed_30d_retention_bp: u32,
+    pub far_transfer_pass_rate_bp: u32,
+    pub includes_control_comparison: bool,
+    pub conflates_completion_or_upvotes_with_mastery: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DelayedRetentionStudyEvaluation {
+    pub cohort_id: String,
+    pub retention_and_transfer_verified: bool,
+    pub allowed_claim_scope: String,
+}
+
+/// Evaluates Part 4 of the Pedagogical Evaluation Workstream: Delayed Retention & Far-Transfer Study (`NFR-008`, `@S44`, `@S50`, `@S62`).
+pub fn evaluate_delayed_retention_and_transfer_study(
+    metrics: &DelayedRetentionTransferCohortMetrics,
+) -> Result<DelayedRetentionStudyEvaluation, DomainError> {
+    if metrics.conflates_completion_or_upvotes_with_mastery {
+        return Err(DomainError::PedagogicalEvaluationViolation(
+            "pedagogical study cannot conflate activity completion, self-report, or upvotes with demonstrated mastery (@S44, @S50, @S62)".to_string(),
+        ));
+    }
+    if metrics.sample_size < 10 {
+        return Err(DomainError::PedagogicalEvaluationViolation(
+            "delayed retention and transfer study requires sample_size >= 10".to_string(),
+        ));
+    }
+    let retention_and_transfer_verified = metrics.delayed_7d_retention_bp >= 7_000
+        && metrics.delayed_30d_retention_bp >= 6_500
+        && metrics.far_transfer_pass_rate_bp >= 6_000;
+
+    let allowed_claim_scope = if retention_and_transfer_verified && metrics.includes_control_comparison {
+        "controlled_delayed_retention_and_transfer_demonstrated".to_string()
+    } else if retention_and_transfer_verified {
+        "observational_delayed_retention_and_transfer_without_causal_superiority_claim".to_string()
+    } else {
+        "exploratory_pilot_below_retention_threshold".to_string()
+    };
+
+    Ok(DelayedRetentionStudyEvaluation {
+        cohort_id: metrics.cohort_id.clone(),
+        retention_and_transfer_verified,
+        allowed_claim_scope,
+    })
+}
+
+// =============================================================================
+// T10: Native Clients & Precise OS Alarms Capability Boundary (`NOT-005`, `@S35`, `@S54`)
+// =============================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientRuntimeKind {
+    WebPwa,
+    NativeIos,
+    NativeAndroid,
+    NativeDesktop,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "capability_status", rename_all = "snake_case")]
+pub enum AlarmCapabilityEvaluation {
+    SupportedNativeExactAlarm {
+        runtime: ClientRuntimeKind,
+    },
+    UnsupportedWebPwaExactAlarm {
+        disclosure_code: String,
+        fallback_channels: Vec<String>,
+    },
+    StandardReminderChannelsOnly {
+        runtime: ClientRuntimeKind,
+        channels: Vec<String>,
+    },
+}
+
+/// Enforces the capability boundary between Web/PWA reminder channels and native OS exact alarms (`NOT-005`, `@S35`, `@S54`).
+pub fn validate_native_alarm_capability_boundary(
+    runtime: ClientRuntimeKind,
+    requests_exact_os_alarm: bool,
+) -> Result<AlarmCapabilityEvaluation, DomainError> {
+    if !requests_exact_os_alarm {
+        return Ok(AlarmCapabilityEvaluation::StandardReminderChannelsOnly {
+            runtime,
+            channels: vec![
+                "in_app".to_string(),
+                "web_push".to_string(),
+                "email_digest".to_string(),
+            ],
+        });
+    }
+    match runtime {
+        ClientRuntimeKind::WebPwa => Ok(AlarmCapabilityEvaluation::UnsupportedWebPwaExactAlarm {
+            disclosure_code: "unsupported_on_web_pwa_without_native_companion".to_string(),
+            fallback_channels: vec![
+                "in_app".to_string(),
+                "web_push".to_string(),
+                "email_digest".to_string(),
+            ],
+        }),
+        ClientRuntimeKind::NativeIos
+        | ClientRuntimeKind::NativeAndroid
+        | ClientRuntimeKind::NativeDesktop => {
+            Ok(AlarmCapabilityEvaluation::SupportedNativeExactAlarm { runtime })
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2127,5 +3047,194 @@ mod tests {
             expired_suppressed,
             ReminderScheduleDecision::SuppressedExpiredBacklog
         );
+    }
+
+    #[test]
+    fn t07b_t07d_quote_reservation_settlement_and_ambiguous_timeout_invariants() {
+        let quote = UsageQuote {
+            quote_id: "quote-001".to_string(),
+            account_id: "acct-1".to_string(),
+            operation_kind: "curriculum_generation".to_string(),
+            billing_mode: BillingModeKind::HostedCredits,
+            provider_id: "openai".to_string(),
+            model_id: "gpt-4.1-mini".to_string(),
+            currency: "USD".to_string(),
+            estimated_minor_units: 120,
+            max_reservable_minor_units: 150,
+            external_byok_estimated_minor_units: 0,
+            learning_materials_estimated_minor_units: 0,
+            pricing_snapshot_version: "pricing-2026-03-v1".to_string(),
+            expires_at_epoch_seconds: 1_800_000_000,
+        };
+
+        // Expired quote rejected (@S30)
+        assert!(authorize_credit_reservation(500, 0, &quote, 150, 1_800_000_001).is_err());
+
+        // Insufficient funds rejected (@S68)
+        assert!(authorize_credit_reservation(100, 0, &quote, 150, 1_799_000_000).is_err());
+
+        // Valid hold succeeds
+        let (avail, res) =
+            authorize_credit_reservation(500, 0, &quote, 150, 1_799_000_000).unwrap();
+        assert_eq!((avail, res), (350, 150));
+
+        // Settlement is capped at reserved_minor_units (@S30, @S68)
+        let (settled, released) = compute_reservation_settlement(150, 220).unwrap();
+        assert_eq!((settled, released), (150, 0));
+
+        let (settled_under, released_under) = compute_reservation_settlement(150, 110).unwrap();
+        assert_eq!((settled_under, released_under), (110, 40));
+
+        // Ambiguous timeout without committed artifact releases 100% of reservation (@S43, @S68)
+        let (status, s0, r0) = evaluate_ambiguous_timeout_reconciliation(
+            150,
+            false,
+            AmbiguousProviderOutcome::UnconfirmedTimeoutWithoutCommittedOutput,
+        )
+        .unwrap();
+        assert_eq!(status, ReservationStatus::Released);
+        assert_eq!((s0, r0), (0, 150));
+    }
+
+    #[test]
+    fn t13_public_snapshot_sanitizer_preview_digest_and_partial_adoption_closure() {
+        // Private field rejected
+        assert!(PublicSnapshotSanitizer::validate_sanitized_field_keys(
+            &["account_id".to_string()],
+            &[]
+        )
+        .is_err());
+        // Non-null restricted field rejected
+        assert!(PublicSnapshotSanitizer::validate_sanitized_field_keys(
+            &["title".to_string()],
+            &["full_text_excerpt".to_string()]
+        )
+        .is_err());
+        // Clean keys accepted
+        assert!(PublicSnapshotSanitizer::validate_sanitized_field_keys(
+            &["title".to_string(), "modules".to_string()],
+            &[]
+        )
+        .is_ok());
+
+        let digest = PublicationPreviewDigest {
+            preview_sha256: "a".repeat(64),
+            content_sha256: "b".repeat(64),
+            visibility: "public".to_string(),
+        };
+        assert!(digest
+            .validate_publication_confirmation(&"a".repeat(64), &"a".repeat(64), false)
+            .is_err());
+        assert!(digest
+            .validate_publication_confirmation(&"c".repeat(64), &"a".repeat(64), true)
+            .is_err());
+        assert!(digest
+            .validate_publication_confirmation(&"a".repeat(64), &"a".repeat(64), true)
+            .is_ok());
+
+        // Partial adoption transitive closure (@S59, @S72)
+        let module_edges = vec![
+            ("mod-1".to_string(), vec![]),
+            ("mod-2".to_string(), vec!["mod-1".to_string()]),
+            ("mod-3".to_string(), vec!["mod-2".to_string()]),
+        ];
+        let mut module_objectives = BTreeMap::new();
+        module_objectives.insert("mod-1".to_string(), vec!["obj-1".to_string()]);
+        module_objectives.insert("mod-2".to_string(), vec!["obj-2".to_string()]);
+        module_objectives.insert("mod-3".to_string(), vec!["obj-3".to_string()]);
+        let objective_edges = vec![
+            ("obj-1".to_string(), vec![]),
+            ("obj-2".to_string(), vec!["obj-1".to_string()]),
+            ("obj-3".to_string(), vec!["obj-2".to_string()]),
+        ];
+
+        let closure = compute_partial_adoption_closure(
+            &module_edges,
+            &module_objectives,
+            &objective_edges,
+            &["mod-2".to_string()],
+        )
+        .unwrap();
+        assert_eq!(closure.ordered_module_ids, vec!["mod-1", "mod-2"]);
+        assert_eq!(
+            closure.auto_included_prerequisite_module_ids,
+            vec!["mod-1"]
+        );
+        assert_eq!(closure.ordered_objective_ids, vec!["obj-1", "obj-2"]);
+        assert_eq!(
+            closure.initial_proficiency_states.get("obj-1"),
+            Some(&ObjectiveProficiencyState::Unassessed)
+        );
+    }
+
+    #[test]
+    fn t10_t11_pedagogical_evaluation_and_native_alarm_boundary() {
+        let retrieval = evaluate_retrieval_benchmark(
+            &[RetrievalBenchmarkCase {
+                query_id: "q1".to_string(),
+                retrieved_resource_ids: vec!["r1".to_string(), "r2".to_string()],
+                relevant_resource_ids: vec!["r1".to_string(), "r2".to_string()],
+                unlicensed_or_broken_count: 0,
+            }],
+            8_000,
+            8_000,
+        )
+        .unwrap();
+        assert!(retrieval.passed);
+
+        let rubric = evaluate_curriculum_expert_rubric(
+            &[
+                CurriculumExpertRubricScore {
+                    rater_id: "sme-1".to_string(),
+                    prerequisite_coherence_bp: 9_000,
+                    workload_realism_bp: 8_800,
+                    pedagogical_triad_bp: 9_200,
+                    citation_grounding_bp: 9_000,
+                },
+                CurriculumExpertRubricScore {
+                    rater_id: "sme-2".to_string(),
+                    prerequisite_coherence_bp: 8_800,
+                    workload_realism_bp: 8_600,
+                    pedagogical_triad_bp: 9_000,
+                    citation_grounding_bp: 8_800,
+                },
+            ],
+            8_000,
+            1_000,
+        )
+        .unwrap();
+        assert!(rubric.passed);
+
+        let psych = evaluate_anchor_item_psychometrics(&AnchorAssessmentPsychometricInput {
+            item_id: "item-1".to_string(),
+            sample_size: 50,
+            difficulty_p_bp: 6_500,
+            discrimination_r_pb_bp: 3_500,
+            open_defect_reports: 0,
+        })
+        .unwrap();
+        assert!(psych.calibration_healthy);
+
+        // Conflating completion or upvotes with mastery is strictly rejected (@S44, @S50, @S62)
+        assert!(evaluate_delayed_retention_and_transfer_study(
+            &DelayedRetentionTransferCohortMetrics {
+                cohort_id: "cohort-bad".to_string(),
+                sample_size: 30,
+                delayed_7d_retention_bp: 8_000,
+                delayed_30d_retention_bp: 7_500,
+                far_transfer_pass_rate_bp: 7_000,
+                includes_control_comparison: true,
+                conflates_completion_or_upvotes_with_mastery: true,
+            }
+        )
+        .is_err());
+
+        // Web/PWA exact OS alarm capability boundary (@S35)
+        let web_eval =
+            validate_native_alarm_capability_boundary(ClientRuntimeKind::WebPwa, true).unwrap();
+        assert!(matches!(
+            web_eval,
+            AlarmCapabilityEvaluation::UnsupportedWebPwaExactAlarm { .. }
+        ));
     }
 }

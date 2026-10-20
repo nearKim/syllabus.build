@@ -13,8 +13,8 @@ use curriculum_application::{
     CatalogReviewInput,
 };
 use curriculum_domain::{
-    ActivityExecutionStatus, AssistanceLevel, DiagnosticStopReason, LearnerGateDecision,
-    MathDepthPreference,
+    ActivityExecutionStatus, AmbiguousProviderOutcome, AssistanceLevel, BillingModeKind,
+    DiagnosticStopReason, LearnerGateDecision, MathDepthPreference, ModerationVisibilityState,
 };
 use curriculum_jobs::{OutboxJobQueue, OutboxQueueConfig};
 use curriculum_persistence::{
@@ -60,11 +60,19 @@ pub fn build_router(gates: ReleaseFeatureGates) -> Router {
 
 pub fn build_router_with_state(state: ApiAppState) -> Router {
     let readiness_gates = state.gates;
+    let v1_routes = build_v1_routes();
     Router::new()
         .route(
             "/healthz",
             get(move || async move { Json(build_readiness_report(readiness_gates)) }),
         )
+        .merge(v1_routes.clone())
+        .nest("/api", v1_routes)
+        .with_state(state)
+}
+
+fn build_v1_routes() -> Router<ApiAppState> {
+    Router::new()
         // Companion auth session routes (supporting both /v1/auth/session and /v1/auth/sessions*)
         .route("/v1/auth/session", post(create_auth_session_handler))
         .route("/v1/auth/session", get(get_auth_session_handler))
@@ -96,9 +104,11 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
             "/v1/curricula/{curriculum_id}/schedule",
             patch(patch_schedule_handler),
         )
-        // Credential routes (`T07A`, `@S28`, `@S29`, `@S36`, `@S64`, `@S66`, `@S67`)
+        // Credential routes (`T07A`, `T07C`, `@S28`, `@S29`, `@S36`, `@S64`, `@S66`, `@S67`)
         .route("/v1/me/credentials", post(create_credential_handler))
         .route("/v1/me/credentials", get(list_credentials_handler))
+        .route("/v1/credentials", post(create_credential_handler))
+        .route("/v1/credentials", get(list_credentials_handler))
         .route(
             "/v1/me/credentials/{credential_ref}",
             get(get_credential_metadata_handler),
@@ -116,6 +126,53 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
             delete(revoke_credential_handler),
         )
         .route("/v1/me/usage", get(get_my_usage_handler))
+        // T07B & T07D: Hosted wallet, usage quotes, credit reservations, settlements, ledger, checkout & webhooks
+        .route("/v1/me/wallet", get(get_hosted_wallet_handler))
+        .route("/v1/me/billing/wallet", get(get_hosted_wallet_handler))
+        .route("/v1/usage-quotes", post(create_usage_quote_handler))
+        .route("/v1/generation-quotes", post(create_usage_quote_handler))
+        .route("/v1/reservations", post(create_credit_reservation_handler))
+        .route(
+            "/v1/usage/reservations",
+            post(create_credit_reservation_handler),
+        )
+        .route(
+            "/v1/reservations/{reservation_id}/settle",
+            post(settle_credit_reservation_handler),
+        )
+        .route(
+            "/v1/usage/reservations/{reservation_id}/settle",
+            post(settle_credit_reservation_handler),
+        )
+        .route(
+            "/v1/reservations/{reservation_id}/release",
+            post(release_credit_reservation_handler),
+        )
+        .route(
+            "/v1/usage/reservations/{reservation_id}/release",
+            post(release_credit_reservation_handler),
+        )
+        .route(
+            "/v1/reservations/{reservation_id}/reconcile-timeout",
+            post(reconcile_ambiguous_timeout_handler),
+        )
+        .route("/v1/me/ledger", get(get_my_ledger_handler))
+        .route(
+            "/v1/billing/checkout-sessions",
+            post(create_checkout_session_handler),
+        )
+        .route(
+            "/v1/me/billing/checkout-sessions",
+            post(create_checkout_session_handler),
+        )
+        .route(
+            "/v1/billing/webhooks",
+            post(process_payment_webhook_handler),
+        )
+        .route(
+            "/v1/webhooks/billing",
+            post(process_payment_webhook_handler),
+        )
         // T05: Reviewed anchor assessments, attempts, assistance events, defect reports & key corrections
         .route(
             "/v1/assessments/{assessment_id}",
@@ -233,8 +290,101 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
             "/v1/me/reminders/{occurrence_id}/snooze",
             post(snooze_reminder_handler),
         )
-        // Retriable command endpoint with Idempotency-Key + transactional outbox enqueue
+        // T09 & T11: Account export, deletion requests, and external completion import
         .route("/v1/me/exports", post(create_export_job_handler))
+        .route(
+            "/v1/me/deletion-requests",
+            post(request_account_deletion_handler),
+        )
+        .route("/v1/me", delete(request_account_deletion_handler))
+        .route(
+            "/v1/me/integrations/completions",
+            post(import_external_completion_handler),
+        )
+        // T13: Public templates, preview sanitization, discovery, upvotes, moderation & partial adoption
+        .route(
+            "/v1/curricula/{curriculum_id}/publications/preview",
+            post(preview_curriculum_publication_handler),
+        )
+        .route(
+            "/v1/publication-previews",
+            post(preview_body_publication_handler),
+        )
+        .route("/v1/publications", post(publish_curriculum_handler))
+        .route("/v1/publications", get(discover_publications_handler))
+        .route(
+            "/v1/publications/{publication_id}",
+            get(get_public_publication_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions/{publication_revision_id}",
+            get(get_public_publication_revision_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions",
+            post(publish_publication_revision_handler),
+        )
+        .route(
+            "/v1/me/publications/{publication_id}/revisions",
+            post(publish_publication_revision_handler),
+        )
+        .route("/v1/me/publications", get(list_owned_publications_handler))
+        .route(
+            "/v1/me/publications/{publication_id}",
+            get(get_owned_publication_management_handler),
+        )
+        .route(
+            "/v1/me/publications/{publication_id}/revisions",
+            get(list_owned_publication_revisions_handler),
+        )
+        .route(
+            "/v1/me/publications/{publication_id}/unpublish",
+            post(unpublish_publication_handler),
+        )
+        .route(
+            "/v1/me/publications/{publication_id}",
+            delete(unpublish_publication_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/reports",
+            post(report_publication_handler),
+        )
+        .route(
+            "/v1/moderation/reports",
+            get(list_moderation_reports_handler),
+        )
+        .route(
+            "/v1/admin/moderation/reports",
+            get(list_moderation_reports_handler),
+        )
+        .route(
+            "/v1/moderation/publications/{publication_id}",
+            post(moderate_publication_handler),
+        )
+        .route(
+            "/v1/admin/publications/{publication_id}/moderation",
+            post(moderate_publication_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
+            get(get_my_publication_vote_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
+            put(put_my_publication_vote_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
+            delete(delete_my_publication_vote_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/adopt",
+            post(adopt_publication_body_handler),
+        )
+        .route(
+            "/v1/publications/{publication_id}/revisions/{publication_revision_id}/adoptions",
+            post(adopt_publication_revision_handler),
+        )
         // T02: Reviewed catalog filtering, curator review & quarantine routes
         .route(
             "/v1/resources/versions",
@@ -310,7 +460,6 @@ pub fn build_router_with_state(state: ApiAppState) -> Router {
             "/v1/curricula/{curriculum_id}/resource-alerts",
             get(get_curriculum_resource_alerts_handler),
         )
-        .with_state(state)
 }
 
 fn extract_bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -703,10 +852,18 @@ async fn create_export_job_handler(
                 10_000,
             );
 
+            let export_rec = match state.store.create_account_export(&principal, Some(&job_id)) {
+                Ok(r) => r,
+                Err(err) => return error_response(err),
+            };
+
             let response_body = json!({
                 "job_id": job_id,
+                "export_id": export_rec.export_id,
                 "status": "queued",
-                "requested_at": "2026-10-20T21:16:10Z"
+                "requested_at": "2026-10-20T21:16:10Z",
+                "archive_sha256": export_rec.archive_sha256,
+                "export_payload": export_rec.export_payload,
             });
             state.store.complete_idempotent_command(
                 &principal.account_id,
@@ -2142,6 +2299,939 @@ async fn snooze_reminder_handler(
         now_epoch,
     ) {
         Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T07B & T07D Handlers: Hosted Credit Wallet, Quotes, Reservations, Settlements,
+// Ledger, Payment Checkout Sessions & Signed Webhooks
+// =============================================================================
+
+pub const DEFAULT_WEBHOOK_SIGNING_SECRET: &[u8] = b"whsec_curriculum_io_dev_secret_key_2026";
+
+async fn get_hosted_wallet_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let wallet = state.store.get_hosted_credit_wallet(&principal);
+    let etag = wallet.etag.clone();
+    let mut resp = (StatusCode::OK, Json(wallet)).into_response();
+    if let Ok(hv) = HeaderValue::from_str(&etag) {
+        resp.headers_mut().insert(axum::http::header::ETAG, hv);
+    }
+    resp
+}
+
+async fn create_usage_quote_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let quote_id = payload.get("quote_id").and_then(|v| v.as_str());
+    let mode_str = payload
+        .get("billing_mode")
+        .or_else(|| payload.get("credential_mode"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("hosted_credits");
+    let billing_mode = match mode_str {
+        "byok" => BillingModeKind::Byok,
+        "hosted" | "hosted_credits" => BillingModeKind::HostedCredits,
+        other => {
+            return error_response(PersistenceError::Validation(format!(
+                "invalid billing_mode `{other}`"
+            )))
+        }
+    };
+    let operation_kind = payload
+        .get("operation_kind")
+        .and_then(|v| v.as_str())
+        .unwrap_or("curriculum_generation");
+    let provider_id = payload
+        .get("provider_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("openai");
+    let model_id = payload
+        .get("model_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("gpt-4o-2024-08-06");
+    let max_reservable = payload
+        .get("max_reservable_minor_units")
+        .or_else(|| payload.get("max_reservation_cap_minor_units"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(150);
+    let estimated_minor = payload
+        .get("estimated_minor_units")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(max_reservable);
+    let byok_estimated = payload
+        .get("external_byok_estimated_minor_units")
+        .or_else(|| payload.get("byok_telemetry_minor_units"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let materials_minor = payload
+        .get("learning_materials_estimated_minor_units")
+        .or_else(|| payload.get("material_cost_minor_units"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let now_epoch = payload
+        .get("now_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_800_000_000);
+    let ttl_seconds = payload
+        .get("ttl_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(900);
+
+    match state.store.create_usage_quote(
+        &principal,
+        quote_id,
+        operation_kind,
+        billing_mode,
+        provider_id,
+        model_id,
+        estimated_minor,
+        max_reservable,
+        byok_estimated,
+        materials_minor,
+        now_epoch,
+        ttl_seconds,
+    ) {
+        Ok(quote) => (StatusCode::CREATED, Json(quote)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn create_credit_reservation_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let idem_key = extract_header_str(&headers, "idempotency-key")
+        .or_else(|| payload.get("idempotency_key").and_then(|v| v.as_str()))
+        .unwrap_or("idem-resv-default");
+    let reservation_id = payload.get("reservation_id").and_then(|v| v.as_str());
+    let quote_id = payload
+        .get("quote_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("quote-001");
+    let requested_reserve = payload
+        .get("requested_reserve_minor_units")
+        .and_then(|v| v.as_i64());
+    let now_epoch = payload
+        .get("now_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_800_000_000);
+
+    match state.store.create_credit_reservation(
+        &principal,
+        reservation_id,
+        quote_id,
+        idem_key,
+        requested_reserve,
+        now_epoch,
+    ) {
+        Ok(resv) => (StatusCode::CREATED, Json(resv)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn settle_credit_reservation_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(reservation_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let actual_minor = payload
+        .get("actual_cost_minor_units")
+        .or_else(|| payload.get("actual_usage_minor_units"))
+        .or_else(|| payload.get("settled_minor_units"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let now_epoch = payload
+        .get("now_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_800_000_300);
+
+    match state.store.settle_credit_reservation(
+        &principal,
+        &reservation_id,
+        actual_minor,
+        now_epoch,
+    ) {
+        Ok((resv, wallet)) => (
+            StatusCode::OK,
+            Json(json!({
+                "reservation": resv,
+                "wallet": wallet,
+            })),
+        )
+            .into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn release_credit_reservation_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(reservation_id): Path<String>,
+    payload: Option<Json<Value>>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let body = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    let reason = body
+        .get("reason")
+        .and_then(|v| v.as_str())
+        .unwrap_or("provider_or_validation_failure");
+    let now_epoch = body
+        .get("now_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_800_000_300);
+
+    match state
+        .store
+        .release_credit_reservation(&principal, &reservation_id, reason, now_epoch)
+    {
+        Ok((resv, wallet)) => (
+            StatusCode::OK,
+            Json(json!({
+                "reservation": resv,
+                "wallet": wallet,
+            })),
+        )
+            .into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn reconcile_ambiguous_timeout_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(reservation_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let _principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let committed_artifact_persisted = payload
+        .get("committed_artifact_persisted")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let outcome_str = payload
+        .get("outcome")
+        .and_then(|v| v.as_str())
+        .unwrap_or("provider_confirmed_not_executed");
+    let outcome = match outcome_str {
+        "provider_confirmed_completed" | "confirmed_completed_and_validated" => {
+            let minor = payload
+                .get("actual_cost_minor_units")
+                .or_else(|| payload.get("actual_usage_minor_units"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            AmbiguousProviderOutcome::ProviderConfirmedCompleted {
+                actual_usage_minor_units: minor,
+            }
+        }
+        "still_ambiguous_after_deadline"
+        | "unconfirmed_after_deadline"
+        | "unconfirmed_timeout_without_committed_output" => {
+            AmbiguousProviderOutcome::UnconfirmedTimeoutWithoutCommittedOutput
+        }
+        _ => AmbiguousProviderOutcome::ProviderConfirmedNoOutput,
+    };
+    let now_epoch = payload
+        .get("now_epoch_seconds")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_800_000_600);
+
+    match state.store.reconcile_ambiguous_provider_timeout(
+        &reservation_id,
+        committed_artifact_persisted,
+        outcome,
+        now_epoch,
+    ) {
+        Ok((resv, wallet)) => (
+            StatusCode::OK,
+            Json(json!({
+                "reservation": resv,
+                "wallet": wallet,
+            })),
+        )
+            .into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_my_ledger_handler(State(state): State<ApiAppState>, headers: HeaderMap) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let wallet = state.store.get_hosted_credit_wallet(&principal);
+    let entries = state.store.list_ledger_entries(&principal);
+    (
+        StatusCode::OK,
+        Json(json!({
+            "wallet": wallet,
+            "items": entries,
+        })),
+    )
+        .into_response()
+}
+
+async fn create_checkout_session_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let session_id = payload
+        .get("checkout_session_id")
+        .or_else(|| payload.get("session_id"))
+        .and_then(|v| v.as_str());
+    let package_id = payload
+        .get("package_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("pkg-hosted-starter");
+    let idem_key = extract_header_str(&headers, "idempotency-key")
+        .or_else(|| payload.get("idempotency_key").and_then(|v| v.as_str()))
+        .unwrap_or("idem-checkout-default");
+    let amount_minor_units = payload
+        .get("amount_minor_units")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(1_000);
+    let credit_minor_units = payload
+        .get("credit_minor_units")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(amount_minor_units);
+    let success_url = payload
+        .get("success_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://curriculum.example.test/billing/success");
+    let cancel_url = payload
+        .get("cancel_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("https://curriculum.example.test/billing/cancel");
+
+    match state.store.create_checkout_session(
+        &principal,
+        session_id,
+        package_id,
+        idem_key,
+        amount_minor_units,
+        credit_minor_units,
+        success_url,
+        cancel_url,
+    ) {
+        Ok(sess) => (StatusCode::CREATED, Json(sess)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn process_payment_webhook_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    body_bytes: axum::body::Bytes,
+) -> Response {
+    let signature = extract_header_str(&headers, "x-billing-signature")
+        .or_else(|| extract_header_str(&headers, "stripe-signature"))
+        .unwrap_or("");
+
+    match state.store.process_payment_webhook(
+        DEFAULT_WEBHOOK_SIGNING_SECRET,
+        &body_bytes,
+        signature,
+    ) {
+        Ok(outcome) => (StatusCode::OK, Json(outcome)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T13 Handlers: Public Templates, Sanitized Previews, Discovery, Upvotes,
+// Moderation & Partial Adoption
+// =============================================================================
+
+async fn preview_curriculum_publication_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(curriculum_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    preview_publication_inner(state, headers, curriculum_id, payload)
+}
+
+async fn preview_body_publication_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let curriculum_id = payload
+        .get("curriculum_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("cur-learner-a-1")
+        .to_string();
+    preview_publication_inner(state, headers, curriculum_id, payload)
+}
+
+fn preview_publication_inner(
+    state: ApiAppState,
+    headers: HeaderMap,
+    curriculum_id: String,
+    payload: Value,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let vis_str = payload
+        .get("visibility")
+        .and_then(|v| v.as_str())
+        .unwrap_or("public");
+    let visibility = match ModerationVisibilityState::from_wire(vis_str) {
+        Ok(v) => v,
+        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+    };
+    let publisher_display_name = payload
+        .get("publisher_display_name")
+        .or_else(|| payload.get("pseudonymous_handle"))
+        .and_then(|v| v.as_str());
+    let attribution_text = payload.get("attribution_text").and_then(|v| v.as_str());
+
+    match state.store.preview_publication(
+        &principal,
+        &curriculum_id,
+        visibility,
+        publisher_display_name,
+        attribution_text,
+    ) {
+        Ok(preview) => (StatusCode::CREATED, Json(preview)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn publish_curriculum_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let preview_id = payload.get("preview_id").and_then(|v| v.as_str());
+    let curriculum_id = payload.get("curriculum_id").and_then(|v| v.as_str());
+    let publication_id = payload.get("publication_id").and_then(|v| v.as_str());
+    let expected_sha256 = payload
+        .get("expected_preview_sha256")
+        .or_else(|| payload.get("expected_sanitized_snapshot_sha256"))
+        .or_else(|| payload.get("preview_sha256"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let accept_terms = payload
+        .get("accept_publication_terms")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let visibility_override = match payload.get("visibility").and_then(|v| v.as_str()) {
+        Some(s) => match ModerationVisibilityState::from_wire(s) {
+            Ok(v) => Some(v),
+            Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
+        },
+        None => None,
+    };
+
+    match state.store.publish_curriculum(
+        &principal,
+        preview_id,
+        curriculum_id,
+        publication_id,
+        expected_sha256,
+        accept_terms,
+        visibility_override,
+    ) {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn publish_publication_revision_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+    let preview_id = payload.get("preview_id").and_then(|v| v.as_str());
+    let expected_sha256 = payload
+        .get("expected_preview_sha256")
+        .or_else(|| payload.get("expected_sanitized_snapshot_sha256"))
+        .or_else(|| payload.get("preview_sha256"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let accept_terms = payload
+        .get("accept_publication_terms")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
+    match state.store.publish_publication_revision(
+        &principal,
+        &publication_id,
+        if_match,
+        preview_id,
+        expected_sha256,
+        accept_terms,
+    ) {
+        Ok(view) => (StatusCode::CREATED, Json(view)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+#[derive(Debug, Deserialize, Default)]
+pub struct PublicationDiscoveryQueryDto {
+    pub q: Option<String>,
+    pub topic_id: Option<String>,
+    pub sort: Option<String>,
+}
+
+async fn discover_publications_handler(
+    State(state): State<ApiAppState>,
+    Query(query): Query<PublicationDiscoveryQueryDto>,
+) -> Response {
+    let items = state.store.discover_public_publications(
+        query.q.as_deref(),
+        query.topic_id.as_deref(),
+        query.sort.as_deref(),
+    );
+    (StatusCode::OK, Json(json!({ "items": items }))).into_response()
+}
+
+async fn get_public_publication_handler(
+    State(state): State<ApiAppState>,
+    Path(publication_id): Path<String>,
+) -> Response {
+    match state
+        .store
+        .get_public_publication_view(&publication_id, None)
+    {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_public_publication_revision_handler(
+    State(state): State<ApiAppState>,
+    Path((publication_id, publication_revision_id)): Path<(String, String)>,
+) -> Response {
+    match state
+        .store
+        .get_public_publication_view(&publication_id, Some(&publication_revision_id))
+    {
+        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn list_owned_publications_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let items = state.store.list_owned_publications(&principal);
+    (StatusCode::OK, Json(json!({ "items": items }))).into_response()
+}
+
+async fn get_owned_publication_management_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .get_owned_publication_management(&principal, &publication_id)
+    {
+        Ok(mgmt) => {
+            let etag = mgmt.etag.clone();
+            let mut resp = (StatusCode::OK, Json(mgmt)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn list_owned_publication_revisions_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .list_owned_publication_revisions(&principal, &publication_id)
+    {
+        Ok(revisions) => (StatusCode::OK, Json(json!({ "items": revisions }))).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn unpublish_publication_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let if_match = extract_header_str(&headers, "if-match");
+
+    match state
+        .store
+        .unpublish_publication(&principal, &publication_id, if_match)
+    {
+        Ok(mgmt) => {
+            let etag = mgmt.etag.clone();
+            let mut resp = (StatusCode::OK, Json(mgmt)).into_response();
+            if let Ok(hv) = HeaderValue::from_str(&etag) {
+                resp.headers_mut().insert(axum::http::header::ETAG, hv);
+            }
+            resp
+        }
+        Err(err) => error_response(err),
+    }
+}
+
+async fn report_publication_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let pub_rev_id = payload
+        .get("publication_revision_id")
+        .and_then(|v| v.as_str());
+    let reason_code = payload
+        .get("reason_code")
+        .or_else(|| payload.get("reason"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("policy_violation");
+    let details = payload
+        .get("details")
+        .or_else(|| payload.get("description"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("Reported publication");
+
+    match state.store.report_publication(
+        &principal,
+        &publication_id,
+        pub_rev_id,
+        reason_code,
+        details,
+    ) {
+        Ok(rep) => (StatusCode::CREATED, Json(rep)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn list_moderation_reports_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.list_moderation_reports(&principal) {
+        Ok(items) => (StatusCode::OK, Json(json!({ "items": items }))).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn moderate_publication_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let action_kind = payload
+        .get("action_kind")
+        .or_else(|| payload.get("action"))
+        .or_else(|| payload.get("target_visibility_state"))
+        .and_then(|v| v.as_str())
+        .map(|s| match s {
+            "suspended_pending_review" | "suspend" => "quarantine",
+            "removed_by_moderator" => "remove",
+            "published" => "restore",
+            other => other,
+        })
+        .unwrap_or("quarantine");
+    let rationale = payload
+        .get("rationale")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Moderated public template visibility");
+
+    match state
+        .store
+        .moderate_publication(&principal, &publication_id, action_kind, rationale)
+    {
+        Ok(act_rec) => (StatusCode::OK, Json(act_rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn get_my_publication_vote_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((publication_id, publication_revision_id)): Path<(String, String)>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state
+        .store
+        .get_my_publication_vote(&principal, &publication_id, &publication_revision_id)
+    {
+        Ok(vote_state) => (StatusCode::OK, Json(vote_state)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn put_my_publication_vote_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((publication_id, publication_revision_id)): Path<(String, String)>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.set_my_publication_upvote(
+        &principal,
+        &publication_id,
+        &publication_revision_id,
+    ) {
+        Ok(vote_state) => (StatusCode::OK, Json(vote_state)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn delete_my_publication_vote_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((publication_id, publication_revision_id)): Path<(String, String)>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    match state.store.remove_my_publication_upvote(
+        &principal,
+        &publication_id,
+        &publication_revision_id,
+    ) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn adopt_publication_body_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path(publication_id): Path<String>,
+    Json(payload): Json<Value>,
+) -> Response {
+    let pub_rev_id = payload
+        .get("publication_revision_id")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    adopt_publication_inner(state, headers, publication_id, pub_rev_id, payload)
+}
+
+async fn adopt_publication_revision_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Path((publication_id, publication_revision_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> Response {
+    adopt_publication_inner(
+        state,
+        headers,
+        publication_id,
+        Some(publication_revision_id),
+        payload,
+    )
+}
+
+fn adopt_publication_inner(
+    state: ApiAppState,
+    headers: HeaderMap,
+    publication_id: String,
+    publication_revision_id: Option<String>,
+    payload: Value,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let selected_module_ids: Vec<String> = payload
+        .get("selected_module_ids")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    let new_curriculum_id = payload
+        .get("new_curriculum_id")
+        .or_else(|| payload.get("curriculum_id"))
+        .and_then(|v| v.as_str());
+    let free_only = payload
+        .get("free_only")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let max_budget_minor_units = payload
+        .get("max_budget_minor_units")
+        .and_then(|v| v.as_u64());
+
+    match state.store.adopt_publication_revision(
+        &principal,
+        &publication_id,
+        publication_revision_id.as_deref(),
+        new_curriculum_id,
+        &selected_module_ids,
+        free_only,
+        max_budget_minor_units,
+    ) {
+        Ok(adopted) => (StatusCode::CREATED, Json(adopted)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+// =============================================================================
+// T09 & T11 Handlers: Account Deletion Requests & External Completion Import
+// =============================================================================
+
+async fn request_account_deletion_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    payload: Option<Json<Value>>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let body = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    let request_id = body
+        .get("deletion_request_id")
+        .or_else(|| body.get("request_id"))
+        .and_then(|v| v.as_str());
+    let confirm_deletion = body
+        .get("confirm_deletion")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let now_epoch_ms = body
+        .get("now_epoch_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10_000);
+
+    match state.store.request_account_deletion(
+        &principal,
+        request_id,
+        confirm_deletion,
+        now_epoch_ms,
+    ) {
+        Ok(rec) => (StatusCode::ACCEPTED, Json(rec)).into_response(),
+        Err(err) => error_response(err),
+    }
+}
+
+async fn import_external_completion_handler(
+    State(state): State<ApiAppState>,
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    let principal = match authenticate_request(&state, &headers) {
+        Ok(p) => p,
+        Err(err) => return error_response(err),
+    };
+    let curriculum_id = payload
+        .get("curriculum_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("cur-learner-a-1");
+    let activity_id = payload
+        .get("activity_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("act-tok-1");
+    let objective_id = payload.get("objective_id").and_then(|v| v.as_str());
+    let external_provider = payload
+        .get("external_provider")
+        .or_else(|| payload.get("provider_name"))
+        .or_else(|| payload.get("provider"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("coursera");
+    let time_spent_minutes = payload
+        .get("time_spent_minutes")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(45) as u32;
+
+    match state.store.import_external_provider_completion(
+        &principal,
+        curriculum_id,
+        activity_id,
+        objective_id,
+        external_provider,
+        time_spent_minutes,
+    ) {
+        Ok(res) => (StatusCode::CREATED, Json(res)).into_response(),
         Err(err) => error_response(err),
     }
 }
@@ -3886,5 +4976,606 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(del_sub_resp.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconciliation_and_multi_provider_byok(
+    ) {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. T07C: Register Anthropic and Google Gemini BYOK credentials via /v1/me/credentials
+        for (cred_ref, prov, key) in [
+            ("cred-anthropic-1", "anthropic", "sk-ant-api03-secret-7777"),
+            ("cred-gemini-1", "google-gemini", "AIzaSySecretGeminiKey8888"),
+        ] {
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/me/credentials")
+                        .header("authorization", learner_bearer)
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_vec(&json!({
+                                "credential_ref": cred_ref,
+                                "provider_id": prov,
+                                "label": format!("{prov} key"),
+                                "api_key": key
+                            }))
+                            .unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::CREATED);
+            let body = read_body_json(resp).await;
+            assert!(!body.to_string().contains(key));
+        }
+
+        // 2. T07D: Create checkout session & process HMAC-SHA256 signed webhook idempotently (@S59, @S67)
+        let chk_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/checkout-sessions")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "checkout_session_id": "chk-sess-100",
+                            "amount_minor_units": 500,
+                            "currency": "USD"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(chk_resp.status(), StatusCode::CREATED);
+
+        let webhook_payload = serde_json::to_vec(&json!({
+            "webhook_event_id": "evt-wh-100",
+            "event_type": "checkout.session.completed",
+            "checkout_session_id": "chk-sess-100",
+            "occurred_at": "2026-10-20T19:02:00Z"
+        }))
+        .unwrap();
+
+        // Reject invalid webhook signature with 401
+        let bad_wh_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/webhooks")
+                    .header("x-billing-signature", "sha256=deadbeef")
+                    .header("content-type", "application/json")
+                    .body(Body::from(webhook_payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_wh_resp.status(), StatusCode::UNAUTHORIZED);
+
+        // Valid HMAC signature credits wallet (500 initial + 500 = 1000)
+        let valid_sig = curriculum_security::compute_webhook_hmac_sha256(
+            DEFAULT_WEBHOOK_SIGNING_SECRET,
+            &webhook_payload,
+        );
+        let ok_wh_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/webhooks")
+                    .header("x-billing-signature", format!("sha256={valid_sig}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(webhook_payload.clone()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ok_wh_resp.status(), StatusCode::OK);
+        let wh_body = read_body_json(ok_wh_resp).await;
+        assert_eq!(wh_body["replayed"], false);
+        assert_eq!(wh_body["wallet"]["available_minor_units"], 1000);
+
+        // Replay of the same webhook_event_id is a no-op (`replayed: true`, balance stays 1000)
+        let replay_wh_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/billing/webhooks")
+                    .header("x-billing-signature", format!("sha256={valid_sig}"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(webhook_payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(replay_wh_resp.status(), StatusCode::OK);
+        let replay_wh_body = read_body_json(replay_wh_resp).await;
+        assert_eq!(replay_wh_body["replayed"], true);
+        assert_eq!(replay_wh_body["wallet"]["available_minor_units"], 1000);
+
+        // 3. T07B: Create usage quote with 4 distinct cost buckets, reserve credits, and settle at min(actual, cap)
+        let quote_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/usage-quotes")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "quote_id": "quote-hosted-1",
+                            "billing_mode": "hosted_credits",
+                            "max_reservation_cap_minor_units": 400,
+                            "material_cost_minor_units": 1500
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(quote_resp.status(), StatusCode::CREATED);
+        let quote_body = read_body_json(quote_resp).await;
+        assert_eq!(
+            quote_body["four_cost_buckets"]["hosted_ai_inference_minor_units"],
+            400
+        );
+        assert_eq!(
+            quote_body["four_cost_buckets"]["external_byok_estimate_minor_units"],
+            0
+        );
+        assert_eq!(
+            quote_body["four_cost_buckets"]["learning_materials_and_exams_minor_units"],
+            1500
+        );
+
+        let resv_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/reservations")
+                    .header("authorization", learner_bearer)
+                    .header("idempotency-key", "idem-resv-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "reservation_id": "resv-hosted-1",
+                            "quote_id": "quote-hosted-1",
+                            "now_epoch_seconds": 1_800_000_000
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resv_resp.status(), StatusCode::CREATED);
+
+        // Settle at actual=260 (< cap=400) -> settles 260 and releases 140 back to available balance (1000 - 260 = 740)
+        let settle_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/reservations/resv-hosted-1/settle")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "actual_cost_minor_units": 260
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(settle_resp.status(), StatusCode::OK);
+        let settle_body = read_body_json(settle_resp).await;
+        assert_eq!(
+            settle_body["reservation"]["reservation"]["settled_minor_units"],
+            260
+        );
+        assert_eq!(
+            settle_body["reservation"]["reservation"]["released_minor_units"],
+            140
+        );
+        assert_eq!(settle_body["wallet"]["available_minor_units"], 740);
+        assert_eq!(settle_body["wallet"]["reserved_minor_units"], 0);
+
+        // 4. Ambiguous timeout reconciliation releases reservation if unconfirmed after deadline (@S84)
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/usage-quotes")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "quote_id": "quote-timeout-1",
+                            "billing_mode": "hosted_credits",
+                            "max_reservation_cap_minor_units": 300
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let _ = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/reservations")
+                    .header("authorization", learner_bearer)
+                    .header("idempotency-key", "idem-resv-timeout-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "reservation_id": "resv-timeout-1",
+                            "quote_id": "quote-timeout-1",
+                            "now_epoch_seconds": 1_800_000_000
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let recon_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/reservations/resv-timeout-1/reconcile-timeout")
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "outcome": "unconfirmed_after_deadline"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(recon_resp.status(), StatusCode::OK);
+        let recon_body = read_body_json(recon_resp).await;
+        assert_eq!(
+            recon_body["reservation"]["reservation"]["status"],
+            "released"
+        );
+        assert_eq!(
+            recon_body["reservation"]["reservation"]["settled_minor_units"],
+            0
+        );
+        assert_eq!(recon_body["wallet"]["available_minor_units"], 740);
+    }
+
+    #[tokio::test]
+    async fn t13_public_templates_preview_sanitization_discovery_upvotes_moderation_and_partial_adoption(
+    ) {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+        let learner_b_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000002";
+        let moderator_bearer = "Bearer dev-moderator";
+
+        // 1. Preview publication strips private fields and computes JCS preview_sha256 (@S56, @S57)
+        let prev_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/publications/preview")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "visibility": "public",
+                            "publisher_display_name": "rag-architect"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(prev_resp.status(), StatusCode::CREATED);
+        let prev_body = read_body_json(prev_resp).await;
+        let preview_id = prev_body["preview_id"].as_str().unwrap().to_string();
+        let expected_sha = prev_body["preview_sha256"].as_str().unwrap().to_string();
+        assert!(prev_body["sanitized_content"].get("account_id").is_none());
+
+        // 2. Reject publish if expected_preview_sha256 does not match preview
+        let bad_pub_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/publications")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "publication_id": "pub-rag-1",
+                            "preview_id": preview_id,
+                            "expected_preview_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_pub_resp.status(), StatusCode::CONFLICT);
+
+        // 3. Publish with matching digest -> discoverable via GET /v1/publications
+        let pub_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/publications")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "publication_id": "pub-rag-1",
+                            "preview_id": preview_id,
+                            "expected_preview_sha256": expected_sha
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(pub_resp.status(), StatusCode::CREATED);
+        let pub_body = read_body_json(pub_resp).await;
+        let pub_rev_id = pub_body["publication_revision_id"]
+            .as_str()
+            .unwrap()
+            .to_string();
+
+        // 4. Self-upvote by publisher is rejected with 409; Learner B upvote is idempotent (max 1) (@S60, @S81)
+        let self_vote_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("PUT")
+                    .uri(format!(
+                        "/v1/publications/pub-rag-1/revisions/{pub_rev_id}/my-vote"
+                    ))
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(self_vote_resp.status(), StatusCode::CONFLICT);
+
+        for _ in 0..2 {
+            let b_vote_resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("PUT")
+                        .uri(format!(
+                            "/v1/publications/pub-rag-1/revisions/{pub_rev_id}/my-vote"
+                        ))
+                        .header("authorization", learner_b_bearer)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(b_vote_resp.status(), StatusCode::OK);
+            let b_vote_body = read_body_json(b_vote_resp).await;
+            assert_eq!(b_vote_body["has_upvoted"], true);
+            assert_eq!(b_vote_body["upvote_count"], 1);
+        }
+
+        // 5. Partial adoption by Learner B automatically includes transitive prerequisite module closure (@S58, @S61)
+        let adopt_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/v1/publications/pub-rag-1/revisions/{pub_rev_id}/adoptions"
+                    ))
+                    .header("authorization", learner_b_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "selected_module_ids": ["public-module-vector-retrieval"],
+                            "new_curriculum_id": "cur-learner-b-adopted-1"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(adopt_resp.status(), StatusCode::CREATED);
+        let adopt_body = read_body_json(adopt_resp).await;
+        assert_eq!(
+            adopt_body["origin_binding"]["auto_included_prerequisite_module_ids"],
+            json!(["public-module-tokenization"])
+        );
+        assert_eq!(
+            adopt_body["origin_binding"]["source_publication_revision_id"],
+            pub_rev_id
+        );
+
+        // 6. Moderator quarantines publication -> hidden from public discovery, but Learner B's adopted copy remains intact (@S63, @S64)
+        let mod_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/moderation/publications/pub-rag-1")
+                    .header("authorization", moderator_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "action_kind": "quarantine",
+                            "rationale": "Temporarily quarantined for review"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(mod_resp.status(), StatusCode::OK);
+
+        let disc_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/publications")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let disc_body = read_body_json(disc_resp).await;
+        assert!(disc_body["items"].as_array().unwrap().is_empty());
+
+        let adopted_check = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/curricula/cur-learner-b-adopted-1")
+                    .header("authorization", learner_b_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(adopted_check.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn t09_t10_t11_account_export_deletion_restore_tombstone_replay_and_external_completion_import(
+    ) {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. T11 (`PROG-006`): Import external provider completion -> records activity completion without granting Demonstrated mastery
+        let ext_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/integrations/completions")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "curriculum_id": "cur-learner-a-1",
+                            "activity_id": "act-tok-1",
+                            "objective_id": "objective-tokenization",
+                            "external_provider": "coursera",
+                            "time_spent_minutes": 45
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ext_resp.status(), StatusCode::CREATED);
+        let ext_body = read_body_json(ext_resp).await;
+        assert_eq!(ext_body["status"], "self_reported_completed");
+        assert_eq!(ext_body["objective_proficiency_status"], "self_reported");
+        assert_ne!(ext_body["objective_proficiency_status"], "demonstrated");
+
+        // 2. T09 (`OPS-001`, `@S37`): Export account data -> includes curricula_revisions, schedules, assessment_attempts, progress_events, ledger_entries, and never includes raw BYOK secrets
+        let exp_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/exports")
+                    .header("authorization", learner_a_bearer)
+                    .header("idempotency-key", "idem-export-full-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&json!({})).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(exp_resp.status(), StatusCode::ACCEPTED);
+        let exp_body = read_body_json(exp_resp).await;
+        assert!(exp_body["export_payload"]["curricula_revisions"].is_array());
+        assert!(exp_body["export_payload"]["schedules"].is_array());
+        assert!(exp_body["export_payload"]["assessment_attempts"].is_array());
+        assert!(exp_body["export_payload"]["progress_events"].is_array());
+        assert!(exp_body["export_payload"]["ledger_entries"].is_array());
+
+        // 3. T09 (`OPS-001`, `OPS-002`, `@S37`, `@S38`): Request account deletion -> purges private records, writes tombstone, and prevents resurrection on restore
+        let del_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/deletion-requests")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "deletion_request_id": "del-req-a-1",
+                            "confirm_deletion": true,
+                            "now_epoch_ms": 25_000
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(del_resp.status(), StatusCode::ACCEPTED);
+        let del_body = read_body_json(del_resp).await;
+        assert_eq!(del_body["status"], "completed");
+
+        let cur_list_after = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/curricula")
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let cur_list_body = read_body_json(cur_list_after).await;
+        assert!(cur_list_body["items"].as_array().unwrap().is_empty());
     }
 }

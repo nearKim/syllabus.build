@@ -3,3 +3,5 @@ export * from "./theme.ts";
 export * from "./SafeActivityRenderer.ts";
 export * from "./PlanMapAndOutline.ts";
 export * from "./AssessmentAndMasteryGate.ts";
+export * from "./AccessibilityAudit.ts";
+

@@ -102,6 +102,8 @@ pub enum SecurityError {
     InvalidCredentialSecret(String),
     #[error("credential vault authentication or AAD verification failed")]
     VaultDecryptionFailed,
+    #[error("invalid payment webhook HMAC-SHA256 signature: {0}")]
+    InvalidWebhookSignature(String),
 }
 
 /// Provider-neutral HTTP/domain authentication verifier (`D11`).
@@ -497,6 +499,48 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     outer.extend_from_slice(&opad);
     outer.extend_from_slice(&inner_hash);
     sha256_digest(&outer)
+}
+
+/// Computes lowercase 64-character hex HMAC-SHA256 signature for payment webhook payloads (`T07D`, `BILL-005`).
+pub fn compute_webhook_hmac_sha256(secret: &[u8], payload: &[u8]) -> String {
+    let mac = hmac_sha256(secret, payload);
+    hex_encode(&mac)
+}
+
+/// Verifies a payment webhook HMAC-SHA256 signature header against the raw payload using constant-time comparison (`T07D`, `@S67`, `@S68`).
+/// Accepts raw 64-char hex or prefixed formats `sha256=<hex>` / `v1=<hex>`.
+pub fn verify_webhook_hmac_sha256(
+    secret: &[u8],
+    payload: &[u8],
+    signature_header: &str,
+) -> Result<String, SecurityError> {
+    let trimmed = signature_header.trim();
+    if trimmed.is_empty() {
+        return Err(SecurityError::InvalidWebhookSignature(
+            "missing webhook signature header".to_string(),
+        ));
+    }
+    let normalized = trimmed
+        .strip_prefix("sha256=")
+        .or_else(|| trimmed.strip_prefix("v1="))
+        .unwrap_or(trimmed);
+    let provided_bytes = hex_decode(normalized).ok_or_else(|| {
+        SecurityError::InvalidWebhookSignature(
+            "webhook signature is not valid hex encoding".to_string(),
+        )
+    })?;
+    if provided_bytes.len() != 32 {
+        return Err(SecurityError::InvalidWebhookSignature(
+            "webhook signature must be 32 bytes (64 hex chars)".to_string(),
+        ));
+    }
+    let expected = hmac_sha256(secret, payload);
+    if !constant_time_eq(&provided_bytes, &expected) {
+        return Err(SecurityError::InvalidWebhookSignature(
+            "HMAC-SHA256 digest mismatch".to_string(),
+        ));
+    }
+    Ok(hex_encode(&expected))
 }
 
 /// FIPS 180-4 SHA-256 digest used by `CredentialVault`.
