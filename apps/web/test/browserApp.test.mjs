@@ -233,8 +233,16 @@ test("mountCurriculumWebApp and createCurriculumWebAppController deterministical
 test("Study flow matrix follows the chosen flow order: theory_first vs application_first", () => {
   const theoryFirst = renderCurriculumWebAppHtml();
   assert.deepEqual(columnTitles(theoryFirst), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
-  assert.ok(theoryFirst.includes('<ol class="macro-stage" aria-label="Units in study order">'));
   assert.ok(todayBoard(theoryFirst).includes('data-action="set-flow-order" data-flow-order="theory_first" aria-pressed="true"'));
+
+  // The switches carry 1-2 word labels. The column headers already spell out the order.
+  const head = todayBoard(theoryFirst).slice(0, todayBoard(theoryFirst).indexOf('<div class="matrix-stage">'));
+  assert.deepEqual([...head.matchAll(/class="seg-btn"[^>]*>([^<]+)<\/button>/g)].map((match) => match[1]), ["Theory", "Code first", "Balanced"]);
+  assert.ok(head.includes('<button type="button" id="flow-today-deep-dive" class="flow-switch" role="switch" aria-checked="true" data-action="set-deep-dive" data-deep-dive="skipped">Deep Dive'));
+  assert.ok(head.includes('<button type="button" id="flow-today-spaced-review" class="flow-switch" role="switch" aria-checked="true" data-action="set-spaced-review" data-spaced-review="compact">Review'));
+  for (const old of ["Lecture → Deep Dive → Code → Gate", "Skipped (Time-saver)", "Balanced Flow", "Each row is one unit"]) {
+    assert.equal(theoryFirst.includes(old), false, `old toolbar text is still rendered: ${old}`);
+  }
 
   // Unit 1 reads Lecture -> Deep Dive -> Code -> Gate: three arrowheads, and the Review column is passed through.
   const unitOne = unitRow(theoryFirst, "module-foundations");
@@ -262,7 +270,7 @@ test("Study flow matrix follows the chosen flow order: theory_first vs applicati
   assert.deepEqual(columnTitles(renderCurriculumWebAppHtml({ flowOrder: "balanced" })), ["Unit", "Lecture", "Code", "Deep Dive", "Review", "Gate"]);
 });
 
-test("Deep Dive time-saver and compact Spaced Review collapse columns without hiding required work", () => {
+test("Deep Dive and Review switches collapse columns without hiding required work", () => {
   const skipped = renderCurriculumWebAppHtml({ deepDive: "skipped" });
   assert.deepEqual(columnTitles(skipped), ["Unit", "Lecture", "Code", "Review", "Gate"]);
   const board = todayBoard(skipped);
@@ -270,10 +278,13 @@ test("Deep Dive time-saver and compact Spaced Review collapse columns without hi
   // The required worked example moves into the Lecture column after the theory reading.
   const lectureCell = unitRow(skipped, "module-foundations").match(/<td class="flow-cell" data-track="lecture".*?<\/td>/s)?.[0] ?? "";
   assert.ok(lectureCell.indexOf('data-activity-id="activity-theory"') < lectureCell.indexOf('data-activity-id="activity-example"'));
-  assert.ok(board.includes("Time-saver hides 1 optional deep dive (15 min). Required deep dives stay in the Lecture column."));
+  assert.ok(board.includes("Deep Dive off hides 1 optional deep dive (15 min). Required deep dives stay in the Lecture column."));
+  // An off switch offers the value that turns it back on.
+  assert.ok(board.includes('role="switch" aria-checked="false" data-action="set-deep-dive" data-deep-dive="included">Deep Dive'));
 
   const compact = renderCurriculumWebAppHtml({ spacedReview: "compact" });
   assert.deepEqual(columnTitles(compact), ["Unit", "Lecture", "Deep Dive", "Code", "Gate"]);
+  assert.ok(todayBoard(compact).includes('role="switch" aria-checked="false" data-action="set-spaced-review" data-spaced-review="included">Review'));
   const gateCell = unitRow(compact, "module-attention").match(/<td class="flow-cell" data-track="gate".*?<\/td>/s)?.[0] ?? "";
   assert.ok(gateCell.includes('data-activity-id="activity-review"'), "compact reviews stay visible under the gate");
 
@@ -288,6 +299,51 @@ test("Deep Dive time-saver and compact Spaced Review collapse columns without hi
   app.applyUiAction("set-deep-dive", { deepDive: "included" });
   app.applyUiAction("set-flow-order", { flowOrder: "theory_first" });
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
+});
+
+test("Today shows one Next-up bar above the Study flow, and Resume opens the drawer that holds the details", () => {
+  const html = renderCurriculumWebAppHtml();
+  const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
+  const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
+  for (const removed of ["Next session", "In this session", "Why this is next", "Access and setup", 'class="macro-stage"', 'class="status-banner"']) {
+    assert.equal(today.includes(removed), false, `Today still renders ${removed}`);
+  }
+  assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
+
+  // Only the bar sits between the page header and the Study flow board.
+  const between = today.slice(today.indexOf("</select>"), today.indexOf('<section class="flow-board"'));
+  assert.equal(between.match(/<(section|ol|dl|h2|h3)\b/g), null);
+  const bar = between.slice(between.indexOf('<div class="next-up-bar">'));
+  assert.ok(bar.includes('<p class="next-up-progress">0/5 completed · 83m left</p>'));
+  assert.ok(bar.includes('<span class="next-up-label">Next:</span><span class="next-up-title">Read Subword Tokenization &amp; Sequence Packing Notes</span><span class="next-up-time">· 15m</span>'));
+  const resume = bar.match(/<button type="button" class="btn-primary" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)">Resume<span aria-hidden="true">→<\/span><\/button>/);
+  assert.ok(resume, "Resume button is missing");
+
+  // Clicking Resume with its own data attributes opens the drawer on that activity.
+  const listeners = {};
+  const root = { innerHTML: "", addEventListener: (type, listener) => { listeners[type] = listener; } };
+  mountCurriculumWebApp(root, { selectedActivityId: "activity-coding" });
+  const dataset = { action: resume[1], activityId: resume[2], moduleId: resume[3] };
+  listeners.click({ target: { closest: () => ({ dataset }) } });
+  const drawerStart = root.innerHTML.indexOf('<dialog id="learn-detail-inspector"');
+  const drawer = root.innerHTML.slice(drawerStart, root.innerHTML.indexOf("</dialog>", drawerStart));
+  assert.ok(drawer.includes('data-open="true"'));
+  assert.ok(drawer.includes(">Read Subword Tokenization &amp; Sequence Packing Notes</h2>"));
+  assert.ok(drawer.includes("<dt>Capability</dt><dd>Tokenization &amp; Sequence Foundations</dd>"));
+  assert.ok(drawer.includes("<dt>Effort</dt><dd>15 min (10–22)</dd>"));
+  assert.ok(drawer.includes("<strong>Why this is next.</strong> Core theory step in Module 1: Tokenization &amp; Sequence Foundations."));
+  assert.ok(drawer.includes('data-rights-basis="link_and_metadata_only"'));
+
+  // Another activity's drawer does not claim to be next.
+  const other = renderCurriculumWebAppHtml({ selectedActivityId: "activity-coding", studyDetailOpen: true });
+  assert.equal(other.includes("Why this is next"), false);
+
+  // With every scheduled activity closed, the bar offers no Resume.
+  const allDone = Object.fromEntries(["activity-theory", "activity-example", "activity-coding", "activity-quiz", "activity-review", "activity-reflection"].map((id) => [id, "completed"]));
+  const finished = renderCurriculumWebAppHtml({ activityStates: allDone });
+  assert.ok(finished.includes('<p class="next-up-progress">5/5 completed</p>'));
+  assert.ok(finished.includes('<p class="next-up-text">Nothing is scheduled next.</p>'));
+  assert.equal(/<div class="next-up-bar">[\s\S]*?>Resume</.test(finished.slice(0, finished.indexOf('<section class="flow-board"'))), false);
 });
 
 test("the activity inspector is one modal drawer that never takes width from the matrix", () => {

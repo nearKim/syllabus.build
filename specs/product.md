@@ -1264,7 +1264,7 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | Surface | Content in priority order | Primary action and important states |
 | --- | --- | --- |
 | Entry and sign-in | Product purpose; public exploration; save/private-learning benefit | Sign in or explore; session expired, verification needed, preserved return destination |
-| Today | Selected plan; next feasible session; duration/access/setup; why now; due reviews | Start/Resume; no plan, no session, paused, overdue, unavailable resource, unsynchronized work |
+| Today | Selected plan; compact single-line Next-up action bar; configurable Study Flow matrix; due reviews | Start/Resume (details in slide-over drawer); no plan, no session, paused, overdue, unavailable resource, unsynchronized work |
 | New curriculum | Goal and intended outcome; proposed scope; editable assumptions | Continue; ambiguous goal, no relevant catalog coverage, preserved draft |
 | Planning constraints | Time/capacity/deadline; access; language; separate spend categories | Review choices; impossible deadline, unavailable subscription, unknown cost |
 | Background and preferences | Topic claims/evidence; math depth; order; known-material treatment | Continue or check prerequisites; unknown, partial evidence, explicit override |
@@ -1326,7 +1326,7 @@ Coding activities initially use a local or external environment, with setup requ
 
 ### 9.7 Today, plan diagrams, and progress
 
-**Today composition:** a concise title and selected-plan control; one prominent next-session panel; a compact review queue; and secondary links to the plan and schedule. The next-session panel shows the capability, task, effort range, required access/setup, and Why this is next. Use a concrete action such as “Continue attention mechanisms” instead of a decorative achievement score. Completed work appears in a quiet history section. No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation.
+**Today composition:** a concise title and selected-plan control; a compact single-line Next-up action bar (task title, duration, and primary Continue action); and the configurable **Study Flow** matrix immediately below without a redundant macro-unit diagram or text-heavy key-value Next-session prose block above it. Detailed activity metadata (capability, effort range, required access/setup, and Why this is next) is progressively disclosed in the slide-over activity detail drawer. Flow configuration switches use concise 1–2 word labels (e.g., `Theory first`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) rather than repeating full column sequences inside buttons. Completed work appears in place within the Study Flow and in a quiet history section. No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation.
 
 **Plan composition on wide screens:** plan title and bounded outcome; progress summary; Map/Outline control; focused module graph; selected-module detail. Show level of mathematical treatment and resource/access warnings in readable text. The graph uses modules as top-level nodes; books, chapters, and quizzes remain activities within modules unless a real dependency warrants more detail. Group large plans into navigable regions with counts and disclosed filters. Never silently hide required work.
 

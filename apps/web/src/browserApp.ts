@@ -388,9 +388,9 @@ const TRACK_LABELS: Readonly<Record<FlowTrackId, { readonly column: string; read
 };
 
 const FLOW_ORDER_OPTIONS: Readonly<Record<FlowOrder, { readonly label: string; readonly name: string; readonly tracks: readonly FlowTrackId[] }>> = {
-  theory_first: { label: "Lecture → Deep Dive → Code → Gate", name: "theory first", tracks: ["lecture", "deep_dive", "code"] },
-  application_first: { label: "Code → Lecture → Deep Dive → Gate", name: "code first", tracks: ["code", "lecture", "deep_dive"] },
-  balanced: { label: "Balanced Flow", name: "balanced", tracks: ["lecture", "code", "deep_dive"] },
+  theory_first: { label: "Theory", name: "theory first", tracks: ["lecture", "deep_dive", "code"] },
+  application_first: { label: "Code first", name: "code first", tracks: ["code", "lecture", "deep_dive"] },
+  balanced: { label: "Balanced", name: "balanced", tracks: ["lecture", "code", "deep_dive"] },
 };
 
 interface FlowView {
@@ -676,16 +676,15 @@ function renderUnitRow(
   return `<tr class="study-card outline-module-card${selected ? " is-selected" : ""}" data-module-id="${modId}" data-selected="${selected}" data-opaque-surface="true" data-unit-status="${tone}">${rail}${cellsHtml}</tr>`;
 }
 
+// A switch carries the value it sets next, and a stable id so the client can restore focus after a re-render.
 function renderFlowToolbar(idPrefix: string, view: FlowView): string {
-  const group = (key: string, label: string, action: string, options: readonly (readonly [string, string])[], current: string) => `<div class="flow-control">
-        <span class="flow-control-label" id="${idPrefix}-${key}-label">${label}</span>
-        <div class="segmented" role="group" aria-labelledby="${idPrefix}-${key}-label">${options.map(([value, text]) => `<button type="button" class="seg-btn" data-action="${action}" data-${key}="${value}" aria-pressed="${value === current}">${text}</button>`).join("")}</div>
-      </div>`;
+  const toggle = (key: string, label: string, on: boolean, offValue: string) =>
+    `<button type="button" id="${idPrefix}-${key}" class="flow-switch" role="switch" aria-checked="${on}" data-action="set-${key}" data-${key}="${on ? offValue : "included"}">${label}<span class="switch-track" aria-hidden="true"></span></button>`;
   return `<div class="flow-toolbar" role="group" aria-label="Flowchart layout">
-      ${group("flow-order", "Flow order", "set-flow-order", FLOW_ORDERS.map((order) => [order, FLOW_ORDER_OPTIONS[order].label] as const), view.order)}
-      ${group("deep-dive", "Deep Dive", "set-deep-dive", [["included", "Included"], ["skipped", "Skipped (Time-saver)"]], view.deepDive)}
-      ${group("spaced-review", "Spaced Review", "set-spaced-review", [["included", "Included"], ["compact", "Compact"]], view.spacedReview)}
-    </div>`;
+        <div class="segmented" role="group" aria-label="Flow order">${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${order === view.order}">${FLOW_ORDER_OPTIONS[order].label}</button>`).join("")}</div>
+        ${toggle("deep-dive", "Deep Dive", view.deepDive === "included", "skipped")}
+        ${toggle("spaced-review", "Review", view.spacedReview === "included", "compact")}
+      </div>`;
 }
 
 function renderFlowBoard(
@@ -697,13 +696,13 @@ function renderFlowBoard(
   if (view.order !== view.plannedOrder) {
     notes.push(`This plan was generated ${FLOW_ORDER_OPTIONS[view.plannedOrder].name}. Another order moves the columns only, so a card marked “Needs … first” keeps its prerequisite.`);
   }
-  if (view.order === "balanced") notes.push("Balanced Flow alternates Lecture, Code, and Deep Dive before each gate.");
+  if (view.order === "balanced") notes.push("Balanced alternates Lecture, Code, and Deep Dive before each gate.");
   if (view.deepDive === "skipped") {
     const hidden = units.flatMap((unit) => unit.hidden);
     const minutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
     notes.push(hidden.length > 0
-      ? `Time-saver hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${minutes} min). Required deep dives stay in the Lecture column.`
-      : "Time-saver found no optional deep dives. Required deep dives stay in the Lecture column.");
+      ? `Deep Dive off hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${minutes} min). Required deep dives stay in the Lecture column.`
+      : "No optional deep dives to hide. Required deep dives stay in the Lecture column.");
   }
   const headCells = columns.map((track) => {
     if (track === "gate") {
@@ -717,12 +716,11 @@ function renderFlowBoard(
   return `<section class="flow-board" aria-labelledby="${idPrefix}-title" data-flow-order="${view.order}" data-deep-dive="${view.deepDive}" data-spaced-review="${view.spacedReview}">
     <div class="flow-head">
       <h2 id="${idPrefix}-title">Study flow</h2>
-      <p id="${idPrefix}-desc" class="meta-text">Each row is one unit in the chosen order. Every row ends at its gate.</p>
+      ${renderFlowToolbar(idPrefix, view)}
     </div>
-    ${renderFlowToolbar(idPrefix, view)}
     ${notes.map((note) => `<p class="flow-note">${escapeHtml(note)}</p>`).join("")}
     <div class="matrix-stage">
-      <table class="matrix-table" aria-describedby="${idPrefix}-desc" style="--tracks: ${columns.length - 1}">
+      <table class="matrix-table" aria-labelledby="${idPrefix}-title" style="--tracks: ${columns.length - 1}">
         <colgroup><col class="col-rail">${columns.map((track) => `<col class="${track === "gate" ? "col-gate" : "col-track"}">`).join("")}</colgroup>
         <thead><tr><th scope="col" class="flow-colhead"><span class="colhead-title">Unit</span><span class="colhead-meta">${units.length} in order</span></th>${headCells}</tr></thead>
         <tbody>${rows}</tbody>
@@ -776,11 +774,12 @@ interface InspectorInput {
   readonly unitNumber: number;
   readonly open: boolean;
   readonly titleOf: (activityId: string) => string;
+  readonly whyNext: string | null;
   readonly studyAheadRequested: boolean;
   readonly skipRecorded: boolean;
 }
 
-function renderInspector({ mod, activity, unitNumber, open, titleOf, studyAheadRequested, skipRecorded }: InspectorInput): string {
+function renderInspector({ mod, activity, unitNumber, open, titleOf, whyNext, studyAheadRequested, skipRecorded }: InspectorInput): string {
   const id = escapeHtml(activity.activityId);
   const title = escapeHtml(activity.title);
   const track = trackOf(activity);
@@ -815,6 +814,7 @@ function renderInspector({ mod, activity, unitNumber, open, titleOf, studyAheadR
     <div class="inspector-scroll" data-scroll-region>
       <p class="inspector-status">${glyph}<span>${gate ? (gate.passed ? "Passed" : "Not passed") : executionWords(activity.executionStatus)}</span></p>
       <dl class="fact-list">
+        ${fact("Capability", displayUnitTitle(mod.title))}
         ${fact("Effort", effortWords(activity.durationTriplet))}
         ${fact("Requirement", activity.required ? "Required" : "Optional")}
         ${fact("Activity", executionWords(activity.executionStatus))}
@@ -822,6 +822,7 @@ function renderInspector({ mod, activity, unitNumber, open, titleOf, studyAheadR
         ${fact("Math treatment", levels)}
         ${fact("Comes after", activity.prerequisiteActivityIds.map(titleOf).join(", ") || "None")}
       </dl>
+      ${whyNext ? `<p class="prose"><strong>Why this is next.</strong> ${escapeHtml(whyNext)}</p>` : ""}
       <p class="meta-text">Activity execution and objective proficiency stay separate. Completing this activity does not demonstrate the objective.</p>
       ${mod.summary ? `<p class="prose">${escapeHtml(mod.summary)}</p>` : ""}
       ${bridge}
@@ -1088,9 +1089,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   const isExecutionDone = (status: string) => status === "completed" || status === "self_reported_completed";
   const nextSession = todayState.nextSession;
-  const nextActivity = nextSession?.activityBreakdown.find((act) => !isExecutionDone(act.executionStatus))
-    ?? nextSession?.activityBreakdown[0]
-    ?? null;
+  const nextUp = nextSession?.activityBreakdown.find((act) => !isClosed(act.executionStatus)) ?? null;
   const modules = basePlanModel.outlineModules;
   const selectedModuleId = basePlanModel.selectedModuleId;
   const selectedActivityId = basePlanModel.selectedActivityId;
@@ -1100,11 +1099,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     const activity = outlineById.get(activityId);
     return activity ? renderStepRow(activity, selectedActivityId, note, extraAttrs) : "";
   };
-  const accessText = (links: StudyActivity["resourceProvenanceCards"]): string => links.length === 0
-    ? "No external setup is required for this task."
-    : links.map((link) => `${link.title}. ${humanize(link.accessModel)} access. ${rightsWords(link.rightsBadge)}.`).join(" ");
 
-  const nextStepsHtml = (nextSession?.activityBreakdown ?? []).map((act) => stepRow(act.activityId, accessText(act.resourceProvenanceLinks))).join("");
   const reviewItemsHtml = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
     stepRow(act.activityId, `Scheduled ${shortSessionLabel(card.startAt)}. ${card.reviewSeparation.separationSummary} ${act.scheduledReason}`, ` data-review-separation-valid="${card.reviewSeparation.valid}"`),
   )).join("");
@@ -1122,6 +1117,15 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
   const macroStageHtml = renderMacroStage(modules, selectedModuleId);
+  // Today's one line above the Study flow. Resume opens the drawer, which holds the details.
+  const planProgress = unitProgress(basePlanModel.outlineActivities);
+  const nextUpBarHtml = `<div class="next-up-bar">
+            <p class="next-up-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</p>
+            ${nextUp ? `<div class="next-up">
+              <p class="next-up-text"><span class="next-up-label">Next:</span><span class="next-up-title">${escapeHtml(nextUp.title)}</span><span class="next-up-time">· ${nextUp.durationTriplet.point}m</span></p>
+              <button type="button" class="btn-primary" data-action="select-outline-activity" data-activity-id="${escapeHtml(nextUp.activityId)}" data-module-id="${escapeHtml(nextUp.moduleId)}">Resume<span aria-hidden="true">→</span></button>
+            </div>` : `<p class="next-up-text">Nothing is scheduled next.</p>`}
+          </div>`;
   const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView);
   const planBoardHtml = renderFlowBoard("flow-plan", modules, selectedModuleId, selectedActivityId, flowView);
 
@@ -1131,6 +1135,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     ? renderInspector({
       mod: selectedModule, activity: selectedActivity, unitNumber: modules.indexOf(selectedModule) + 1,
       open: studyDetailOpen && isLearn, titleOf,
+      whyNext: nextUp && nextUp.activityId === selectedActivity.activityId ? nextUp.scheduledReason : null,
       studyAheadRequested: studyAheadActivityId === selectedActivity.activityId,
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
     })
@@ -1241,7 +1246,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     : `<p class="meta-text">Selecting an option does not submit or advance.</p>`;
   const hintHtml = hintRequested ? `<p class="prose" role="status">Hint: the scale keeps the dot-product variance from growing with d_k. Assistance is recorded without a penalty.</p>` : "";
   const solutionHtml = workedSolutionRevealed ? `<p class="prose" role="status">Worked solution: softmax(QK^T / sqrt(d_k)) V. Studying the solution records assistance and does not mark the objective demonstrated.</p>` : "";
-  const recoveryBanner = `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
+  // The ready state needs no banner. Any other state still shows above the Next-up bar.
+  const recoveryBanner = todayState.asyncRecoveryBanner.state === "ready" ? "" : `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
 
   const openDialogId = inputState.openDialogId ?? null;
   const dialogOpen = (id: string) => ` data-open="${openDialogId === id}"`;
@@ -1271,30 +1277,15 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <label class="field field-inline" for="selected-plan"><span>Selected plan</span>
                 <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
               </label>
-              <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
           </div>
           ${recoveryBanner}
-          <section class="next-session-panel" data-opaque-surface="true" data-review-separation-valid="${nextSession?.reviewSeparation.valid ?? todayState.reviewSeparationValid}" aria-labelledby="next-session-title">
-            <div class="next-session-lead">
-              <h2 id="next-session-title">Next session</h2>
-              ${nextSession ? `<p class="meta-text">${escapeHtml(shortSessionLabel(nextSession.startAt))} · ${nextSession.durationMinutes} min</p>` : ""}
-              ${nextActivity ? `<dl class="fact-list">
-                <div><dt>Capability</dt><dd>${escapeHtml(displayUnitTitle(nextActivity.moduleTitle))}</dd></div>
-                <div><dt>Task</dt><dd>${escapeHtml(nextActivity.title)}</dd></div>
-                <div><dt>Effort</dt><dd>${effortWords(nextActivity.durationTriplet)} · ${nextActivity.requirementLevel === "optional" ? "Optional" : "Required"}</dd></div>
-                <div><dt>Access and setup</dt><dd>${escapeHtml(accessText(nextActivity.resourceProvenanceLinks))}</dd></div>
-              </dl>
-              <p class="prose"><strong>Why this is next.</strong> ${escapeHtml(nextActivity.scheduledReason)}</p>
-              <div class="action-row"><a class="btn-primary" href="#study-workspace">Continue ${escapeHtml(displayUnitTitle(nextActivity.moduleTitle))}</a></div>` : `<p>No session is scheduled.</p>`}
-            </div>
-            ${nextStepsHtml ? `<div class="next-session-steps"><h3>In this session</h3><ol class="today-activity-list step-list">${nextStepsHtml}</ol></div>` : ""}
-          </section>
-          ${macroStageHtml}
+          ${nextUpBarHtml}
           ${todayBoardHtml}
           <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
             <h2>Study</h2>
-            <p class="prose">One task: ${escapeHtml(nextActivity?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextActivity?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
+            <p class="prose">One task: ${escapeHtml(nextUp?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextUp?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
             <div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}">${attentionFormula.mathml}</div>
             <fieldset class="choice-group">
               <legend>Which statement matches the scaling term?</legend>
@@ -1345,7 +1336,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
           <p class="meta-text">${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
           <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
-          ${macroStageHtml}
           <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
             <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
               ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}

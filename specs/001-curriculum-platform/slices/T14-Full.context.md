@@ -1,9 +1,9 @@
 <!-- GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md -->
-<!-- Specification SHA-256: b7ad9df9344dd0483a8775fa04be05470a631597c22244fe2f578bbba3627c44 -->
+<!-- Specification SHA-256: 296bb03fc209d6d961fea31e6b90072f66dac6e774c3547a1b9f3b735a6a9429 -->
 
 # T14-Full: Slice 12 — Complete Screen Inventory, Automated A11y Checks & Manual WCAG 2.2 AA Evidence
 
-- **Source of Truth:** `specs/product.md` (SHA-256: `b7ad9df9344dd0483a8775fa04be05470a631597c22244fe2f578bbba3627c44`)
+- **Source of Truth:** `specs/product.md` (SHA-256: `296bb03fc209d6d961fea31e6b90072f66dac6e774c3547a1b9f3b735a6a9429`)
 - **Release Tier:** Tier 3: Public Beta (Separate from T09)
 - **Canonical Parent Slice:** `T14` (Complete responsive UI and accessibility)
 - **Mapped Requirements:** 24
