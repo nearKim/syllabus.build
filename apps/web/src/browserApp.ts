@@ -1,6 +1,6 @@
 import {
   buildPlanMapAndOutlineModel, OBJECTIVE_PROFICIENCY_BADGE_STATUSES, renderAccessibleMathFormula,
-  resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
+  renderUntrustedCatalogText, resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
   type ActivityExecutionStatus, type CatalogResourceMetadataInput, type MapKeyboardKey,
   type PlanMapAndOutlineModel, type ThemePreference,
 } from "../../../packages/ui/src/index.ts";
@@ -47,7 +47,7 @@ export interface CurriculumWebAppStateInput {
   readonly upvotedRevisionIds?: readonly string[]; readonly openDialogId?: string | null;
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
-  readonly studyAheadActivityId?: string | null; readonly skippedActivityIds?: readonly string[];
+  readonly skippedActivityIds?: readonly string[];
   readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly keyVisible?: boolean;
   readonly diagnosticControl?: "active" | "paused" | "stopped";
   readonly adaptationChoice?: "pending" | "accept_reviewed" | "keep_current";
@@ -135,7 +135,11 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-tokenization"], prerequisite_activity_ids: ["activity-example"],
       resource_assignments: [makeResAssign("synthetic-resource-cert-prep-v1", "supplemental", [], "External repository lab with optional certification exam track.")],
       duration_estimate: makeDurationEstimate([0, 5, 20, 0, 0], [0, 4, 15, 0, 0], [0, 8, 30, 0, 0]),
-      content: { coding_prompt: "Run the external test suite to verify lossless UTF-8 round-trip encoding." },
+      content: {
+        task_prompt: "Run the external test suite to verify lossless UTF-8 round-trip encoding.",
+        deliverable_description: "A reversible tokenizer and a tensor shape validator that pass the external round-trip and shape tests.",
+        assessment_ref: null, execution_mode: "external",
+      },
     },
     {
       activity_id: "activity-quiz", type: "quiz", title: "Formative Checkpoint: Tokenization & Attention Shapes",
@@ -334,7 +338,7 @@ type SfIconName =
   | "today" | "plan" | "progress" | "resources"
   | "zoom-in" | "zoom-out" | "reset" | "focus"
   | "check" | "close"
-  | "clock" | "rigor" | "pin" | "arrow-up-left" | "arrow-down-right";
+  | "clock" | "rigor" | "pin" | "code";
 
 const SF_ICON_PATHS: Record<SfIconName, string> = {
   learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
@@ -353,8 +357,7 @@ const SF_ICON_PATHS: Record<SfIconName, string> = {
   clock: `<circle cx="8" cy="8" r="5.25"/><path d="M8 5.25V8l1.9 1.25"/>`,
   rigor: `<path d="M3 2.75v10.5h10.5z"/><path d="M3 10.5h2.75v2.75"/>`,
   pin: `<path d="M6 2.75h4l-.6 3.6 1.85 2.15h-6.5L6.6 6.35z"/><path d="M8 8.5v4.75"/>`,
-  "arrow-up-left": `<path d="M11.25 11.25 4.75 4.75M4.75 10V4.75H10"/>`,
-  "arrow-down-right": `<path d="M4.75 4.75 11.25 11.25M11.25 6v5.25H6"/>`,
+  code: `<path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25"/>`,
 };
 
 function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
@@ -534,10 +537,6 @@ function checkButton(activity: StudyActivity, className: string): string {
   return `<button type="button" class="${className}" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${statusGlyph("module", executionTone(activity.executionStatus), 20)}<span class="st-sr">${done ? "Self-reported completed" : "Mark self-reported completed"}: ${escapeHtml(activity.title)}</span></button>`;
 }
 
-const bridgeSr = (activity: StudyActivity): string => activity.prerequisiteBridgeRecommendation?.recommended
-  ? `<span class="st-sr">Prerequisite Bridge Warning: ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</span>`
-  : "";
-
 // A card holds only its title, duration, optional mark, and check. The column header names the track.
 function renderNodeCard(activity: StudyActivity, selectedActivityId: string | null): string {
   const id = escapeHtml(activity.activityId);
@@ -550,7 +549,7 @@ function renderNodeCard(activity: StudyActivity, selectedActivityId: string | nu
         <span class="node-foot"><span class="node-duration">${point}m</span>${activity.required ? "" : `<span class="node-optional">Optional</span>`}</span>
         <span class="st-sr">${executionWords(activity.executionStatus)}. ${activity.required ? "Required" : "Optional"}. About ${point} minutes, range ${min} to ${max}. Objective proficiency: ${escapeHtml(humanize(activity.objectiveProficiencyStatus))}.</span>
       </button>
-      ${checkButton(activity, "node-check")}${bridgeSr(activity)}
+      ${checkButton(activity, "node-check")}
     </article>`;
 }
 
@@ -566,7 +565,7 @@ function renderGateDiamond(mod: StudyModule, gate: StudyActivity | null, selecte
       <svg class="gate-shape" viewBox="0 0 84 84" width="84" height="84" aria-hidden="true"><rect x="14" y="14" width="56" height="56" rx="8" transform="rotate(45 42 42)" />${status.passed ? `<path d="M31 43 39 51 54 34" />` : ""}</svg>
       <span class="st-sr">Gate. </span><span class="gate-title">${escapeHtml(gate ? gate.title : "Objective check")}</span>
       <span class="gate-criteria">${gateCriteria(status)}${gate ? ` · ${gate.durationTriplet.point}m` : ""}</span>
-    </button>${gate ? bridgeSr(gate) : ""}`;
+    </button>`;
 }
 
 interface UnitPlacement {
@@ -783,90 +782,158 @@ const activityGlyph = (activity: StudyActivity, size: number): string => trackOf
   ? statusGlyph("gate", gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)).passed ? "done" : "todo", size)
   : statusGlyph("module", executionTone(activity.executionStatus), size);
 
+// The statuses a learner can set from the drawer. Done records a self-reported completion.
+const SETTABLE_STATUSES = ["not_started", "in_progress", "completed"] as const;
+type SettableStatus = (typeof SETTABLE_STATUSES)[number];
+const STATUS_LABELS: Readonly<Record<SettableStatus, string>> = { not_started: "Not started", in_progress: "In progress", completed: "Done" };
+
+type SourceCardView = StudyActivity["resourceProvenanceCards"][number];
+
+// Where a resource lives, as a learner reads it. A synthetic .invalid host shows only its path.
+function displayLocation(url: string): string {
+  const { hostname, pathname } = new URL(url);
+  const path = pathname.replace(/\/+$/, "");
+  return hostname.endsWith(".invalid") ? path.replace(/^\/+/, "") || "catalog" : `${hostname.replace(/^www\./, "")}${path}`;
+}
+
+// The plan model keeps one prompt per activity, so a lab's deliverables come from the raw curriculum.
+function deliverablesOf(curriculum: Record<string, unknown>, activityId: string): readonly string[] {
+  const activities: unknown = curriculum["activities"];
+  const raw = (Array.isArray(activities) ? activities : []).map(asRecord).find((entry) => entry["activity_id"] === activityId);
+  const content = asRecord(raw?.["content"]);
+  const listed: unknown = content["deliverables"];
+  return [content["deliverable_description"], ...(Array.isArray(listed) ? listed : [])]
+    .filter((item): item is string => typeof item === "string" && item.trim() !== "")
+    .map((item) => renderUntrustedCatalogText(item, { maxLength: 2000 }).text);
+}
+
 interface InspectorInput {
   readonly modules: readonly StudyModule[];
   readonly mod: StudyModule;
   readonly activity: StudyActivity;
   readonly open: boolean;
   readonly rigor: string;
-  readonly studyAheadRequested: boolean;
+  readonly deliverables: readonly string[];
+  readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly skipRecorded: boolean;
 }
 
-// Drawer sections: status pills, dependency flow, details table, unit gate, then the actions.
-function renderInspector({ modules, mod, activity, open, rigor, studyAheadRequested, skipRecorded }: InspectorInput): string {
+// Drawer: the status control, then any earlier step not yet done, the material, and what the step builds.
+// A coding lab adds its brief, specs, and checklist. The footer offers Done, or the next step once done.
+function renderInspector({ modules, mod, activity, open, rigor, deliverables, catalogResources, skipRecorded }: InspectorInput): string {
   const id = escapeHtml(activity.activityId);
-  const title = escapeHtml(activity.title);
   const track = trackOf(activity);
+  const isGate = track === "gate";
+  const isLab = activity.type === "coding" || activity.type === "project";
   const unitNumber = modules.indexOf(mod) + 1;
-  const all = modules.flatMap((unit, index) => unit.activities.map((item) => ({ item, unit: index + 1 })));
-  const byId = new Map(all.map((node) => [node.item.activityId, node]));
-  const titleOf = (activityId: string): string => byId.get(activityId)?.item.title ?? activityId;
-  const done = activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed";
   const tone = executionTone(activity.executionStatus);
-  const statusWords = activity.executionStatus === "waived" ? "Waived" : tone === "done" ? "Done" : tone === "doing" ? "In progress" : "Not started";
+  const status: SettableStatus = tone === "done" ? "completed" : tone === "doing" ? "in_progress" : "not_started";
+  // Previous and next follow the plan's order, which keeps every prerequisite before its dependents.
+  const steps = modules.flatMap((unit) => unit.activities);
+  const at = steps.findIndex((step) => step.activityId === activity.activityId);
+  const prev = steps[at - 1];
+  const next = steps[at + 1];
+  const target = (step: StudyActivity): string =>
+    `data-action="select-outline-activity" data-activity-id="${escapeHtml(step.activityId)}" data-module-id="${escapeHtml(step.moduleId)}"`;
 
-  // Each row shows a glyph for that step's own status. A gate reads as its unit's gate.
-  const line = (glyph: string, text: string): string => `<li class="dep-row">${glyph}<span>${escapeHtml(text)}</span></li>`;
-  const depRow = ({ item, unit }: { readonly item: StudyActivity; readonly unit: number }): string =>
-    line(activityGlyph(item, 16), trackOf(item) === "gate" ? `Unit ${unit} Gate` : item.title);
-  const prerequisites = activity.prerequisiteActivityIds.map((prereqId) => {
-    const node = byId.get(prereqId);
-    return node ? depRow(node) : line(statusGlyph("module", "todo", 16), prereqId);
-  }).join("") || `<li class="dep-none">None — Entry point</li>`;
-  // With no explicit successor, work before the gate leads to the gate. The gate and later work end the unit.
-  const successors = all.filter((node) => node.item.prerequisiteActivityIds.includes(activity.activityId));
-  const leadsTo = successors.length > 0 ? successors.map(depRow).join("")
-    : track === "gate" || postGateIds(mod).has(activity.activityId) ? `<li class="dep-none">None — End of unit</li>`
-    : line(statusGlyph("gate", unitGate(mod).passed ? "done" : "todo", 16), `Unit ${unitNumber} Gate`);
+  const statusControl = `<div class="segmented status-control" role="group" aria-label="Activity status">${SETTABLE_STATUSES.map((choice) =>
+    `<button type="button" class="seg-btn${choice === "completed" && status === "completed" ? " status-celebration" : ""}" data-action="set-activity-status" data-activity-id="${id}" data-status="${choice}" aria-pressed="${choice === status}">${STATUS_LABELS[choice]}</button>`).join("")}</div>`;
+  const proficiency = isGate
+    ? `<span class="proficiency-pill" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}">${statusGlyph("gate", activity.objectiveProficiencyStatus === "demonstrated" ? "done" : "todo", 16)}<span><span class="st-sr">Objective proficiency: </span>${escapeHtml(humanize(activity.objectiveProficiencyStatus))}</span></span>`
+    : "";
 
-  const sources = activity.resourceProvenanceCards.map((card) => `<span class="meta-line" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">${escapeHtml(card.verifiedPublisher)} · ${escapeHtml(humanize(card.accessModel))} · <span data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${card.rightsBadge.externalLinkOnly ? "External link" : escapeHtml(humanize(card.rightsBadge.basis))}</span>${card.optionalCertificationBadge ? ` · Optional certificate ${formatMinorCurrency(4900, "USD")}` : ""}</span>`).join("");
+  const stepNav = prev || next ? `<nav class="mobile-step-nav" aria-label="Previous and next step">
+        ${prev ? `<button type="button" class="btn-secondary step-nav-btn" ${target(prev)}><span aria-hidden="true">←</span><span class="step-nav-text">Prev: ${escapeHtml(prev.title)}</span></button>` : ""}
+        ${next ? `<button type="button" class="btn-secondary step-nav-btn step-nav-next" ${target(next)}><span class="step-nav-text">Next: ${escapeHtml(next.title)}</span><span aria-hidden="true">→</span></button>` : ""}
+      </nav>` : "";
+
+  // Earlier steps the learner has not done yet. A mastery gate requires them. Other steps recommend them.
+  const unmet = activity.prerequisiteActivityIds.flatMap((prereqId) => steps.find((step) => step.activityId === prereqId) ?? [])
+    .filter((step) => !isClosed(step.executionStatus));
+  const firstSteps = unmet.length === 0 ? "" : `<div class="first-steps">
+        <p class="first-steps-label">${activity.prerequisiteBridgeRecommendation?.blocking ? "Required first:" : "Recommended first:"}</p>
+        ${unmet.map((step) => `<button type="button" class="first-step" ${target(step)}>${activityGlyph(step, 16)}<span>${escapeHtml(step.title)}</span><span aria-hidden="true">→</span></button>`).join("")}
+      </div>`;
+
+  const sourceCard = (card: SourceCardView, index: number): string => {
+    const segments = catalogResources[card.resourceVersionId]?.segments ?? [];
+    const sections = card.verifiedSegments.flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
+      .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
+    const tags = [
+      humanize(card.accessModel),
+      card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
+      ...(card.optionalCertificationBadge ? [`Optional certificate ${formatMinorCurrency(4900, "USD")}`] : []),
+    ];
+    const url = card.canonicalUrl;
+    return `<section class="source-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" aria-labelledby="${INSPECTOR_ID}-source-${index}">
+        <h3 id="${INSPECTOR_ID}-source-${index}" class="source-title">${escapeHtml(card.title)}</h3>
+        <p class="source-publisher">${escapeHtml(card.verifiedPublisher)}</p>
+        ${url ? `<p class="source-location">${sfIcon("resources", 15)}<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(displayLocation(url))}</a></p>` : ""}
+        ${sections.map((section) => `<p class="source-section">${escapeHtml(section)}</p>`).join("")}
+        <ul class="source-tags">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>
+        ${url ? `<a class="btn-primary source-open" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${isLab ? "Open Lab Specification" : "Open Study Material"}<span aria-hidden="true">↗</span><span class="st-sr"> in a new tab</span></a>` : ""}
+      </section>`;
+  };
+
+  const objectives = new Map(modules.flatMap((unit) => unit.objectives).map((objective) => [objective.objectiveId, objective]));
+  const mine = activity.objectiveIds.flatMap((objectiveId) => objectives.get(objectiveId) ?? []);
+  const focus = `<section class="inspector-section conceptual-focus" aria-labelledby="${INSPECTOR_ID}-focus">
+        <h3 id="${INSPECTOR_ID}-focus">${isGate ? "What this checks" : "What this builds"}</h3>
+        <ul class="focus-list">${mine.map((objective) => `<li>${escapeHtml(objective.title)}</li>`).join("") || "<li>No objective is mapped to this activity.</li>"}</ul>
+        ${isGate || postGateIds(mod).has(activity.activityId) ? "" : `<p class="focus-next">${statusGlyph("gate", unitGate(mod).passed ? "done" : "todo", 16)}<span>Prepares for: Unit ${unitNumber} Gate</span></p>`}
+      </section>`;
+
   const metaRow = (icon: SfIconName, key: string, value: string): string =>
     `<tr><th scope="row"><span class="meta-key">${sfIcon(icon)}${key}</span></th><td>${value}</td></tr>`;
-  const resource = activity.resourceProvenanceCards.find((card) => card.canonicalUrl);
-  const criteria = mod.objectives.map((objective) => `<li data-objective-id="${escapeHtml(objective.objectiveId)}">
-          ${statusGlyph("gate", objective.proficiencyStatus === "demonstrated" ? "done" : "todo", 16)}
-          <div><p class="criteria-title">${escapeHtml(objective.title)}</p><p class="meta-text">${escapeHtml(objective.successCriterion || "No success criterion stated.")}</p><p class="meta-text">${escapeHtml(humanize(objective.proficiencyStatus))}</p></div>
-        </li>`).join("");
-  const bridge = activity.prerequisiteBridgeRecommendation?.recommended
-    ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${activity.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.map(titleOf).join(", ") || "none")}.</div>`
-    : "";
-  const notes = [
-    studyAheadRequested ? `Study ahead requested for ${activity.title}. Unmet prerequisites, evidence, and waivers stay unchanged.` : "",
-    skipRecorded ? `Skip recorded for ${activity.title} only. Prerequisite evidence was not created.` : "",
-  ].filter(Boolean).map((note) => `<p class="prose" role="status">${escapeHtml(note)}</p>`).join("");
-  return `<dialog id="${INSPECTOR_ID}" class="inspector" closedby="any" aria-labelledby="${INSPECTOR_ID}-title" data-open="${open}" data-opaque-surface="true">
-    <header class="inspector-head">
-      <p class="inspector-context">Unit ${unitNumber} · ${TRACK_LABELS[track].badge}</p>
-      <h2 id="${INSPECTOR_ID}-title" tabindex="-1" autofocus>${title}</h2>
-      <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">${sfIcon("close")}</button>
-      <div class="inspector-pills">
-        <button type="button" class="status-toggle" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${statusGlyph("module", tone, 16)}<span>${statusWords}</span><span class="st-sr">. ${done ? executionWords(activity.executionStatus) : "Mark self-reported completed"}</span></button>
-        <span class="proficiency-pill" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}">${statusGlyph("gate", activity.objectiveProficiencyStatus === "demonstrated" ? "done" : "todo", 16)}<span><span class="st-sr">Objective proficiency: </span>${escapeHtml(humanize(activity.objectiveProficiencyStatus))}</span></span>
-      </div>
-    </header>
-    <div class="inspector-scroll" data-scroll-region>
-      <ol class="dep-flow" aria-label="Dependency flow">
-        <li class="dep-step"><p class="dep-label">${sfIcon("arrow-up-left")}Prerequisites</p><ul class="dep-list">${prerequisites}</ul></li>
-        <li class="dep-step dep-current">${activityGlyph(activity, 16)}<span>This activity</span></li>
-        <li class="dep-step"><p class="dep-label">${sfIcon("arrow-down-right")}Leads to</p><ul class="dep-list">${leadsTo}</ul></li>
-      </ol>
-      ${bridge}
-      <table class="meta-table">
+  const details = `<table class="meta-table">
         <caption class="st-sr">Activity details</caption>
         <tbody>
           ${metaRow("clock", "Duration", effortWords(activity.durationTriplet))}
           ${metaRow("rigor", "Rigor", escapeHtml(rigor))}
           ${metaRow("pin", "Type", activity.required ? "Required" : "Optional")}
-          ${metaRow("resources", "Source", sources || "No external source")}
         </tbody>
-      </table>
-      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-gate"><h3 id="${INSPECTOR_ID}-gate">Unit gate</h3><ul class="criteria-list">${criteria || `<li class="meta-text">No objectives are mapped to this unit.</li>`}</ul></section>
-      ${notes}
+      </table>`;
+  // Coding and project work runs outside the app (execution_mode "external"), in the learner's own IDE.
+  const specs: readonly (readonly [SfIconName, string])[] = [
+    ["clock", effortWords(activity.durationTriplet)], ["rigor", rigor], ["pin", activity.required ? "Required" : "Optional"], ["code", "Local or external IDE"],
+  ];
+  const lab = `<section class="inspector-section lab-brief" aria-labelledby="${INSPECTOR_ID}-brief">
+        <h3 id="${INSPECTOR_ID}-brief">Deliverable brief</h3>
+        <p>${escapeHtml(activity.promptSummary)}</p>
+        ${deliverables.length > 0 ? `<ul class="lab-deliverables">${deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
+      </section>
+      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-specs">
+        <h3 id="${INSPECTOR_ID}-specs">Environment and lab specs</h3>
+        <ul class="spec-chips">${specs.map(([icon, text]) => `<li>${sfIcon(icon, 15)}<span>${escapeHtml(text)}</span></li>`).join("")}</ul>
+      </section>
+      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-checks">
+        <h3 id="${INSPECTOR_ID}-checks">Verification checklist</h3>
+        <ul class="lab-checklist">${mine.filter((objective) => objective.successCriterion).map((objective) => `<li>${statusGlyph("module", "todo", 16)}<span>${escapeHtml(objective.successCriterion)}</span></li>`).join("") || "<li>No acceptance criteria are stated.</li>"}</ul>
+      </section>`;
+
+  const primary = status !== "completed"
+    ? `<button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}">Mark as Done<span aria-hidden="true">✓</span></button>`
+    : next ? `<button type="button" class="btn-primary next-step" ${target(next)}><span class="next-step-text">Go to next step: ${escapeHtml(next.title)}</span><span aria-hidden="true">→</span></button>` : "";
+
+  return `<dialog id="${INSPECTOR_ID}" class="inspector" closedby="any" aria-labelledby="${INSPECTOR_ID}-title" data-open="${open}" data-activity-id="${id}" data-opaque-surface="true">
+    <header class="inspector-head">
+      <p class="inspector-context">Unit ${unitNumber} · ${TRACK_LABELS[track].badge}</p>
+      <h2 id="${INSPECTOR_ID}-title" tabindex="-1" autofocus>${escapeHtml(activity.title)}</h2>
+      <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">${sfIcon("close")}</button>
+      <div class="inspector-pills">${statusControl}${proficiency}</div>
+    </header>
+    <div class="inspector-scroll" data-scroll-region>
+      ${stepNav}
+      ${firstSteps}
+      ${isLab ? lab : ""}
+      ${activity.resourceProvenanceCards.map(sourceCard).join("")}
+      ${focus}
+      ${isLab ? "" : details}
+      ${skipRecorded ? `<p class="prose" role="status">${escapeHtml(`Skip recorded for ${activity.title} only. Prerequisite evidence was not created.`)}</p>` : ""}
     </div>
     <div class="inspector-actions">
-      ${resource?.canonicalUrl ? `<a class="btn-primary" href="${escapeHtml(resource.canonicalUrl)}" target="_blank" rel="noopener noreferrer">Open verified resource<span aria-hidden="true">↗</span><span class="st-sr"> in a new tab</span></a>` : ""}
-      <div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div>
+      ${primary}
+      <button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button>
     </div>
   </dialog>`;
 }
@@ -1096,7 +1163,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const workedSolutionRevealed = inputState.workedSolutionRevealed ?? false;
   const practiceSubmitted = inputState.practiceSubmitted ?? false;
   const practiceChoice = inputState.practiceChoice ?? null;
-  const studyAheadActivityId = inputState.studyAheadActivityId ?? null;
   const skippedActivityIds = new Set(inputState.skippedActivityIds ?? []);
   const remindersOn = inputState.remindersEnabled ?? reminderState.enabled;
   const remindersPaused = inputState.remindersPaused ?? false;
@@ -1166,7 +1232,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     ? renderInspector({
       modules, mod: selectedModule, activity: selectedActivity, open: studyDetailOpen && isLearn,
       rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
-      studyAheadRequested: studyAheadActivityId === selectedActivity.activityId,
+      deliverables: deliverablesOf(curriculum, selectedActivity.activityId), catalogResources,
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
     })
     : "";
@@ -1697,7 +1763,6 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let workedSolutionRevealed = initialState.workedSolutionRevealed ?? false;
   let practiceSubmitted = initialState.practiceSubmitted ?? false;
   let practiceChoice: string | null = initialState.practiceChoice ?? null;
-  let studyAheadActivityId: string | null = initialState.studyAheadActivityId ?? null;
   const skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
@@ -1724,15 +1789,39 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let deepDive: DeepDiveMode = initialState.deepDive ?? "included";
   let spacedReview: SpacedReviewMode = initialState.spacedReview ?? "included";
 
-  const todayController = createTodayViewController({
-    curriculum, schedule, proficiency, catalogResources,
-    ...(initialState.activityStates ? { initialActivityStates: initialState.activityStates } : {}),
-  });
+  // A learner's explicit Not started or In progress choice overrides the initial state. Events replay after it,
+  // so a later Done still wins. Today is rebuilt when events are dropped, so counts and minutes stay exact.
+  const statusOverrides = new Map<string, ActivityExecutionStatus>();
+  let recordedProgressEvents: ProgressEventInput[] = [...(initialState.recordedProgressEvents ?? [])];
+  const activityStatesInput = (): Readonly<Record<string, ActivityExecutionStatus>> =>
+    ({ ...(initialState.activityStates ?? {}), ...Object.fromEntries(statusOverrides) });
+  const buildToday = () => {
+    const controller = createTodayViewController({ curriculum, schedule, proficiency, catalogResources, initialActivityStates: activityStatesInput() });
+    for (const ev of recordedProgressEvents) controller.recordProgressEvent(ev);
+    return controller;
+  };
+  let todayController = buildToday();
 
-  const recordedProgressEvents: ProgressEventInput[] = [];
-  for (const ev of initialState.recordedProgressEvents ?? []) {
-    recordedProgressEvents.push(ev);
-    todayController.recordProgressEvent(ev);
+  function recordCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt {
+    const eventId = explicitEventId ?? `evt-complete-${activityId}`;
+    const ev: ProgressEventInput = { eventId, activityId, type: "self_reported_completed" };
+    if (!recordedProgressEvents.some((e) => (e.eventId ?? e.event_id) === eventId)) {
+      recordedProgressEvents.push(ev);
+    }
+    return todayController.recordProgressEvent(ev);
+  }
+
+  // Done records a self-reported completion. Not started and In progress also drop that activity's
+  // completion events, so a corrected mistake no longer counts toward completions or study minutes.
+  function setActivityStatus(activityId: string, status: SettableStatus) {
+    if (status === "completed") {
+      if (!isClosed(todayController.getState().activityExecutionStates[activityId] ?? "not_started")) recordCompletion(activityId);
+      return getState();
+    }
+    statusOverrides.set(activityId, status);
+    recordedProgressEvents = recordedProgressEvents.filter((ev) => (ev.activityId ?? ev.activity_id) !== activityId);
+    todayController = buildToday();
+    return getState();
   }
 
   const buildCurrentPlanModel = (): PlanMapAndOutlineModel =>
@@ -1754,7 +1843,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       adoptedSelectedModuleIds: [...adoptedSelectedModuleIds] as readonly string[],
       upvotedRevisionIds: [...upvotedRevisionIds] as readonly string[],
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
-      studyAheadActivityId, skippedActivityIds: [...skippedActivityIds] as readonly string[],
+      skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
       depthOverrideReset, studyDetailOpen, flowOrder, deepDive, spacedReview,
@@ -1765,7 +1854,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     getState,
     renderHtml: (): string => {
       const { activityStates: _a, ...restState } = getState();
-      return renderCurriculumWebAppHtml({ ...initialState, ...restState });
+      return renderCurriculumWebAppHtml({ ...initialState, ...restState, activityStates: activityStatesInput() });
     },
     navigateTopLevel(destination: TopLevelDestination) {
       topLevel = destination;
@@ -1819,14 +1908,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       if (nextModel.selectedActivityId) selectedActivityId = nextModel.selectedActivityId;
       return getState();
     },
-    recordTodayActivityCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt {
-      const eventId = explicitEventId ?? `evt-complete-${activityId}`;
-      const ev: ProgressEventInput = { eventId, activityId, type: "self_reported_completed" };
-      if (!recordedProgressEvents.some((e) => (e.eventId ?? e.event_id) === eventId)) {
-        recordedProgressEvents.push(ev);
-      }
-      return todayController.recordProgressEvent(ev);
-    },
+    recordTodayActivityCompletion: recordCompletion,
+    setActivityStatus,
     setThemePreference(theme: ThemePreference) {
       themePreference = theme;
       return getState();
@@ -1859,8 +1942,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "submit-practice") {
         practiceSubmitted = true;
         practiceChoice = submittedChoice;
-      } else if (action === "study-ahead" && data["activityId"]) studyAheadActivityId = data["activityId"];
-      else if (action === "skip-activity" && data["activityId"]) {
+      } else if (action === "set-activity-status" && data["activityId"] && isOneOf(SETTABLE_STATUSES, data["status"])) {
+        setActivityStatus(data["activityId"], data["status"]);
+      } else if (action === "skip-activity" && data["activityId"]) {
         const activityId = data["activityId"];
         if (!skippedActivityIds.includes(activityId)) skippedActivityIds.push(activityId);
       } else if (action === "diagnostic-pause") diagnosticControl = "paused";
@@ -2018,6 +2102,7 @@ export function mountCurriculumWebApp(
     applyMapControl: withSync(controller.applyMapControl),
     navigateMapKeyboard: withSync(controller.navigateMapKeyboard),
     recordTodayActivityCompletion: withSync(controller.recordTodayActivityCompletion),
+    setActivityStatus: withSync(controller.setActivityStatus),
     setThemePreference: withSync(controller.setThemePreference),
     toggleUpvote: withSync(controller.toggleUpvote),
     openDialog: withSync(controller.openDialog),

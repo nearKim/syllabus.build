@@ -87,7 +87,7 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
       `Missing non-dragging map control ${ctrl}`
     );
   }
-  assert.ok(html.includes("Prerequisite Bridge Warning:"));
+  assert.equal(html.includes("Prerequisite Bridge Warning"), false, "internal bridge jargon must not reach the UI");
   assert.ok(html.includes('data-action="activate-revision"'));
   assert.ok(html.includes('data-if-match="&quot;revision-attention-v2-etag&quot;"'));
 
@@ -378,62 +378,111 @@ test("flowchart cards keep one shape in every order: title, duration, optional m
   assert.equal(/\.col-gate\s*\{/.test(css), false, "the gate column must be as wide as the track columns");
 });
 
-test("the drawer groups status pills, a dependency flow, a details table, and action buttons", () => {
+test("the drawer leads with the material and plain guidance, without jargon or a list of neighbors", () => {
   const drawerFor = (activityId, moduleId, extra = {}) =>
     drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: activityId, selectedModuleId: moduleId, studyDetailOpen: true, ...extra }));
+  const visible = (html) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const theory = drawerFor("activity-theory", "module-foundations");
-  assert.equal(theory.includes("Why this is next"), false);
+  const coding = drawerFor("activity-coding", "module-foundations");
+  const quiz = drawerFor("activity-quiz", "module-attention");
 
-  // Section 1: the eyebrow, the title, the status toggle, and the objective pill.
-  assert.ok(theory.includes('<p class="inspector-context">Unit 1 · Lecture</p>'));
-  assert.match(theory, /<button type="button" class="status-toggle" data-action="complete-activity" data-activity-id="activity-theory"[^>]*aria-pressed="false">[\s\S]*?<span>Not started<\/span>/);
-  assert.match(theory, /<span class="proficiency-pill" data-proficiency-status="demonstrated">[\s\S]*?Demonstrated<\/span>/);
+  // Objective proficiency appears on the gate only, and the old controls are gone.
+  for (const drawer of [theory, coding]) assert.equal(/Unassessed|Demonstrated/i.test(visible(drawer)), false);
+  assert.match(quiz, /<span class="proficiency-pill" data-proficiency-status="unassessed">[\s\S]*?Unassessed<\/span>/);
+  assert.equal(/Study ahead|Prerequisite Bridge|class="status-toggle"|class="dep-flow"|Why this is next/.test(theory + coding + quiz), false);
 
-  // Section 2: prerequisites, then this activity, then what it leads to. A gate reads as its unit's gate.
-  const flowText = (drawer) => {
-    const start = drawer.indexOf('<ol class="dep-flow"');
-    assert.ok(start >= 0, "dependency flow is missing");
-    return drawer.slice(start, drawer.indexOf("</ol>", start)).replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  };
-  assert.equal(flowText(theory), "Prerequisites None — Entry point This activity Leads to Worked Example: Attention Scaling Factor 1/sqrt(d_k)");
-  assert.equal(flowText(drawerFor("activity-coding", "module-foundations")), "Prerequisites Worked Example: Attention Scaling Factor 1/sqrt(d_k) This activity Leads to Unit 2 Gate");
-  assert.equal(flowText(drawerFor("activity-review", "module-attention")), "Prerequisites Unit 2 Gate This activity Leads to None — End of unit");
-  // A prerequisite row shows that prerequisite's own status.
-  const prerequisiteGlyph = (drawer) => drawer.match(/<li class="dep-row"><svg class="st-glyph"[^>]*data-status="([a-z]+)"[^>]*>[\s\S]*?<\/svg><span>Worked Example/)?.[1];
-  assert.equal(prerequisiteGlyph(drawerFor("activity-coding", "module-foundations")), "todo");
-  assert.equal(prerequisiteGlyph(drawerFor("activity-coding", "module-foundations", { activityStates: { "activity-example": "completed" } })), "done");
+  // The source card says what the material is and where it lives, and opens it in one click.
+  const source = theory.match(/<section class="source-card"[\s\S]*?<\/section>/)?.[0] ?? "";
+  assert.ok(source.includes('class="source-title">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing</h3>'));
+  assert.ok(source.includes('<p class="source-publisher">Open ML Press (Curator Verified)</p>'));
+  assert.ok(source.includes('<a href="https://example.invalid/catalog/tokenization-monograph" target="_blank" rel="noopener noreferrer">catalog/tokenization-monograph</a>'));
+  assert.ok(source.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
+  assert.deepEqual([...source.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]), ["Free", "External link"]);
+  assert.match(source, /<a class="btn-primary source-open" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Open Study Material<span aria-hidden="true">↗<\/span>/);
+  assert.equal(drawerFor("activity-review", "module-attention").includes('class="source-card"'), false, "no card without material");
 
-  // Section 3: a two-column table with an icon on each key.
-  const rows = (drawer) => {
-    const table = drawer.slice(drawer.indexOf('<table class="meta-table">'), drawer.indexOf("</table>"));
-    return [...table.matchAll(/<tr><th scope="row"><span class="meta-key"><svg[\s\S]*?<\/svg>([^<]+)<\/span><\/th><td>([\s\S]*?)<\/td><\/tr>/g)]
-      .map((match) => [match[1], match[2].replace(/<[^>]+>/g, "")]);
-  };
-  assert.deepEqual(rows(theory), [
-    ["Duration", "15 min (10–22 min)"],
-    ["Rigor", "Formal"],
-    ["Type", "Required"],
-    ["Source", "Open ML Press (Curator Verified) · Free · External link"],
-  ]);
+  // The drawer states what the step builds. Narrow screens add previous and next buttons, hidden at 872px and up.
+  assert.match(theory, /<h3 id="learn-detail-inspector-focus">What this builds<\/h3>[\s\S]*?Analyze BPE and Unigram tokenization sequence lengths[\s\S]*?Prepares for: Unit 1 Gate/);
+  assert.match(quiz, /<h3 id="learn-detail-inspector-focus">What this checks<\/h3>/);
+  const nav = coding.match(/<nav class="mobile-step-nav"[\s\S]*?<\/nav>/)?.[0] ?? "";
+  assert.match(nav, /data-action="select-outline-activity" data-activity-id="activity-example"[^>]*>[\s\S]*?Prev: Worked Example/);
+  assert.match(nav, /data-action="select-outline-activity" data-activity-id="activity-quiz"[^>]*>[\s\S]*?Next: Formative Checkpoint/);
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /@media \(min-width: 872px\)\s*\{\s*\.mobile-step-nav\s*\{\s*display:\s*none;/);
+
+  // An earlier step that is not done is one click away. A mastery gate says required instead of recommended.
+  assert.match(coding, /Recommended first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-example"/);
+  assert.equal(drawerFor("activity-coding", "module-foundations", { activityStates: { "activity-example": "self_reported_completed" } }).includes("Recommended first"), false);
+  assert.match(quiz, /Required first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-coding"/);
+});
+
+test("the status control sets three states, celebrates Done, and then offers the next step", () => {
+  const { root, click } = mountWithClicks({ selectedActivityId: "activity-theory", studyDetailOpen: true });
+  const drawer = () => drawerOf(root.innerHTML);
+  const control = () => drawer().match(/<div class="segmented status-control" role="group" aria-label="Activity status">([\s\S]*?)<\/div>/)?.[1] ?? "";
+  const pressed = () => [...control().matchAll(/aria-pressed="true">([^<]+)</g)].map((match) => match[1]);
+  assert.deepEqual([...control().matchAll(/data-action="set-activity-status" data-activity-id="activity-theory" data-status="([a-z_]+)"/g)].map((match) => match[1]), ["not_started", "in_progress", "completed"]);
+  assert.deepEqual(pressed(), ["Not started"]);
+  assert.match(drawer(), /<button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="activity-theory"[^>]*>Mark as Done<span aria-hidden="true">✓<\/span>/);
+  assert.equal(drawer().includes("status-celebration"), false);
+
+  click({ action: "set-activity-status", activityId: "activity-theory", status: "in_progress" });
+  assert.deepEqual(pressed(), ["In progress"]);
+  assert.ok(root.innerHTML.includes('data-activity-id="activity-theory" data-execution-status="in_progress"'));
+  assert.ok(drawer().includes(">Mark as Done<"));
+
+  click({ action: "set-activity-status", activityId: "activity-theory", status: "completed" });
+  assert.deepEqual(pressed(), ["Done"]);
+  assert.match(control(), /class="seg-btn status-celebration" data-action="set-activity-status" data-activity-id="activity-theory" data-status="completed" aria-pressed="true"/);
+  assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && root.innerHTML.includes('data-study-minutes="15"'));
+  const next = drawer().match(/<button type="button" class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"><span class="next-step-text">Go to next step: Worked Example: Attention Scaling Factor 1\/sqrt\(d_k\)<\/span><span aria-hidden="true">→<\/span><\/button>/);
+  assert.ok(next, "Done turns the primary button into the next step");
+  assert.equal(drawer().includes(">Mark as Done<"), false);
+
+  // Going back to Not started removes the self-reported completion and its minutes.
+  click({ action: "set-activity-status", activityId: "activity-theory", status: "not_started" });
+  assert.deepEqual(pressed(), ["Not started"]);
+  assert.ok(root.innerHTML.includes('data-self-reported-count="0"') && root.innerHTML.includes('data-study-minutes="0"'));
+  // An unknown status is rejected at the boundary.
+  click({ action: "set-activity-status", activityId: "activity-theory", status: "finished" });
+  assert.deepEqual(pressed(), ["Not started"]);
+
+  // The card checkbox still completes through complete-activity, and Go to next step opens that step.
+  click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
+  assert.deepEqual(pressed(), ["Done"]);
+  const go = drawer().match(/class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
+  click({ action: go[1], activityId: go[2], moduleId: go[3] });
+  assert.ok(drawer().includes(">Worked Example: Attention Scaling Factor 1/sqrt(d_k)</h2>"));
+  assert.ok(drawer().includes('data-open="true"'));
+
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.status-celebration\s*\{[^}]*animation:\s*status-ring/);
+});
+
+test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then the lab specification", () => {
+  const lab = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-coding", studyDetailOpen: true }));
+  const section = (id) => lab.match(new RegExp(`<section class="inspector-section[^"]*" aria-labelledby="learn-detail-inspector-${id}">([\\s\\S]*?)</section>`))?.[1] ?? "";
+  assert.match(section("brief"), /Deliverable brief[\s\S]*Run the external test suite to verify lossless UTF-8 round-trip encoding\.[\s\S]*<li>A reversible tokenizer and a tensor shape validator/);
+  assert.deepEqual([...section("specs").matchAll(/<span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), ["25 min (19–38 min)", "Formal", "Required", "Local or external IDE"]);
+  assert.ok(section("checks").includes("Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples."));
+  assert.match(lab, /<section class="source-card"[\s\S]*?>Open Lab Specification<span aria-hidden="true">↗<\/span>/);
+  assert.ok(lab.includes("Optional certificate $49.00"), "a paid option stays visible before the learner leaves");
+  const order = ["brief", "specs", "checks"].map((id) => lab.indexOf(`aria-labelledby="learn-detail-inspector-${id}"`)).concat(lab.indexOf('class="source-card"'));
+  assert.ok(order.every((at) => at >= 0));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+  assert.equal(lab.includes('<table class="meta-table">'), false, "the lab sheet shows its specs as chips");
+
+  // A reading activity keeps the plain details table and has no lab sections.
+  const reading = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-theory", studyDetailOpen: true }));
+  assert.equal(/Deliverable brief|Verification checklist|Open Lab Specification/.test(reading), false);
+  assert.ok(reading.includes('<table class="meta-table">'));
+
   // Rigor is the plan's math depth, and a topic override wins over it.
   const example = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../specs/001-curriculum-platform/examples/curriculum.synthetic.json"), "utf8"));
-  const rigor = (curriculum) => new Map(rows(drawerOf(renderCurriculumWebAppHtml({ curriculum })))).get("Rigor");
+  const rigor = (curriculum) => drawerOf(renderCurriculumWebAppHtml({ curriculum })).match(/Rigor<\/span><\/th><td>([^<]+)<\/td>/)?.[1];
   assert.equal(rigor(example), "Applied");
   const overridden = { ...example, instruction_preferences_applied: { ...example.instruction_preferences_applied, topic_math_depth_overrides: [{ topic_id: "topic-tokenization", math_depth: "formal" }] } };
   assert.equal(rigor(overridden), "Formal");
-
-  // Section 4: the resource link and the two secondary actions. No link without a linked resource.
-  const actions = theory.slice(theory.indexOf('<div class="inspector-actions">'));
-  assert.match(actions, /<a class="btn-primary" href="[^"]+" target="_blank" rel="noopener noreferrer">Open verified resource<span aria-hidden="true">↗<\/span>/);
-  assert.ok(actions.includes('data-action="study-ahead" data-activity-id="activity-theory">Study ahead</button>'));
-  assert.ok(actions.includes('data-action="skip-activity" data-activity-id="activity-theory">Skip this activity</button>'));
-  assert.equal(drawerFor("activity-review", "module-attention").includes("Open verified resource"), false);
-
-  // The status toggle records a self-reported completion and then reads Done.
-  const toggle = theory.match(/<button type="button" class="status-toggle" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)" data-event-id="([^"]+)"/);
-  const { root, click } = mountWithClicks({ selectedActivityId: "activity-theory", studyDetailOpen: true });
-  click({ action: toggle[1], activityId: toggle[2], moduleId: toggle[3], eventId: toggle[4] });
-  assert.match(drawerOf(root.innerHTML), /class="status-toggle"[^>]*aria-pressed="true">[\s\S]*?<span>Done<\/span>/);
 });
 
 test("the activity inspector is one modal drawer that never takes width from the matrix", () => {
@@ -510,6 +559,18 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const flowJson = await flowRes.json();
     assert.equal(flowJson.state.flowOrder, "application_first");
     assert.deepEqual(columnTitles(flowJson.html), ["Unit", "Code", "Lecture", "Deep Dive", "Review", "Gate"]);
+
+    // The drawer's status control travels the same route, and a step button inside the drawer never
+    // replaces the control that opened it, so focus can return there on close.
+    const statusRes = await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set-activity-status", activityId: "activity-example", status: "in_progress" }),
+    });
+    const statusJson = await statusRes.json();
+    assert.equal(statusJson.state.activityStates["activity-example"], "in_progress");
+    assert.ok(statusJson.html.includes('data-activity-id="activity-example" data-execution-status="in_progress"'));
+    assert.ok(clientJs.includes('&& !target.closest("dialog")) {\n      inspectorOpenerKey = keyFor(target);'));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

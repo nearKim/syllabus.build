@@ -1704,15 +1704,6 @@ math {
   flex: 0 0 auto;
 }
 
-.prerequisite-bridge-warning {
-  max-width: 70ch;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-warning-surface);
-  color: var(--color-warning-text);
-  font-size: 14px;
-}
-
 /* Progress: three quiet summaries side by side, never stat cards */
 .progress-summaries {
   display: grid;
@@ -2030,8 +2021,8 @@ dialog.inspector::backdrop {
     background: var(--tint-12);
   }
 
-  .status-toggle:hover {
-    background: var(--tint-8);
+  .first-step:hover {
+    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   }
 }
 
@@ -2050,7 +2041,7 @@ dialog.inspector::backdrop {
   margin: 0;
 }
 
-/* Header pills: the execution status toggle and the objective proficiency label */
+/* Header controls: the three-state status control, and on a gate the objective proficiency pill */
 .inspector-pills {
   display: flex;
   flex-wrap: wrap;
@@ -2060,13 +2051,59 @@ dialog.inspector::backdrop {
   margin-top: var(--space-3);
 }
 
-.status-toggle {
-  min-width: 0;
-  gap: 6px;
-  padding: 6px 14px 6px 10px;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 600;
+.status-control {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 1 1 100%;
+}
+
+.status-control .seg-btn {
+  padding-inline: var(--space-2);
+}
+
+.status-control .seg-btn[data-status="completed"][aria-pressed="true"] {
+  background: var(--color-success-text);
+  color: var(--color-surface);
+}
+
+/* Done: one emerald ring pulse and one light sweep, only when motion is allowed. Nothing loops.
+   The app's Reduce motion setting also stops both, through the global animation override. */
+@media (prefers-reduced-motion: no-preference) {
+  .status-celebration {
+    position: relative;
+    overflow: hidden;
+    animation: status-ring 900ms var(--ease-out) 1;
+  }
+
+  .status-celebration::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.45) 50%, transparent 70%);
+    translate: -100% 0;
+    animation: status-sweep 900ms var(--ease-out) 120ms 1 both;
+    pointer-events: none;
+  }
+}
+
+@keyframes status-ring {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success-text) 45%, transparent);
+  }
+
+  to {
+    box-shadow: 0 0 0 10px transparent;
+  }
+}
+
+@keyframes status-sweep {
+  from {
+    translate: -100% 0;
+  }
+
+  to {
+    translate: 100% 0;
+  }
 }
 
 .proficiency-pill {
@@ -2086,66 +2123,173 @@ dialog.inspector::backdrop {
   color: var(--color-success-text);
 }
 
-/* Dependency flow: prerequisites, this activity, and what it leads to, joined by a short rail.
-   Every row starts its icon 12px in, so the rail at 19px runs through the icon centers. */
-.dep-flow,
-.dep-list {
+/* Previous and next step, for narrow screens where the Study flow is not beside the drawer */
+.mobile-step-nav {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.step-nav-btn {
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 6px var(--space-3);
+  font-size: 13px;
+}
+
+.step-nav-next {
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
+.step-nav-text,
+.next-step-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 872px) {
+  .mobile-step-nav {
+    display: none;
+  }
+}
+
+/* Recommended first: each earlier step that is not done yet, one click away */
+.first-steps {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-surface);
+}
+
+.first-steps-label {
+  margin: 0;
+  padding-top: var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.first-step {
+  justify-content: flex-start;
+  min-width: 0;
+  margin-left: calc(-1 * var(--space-2));
+  padding: 6px var(--space-2);
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  text-align: left;
+}
+
+/* Source card: what the material is, where it lives, its access terms, and one button that opens it */
+.source-card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+}
+
+.source-card > * {
+  margin: 0;
+}
+
+.source-title {
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.source-publisher,
+.source-section {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.source-location {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.source-tags,
+.spec-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.dep-step + .dep-step {
-  position: relative;
-  margin-top: var(--space-4);
+.source-tags {
+  margin-top: var(--space-1);
 }
 
-.dep-step + .dep-step::before {
-  content: "";
-  position: absolute;
-  top: -14px;
-  left: 19px;
-  width: 2px;
-  height: 12px;
-  background: var(--line);
+.source-tags li,
+.spec-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.dep-label,
-.dep-row,
-.dep-current {
+.source-open {
+  margin-top: var(--space-3);
+}
+
+/* What this builds: the objectives behind the step, and the gate it prepares for */
+.focus-list,
+.lab-deliverables {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 14px;
+}
+
+.focus-list li + li,
+.lab-deliverables li + li {
+  margin-top: var(--space-1);
+}
+
+.focus-next {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding-left: var(--space-3);
-}
-
-.dep-label {
-  margin: 0 0 var(--space-1);
-  font-size: 13px;
-  font-weight: 600;
+  margin: var(--space-2) 0 0;
+  font-size: 14px;
   color: var(--color-text-secondary);
 }
 
-.dep-row,
-.dep-none {
-  min-height: 36px;
+/* Coding lab: the brief, the specs, and a checklist of what the code must pass */
+.lab-brief p {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+}
+
+.lab-checklist {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
   font-size: 14px;
 }
 
-.dep-none {
+.lab-checklist li {
   display: flex;
-  align-items: center;
-  padding-left: calc(var(--space-3) + 24px);
-  color: var(--color-text-secondary);
+  align-items: flex-start;
+  gap: var(--space-2);
 }
 
-.dep-current {
-  min-height: 44px;
-  border-radius: var(--radius-control);
-  background: var(--color-accent-surface);
-  font-size: 14px;
-  font-weight: 600;
+.lab-checklist .st-glyph {
+  margin-top: 2px;
 }
 
 /* Details table: an icon and key on the left, the value on the right */
@@ -2180,59 +2324,18 @@ dialog.inspector::backdrop {
   gap: var(--space-2);
 }
 
-.meta-line {
-  display: block;
-}
-
-.meta-line + .meta-line {
-  margin-top: var(--space-1);
-}
-
 .inspector-section h3 {
   margin-bottom: var(--space-2);
   font-size: 15px;
 }
 
-.criteria-list {
-  display: grid;
-  gap: var(--space-3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.criteria-list li {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: var(--space-2);
-}
-
-.criteria-list .st-glyph {
-  margin-top: 3px;
-}
-
-.criteria-list p {
-  margin: 0 0 2px;
-}
-
-.criteria-title {
-  font-weight: 600;
-}
-
 .inspector-actions {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5) calc(var(--space-4) + env(safe-area-inset-bottom));
   border-top: var(--hairline);
   background: var(--color-surface);
-}
-
-.inspector-actions .action-row {
-  margin-top: 0;
-}
-
-.inspector-actions .action-row > * {
-  flex: 1 1 0;
 }
 
 .compact-bottom-nav {
@@ -2494,7 +2597,7 @@ dialog.inspector::backdrop {
   .today-unified-header,
   .badge,
   .proficiency-pill,
-  .dep-current,
+  .first-steps,
   .seg-btn[aria-pressed="true"],
   .switch-track {
     border: 1px solid CanvasText;

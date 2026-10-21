@@ -79,10 +79,11 @@ ${fallbackScript}
     });
   }
 
+  // The drawer records which activity it shows, so moving to another step starts at the top.
   function openDialogScroll() {
     const open = new Map();
     root.querySelectorAll("dialog[open]").forEach((dialog) => {
-      open.set(dialog.id, (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop);
+      open.set(dialog.id, { top: (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop, activityId: dialog.dataset.activityId });
     });
     return open;
   }
@@ -91,9 +92,10 @@ ${fallbackScript}
   function openMarkedDialogs(previous) {
     root.querySelectorAll('dialog[data-open="true"]').forEach((dialog) => {
       if (dialog.open) return;
-      if (previous.has(dialog.id)) dialog.setAttribute("data-instant", "");
+      const before = previous.get(dialog.id);
+      if (before) dialog.setAttribute("data-instant", "");
       dialog.showModal();
-      (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = previous.get(dialog.id) || 0;
+      (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = before && before.activityId === dialog.dataset.activityId ? before.top : 0;
     });
   }
 
@@ -148,7 +150,9 @@ ${fallbackScript}
       return;
     }
 
-    if (action === "select-map-node" || action === "select-outline-module" || action === "select-outline-activity") {
+    // Only a control outside the drawer opens it. A step button inside the drawer must not replace
+    // that control, or closing the drawer would have nowhere to return focus.
+    if ((action === "select-map-node" || action === "select-outline-module" || action === "select-outline-activity") && !target.closest("dialog")) {
       inspectorOpenerKey = keyFor(target);
     }
 
