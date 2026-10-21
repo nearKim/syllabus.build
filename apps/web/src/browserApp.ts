@@ -24,7 +24,8 @@ import {
 import {
   buildFourBucketCostBreakdown, createHostedBillingController, createPublicAdoptionController,
   createPublicationLifecycleController, formatMinorCurrency,
-  type HostedCreditWalletSnapshot, type OwnedPublicationItem, type PublicCurriculumPayload, type PublicationPreviewPayload,
+  type HostedCreditWalletSnapshot, type OwnedPublicationItem, type OwnedPublicationRevisionItem,
+  type PublicCurriculumPayload, type PublicationPreviewPayload,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
 import { clamp, escapeHtml } from "./shared.ts";
@@ -44,6 +45,16 @@ export interface CurriculumWebAppStateInput {
   readonly byokMode?: InferenceMode; readonly byokCredentials?: readonly MaskedCredentialRecord[];
   readonly wallet?: HostedCreditWalletSnapshot; readonly adoptedSelectedModuleIds?: readonly string[];
   readonly upvotedRevisionIds?: readonly string[]; readonly openDialogId?: string | null;
+  readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
+  readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
+  readonly studyAheadActivityId?: string | null; readonly skippedActivityIds?: readonly string[];
+  readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly keyVisible?: boolean;
+  readonly diagnosticControl?: "active" | "paused" | "stopped";
+  readonly adaptationChoice?: "pending" | "accept_reviewed" | "keep_current";
+  readonly loadMoreNote?: string | null; readonly intakeNote?: string | null;
+  readonly keyActionNote?: string | null; readonly snoozeNote?: string | null;
+  readonly rescheduleSessionId?: string | null; readonly rescheduleValue?: string | null;
+  readonly depthOverrideReset?: boolean;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -267,6 +278,13 @@ const DEFAULT_OWNED_PUBLICATIONS: readonly OwnedPublicationItem[] = [{
   current_revision_upvote_count: 14, created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z", management_version_id: '"management-etag-001"',
 }];
 
+const DEFAULT_OWNED_REVISIONS: readonly OwnedPublicationRevisionItem[] = [{
+  publication_id: "publication-synthetic-001", publication_revision_id: "public-revision-synthetic-001", revision_number: 1,
+  source_plan_version_id: "revision-attention-v2", visibility: "public", state: "active", public_readable: true,
+  upvote_count: 14, published_at: "2026-10-20T16:00:00Z",
+  content_sha256: "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
+}];
+
 const makeDefaultCred = (
   credential_ref: string, provider_id: string, label: string, masked_suffix: string, updated_at: string,
 ): MaskedCredentialRecord => ({
@@ -350,15 +368,6 @@ function statusMark(status: string): string {
   return `<span class="status-icon${tone}">${sfIcon(statusIconName(status), 15)}<span class="visually-hidden">${escapeHtml(status)}</span></span>`;
 }
 
-function durationPill(minutes: number, title?: string): string {
-  const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-  return `<span class="duration-pill"${titleAttr}>${minutes}m</span>`;
-}
-
-function disclosure(summary: string, body: string): string {
-  return `<details class="minimal-disclosure"><summary>${escapeHtml(summary)}</summary>${body}</details>`;
-}
-
 function renderTopDestButton(dest: TopLevelDestination, className: string, isCurrent: boolean): string {
   const icon: SfIconName = dest === "Learn" ? "learn" : dest === "Explore" ? "explore" : "settings";
   return `<button type="button" class="${className}${isCurrent ? " is-active" : ""}" data-action="navigate-top" data-destination="${dest}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${dest}</span></button>`;
@@ -369,134 +378,19 @@ function renderLearnSubButton(sub: LearnSubDestination, isCurrent: boolean): str
   return `<button type="button" class="nav-sub-btn${isCurrent ? " is-active" : ""}" data-action="navigate-learn-sub" data-sub-destination="${sub}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${sub}</span></button>`;
 }
 
-function renderMapControl(control: "zoom_in" | "zoom_out" | "fit_view" | "reset_focus", label: string, icon: SfIconName): string {
-  return `<button type="button" class="btn-secondary map-control-btn" data-action="map-control" data-map-control="${control}" aria-label="${label}" title="${label}">${sfIcon(icon, 16)}</button>`;
+function renderMapControl(control: "zoom_in" | "zoom_out" | "fit_view" | "reset_focus", label: string, visibleLabel: string, icon: SfIconName): string {
+  return `<button type="button" class="btn-secondary map-control-btn" data-action="map-control" data-map-control="${control}" aria-label="${escapeHtml(label)}">${sfIcon(icon, 16)}<span>${escapeHtml(visibleLabel)}</span></button>`;
 }
 
-function diagramTitle(title: string, max = 28): string {
-  const stripped = title.replace(/^Module\s+\d+:\s*/i, "");
-  return stripped.length <= max ? stripped : `${stripped.slice(0, max - 1)}…`;
-}
-
-function topicLabel(topicId: string): string {
-  return topicId
-    .replace(/^topic-/, "")
-    .split("-")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+function choiceRadio(name: string, value: string, label: string, description: string, checked: boolean): string {
+  const id = `${name}-${value}`;
+  return `<label class="choice-option" for="${id}"><input type="radio" id="${id}" name="${name}" value="${escapeHtml(value)}"${checked ? " checked" : ""}><span><strong>${escapeHtml(label)}</strong><span class="meta-text">${escapeHtml(description)}</span></span></label>`;
 }
 
 function shortSessionLabel(startAt: string): string {
   const date = new Date(startAt);
   if (Number.isNaN(date.getTime())) return startAt.slice(0, 10);
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(date);
-}
-
-function renderSessionFlowSvg(
-  steps: readonly { readonly label: string; readonly done: boolean; readonly active: boolean }[],
-  studyMinutes: number,
-  plannedMinutes: number,
-): string {
-  const ringR = 50;
-  const ringC = 2 * Math.PI * ringR;
-  const ratio = plannedMinutes > 0 ? Math.min(1, Math.max(0, studyMinutes / plannedMinutes)) : 0;
-  const filled = ratio * ringC;
-  const ringCx = 86;
-  const ringCy = 84;
-  const count = Math.max(steps.length, 1);
-  const startX = 248;
-  const endX = 664;
-  const span = count === 1 ? 0 : (endX - startX) / (count - 1);
-  const nodeY = 72;
-  const nodes = steps.map((step, index) => {
-    const cx = Math.round(startX + span * index);
-    const fill = step.done ? "var(--color-accent)" : step.active ? "var(--color-accent-surface)" : "var(--color-surface)";
-    const stroke = step.done ? "none" : "var(--color-border-control)";
-    const mark = step.done
-      ? `<path d="M${cx - 6} ${nodeY} l4 4 8-8" fill="none" stroke="var(--color-surface)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
-      : step.active
-        ? `<circle cx="${cx}" cy="${nodeY}" r="3.5" fill="var(--color-accent)" stroke="none"/>`
-        : "";
-    const connector = index === 0 ? "" : `<line x1="${Math.round(startX + span * (index - 1) + 22)}" y1="${nodeY}" x2="${cx - 22}" y2="${nodeY}" stroke="${steps[index - 1]?.done ? "var(--color-accent)" : "var(--color-border-control)"}" stroke-width="1.5" stroke-linecap="round"/>`;
-    return `${connector}<g><circle cx="${cx}" cy="${nodeY}" r="18" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>${mark}<text x="${cx}" y="112" text-anchor="middle" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(step.label)}</text></g>`;
-  }).join("");
-  const aria = `Session flow and study ring. ${steps.map((step) => `${step.label} ${step.done ? "complete" : "open"}`).join(", ")}. ${studyMinutes} study minutes of ${plannedMinutes} planned.`;
-  return `<svg class="session-flow-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 720 148" width="100%"><circle cx="${ringCx}" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="${ringCx}" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 ${ringCx} ${ringCy})"/>` : ""}<text x="${ringCx}" y="80" text-anchor="middle" fill="var(--color-text-primary)" font-size="28" font-weight="600" font-family="var(--font-sans)">${studyMinutes}</text><text x="${ringCx}" y="100" text-anchor="middle" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">min</text>${nodes}</svg>`;
-}
-
-function renderProficiencyPartitionSvg(
-  topics: readonly { readonly label: string; readonly demonstrated: number; readonly total: number }[],
-): string {
-  const demonstrated = topics.reduce((sum, topic) => sum + topic.demonstrated, 0);
-  const total = topics.reduce((sum, topic) => sum + topic.total, 0);
-  const ratio = total > 0 ? Math.min(1, demonstrated / total) : 0;
-  const ringR = 46;
-  const ringC = 2 * Math.PI * ringR;
-  const filled = ratio * ringC;
-  const height = Math.max(176, 40 + topics.length * 48);
-  const ringCy = Math.round(height / 2);
-  const rows = topics.map((topic, index) => {
-    const y = 28 + index * 48;
-    const frac = topic.total > 0 ? Math.min(1, topic.demonstrated / topic.total) : 0;
-    const track = 280;
-    const demoW = frac <= 0 ? 0 : Math.max(10, Math.round(track * frac));
-    return `<g><text x="168" y="${y + 13}" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(topic.label)}</text><rect x="328" y="${y}" width="${track}" height="16" rx="8" fill="var(--color-surface-secondary)"/>${demoW > 0 ? `<rect x="328" y="${y}" width="${demoW}" height="16" rx="8" fill="var(--color-success-text)"/>` : ""}<text x="656" y="${y + 13}" text-anchor="end" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">${topic.demonstrated}/${topic.total}</text></g>`;
-  }).join("");
-  const aria = `Proficiency and diagnostic partition. Demonstrated ${demonstrated} of ${total}. Unassessed ${Math.max(0, total - demonstrated)}.`;
-  return `<svg class="proficiency-partition-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 680 ${height}" width="100%"><circle cx="78" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="78" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-success-text)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 78 ${ringCy})"/>` : ""}<text x="78" y="${ringCy + 4}" text-anchor="middle" fill="var(--color-text-primary)" font-size="16" font-weight="600" font-family="var(--font-sans)">${demonstrated}/${total}</text><circle cx="40" cy="${height - 18}" r="4" fill="var(--color-success-text)"/><text x="50" y="${height - 14}" fill="var(--color-text-secondary)" font-size="11" font-family="var(--font-sans)">Demonstrated</text><circle cx="138" cy="${height - 18}" r="4" fill="var(--color-border-subtle)"/><text x="148" y="${height - 14}" fill="var(--color-text-secondary)" font-size="11" font-family="var(--font-sans)">Unassessed</text>${rows}</svg>`;
-}
-
-function renderWalletGaugeSvg(
-  availableMinor: number,
-  reservedMinor: number,
-  buckets: readonly { readonly id: string; readonly label: string; readonly knownMinor: number; readonly unknown: boolean; readonly amountLabel: string }[],
-): string {
-  const available = Math.max(0, availableMinor);
-  const reserved = Math.max(0, reservedMinor);
-  const walletTotal = available + reserved;
-  const ratio = walletTotal > 0 ? available / walletTotal : 0;
-  const ringR = 48;
-  const ringC = 2 * Math.PI * ringR;
-  const filled = Math.min(1, Math.max(0, ratio)) * ringC;
-  const maxMinor = Math.max(1, ...buckets.map((bucket) => bucket.knownMinor));
-  const rows = buckets.map((bucket, index) => {
-    const y = 36 + index * 42;
-    const track = 240;
-    const fillW = bucket.knownMinor <= 0 ? 0 : Math.max(8, Math.round((bucket.knownMinor / maxMinor) * track));
-    return `<g data-bucket-id="${escapeHtml(bucket.id)}"><text x="180" y="${y}" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(bucket.label)}</text><rect x="276" y="${y - 12}" width="${track}" height="14" rx="7" fill="${bucket.unknown ? "none" : "var(--color-surface-secondary)"}"${bucket.unknown ? ` stroke="var(--color-border-control)" stroke-dasharray="4 3"` : ""}/>${fillW > 0 ? `<rect x="276" y="${y - 12}" width="${fillW}" height="14" rx="7" fill="var(--color-accent)"/>` : ""}<text x="656" y="${y}" text-anchor="end" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">${escapeHtml(bucket.amountLabel)}</text></g>`;
-  }).join("");
-  const aria = `Wallet gauge ${formatMinorCurrency(available)}. Four bucket cost bars.`;
-  return `<svg class="wallet-gauge-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 680 196" width="100%"><circle cx="84" cy="98" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="84" cy="98" r="${ringR}" fill="none" stroke="var(--color-accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 84 98)"/>` : ""}<text x="84" y="96" text-anchor="middle" fill="var(--color-text-primary)" font-size="15" font-weight="600" font-family="var(--font-sans)">${escapeHtml(formatMinorCurrency(available))}</text><text x="84" y="114" text-anchor="middle" fill="var(--color-text-secondary)" font-size="11" font-weight="600" font-family="var(--font-sans)">available</text>${rows}</svg>`;
-}
-
-function renderModuleFlowSvg(
-  modules: readonly { readonly id: string; readonly title: string; readonly prerequisiteIds: readonly string[] }[],
-): string {
-  const nodeW = 210;
-  const nodeH = 56;
-  const gap = 88;
-  const count = Math.max(modules.length, 1);
-  const width = Math.max(640, 32 + count * nodeW + Math.max(0, count - 1) * gap);
-  const y = 46;
-  const positions = new Map<string, number>();
-  modules.forEach((mod, index) => positions.set(mod.id, 20 + index * (nodeW + gap)));
-  const edges = modules.flatMap((mod) => mod.prerequisiteIds.map((predId) => {
-    const x1 = positions.get(predId);
-    const x2 = positions.get(mod.id);
-    if (x1 === undefined || x2 === undefined) return "";
-    const yMid = y + nodeH / 2;
-    const start = x1 + nodeW;
-    const end = x2;
-    const mid = (start + end) / 2;
-    return `<path d="M ${start} ${yMid} C ${mid} ${yMid}, ${mid} ${yMid}, ${end - 8} ${yMid}" fill="none" stroke="var(--color-border-control)" stroke-width="1.5" marker-end="url(#module-flow-arrow)"/>`;
-  })).join("");
-  const nodes = modules.map((mod) => {
-    const x = positions.get(mod.id) ?? 0;
-    return `<g><rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="14" fill="var(--color-surface)" stroke="var(--color-border-subtle)" stroke-width="1"/><text x="${x + nodeW / 2}" y="${y + 34}" text-anchor="middle" fill="var(--color-text-primary)" font-size="14" font-weight="600" font-family="var(--font-sans)">${escapeHtml(diagramTitle(mod.title))}</text></g>`;
-  }).join("");
-  const aria = `Module dependency flow. ${modules.map((mod) => diagramTitle(mod.title)).join(" to ")}.`;
-  return `<svg class="module-flow-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 ${width} 148" width="100%"><defs><marker id="module-flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)"/></marker></defs>${edges}${nodes}</svg>`;
 }
 
 function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
@@ -514,8 +408,8 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
   const nodesHtml = [...moduleMapNodes, ...objectiveMapNodes]
     .map((node) => {
       const isSelected = node.selected || node.nodeId === planModel.selectedModuleId || node.nodeId === planModel.focusedNodeId;
-      const strokeColor = "none";
-      const strokeWidth = "0";
+      const strokeColor = isSelected ? "var(--color-accent)" : "var(--color-border-control)";
+      const strokeWidth = "1.5";
       const fillSurface = isSelected ? "var(--color-accent-surface)" : "var(--color-surface)";
       const elevFilter = isSelected ? "url(#node-elev-selected)" : "url(#node-elev)";
       const moduleIdAttr = node.kind === "module" ? node.nodeId : (planModel.selectedModuleId ?? "module-foundations");
@@ -616,7 +510,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   );
 
   const publicationController = createPublicationLifecycleController({
-    preview: DEFAULT_PUBLICATION_PREVIEW, ownedPublications: DEFAULT_OWNED_PUBLICATIONS, theme: resolvedThemeMode,
+    preview: DEFAULT_PUBLICATION_PREVIEW, ownedPublications: DEFAULT_OWNED_PUBLICATIONS,
+    ownedRevisions: DEFAULT_OWNED_REVISIONS, theme: resolvedThemeMode,
   });
   const isUpvoted = (inputState.upvotedRevisionIds ?? []).includes(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id);
   publicationController.registerPublicRevisionVoteState({
@@ -677,316 +572,621 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const bottomNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => renderTopDestButton(dest, "bottom-nav-btn", dest === activeTopLevel)).join("\n    ");
   const learnSubNavHtml = LEARN_SUB_DESTINATIONS.map((sub) => renderLearnSubButton(sub, activeTopLevel === "Learn" && sub === activeLearnSub)).join("\n            ");
 
-  const pipelineOrder = ["theory", "worked_example", "coding"] as const;
-  const pipelineLabels: Record<(typeof pipelineOrder)[number], string> = {
-    theory: "Theory", worked_example: "Worked Example", coding: "Coding",
+  const hintRequested = inputState.hintRequested ?? false;
+  const workedSolutionRevealed = inputState.workedSolutionRevealed ?? false;
+  const practiceSubmitted = inputState.practiceSubmitted ?? false;
+  const practiceChoice = inputState.practiceChoice ?? null;
+  const studyAheadActivityId = inputState.studyAheadActivityId ?? null;
+  const skippedActivityIds = new Set(inputState.skippedActivityIds ?? []);
+  const remindersOn = inputState.remindersEnabled ?? reminderState.enabled;
+  const remindersPaused = inputState.remindersPaused ?? false;
+  const keyVisible = inputState.keyVisible ?? false;
+  const diagnosticControl = inputState.diagnosticControl ?? "active";
+  const adaptationChoice = inputState.adaptationChoice ?? "pending";
+  const loadMoreNote = inputState.loadMoreNote ?? null;
+  const intakeNote = inputState.intakeNote ?? null;
+  const keyActionNote = inputState.keyActionNote ?? null;
+  const snoozeNote = inputState.snoozeNote ?? null;
+  const rescheduleSessionId = inputState.rescheduleSessionId ?? null;
+  const rescheduleValue = inputState.rescheduleValue ?? null;
+  const depthOverrideReset = inputState.depthOverrideReset ?? false;
+
+  const isExecutionDone = (status: string) => status === "completed" || status === "self_reported_completed";
+  const nextSession = todayState.nextSession;
+  const nextActivity = nextSession?.activityBreakdown.find((act) => !isExecutionDone(act.executionStatus))
+    ?? nextSession?.activityBreakdown[0]
+    ?? null;
+
+  const renderSessionActivity = (
+    act: (typeof todayState.todayCards)[number]["activityBreakdown"][number],
+  ) => {
+    const done = isExecutionDone(act.executionStatus);
+    const id = escapeHtml(act.activityId);
+    const accessText = act.resourceProvenanceLinks.length === 0
+      ? "No external setup is required for this task."
+      : act.resourceProvenanceLinks.map((link) => `${link.title}. Access: ${link.accessModel}. Rights: ${link.rightsBadge.label}.`).join(" ");
+    return `<li class="today-activity-item" data-activity-id="${id}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}">
+      <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span><strong>${act.requirementLevel === "optional" ? "Optional" : "Required"}</strong></div>
+      <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min.</p>
+      <p class="meta-text">Activity execution: ${escapeHtml(act.executionStatus)}. Objective proficiency: ${escapeHtml(act.objectiveProficiencyStatus)} (never conflated).</p>
+      <p class="prose">${escapeHtml(accessText)}</p>
+      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${done ? "Self-reported completed" : "Mark self-reported completed"}</button>
+    </li>`;
   };
-  const pipelineSource = todayState.todayCards.find((card) =>
-    pipelineOrder.every((type) => card.activityBreakdown.some((act) => act.type === type)),
-  ) ?? todayState.todayCards[0];
-  const pipelineSteps = pipelineOrder.map((type) => {
-    const act = pipelineSource?.activityBreakdown.find((item) => item.type === type);
-    const status = act?.executionStatus ?? "not_started";
-    return {
-      label: pipelineLabels[type],
-      done: status === "completed" || status === "self_reported_completed",
-      active: status === "in_progress",
-    };
-  });
-  const sessionFlowSvg = renderSessionFlowSvg(pipelineSteps, todayState.totalStudyMinutes, pipelineSource?.durationMinutes ?? 0);
 
-  const todayCardsHtml = todayState.todayCards
-    .map((card) => {
-      const activitiesHtml = card.activityBreakdown
-        .map((act) => {
-          const isCompleted = act.executionStatus === "self_reported_completed" || act.executionStatus === "completed";
-          const id = escapeHtml(act.activityId);
-          return `<li class="today-activity-item" data-activity-id="${id}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}" data-opaque-surface="true">
-                  <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span>${durationPill(act.durationTriplet.point, `${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min`)}<button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${isCompleted}" aria-label="${isCompleted ? "Self-reported completed" : "Mark self-reported completed"}">${sfIcon("check", 15)}<span>${isCompleted ? "Done" : "Complete"}</span></button></div>
-                  ${disclosure("Details", `<div class="two-layer-badges"><span class="badge badge-execution" data-layer="activity_execution">Activity execution: ${escapeHtml(act.executionStatus)}</span><span class="badge badge-proficiency" data-layer="objective_proficiency">Objective proficiency: ${escapeHtml(act.objectiveProficiencyStatus)} (never conflated)</span></div><p class="activity-reason">${escapeHtml(act.scheduledReason)}</p>`)}
-                </li>`;
-        })
-        .join("\n              ");
+  const nextActivitiesHtml = (nextSession?.activityBreakdown ?? []).map((act) => renderSessionActivity(act)).join("\n");
+  const reviewItemsHtml = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
+    `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}" data-review-separation-valid="${card.reviewSeparation.valid}">
+      <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span><strong>${act.requirementLevel === "optional" ? "Optional" : "Required"}</strong></div>
+      <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min. Scheduled ${escapeHtml(shortSessionLabel(card.startAt))}.</p>
+      <p class="prose">${escapeHtml(card.reviewSeparation.separationSummary)} ${escapeHtml(act.scheduledReason)}</p>
+    </li>`,
+  )).join("\n");
+  const completedItems = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)));
+  const completedHtml = completedItems.length === 0
+    ? `<p class="meta-text">No self-reported completions yet.</p>`
+    : `<ul class="today-activity-list">${completedItems.map((act) => `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}"><span class="activity-title">${escapeHtml(act.title)}</span><span class="meta-text">Self-reported completed. Objective proficiency is unchanged.</span></li>`).join("")}</ul>`;
 
-      return `<article class="study-card today-session-card" data-session-id="${escapeHtml(card.sessionId)}" data-review-separation-valid="${card.reviewSeparation.valid}" data-opaque-surface="true">
-            <header class="activity-row"><h3>${escapeHtml(shortSessionLabel(card.startAt))}</h3>${durationPill(card.durationMinutes)}</header>
-            <ul class="today-activity-list">${activitiesHtml}</ul>
-            ${disclosure("Schedule", `<p class="meta-text">Starts: <time datetime="${escapeHtml(card.startAt)}">${escapeHtml(card.startAt)}</time></p><span class="badge badge-review-separation" data-review-separation-valid="${card.reviewSeparation.valid}">${escapeHtml(card.reviewSeparation.separationSummary)}</span>`)}
-          </article>`;
-    })
-    .join("\n          ");
+  const nextAccessText = !nextActivity || nextActivity.resourceProvenanceLinks.length === 0
+    ? "No external setup is required for this task."
+    : nextActivity.resourceProvenanceLinks.map((link) => `${link.title}. Access: ${link.accessModel}. Rights: ${link.rightsBadge.label}.`).join(" ");
 
-  const outlineModulesHtml = basePlanModel.outlineModules
-    .map((mod) => {
-      const isSelectedMod = mod.moduleId === basePlanModel.selectedModuleId;
-      const activitiesHtml = mod.activities
-        .map((act) => {
-          const isSelectedAct = act.activityId === basePlanModel.selectedActivityId;
-          const bridgeHtml = act.prerequisiteBridgeRecommendation?.recommended
-            ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${act.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(act.prerequisiteBridgeRecommendation.reason)}</div>`
-            : "";
-          const provenanceHtml = act.resourceProvenanceCards
-            .map(
-              (card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
-                <span>Publisher: <strong>${escapeHtml(card.verifiedPublisher)}</strong></span>
-                <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.label)}</span>
-                ${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">${escapeHtml(card.optionalCertificationBadge.label)}</span>` : ""}
-                ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open verified resource</a>` : ""}
-              </div>`,
-            )
-            .join("\n                ");
+  const requiredActivities = basePlanModel.outlineActivities.filter((act) => act.required);
+  const requiredCompleted = requiredActivities.filter((act) => isExecutionDone(act.executionStatus)).length;
+  const demonstratedObjectives = basePlanModel.objectiveTracks.filter((obj) => obj.proficiencyStatus === "demonstrated").length;
+  const reviewsDue = basePlanModel.outlineActivities.filter((act) => act.type === "review" && !isExecutionDone(act.executionStatus) && act.executionStatus !== "waived").length;
+  const requiredSummary = `${requiredCompleted} of ${requiredActivities.length} required activities completed`;
+  const evidenceSummary = `${demonstratedObjectives} of ${basePlanModel.objectiveTracks.length} objectives demonstrated`;
+  const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
-          return `<li class="outline-activity-card${isSelectedAct ? " is-selected" : ""}" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedAct}" data-opaque-surface="true">
-                <div class="activity-row"><button type="button" class="row-hit" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedAct}">${statusMark(act.executionStatus)}<strong>${escapeHtml(act.title)}</strong>${durationPill(act.durationTriplet.point, `${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min`)}</button></div>
-                ${disclosure("Sources", `<div class="two-layer-badges"><span class="badge badge-execution">${escapeHtml(act.executionBadge.nonColorCue)}</span><span class="badge badge-proficiency">${escapeHtml(act.objectiveProficiencyBadge.nonColorCue)}</span></div>${bridgeHtml}<div class="provenance-list">${provenanceHtml}</div>`)}
-              </li>`;
-        })
-        .join("\n              ");
+  const aheadActions = (activityId: string, title: string) => {
+    const id = escapeHtml(activityId);
+    const ahead = studyAheadActivityId === activityId
+      ? `<p class="prose">Study ahead requested for ${escapeHtml(title)}. Unmet prerequisites, evidence, and waivers stay unchanged.</p>`
+      : "";
+    const skipped = skippedActivityIds.has(activityId)
+      ? `<p class="prose">Skip recorded for ${escapeHtml(title)} only. Prerequisite evidence was not created.</p>`
+      : "";
+    return `<div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div><p class="prose warning-copy">Study ahead records a started event only. It does not complete prerequisites, create a waiver, or change proficiency. Skip this activity records self_reported_skipped for this activity only.</p>${ahead}${skipped}`;
+  };
 
-      return `<article class="study-card outline-module-card${isSelectedMod ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedMod}" data-opaque-surface="true">
-            <header class="activity-row">${statusMark(mod.executionStatus)}<h3>${escapeHtml(mod.title)}</h3>${durationPill(mod.durationTriplet.point, `Module Triplet: ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min`)}<button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedMod}" aria-label="${isSelectedMod ? "Selected Module" : "Select Module"}">${isSelectedMod ? "Selected" : "Select"}</button></header>
-            ${disclosure("Module", `<p class="meta-text">${escapeHtml(mod.summary)}</p><span class="badge badge-triplet">Module Triplet: ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min</span>`)}
-            <ul class="outline-activity-list">${activitiesHtml}</ul>
-          </article>`;
-    })
-    .join("\n          ");
+  const outlineModulesHtml = basePlanModel.outlineModules.map((mod) => {
+    const isSelectedMod = mod.moduleId === basePlanModel.selectedModuleId;
+    const activitiesHtml = mod.activities.map((act) => {
+      const isSelectedAct = act.activityId === basePlanModel.selectedActivityId;
+      const bridgeHtml = act.prerequisiteBridgeRecommendation?.recommended
+        ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${act.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(act.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(act.unmetPrerequisiteActivityIds.join(", ") || "none")}.</div>${aheadActions(act.activityId, act.title)}`
+        : "";
+      const provenanceHtml = act.resourceProvenanceCards.map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
+        <span>Publisher: <strong>${escapeHtml(card.verifiedPublisher)}</strong></span>
+        <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.label)}</span>
+        <span>Access: ${escapeHtml(card.accessModel)}</span>
+        ${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}.</span>` : `<span>No separate certification price.</span>`}
+        ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open verified resource</a>` : ""}
+      </div>`).join("\n");
+      return `<li class="outline-activity-card${isSelectedAct ? " is-selected" : ""}" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedAct}">
+        <div class="activity-row"><button type="button" class="row-hit" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedAct}">${statusMark(act.executionStatus)}<strong>${escapeHtml(act.title)}</strong></button><strong>${act.required ? "Required" : "Optional"}</strong></div>
+        <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min.</p>
+        <div class="two-layer-badges"><span class="badge badge-execution">${escapeHtml(act.executionBadge.nonColorCue)}</span><span class="badge badge-proficiency">${escapeHtml(act.objectiveProficiencyBadge.nonColorCue)}</span></div>
+        <p class="meta-text">Predecessors: ${escapeHtml(act.prerequisiteActivityIds.join(", ") || "none")}.</p>
+        ${bridgeHtml}
+        <div class="provenance-list">${provenanceHtml}</div>
+      </li>`;
+    }).join("\n");
+    return `<article class="study-card outline-module-card${isSelectedMod ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedMod}" data-opaque-surface="true">
+      <header class="activity-row">${statusMark(mod.executionStatus)}<h3>${escapeHtml(mod.title)}</h3><strong>${mod.required ? "Required" : "Optional"}</strong><button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedMod}">${isSelectedMod ? "Selected" : "Select"}</button></header>
+      <p class="prose">${escapeHtml(mod.summary)}</p>
+      <p>Effort ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min.</p>
+      <ul class="outline-activity-list">${activitiesHtml}</ul>
+    </article>`;
+  }).join("\n");
+
+  const selectedModule = basePlanModel.outlineModules.find((mod) => mod.moduleId === basePlanModel.selectedModuleId) ?? basePlanModel.outlineModules[0];
+  const selectedActivity = selectedModule?.activities.find((act) => act.activityId === basePlanModel.selectedActivityId) ?? selectedModule?.activities[0];
+  const mathLevels = [...new Set((selectedModule?.objectives ?? []).map((obj) => obj.level))].join(", ") || "Not stated";
+  const selectedBridge = selectedActivity?.prerequisiteBridgeRecommendation?.recommended
+    ? `<div class="prerequisite-bridge-warning" role="status"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(selectedActivity.prerequisiteBridgeRecommendation.reason)}</div>`
+    : "";
+  const selectedResources = (selectedModule?.activities ?? []).flatMap((act) => act.resourceProvenanceCards)
+    .filter((card, index, all) => all.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === index);
+  const selectedResourceHtml = selectedResources.map((card) => `<p class="prose">Publisher: ${escapeHtml(card.verifiedPublisher)}. Access: ${escapeHtml(card.accessModel)}. Rights: ${escapeHtml(card.rightsBadge.label)}.${card.optionalCertificationBadge ? ` Optional certification ${formatMinorCurrency(4900, "USD")}.` : ""}</p>`).join("");
+  const selectedDetailHtml = selectedModule && selectedActivity ? `<aside class="selected-module-detail surface-panel" data-opaque-surface="true">
+    <h2>${escapeHtml(selectedModule.title)}</h2>
+    <p><strong>${selectedModule.required ? "Required" : "Optional"}</strong></p>
+    <p>Mathematical treatment: ${escapeHtml(mathLevels)}.</p>
+    <p>Effort ${selectedModule.durationTriplet.min}/${selectedModule.durationTriplet.point}/${selectedModule.durationTriplet.max} min.</p>
+    <p class="prose">${escapeHtml(selectedModule.summary)}</p>
+    ${selectedResourceHtml}
+    <h3>${escapeHtml(selectedActivity.title)}</h3>
+    <p><strong>${selectedActivity.required ? "Required" : "Optional"}</strong>. Effort ${selectedActivity.durationTriplet.min}/${selectedActivity.durationTriplet.point}/${selectedActivity.durationTriplet.max} min.</p>
+    <p class="meta-text">Predecessors: ${escapeHtml(selectedActivity.prerequisiteActivityIds.join(", ") || "none")}. Successors stay on the activities that list this one.</p>
+    ${selectedBridge}
+    ${aheadActions(selectedActivity.activityId, selectedActivity.title)}
+  </aside>` : "";
+
+  const relationshipLegend = `<figure class="relationship-legend">
+    <figcaption>Relationship legend</figcaption>
+    <ul>
+      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><defs><marker id="legend-arrow-prereq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)"/></marker></defs><line x1="2" y1="10" x2="50" y2="10" stroke="var(--color-border-control)" stroke-width="2" marker-end="url(#legend-arrow-prereq)"/></svg><span><strong>Prerequisite.</strong> Solid directed edge. Required capability before an activity; identify unmet capabilities.</span></li>
+      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><defs><marker id="legend-arrow-seq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-accent)"/></marker></defs><line x1="2" y1="6" x2="50" y2="6" stroke="var(--color-accent)" stroke-width="2" marker-end="url(#legend-arrow-seq)"/><line x1="2" y1="14" x2="50" y2="14" stroke="var(--color-accent)" stroke-width="2"/></svg><span><strong>Recommended sequence.</strong> Distinct directed style. Suggested order, not a hard gate.</span></li>
+      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><line x1="2" y1="10" x2="58" y2="10" stroke="var(--color-border-control)" stroke-width="2" stroke-dasharray="5 4"/></svg><span><strong>Optional enrichment.</strong> Dashed branch with label. Optional work excluded from required-completion denominator.</span></li>
+      <li><span class="badge">Review</span><span><strong>Review.</strong> Separate badge/list connection. Scheduled revisit; does not form a prerequisite cycle.</span></li>
+    </ul>
+  </figure>`;
 
   const canonicalStatusesLegendHtml = OBJECTIVE_PROFICIENCY_BADGE_STATUSES.map(
     (st) => `<span class="badge badge-proficiency-status" data-proficiency-status="${st}">${st}</span>`,
   ).join(" ");
+  const proficiencyRowsHtml = basePlanModel.objectiveTracks.map((obj) => `<tr data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
+    <td><strong>${escapeHtml(obj.title)}</strong><div class="meta-text">${escapeHtml(obj.objectiveVersionId)}</div></td>
+    <td><span class="badge badge-proficiency">${escapeHtml(obj.proficiencyStatus)} (${escapeHtml(obj.proficiencyBadge.nonColorCue)})</span></td>
+    <td><span class="badge badge-execution">${escapeHtml(obj.executionStatus)} (${escapeHtml(obj.executionBadge.nonColorCue)})</span></td>
+    <td>${escapeHtml(obj.proficiencyBadge.evidenceSupport)} (${obj.proficiencyBadge.evidenceRefs.length > 0 ? escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", ")) : "none"}) <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button></td>
+  </tr>`).join("\n");
 
-  const proficiencyRowsHtml = basePlanModel.objectiveTracks
-    .map(
-      (obj) => `<tr data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
-              <td><strong>${escapeHtml(obj.title)}</strong><div class="meta-text">${escapeHtml(obj.objectiveVersionId)}</div></td>
-              <td><span class="badge badge-proficiency" data-status="${escapeHtml(obj.proficiencyStatus)}">${escapeHtml(obj.proficiencyStatus)} (${escapeHtml(obj.proficiencyBadge.nonColorCue)})</span></td>
-              <td><span class="badge badge-execution">${escapeHtml(obj.executionStatus)} (${escapeHtml(obj.executionBadge.nonColorCue)})</span></td>
-              <td>${escapeHtml(obj.proficiencyBadge.evidenceSupport)} (${obj.proficiencyBadge.evidenceRefs.length > 0 ? escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", ")) : "none"})</td>
-            </tr>`,
-    )
-    .join("\n              ");
+  const resourceCards = basePlanModel.outlineActivities.flatMap((act) => act.resourceProvenanceCards)
+    .filter((card, idx, arr) => arr.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === idx);
+  const resourcesHtml = resourceCards.map((card) => {
+    const rights = `<span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.basis)}</span>`;
+    const cert = card.optionalCertificationBadge
+      ? `<span class="badge badge-cert-cost" data-optional-certification="true">Optional certification ${formatMinorCurrency(4900, "USD")}</span>`
+      : `<span class="badge badge-cert-none">Core access ${formatMinorCurrency(0, "USD")}</span>`;
+    const openLink = card.canonicalUrl
+      ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open source</a>`
+      : "";
+    return `<article class="resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
+      <header class="activity-row"><h3>${escapeHtml(card.title)}</h3>${rights}${cert}${openLink}</header>
+      <p>Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
+      <p class="prose">Version captured: <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(card.versionTimestamp)}</time>. Access: <strong>${escapeHtml(card.accessModel)}</strong>. Rights (${escapeHtml(card.rightsBadge.basis)}): ${escapeHtml(card.rightsBadge.label)}</p>
+      <p class="prose">${escapeHtml(card.selectionRationale)}</p>
+      ${card.optionalCertificationBadge ? `<p class="warning-copy">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}. Opening the source does not mark the activity complete.</p>` : `<p>No paid certification is required for core access (${formatMinorCurrency(0, "USD")}). Opening the source does not mark the activity complete.</p>`}
+    </article>`;
+  }).join("\n");
 
-  const resourceCards = basePlanModel.outlineActivities
-    .flatMap((a) => a.resourceProvenanceCards)
-    .filter((card, idx, arr) => arr.findIndex((c) => c.resourceVersionId === card.resourceVersionId) === idx);
-
-  const resourcesHtml = resourceCards
-    .map((card) => {
-      const rights = `<span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.basis)}</span>`;
-      const cert = card.optionalCertificationBadge
-        ? `<span class="badge badge-cert-cost" data-optional-certification="true">Cert ${formatMinorCurrency(4900, "USD")}</span>`
-        : `<span class="badge badge-cert-none">$0.00</span>`;
-      const openLink = card.canonicalUrl
-        ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" aria-label="Open External Source (Does Not Auto-Complete Activity)">Open</a>`
-        : "";
-      const detail = `<p class="meta-text">Version captured: <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(card.versionTimestamp)}</time> · Access model: <strong>${escapeHtml(card.accessModel)}</strong></p><p>${escapeHtml(card.selectionRationale)}</p><p>Rights (${escapeHtml(card.rightsBadge.basis)}): ${escapeHtml(card.rightsBadge.label)}</p>${card.optionalCertificationBadge ? `<p>${escapeHtml(card.optionalCertificationBadge.label)}. Separate optional cost (${formatMinorCurrency(4900, "USD")}).</p>` : `<p>No paid certification required ($0.00 core access).</p>`}`;
-      return `<article class="study-card resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
-            <header class="activity-row"><h3>${escapeHtml(card.title)}</h3>${rights}${cert}${openLink}</header>
-            <p class="meta-text">Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
-            ${disclosure("Provenance", detail)}
-          </article>`;
-    })
-    .join("\n          ");
-
-  const fourBucketsHtml = Object.values(costBreakdown.buckets)
-    .map(
-      (bucket) => `<div class="cost-bucket-card" data-bucket-id="${escapeHtml(bucket.bucketId)}" data-opaque-surface="true">
-              <h4>${escapeHtml(bucket.label)}</h4>
-              <p class="bucket-mechanism">Mechanism: <code>${escapeHtml(bucket.billingMechanism)}</code></p>
-              <p class="bucket-summary"><strong>${escapeHtml(bucket.formattedSummary)}</strong></p>
-              <ul class="bucket-lines">${bucket.lineItems.map((li) => `<li data-line-id="${escapeHtml(li.id)}" data-unknown-price="${li.isUnknownPrice}">${escapeHtml(li.label)}: <strong>${escapeHtml(li.formattedAmount)}</strong></li>`).join("")}</ul>
-            </div>`,
-    )
-    .join("\n            ");
+  const fourBucketsHtml = Object.values(costBreakdown.buckets).map((bucket) => `<div class="cost-bucket-card" data-bucket-id="${escapeHtml(bucket.bucketId)}">
+    <h3>${escapeHtml(bucket.label)}</h3>
+    <p class="bucket-mechanism">Mechanism: <code>${escapeHtml(bucket.billingMechanism)}</code></p>
+    <p class="bucket-summary"><strong>${escapeHtml(bucket.formattedSummary)}</strong></p>
+    <ul class="bucket-lines">${bucket.lineItems.map((li) => `<li data-line-id="${escapeHtml(li.id)}" data-unknown-price="${li.isUnknownPrice}">${escapeHtml(li.label)}: <strong>${escapeHtml(li.formattedAmount)}</strong></li>`).join("")}</ul>
+  </div>`).join("\n");
 
   const upvoteInfo = publicationState.revisionVotes[0] ?? {
     publicationId: DEFAULT_PUBLIC_CURRICULUM.publication_id,
     publicationRevisionId: DEFAULT_PUBLIC_CURRICULUM.publication_revision_id,
     upvoteCount: 14, viewerHasUpvoted: false,
   };
+  const ownedCard = publicationState.ownedPublicationCards[0];
+  const revisionHistoryHtml = publicationState.ownedRevisions.map((rev) => `<li>Revision ${rev.revision_number} <code>${escapeHtml(rev.publication_revision_id)}</code>. State: ${escapeHtml(rev.state)}. Visibility: ${escapeHtml(rev.visibility)}. Upvotes: ${rev.upvote_count ?? "withheld"}. Published <time datetime="${escapeHtml(rev.published_at)}">${escapeHtml(rev.published_at)}</time>.</li>`).join("");
+  const adaptationChoiceCopy = adaptationChoice === "accept_reviewed"
+    ? "Accept revision was reviewed on this screen. No live adaptation route accepted it, so the current plan stays in place."
+    : adaptationChoice === "keep_current"
+      ? "Current plan kept. The proposal was not accepted."
+      : "Recommended describes this product suggestion. It is not a scientific certainty. The proposal is not accepted automatically.";
+  const adaptationBody = `<p>Preserved math depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code>. Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256)}</code>.</p>
+    <p>Before: ${adaptationDiff.impact.before_minutes} min. After: ${adaptationDiff.impact.after_minutes} min (${adaptationDiff.impact.delta_minutes >= 0 ? "+" : ""}${adaptationDiff.impact.delta_minutes} min).</p>
+    <p class="prose">${escapeHtml(adaptationDiff.impact.schedule_impact_summary ?? "")}</p>
+    <p class="prose">${escapeHtml(adaptationDiff.impact.inference_charge_summary ?? "")}</p>
+    ${(adaptationDiff.impact.warnings ?? []).map((warning) => `<p class="warning-copy">${escapeHtml(warning)}</p>`).join("")}
+    <h3>Waived instruction</h3>
+    <ul>${adaptationDiff.waivers.map((waiver) => `<li><code>${escapeHtml(waiver.node_id)}</code>. Evidence: <code>${escapeHtml(waiver.qualifying_evidence_refs.join(", "))}</code>. ${escapeHtml(waiver.rationale)} <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-ref="${escapeHtml(waiver.qualifying_evidence_refs[0] ?? "")}">View evidence</button></li>`).join("")}</ul>
+    <h3>New bridges</h3>
+    <ul>${adaptationDiff.buckets.added.map((added) => `<li><code>${escapeHtml(added.node_id ?? "")}</code>. ${escapeHtml(added.rationale ?? "")}</li>`).join("")}</ul>
+    <div class="action-row"><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button></div>
+    <p class="prose">${adaptationChoiceCopy}</p>`;
 
-  const partitionTopics = proficiency.topic_coverage.map((topic) => {
-    const demonstrated = typeof topic.demonstrated_objective_count === "number" ? topic.demonstrated_objective_count : 0;
-    const assessed = Array.isArray(topic.assessed_objective_version_ids) ? topic.assessed_objective_version_ids.length : 0;
-    const unassessed = Array.isArray(topic.unassessed_objective_version_ids) ? topic.unassessed_objective_version_ids.length : 0;
-    const total = typeof topic.total_objective_count === "number" ? topic.total_objective_count : assessed + unassessed;
-    return { label: topicLabel(topic.topic_id), demonstrated, total: Math.max(total, demonstrated) };
-  });
-  const proficiencyPartitionSvg = renderProficiencyPartitionSvg(partitionTopics);
-  const walletGaugeSvg = renderWalletGaugeSvg(
-    billingState.wallet.available_minor,
-    billingState.wallet.reserved_minor,
-    (["app_service_access", "ai_inference", "learning_materials", "certification_and_compute"] as const).map((id) => {
-      const bucket = costBreakdown.buckets[id];
-      const label = id === "app_service_access" ? "App" : id === "ai_inference" ? "Inference" : id === "learning_materials" ? "Materials" : "Cert";
-      return {
-        id: bucket.bucketId,
-        label,
-        knownMinor: bucket.knownTotalMinor,
-        unknown: bucket.hasUnknownPrices,
-        amountLabel: bucket.hasUnknownPrices ? "Unknown" : formatMinorCurrency(bucket.knownTotalMinor, bucket.currency),
-      };
-    }),
-  );
-  const moduleFlowSvg = renderModuleFlowSvg(DEFAULT_PUBLIC_CURRICULUM.content.modules.map((mod) => ({
-    id: mod.module_id, title: mod.title, prerequisiteIds: mod.prerequisite_module_ids ?? [],
-  })));
+  const scheduleSessions = (Array.isArray(schedule["sessions"]) ? schedule["sessions"] : [])
+    .filter((session): session is Record<string, unknown> => Boolean(session && typeof session === "object"));
+  const timezoneLabel = reminderState.timezone === "America/New_York" ? "Eastern Time" : reminderState.timezone;
+  const scheduleRowsHtml = scheduleSessions.map((session) => {
+    const sessionId = typeof session["session_id"] === "string" ? session["session_id"] : "session";
+    const startAt = typeof session["start_at"] === "string" ? session["start_at"] : "";
+    const duration = typeof session["duration_minutes"] === "number" ? session["duration_minutes"] : 0;
+    const preview = rescheduleSessionId === sessionId
+      ? `<p class="prose">Preview for ${escapeHtml(sessionId)}: ${escapeHtml(rescheduleValue || "choose a date and time")}. Timezone ${escapeHtml(reminderState.timezone)} (${escapeHtml(timezoneLabel)}). Ambiguous local times need an explicit choice. This screen does not write a live schedule.</p>`
+      : "";
+    return `<li class="schedule-row">
+      <p><strong>${escapeHtml(shortSessionLabel(startAt))}</strong> · ${duration} min · <time datetime="${escapeHtml(startAt)}">${escapeHtml(startAt)}</time></p>
+      <label class="field" for="reschedule-${escapeHtml(sessionId)}">New local time
+        <input id="reschedule-${escapeHtml(sessionId)}" type="datetime-local" data-reschedule-for="${escapeHtml(sessionId)}" name="reschedule-${escapeHtml(sessionId)}">
+      </label>
+      <button type="button" class="btn-secondary" data-action="reschedule-session" data-session-id="${escapeHtml(sessionId)}">Reschedule</button>
+      ${preview}
+    </li>`;
+  }).join("\n");
+
+  const practiceFeedback = practiceSubmitted
+    ? `<p class="prose" role="status">Submitted${practiceChoice ? `: ${escapeHtml(practiceChoice)}` : ""}. This check is not demonstrated competence.</p>`
+    : `<p class="meta-text">Selecting an option does not submit or advance.</p>`;
+  const hintHtml = hintRequested ? `<p class="prose" role="status">Hint: the scale keeps the dot-product variance from growing with d_k. Assistance is recorded without a penalty.</p>` : "";
+  const solutionHtml = workedSolutionRevealed ? `<p class="prose" role="status">Worked solution: softmax(QK^T / sqrt(d_k)) V. Studying the solution records assistance and does not mark the objective demonstrated.</p>` : "";
+  const recoveryBanner = `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
 
   const openDialogId = inputState.openDialogId ?? null;
   const isLearn = activeTopLevel === "Learn";
+  const dialogOpen = (id: string) => openDialogId === id ? " open" : "";
 
-  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
+  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   <header class="app-header nav-chrome-glass" role="banner">
     <div class="brand-cluster"><span class="brand-title">Curriculum.io</span></div>
     <nav class="top-level-nav" aria-label="Primary navigation">${topNavHtml}</nav>
     <div class="header-status">
-      <span class="duration-pill" data-study-minutes="${todayState.totalStudyMinutes}" title="Study minutes">${todayState.totalStudyMinutes}m</span>
-      <span class="duration-pill" data-self-reported-count="${todayState.selfReportedCompletedCount}" title="Self-reported completions">${todayState.selfReportedCompletedCount}</span>
+      <span class="duration-pill" data-study-minutes="${todayState.totalStudyMinutes}">Study minutes ${todayState.totalStudyMinutes}</span>
+      <span class="duration-pill" data-self-reported-count="${todayState.selfReportedCompletedCount}">Self-reported ${todayState.selfReportedCompletedCount}</span>
     </div>
   </header>
-
   <div class="app-body-grid">
-    <aside class="app-sidebar nav-chrome-glass" aria-label="Section 9.3 Workspace Navigation">
+    <aside class="app-sidebar" aria-label="Learn sections">
       <div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
-      <div class="sidebar-section"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p>${durationPill(basePlanModel.totalDurationTriplet.point, `Total Duration Triplet: ${basePlanModel.totalDurationTriplet.min}/${basePlanModel.totalDurationTriplet.point}/${basePlanModel.totalDurationTriplet.max} min`)}</div>
+      <div class="sidebar-section"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">Effort ${basePlanModel.totalDurationTriplet.min}/${basePlanModel.totalDurationTriplet.point}/${basePlanModel.totalDurationTriplet.max} min</p></div>
     </aside>
-
-    <main id="main-workspace" class="app-main-workspace reading-measure" role="main" tabindex="-1">
+    <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
-          <div class="section-header"><h2>Today</h2></div>
-          <figure class="diagram-hero">${sessionFlowSvg}</figure>
-          ${disclosure("Status", `<div class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</div><div class="study-card honest-two-layer-summary" data-opaque-surface="true"><h3>Honest Two-Layer Status Summary (@S17, @S23)</h3><p>Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but <strong>never</strong> upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p><div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}"><div class="math-caption">Key Derivation Target (Scaled Dot-Product Attention):</div>${attentionFormula.mathml}</div></div>`)}
-          <div class="today-sessions-grid">${todayCardsHtml}</div>
+          <div class="section-header">
+            <h1 class="page-title">Today</h1>
+            <div class="plan-toolbar">
+              <label class="field" for="selected-plan">Selected plan
+                <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
+              </label>
+              <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
+            </div>
+          </div>
+          ${recoveryBanner}
+          <section class="surface-panel next-session-panel" data-opaque-surface="true" data-review-separation-valid="${nextSession?.reviewSeparation.valid ?? todayState.reviewSeparationValid}">
+            <h2>Next session</h2>
+            ${nextActivity ? `<p>Capability: ${escapeHtml(nextActivity.moduleTitle)}</p><p>Task: ${escapeHtml(nextActivity.title)}</p><p>Effort ${nextActivity.durationTriplet.min}/${nextActivity.durationTriplet.point}/${nextActivity.durationTriplet.max} min. <strong>${nextActivity.requirementLevel === "optional" ? "Optional" : "Required"}</strong></p><p class="prose">Required access and setup: ${escapeHtml(nextAccessText)}</p><p class="prose"><strong>Why this is next.</strong> ${escapeHtml(nextActivity.scheduledReason)}</p><div class="action-row"><a class="btn-primary" href="#study-workspace">Continue attention mechanisms</a></div>` : `<p>No session is scheduled.</p>`}
+            <ul class="today-activity-list">${nextActivitiesHtml}</ul>
+          </section>
+          <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
+            <h2>Study</h2>
+            <p class="prose">One task: ${escapeHtml(nextActivity?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextActivity?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
+            <div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}">${attentionFormula.mathml}</div>
+            <fieldset class="choice-group">
+              <legend>Which statement matches the scaling term?</legend>
+              ${choiceRadio("practice-choice", "variance", "It keeps dot-product variance near 1", "The scale is part of the formula, not a score for you.", practiceChoice === "variance")}
+              ${choiceRadio("practice-choice", "speed", "It is a speed score for the learner", "A target duration is not a timed ability score.", practiceChoice === "speed")}
+              ${choiceRadio("practice-choice", "optional", "It marks the activity optional", "Required and optional stay explicit labels.", practiceChoice === "optional")}
+            </fieldset>
+            ${practiceFeedback}
+            <div class="action-row">
+              <button type="button" class="btn-secondary" data-action="request-hint">Request hint</button>
+              <button type="button" class="btn-secondary" data-action="study-worked-solution">Study worked solution</button>
+              <button type="button" class="btn-primary" data-action="submit-practice">Submit</button>
+            </div>
+            ${hintHtml}
+            ${solutionHtml}
+            <div class="honest-two-layer-summary">
+              <h3>Honest Two-Layer Status Summary (@S17, @S23)</h3>
+              <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
+            </div>
+          </section>
+          <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}">
+            <h2>Review queue</h2>
+            <p class="prose">Due and scheduled spaced review stays in a separate session.</p>
+            <ul class="today-activity-list">${reviewItemsHtml}</ul>
+          </section>
+          <section class="completed-history">
+            <h2>Completed work</h2>
+            ${completedHtml}
+          </section>
+          <div class="action-row">
+            <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Plan</button>
+            <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Settings">Schedule</button>
+          </div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"}>
           <div class="section-header">
-            <h2>Plan</h2>
+            <h1 class="page-title">Plan</h1>
             <div class="plan-toolbar">
-              <div class="plan-view-switcher" role="group" aria-label="Synchronized Plan View Switcher">
-                ${PLAN_SYNCHRONIZED_VIEWS.map((view) => {
-                  const isActiveView = view === activePlanView;
-                  return `<button type="button" class="btn-secondary${isActiveView ? " is-active" : ""}" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${isActiveView}">${view}</button>`;
-                }).join("\n                ")}
+              <div class="plan-view-switcher" role="group" aria-label="Map or outline">
+                ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="btn-secondary${view === activePlanView ? " is-active" : ""}" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
               </div>
-              <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" aria-label="Activate Revision (${escapeHtml(revisionActivationReq.revisionId)})">Activate</button>
+              <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
             </div>
           </div>
-          <div class="study-card plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
-            <div class="map-controls-bar" role="toolbar" aria-label="Non-dragging Map Viewport Controls">
-              ${renderMapControl("zoom_in", "Zoom In", "zoom-in")}
-              ${renderMapControl("zoom_out", "Zoom Out", "zoom-out")}
-              ${renderMapControl("fit_view", "Reset View", "reset")}
-              ${renderMapControl("reset_focus", "Focus Neighborhood", "focus")}
+          <p class="prose">${escapeHtml(basePlanModel.goal.summary)}</p>
+          <p>${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
+          <p class="prose">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
+          ${relationshipLegend}
+          <div class="plan-split">
+            <div class="plan-focus-column">
+              <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
+                <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
+                  ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
+                  ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
+                  ${renderMapControl("fit_view", "Reset View", "Fit", "reset")}
+                  ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
+                </div>
+                ${renderPlanDagSvgHtml(basePlanModel)}
+                <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
+              </div>
+              <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${outlineModulesHtml}</div>
             </div>
-            ${renderPlanDagSvgHtml(basePlanModel)}
-            ${disclosure("Keys", `<p class="meta-text">Use Arrow keys (ArrowRight/ArrowLeft/ArrowDown/ArrowUp) to navigate nodes without dragging. Selected Module: <code>${escapeHtml(basePlanModel.selectedModuleId ?? "none")}</code> · Selected Activity: <code>${escapeHtml(basePlanModel.selectedActivityId ?? "none")}</code></p>`)}
+            ${selectedDetailHtml}
           </div>
-          <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${outlineModulesHtml}</div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
-          <div class="section-header"><h2>Progress</h2><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff" aria-label="Open Adaptation Diff Preview">Diff</button></div>
-          <figure class="diagram-hero">${proficiencyPartitionSvg}</figure>
-          ${disclosure("Ledger", `<div class="study-card" data-opaque-surface="true"><h3>Objective Proficiency Table (Two-Layer Evidence Ledger)</h3><p class="meta-text">Canonical Proficiency States: ${canonicalStatusesLegendHtml}</p><div class="table-responsive"><table class="proficiency-table"><thead><tr><th scope="col">Objective</th><th scope="col">Proficiency Status</th><th scope="col">Activity Execution</th><th scope="col">Evidence Support &amp; Refs</th></tr></thead><tbody>${proficiencyRowsHtml}</tbody></table></div></div><div class="study-card diagnostic-panel" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true"><h3>Topic Diagnostic Panel (${escapeHtml(diagnosticState.diagnostic_session_id)})</h3><p>Session State: <strong>${escapeHtml(diagnosticState.state)}</strong> · Assessed Objectives: <code>${escapeHtml(diagnosticState.assessed_objective_version_ids.join(", ") || "none")}</code> · Unassessed Objectives: <code>${escapeHtml(diagnosticState.unassessed_objective_version_ids.join(", ") || "none")}</code></p><p class="meta-text">Stopping early preserves demonstrated objectives while explicitly keeping untested objectives <code>unassessed</code> rather than inferred from neighboring topics (@S19, @S64, @S70).</p><div class="action-row"><button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop Diagnostic Early (Preserve Unassessed)</button></div></div>`)}
+          <h1 class="page-title">Progress</h1>
+          <div class="progress-summaries">
+            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Required activities completed</h2><p><strong>${requiredSummary}</strong></p></section>
+            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Objectives with qualifying evidence</h2><p><strong>${evidenceSummary}</strong></p></section>
+            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Reviews due</h2><p><strong>${reviewSummary}</strong></p></section>
+          </div>
+          <section class="surface-panel" data-opaque-surface="true">
+            <h2>Objective evidence ledger</h2>
+            <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
+            <div class="table-responsive"><table class="proficiency-table"><thead><tr><th scope="col">Objective</th><th scope="col">Proficiency status</th><th scope="col">Activity execution</th><th scope="col">Evidence</th></tr></thead><tbody>${proficiencyRowsHtml}</tbody></table></div>
+          </section>
+          <section class="surface-panel diagnostic-panel" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
+            <h2>Topic Diagnostic</h2>
+            <p>Sampled objectives: <code>${escapeHtml(diagnosticState.target_objective_version_ids.join(", ") || "none")}</code></p>
+            <p>Assessed: <code>${escapeHtml(diagnosticState.assessed_objective_version_ids.join(", ") || "none")}</code>. Unassessed: <code>${escapeHtml(diagnosticState.unassessed_objective_version_ids.join(", ") || "none")}</code>.</p>
+            <p class="prose">The effort target (maximum minutes) selects the sample and limits learner burden. The effort target is not a speed score. Reaching it does not lock or mark a response wrong.</p>
+            <p class="prose">Local control: ${escapeHtml(diagnosticControl)}. Pause suspends this task view. Stop leaves unassessed objectives unknown. Continue reads the same active session.</p>
+            <div class="action-row">
+              <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
+              <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
+              <button type="button" class="btn-secondary" data-action="diagnostic-continue">Continue</button>
+            </div>
+          </section>
+          <section class="surface-panel adaptation-review" data-opaque-surface="true">
+            <h2>Adaptation review</h2>
+            ${adaptationBody}
+            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Open full diff</button>
+          </section>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-resources" data-learn-panel="Resources" data-active="${isLearn && activeLearnSub === "Resources"}"${isLearn && activeLearnSub === "Resources" ? "" : " hidden"}>
-          <div class="section-header"><h2>Resources</h2></div>
+          <h1 class="page-title">Resources</h1>
           <div class="resources-grid">${resourcesHtml}</div>
         </section>
       </section>
 
       <section class="top-level-panel" id="panel-explore" data-top-panel="Explore" data-active="${activeTopLevel === "Explore"}"${activeTopLevel === "Explore" ? "" : " hidden"}>
-        <div class="section-header">
-          <h2>Explore</h2>
+        <h1 class="page-title">Explore</h1>
+        <form class="discovery-filters" role="search" aria-label="Discovery filters">
+          <label class="field" for="discovery-query">Search query <input id="discovery-query" type="search" name="query"></label>
+          <label class="field" for="discovery-topic">Topic <input id="discovery-topic" type="text" name="topic"></label>
+          <label class="field" for="discovery-depth">Mathematical depth
+            <select id="discovery-depth" name="math_depth"><option>Intuitive</option><option>Applied</option><option selected>Formal</option></select>
+          </label>
+          <fieldset class="choice-group"><legend>Access</legend>
+            ${choiceRadio("access", "free_only", "Free-only", "Hide revisions that allow paid materials.", false)}
+            ${choiceRadio("access", "paid_allowed", "Paid allowed", "Include revisions that allow paid materials.", true)}
+          </fieldset>
+          <fieldset class="choice-group"><legend>Ordering</legend>
+            ${choiceRadio("ordering", "newest", "Newest", "Default order is the newest public revision.", true)}
+            ${choiceRadio("ordering", "upvotes", "Popular upvotes", "Popular means upvotes for the displayed revision.", false)}
+          </fieldset>
+          <button type="button" class="btn-secondary" data-action="load-more">Load more</button>
+        </form>
+        ${loadMoreNote ? `<p class="prose" role="status">${escapeHtml(loadMoreNote)}</p>` : ""}
+        <article class="surface-panel public-template-card" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" data-opaque-surface="true">
+          <p class="warning-copy">Community publication — not automatically educationally reviewed</p>
+          <h2>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h2>
+          <p class="prose">${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p>
+          <p>Intended audience: learners studying transformer foundations. Mathematical depth: Formal. Prerequisites: tokenization before attention. Access: free learning materials, with inference priced separately. Revision ${DEFAULT_PUBLIC_CURRICULUM.revision_number}.</p>
+          <p>Author: ${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}. License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code>.</p>
+          <p class="meta-text">Selecting <code>public-module-attention</code> includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>
           <div class="action-row">
-            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview" aria-label="Publication Preview and Redaction Audit">Preview</button>
-            <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-partial-adoption" aria-label="Configure Partial Adoption">Adopt</button>
+            <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-partial-adoption">Use this curriculum</button>
+            <button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" aria-pressed="${upvoteInfo.viewerHasUpvoted}">▲ Upvote Revision (${upvoteInfo.upvoteCount ?? 0})</button>
+            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Publication preview</button>
           </div>
-        </div>
-        <figure class="diagram-hero">${moduleFlowSvg}</figure>
-        <article class="study-card public-template-card" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" data-opaque-surface="true">
-          <header class="activity-row"><h3>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h3><button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" aria-pressed="${upvoteInfo.viewerHasUpvoted}">▲ Upvote Revision (${upvoteInfo.upvoteCount ?? 0})</button></header>
-          ${disclosure("Template", `<p class="meta-text">Published by <strong>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}</strong> · License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code> · Revision #${DEFAULT_PUBLIC_CURRICULUM.revision_number}</p><p>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p><p class="meta-text">Transitive Prerequisite Resolution: Selecting <code>public-module-attention</code> automatically includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>`)}
         </article>
+        <section class="surface-panel my-publications" data-opaque-surface="true">
+          <h2>My Publications</h2>
+          <p class="prose">Owner state is requested with <code>Cache-Control: no-store</code> (${escapeHtml(publicationState.cachePolicy)}).</p>
+          ${ownedCard ? `<p><strong>${escapeHtml(ownedCard.displayTitleText)}</strong>. State: ${escapeHtml(ownedCard.state)}. Visibility: ${escapeHtml(ownedCard.visibility)}. ${escapeHtml(ownedCard.upvoteDisplayText)}.</p>` : ""}
+          <h3>Revision history</h3>
+          <ol>${revisionHistoryHtml}</ol>
+          <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
+          <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-unpublish">Unpublish</button>
+        </section>
       </section>
 
       <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
-        <div class="section-header"><h2>Settings</h2></div>
-        <figure class="diagram-hero">${walletGaugeSvg}</figure>
-        ${disclosure("Buckets", `${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}<p>Available Hosted Balance: <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong> · Reserved Ceiling Hold: <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong></p><div class="four-bucket-grid">${fourBucketsHtml}</div>`)}
-        <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Theme</h3>
-          <div class="theme-selector-group" role="group" aria-label="Theme Mode Selector">
-            ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="btn-secondary${themePreference === mode ? " is-active" : ""}" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n            ")}
-          </div>
-        </article>
-        <article class="study-card settings-card" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
-          <h3>Keys</h3>
-          <ul class="credential-list">
-            ${byokState.credentials.map((cred) => `<li class="credential-item activity-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}"><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong><code>${escapeHtml(cred.masked_hint)}</code><span class="badge">${escapeHtml(cred.status)}</span></li>`).join("\n            ")}
-          </ul>
-          ${disclosure("Custody", `<p class="disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p><p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p><ul>${byokState.credentials.map((cred) => `<li><code>${escapeHtml(cred.provider_id)}</code> ETag <code>${escapeHtml(cred.etag ?? "")}</code></li>`).join("")}</ul>`)}
-        </article>
-        <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Reminders</h3>
-          <div class="activity-row"><span class="duration-pill">${escapeHtml(reminderState.timezone)}</span><span class="duration-pill">${escapeHtml(reminderState.quiet_hours.start_local_time)}-${escapeHtml(reminderState.quiet_hours.end_local_time)}</span><span class="duration-pill">${reminderState.lead_time_minutes}m</span></div>
-          ${disclosure("Delivery", `<p class="disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)}</p>`)}
-        </article>
-        <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Privacy</h3>
-          <div class="action-row"><button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion" aria-label="Review Account Export and Destructive Deletion">Export &amp; deletion</button></div>
-          ${disclosure("Privacy", `<p>${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>`)}
-        </article>
+        <h1 class="page-title">Settings</h1>
+        <div class="settings-stack">
+          <section class="surface-panel settings-group" data-opaque-surface="true">
+            <h2>Account</h2>
+            <p>Signed-in learner <code>learner-default</code>.</p>
+            <p class="prose">Account-provider sign-in and payment checkout are not connected in this build. This screen does not invent a successful profile or payment response.</p>
+          </section>
+          <section class="surface-panel settings-group" data-opaque-surface="true">
+            <h2>Appearance</h2>
+            <div class="theme-selector-group" role="group" aria-label="Theme">
+              ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="btn-secondary${themePreference === mode ? " is-active" : ""}" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+            </div>
+            <label class="switch-field"><input type="checkbox" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}> Solid surfaces</label>
+            <label class="switch-field"><input type="checkbox" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}> Reduce motion</label>
+            <p class="meta-text">System reduced transparency, contrast, and motion preferences take precedence over effects.</p>
+          </section>
+          <section class="surface-panel settings-group" id="settings-schedule" data-opaque-surface="true">
+            <h2>Reminders &amp; Schedule</h2>
+            <label class="switch-field"><input type="checkbox" data-action="toggle-reminders"${remindersOn ? " checked" : ""}> Enable reminders</label>
+            <p class="prose">Browser notification permission is requested only after Enable reminders. A denied or unsupported permission leaves Today and the schedule usable. Initial notification copy stays generic.</p>
+            <p>Timezone: <code>${escapeHtml(reminderState.timezone)}</code> (${escapeHtml(timezoneLabel)}).</p>
+            <p>Quiet hours: ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}. Lead time ${reminderState.lead_time_minutes} min. Reminders are ${remindersPaused ? "paused" : "not paused"}.</p>
+            <label class="field" for="snooze-minutes">Snooze
+              <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
+            </label>
+            <div class="action-row">
+              <button type="button" class="btn-secondary" data-action="snooze-reminder">Snooze</button>
+              <button type="button" class="btn-secondary" data-action="pause-reminders">${remindersPaused ? "Resume reminders" : "Pause"}</button>
+            </div>
+            ${snoozeNote ? `<p class="prose" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
+            <p class="prose disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
+            <h3>Schedule</h3>
+            <ul class="schedule-list">${scheduleRowsHtml}</ul>
+          </section>
+          <section class="surface-panel settings-group" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
+            <h2>AI Connections</h2>
+            <p class="prose">Mode: ${escapeHtml(byokState.mode)}. Hosted fallback is off. Saving a key does not authorize a chargeable model test. The service stores the key encrypted, identifies the provider, and the provider bills inference.</p>
+            <p class="prose disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
+            <p class="prose disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
+            <label class="field" for="byok-key">Provider key <span class="meta-text">Transient and optional until you replace a key</span>
+              <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
+            </label>
+            <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
+            <ul class="credential-list">
+              ${byokState.credentials.map((cred) => `<li class="credential-item" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
+                <p><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong> <code>${escapeHtml(cred.masked_hint)}</code> <span class="badge">${escapeHtml(cred.status)}</span></p>
+                <p class="meta-text">Provider <code>${escapeHtml(cred.provider_id)}</code>. Version <code>${escapeHtml(cred.etag ?? "")}</code>. Updated ${escapeHtml(cred.updated_at ?? "unknown")}. The saved secret is not shown again.</p>
+                <div class="action-row">
+                  <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
+                  <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}">Delete connection</button>
+                </div>
+                <p class="prose">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
+              </li>`).join("\n")}
+            </ul>
+            ${keyActionNote ? `<p class="prose" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
+          </section>
+          <section class="surface-panel settings-group" data-opaque-surface="true">
+            <h2>Usage &amp; Billing</h2>
+            ${costBreakdown.byokEstimateDisclaimer ? `<p class="prose disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
+            <p>Available hosted balance: <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>. Reserved ceiling hold: <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong>.</p>
+            <div class="four-bucket-grid">${fourBucketsHtml}</div>
+          </section>
+          <section class="surface-panel settings-group" data-opaque-surface="true">
+            <h2>Privacy</h2>
+            <p class="prose">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. Export excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
+            <p class="prose warning-copy">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
+            <p class="prose warning-copy">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
+            <p class="prose">${escapeHtml(privacyState.disclosures.financialAuditRetention)}</p>
+            <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
+          </section>
+          <section class="surface-panel settings-group" data-opaque-surface="true">
+            <h2>About / Terms</h2>
+            <p class="prose">This software is source-available. An individual may self-host it for personal use. Organizational deployment is not permitted. This screen does not offer an organization switcher, classroom dashboard, or enterprise plan.</p>
+          </section>
+        </div>
       </section>
     </main>
   </div>
+  <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">${bottomNavHtml}</nav>
 
-  <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">
-    ${bottomNavHtml}
-  </nav>
-
-  <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title" data-opaque-surface="true"${openDialogId === "dialog-adaptation-diff" ? " open" : ""}>
+  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title" data-opaque-surface="true"${dialogOpen("dialog-new-curriculum")}>
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p>Preserved Math Depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code> · Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256.slice(0, 16))}…</code></p>
-      <p>Schedule Impact: ${adaptationDiff.impact.before_minutes}m → ${adaptationDiff.impact.after_minutes}m (${adaptationDiff.impact.delta_minutes >= 0 ? "+" : ""}${adaptationDiff.impact.delta_minutes}m)</p>
-      <div class="diff-buckets">
-        <div><h3>Waived Instruction (Backed by Reviewed Anchor Evidence)</h3><ul>${adaptationDiff.waivers.map((w) => `<li><code>${escapeHtml(w.node_id)}</code> — Evidence: <code>${escapeHtml(w.qualifying_evidence_refs.join(", "))}</code> (${escapeHtml(w.rationale)})</li>`).join("")}</ul></div>
-        <div><h3>Added Prerequisite Bridges (Unassessed Objectives Preserved)</h3><ul>${adaptationDiff.buckets.added.map((a) => `<li><code>${escapeHtml(a.node_id ?? "")}</code> — ${escapeHtml(a.rationale ?? "")}</li>`).join("")}</ul></div>
-      </div>
+      <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <p class="prose">Goal and scope → Background and approach → Time and access → Review and generate</p>
+      <section>
+        <h3>Goal and scope</h3>
+        <label class="field" for="intake-goal">What do you want to learn? <span class="meta-text">Required</span>
+          <input id="intake-goal" name="goal" type="text" autocomplete="off" autofocus>
+        </label>
+        <label class="field" for="intake-use">Intended use <span class="meta-text">Optional</span>
+          <input id="intake-use" name="intended-use" type="text" autocomplete="off" placeholder="Building applications, foundations, or research">
+        </label>
+        <p class="prose">A broad goal opens editable scope choices. A finite catalog plan is not exhaustive. Included and excluded topics stay visible before generation.</p>
+      </section>
+      <section>
+        <h3>Background and approach</h3>
+        <fieldset class="choice-group">
+          <legend>What I already know</legend>
+          <ul class="knowledge-list">
+            <li>Linear algebra: introductory matrix operations demonstrated <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-topic="linear-algebra">View evidence</button></li>
+            <li>Matrix calculus: not assessed <button type="button" class="btn-secondary" data-action="check-prerequisites">Check prerequisites</button></li>
+          </ul>
+          <p class="prose">Claims and observations stay separate from assessed proficiency. Editing this self-report does not change assessed evidence.</p>
+        </fieldset>
+        <fieldset class="choice-group">
+          <legend>Mathematical depth</legend>
+          ${choiceRadio("math-depth", "intuitive", "Intuitive", "Conceptual explanations with necessary mathematical ideas.", false)}
+          ${choiceRadio("math-depth", "applied", "Applied", "Mathematics used for implementation and evaluation.", false)}
+          ${choiceRadio("math-depth", "formal", "Formal", "Relevant assumptions, derivations, and proof or mathematical reasoning where appropriate. Proofs are not promised for every engineering activity.", true)}
+          <p>Inherited: Tokenization — Formal. This follows the global default.</p>
+          <p>${depthOverrideReset ? "Matrix calculus override removed. Inherited depth follows the global default." : "Override: Matrix calculus — Formal."}</p>
+          <label class="field" for="topic-depth-override">Per-topic override <span class="meta-text">Optional</span>
+            <select id="topic-depth-override" name="topic-depth-override"><option>Matrix calculus — Formal</option></select>
+          </label>
+          <button type="button" class="btn-secondary" data-action="reset-depth-override">Reset to default</button>
+        </fieldset>
+        <fieldset class="choice-group">
+          <legend>How I want to start</legend>
+          ${choiceRadio("start-order", "theory_first", "Theory first", "Instruction begins with the formal treatment.", false)}
+          ${choiceRadio("start-order", "application_first", "Application first", "An early working example can precede formal derivation. This is compatible with Formal depth.", true)}
+          ${choiceRadio("start-order", "balanced", "Balanced", "Theory and application alternate. This is instructional order, not a learning-style diagnosis.", false)}
+        </fieldset>
+        <fieldset class="choice-group">
+          <legend>Familiar material</legend>
+          ${choiceRadio("familiar-material", "condense", "Condense", "Shorter treatment of familiar material.", false)}
+          ${choiceRadio("familiar-material", "retain_full", "Keep full treatment", "Retain the full explanation.", false)}
+          ${choiceRadio("familiar-material", "skip_if_demonstrated", "Skip only when demonstrated", "Skip only when qualifying evidence exists.", true)}
+        </fieldset>
+      </section>
+      <section>
+        <h3>Time and access</h3>
+        <label class="field" for="weekly-minutes">Weekly minutes <span class="meta-text">Required</span>
+          <input id="weekly-minutes" name="weekly-minutes" type="text" value="120">
+        </label>
+        <p>Timezone: America/New_York (Eastern Time). Deadline: <span class="meta-text">Optional</span> none set.</p>
+        <fieldset class="choice-group"><legend>Materials access</legend>
+          ${choiceRadio("materials-access", "free_only", "Free-only", "Use free learning materials only.", false)}
+          ${choiceRadio("materials-access", "paid_allowed", "Paid allowed", "Paid materials stay separate from inference charges.", true)}
+        </fieldset>
+        <p class="prose warning-copy">Service fees, hosted inference, externally billed BYOK inference, learning materials, certification, and compute stay distinct. Free materials do not imply free generation. An unknown merchant price stays Price unknown (verify externally), not $0.00.</p>
+      </section>
+      <section>
+        <h3>Review and generate</h3>
+        <ul>
+          <li>Mathematical depth: Formal, with Matrix calculus ${depthOverrideReset ? "inherited" : "overridden"}.</li>
+          <li>Start: Application first.</li>
+          <li>Familiar material: Skip only when demonstrated.</li>
+          <li>Linear algebra: introductory matrix operations demonstrated. Matrix calculus: not assessed.</li>
+        </ul>
+        <p class="prose">Generating a draft does not activate the plan, schedule reminders, or start a charge.</p>
+        <button type="button" class="btn-primary" data-action="review-generate">Review and generate</button>
+        ${intakeNote ? `<p class="prose" role="status">${escapeHtml(intakeNote)}</p>` : ""}
+      </section>
     </form>
   </dialog>
 
-  <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title" data-opaque-surface="true"${openDialogId === "dialog-partial-adoption" ? " open" : ""}>
+  <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title" data-opaque-surface="true"${dialogOpen("dialog-adaptation-diff")}>
+    <form method="dialog" class="dialog-surface">
+      <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      ${adaptationBody}
+    </form>
+  </dialog>
+
+  <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title" data-opaque-surface="true"${dialogOpen("dialog-partial-adoption")}>
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-partial-adoption-title">Partial Curriculum Adoption &amp; Prerequisite Closure</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p>Requested Module: <code>${escapeHtml(partialAdoptionScope.requestedModuleIds.join(", "))}</code></p>
       <p>Auto-Included Prerequisite Modules: <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", ") || "none")}</code></p>
       <p>Resolved Module Scope: <code>${escapeHtml(partialAdoptionScope.resolvedModuleIds.join(" → "))}</code></p>
-      <p class="meta-text">Deterministic adoption executes at $0.00 AI inference cost without requiring BYOK keys or hosted wallet reservations.</p>
+      <p class="prose">Use this curriculum personalizes a private draft. It copies no author evidence, progress, votes, key, or spending authority. Deterministic adoption is $0.00 AI inference and does not activate the plan.</p>
     </form>
   </dialog>
 
-  <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title" data-opaque-surface="true"${openDialogId === "dialog-publication-preview" ? " open" : ""}>
+  <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title" data-opaque-surface="true"${dialogOpen("dialog-publication-preview")}>
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-publication-preview-title">Publication Preview &amp; Private Field Redaction</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p>Preview ID: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.preview_id)}</code> · Visibility: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.visibility)}</code></p>
+      <p>Preview ID: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.preview_id)}</code>. Visibility: Public — appears in discovery and can be read by others. Unlisted — anyone with the link can read it; excluded from app-controlled discovery. Unlisted does not mean confidential.</p>
       <p>Excluded Private Fields (Never Published): <code>${escapeHtml(publicationState.excludedPrivateFields.join(", "))}</code></p>
       <p>Terms Policy: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms_policy_id)}</code> (${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms.content_license_id)})</p>
     </form>
   </dialog>
 
-  <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title" data-opaque-surface="true"${openDialogId === "dialog-account-deletion" ? " open" : ""}>
+  <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title" data-opaque-surface="true"${dialogOpen("dialog-unpublish")}>
+    <form method="dialog" class="dialog-surface">
+      <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies.</p>
+      <p class="prose">This screen does not call a live unpublish route and does not report success.</p>
+    </form>
+  </dialog>
+
+  <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title" data-opaque-surface="true"${dialogOpen("dialog-account-deletion")}>
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p>Export Scope Included: <code>${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}</code></p>
       <p>Export Scope Excluded: <code>${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}</code></p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
+      <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Deletion does not promise immediate removal from every backup.</p>
     </form>
   </dialog>
 
@@ -995,7 +1195,6 @@ ${getDialogLightDismissFallbackScript()}
   </script>
 </div>`;
 }
-
 export function createCurriculumWebAppController(initialState: CurriculumWebAppStateInput = {}) {
   let topLevel: TopLevelDestination = initialState.topLevel ?? "Learn";
   let learnSubDestination: LearnSubDestination = initialState.learnSubDestination ?? "Today";
@@ -1007,8 +1206,26 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const viewportWidthPx = initialState.viewportWidthPx ?? 1280;
   const textScalePercent = initialState.textScalePercent ?? 100;
   let themePreference: ThemePreference = initialState.themePreference ?? "light";
-  const solidSurfaces = initialState.solidSurfaces ?? false;
-  const reduceMotion = initialState.reduceMotion ?? false;
+  let solidSurfaces = initialState.solidSurfaces ?? false;
+  let reduceMotion = initialState.reduceMotion ?? false;
+  let hintRequested = initialState.hintRequested ?? false;
+  let workedSolutionRevealed = initialState.workedSolutionRevealed ?? false;
+  let practiceSubmitted = initialState.practiceSubmitted ?? false;
+  let practiceChoice: string | null = initialState.practiceChoice ?? null;
+  let studyAheadActivityId: string | null = initialState.studyAheadActivityId ?? null;
+  const skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
+  let remindersEnabled = initialState.remindersEnabled ?? true;
+  let remindersPaused = initialState.remindersPaused ?? false;
+  let keyVisible = initialState.keyVisible ?? false;
+  let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
+  let adaptationChoice: "pending" | "accept_reviewed" | "keep_current" = initialState.adaptationChoice ?? "pending";
+  let loadMoreNote: string | null = initialState.loadMoreNote ?? null;
+  let intakeNote: string | null = initialState.intakeNote ?? null;
+  let keyActionNote: string | null = initialState.keyActionNote ?? null;
+  let snoozeNote: string | null = initialState.snoozeNote ?? null;
+  let rescheduleSessionId: string | null = initialState.rescheduleSessionId ?? null;
+  let rescheduleValue: string | null = initialState.rescheduleValue ?? null;
+  let depthOverrideReset = initialState.depthOverrideReset ?? false;
   const adoptedSelectedModuleIds: string[] = [...(initialState.adoptedSelectedModuleIds ?? ["public-module-attention"])];
   let upvotedRevisionIds: string[] = [...(initialState.upvotedRevisionIds ?? [])];
   let openDialogId: string | null = initialState.openDialogId ?? null;
@@ -1047,7 +1264,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       selfReportedCompletedCount: tState.selfReportedCompletedCount,
       adoptedSelectedModuleIds: [...adoptedSelectedModuleIds] as readonly string[],
       upvotedRevisionIds: [...upvotedRevisionIds] as readonly string[],
-      openDialogId,
+      openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
+      studyAheadActivityId, skippedActivityIds: [...skippedActivityIds] as readonly string[],
+      remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
+      loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
+      depthOverrideReset,
     };
   };
 
@@ -1129,6 +1350,40 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     closeDialog() {
       openDialogId = null;
       return getState();
+    },
+    applyUiAction(action: string, data: Readonly<Record<string, string | undefined>> = {}, submittedChoice: string | null = null) {
+      let handled = true;
+      if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
+      else if (action === "toggle-reduce-motion") reduceMotion = !reduceMotion;
+      else if (action === "request-hint") hintRequested = true;
+      else if (action === "study-worked-solution") workedSolutionRevealed = true;
+      else if (action === "submit-practice") {
+        practiceSubmitted = true;
+        practiceChoice = submittedChoice;
+      } else if (action === "study-ahead" && data["activityId"]) studyAheadActivityId = data["activityId"];
+      else if (action === "skip-activity" && data["activityId"]) {
+        const activityId = data["activityId"];
+        if (!skippedActivityIds.includes(activityId)) skippedActivityIds.push(activityId);
+      } else if (action === "diagnostic-pause") diagnosticControl = "paused";
+      else if (action === "diagnostic-stop-early") diagnosticControl = "stopped";
+      else if (action === "diagnostic-continue") diagnosticControl = "active";
+      else if (action === "accept-revision") adaptationChoice = "accept_reviewed";
+      else if (action === "keep-current-plan") adaptationChoice = "keep_current";
+      else if (action === "toggle-reminders") remindersEnabled = !remindersEnabled;
+      else if (action === "pause-reminders") remindersPaused = !remindersPaused;
+      else if (action === "snooze-reminder") snoozeNote = "Snooze does not change assessed proficiency. Delivery stays best effort.";
+      else if (action === "toggle-key-visibility") keyVisible = !keyVisible;
+      else if (action === "replace-key") keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
+      else if (action === "delete-connection") keyActionNote = "Delete connection would remove this app's encrypted copy only. It would not revoke the key at the issuer. No live delete was sent.";
+      else if (action === "load-more") loadMoreNote = "No further public revisions are available in this preview.";
+      else if (action === "reschedule-session" && data["sessionId"]) {
+        rescheduleSessionId = data["sessionId"];
+        rescheduleValue = data["rescheduleValue"] ?? "";
+      } else if (action === "reset-depth-override") depthOverrideReset = true;
+      else if (action === "review-generate") intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
+      else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
+      else handled = false;
+      return { handled, state: getState() };
     },
   };
 }
@@ -1221,7 +1476,19 @@ export function mountCurriculumWebApp(
     else if (action === "close-dialog") {
       ev.preventDefault?.();
       controller.closeDialog();
-    } else return;
+    } else {
+      const data: Record<string, string | undefined> = { ...ds };
+      if (action === "submit-practice" && typeof rootElement.querySelector === "function") {
+        const checked = rootElement.querySelector('input[name="practice-choice"]:checked') as { value?: string } | null;
+        data["practiceChoice"] = checked?.value;
+      }
+      if (action === "reschedule-session" && ds["sessionId"] && typeof rootElement.querySelector === "function") {
+        const input = rootElement.querySelector(`[data-reschedule-for="${ds["sessionId"]}"]`) as { value?: string } | null;
+        data["rescheduleValue"] = input?.value ?? "";
+      }
+      const submittedChoice = data["practiceChoice"] ?? null;
+      if (!action || !controller.applyUiAction(action, data, submittedChoice).handled) return;
+    }
     syncDom();
   });
 
@@ -1260,5 +1527,7 @@ export function mountCurriculumWebApp(
     toggleUpvote: withSync(controller.toggleUpvote),
     openDialog: withSync(controller.openDialog),
     closeDialog: withSync(controller.closeDialog),
+    applyUiAction: withSync(controller.applyUiAction),
   };
 }
+
