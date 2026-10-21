@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  spec-and-contract-gates:
+    name: Spec & Contract Gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python validation dependencies
+        run: python3 -m pip install --upgrade pip jsonschema pyyaml referencing
+
+      - name: Verify embedded spec extraction parity
+        run: python3 scripts/extract_spec.py --check specs/product.md .
+
+      - name: Verify single source of truth invariants
+        run: python3 scripts/check_current_spec.py specs/product.md
+
+      - name: Validate OpenAPI, JSON Schemas, and golden fixtures
+        run: python3 scripts/check_contracts.py
+
+      - name: Verify generated Rust & TypeScript contract artifacts
+        run: python3 scripts/generate_contracts.py --check
+
+      - name: Assert zero uncommitted workspace drift
+        run: git diff --exit-code
+
+  rust-workspace-and-postgres-migrations:
+    name: Rust Workspace & PostgreSQL 16 (pgvector) Migrations
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: curriculum
+          POSTGRES_PASSWORD: curriculum
+          POSTGRES_DB: curriculum_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U curriculum -d curriculum_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://curriculum:curriculum@127.0.0.1:5432/curriculum_test
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Apply PostgreSQL 16 + pgvector migrations (0000..0005)
+        run: ./scripts/apply_migrations.sh
+
+      - name: Run Rust workspace test suite
+        run: cargo test --workspace --locked
+
+  typescript-workspace:
+    name: TypeScript Workspace (pnpm + Node 22)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TypeScript typecheck across workspace
+        run: pnpm -r typecheck
+
+      - name: Run TypeScript test suite across workspace
+        run: pnpm -r test

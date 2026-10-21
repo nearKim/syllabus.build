@@ -5,6 +5,7 @@ use curriculum_jobs::{
     evaluate_pg_bloat_health, OutboxJobQueue, OutboxQueueConfig, PgBloatHealthReport,
     PgTableTupleStats, QueueMetricsSnapshot,
 };
+use curriculum_persistence::{PostgresTransactionalStatements, MIGRATIONS};
 use curriculum_providers::{DeterministicFakeProvider, InferenceProvider};
 
 pub fn verify_worker_bootstrap() -> OutboxQueueConfig {
@@ -12,6 +13,11 @@ pub fn verify_worker_bootstrap() -> OutboxQueueConfig {
         .expect("contract registry must load cleanly on worker bootstrap");
     let fake_provider = DeterministicFakeProvider::default();
     assert_eq!(fake_provider.capabilities().provider_id, "deterministic-fake");
+    let migration_bundle = PostgresTransactionalStatements::render_full_migration_bundle();
+    assert!(migration_bundle.contains("CREATE TABLE IF NOT EXISTS outbox_jobs"));
+    assert!(PostgresTransactionalStatements::claim_next_outbox_job_sql()
+        .contains("FOR UPDATE SKIP LOCKED"));
+    assert_eq!(MIGRATIONS.len(), 6);
     OutboxQueueConfig::default()
 }
 

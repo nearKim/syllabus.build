@@ -880,4 +880,6 @@ export * from "./diagnosticsAndAdaptation.ts";
 export * from "./byokAndReminders.ts";
 export * from "./billingAndSharing.ts";
 export * from "./releaseAndA11yViews.ts";
+export * from "./browserApp.ts";
+
 

@@ -115,6 +115,89 @@ impl Default for DatabaseConfig {
     }
 }
 
+/// Parameterized PostgreSQL transactional SQL adapter and migration bundle builder (`T01`, `CTRL-002`, `CTRL-030`, `NFR-006`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct PostgresTransactionalStatements;
+
+impl PostgresTransactionalStatements {
+    /// Concatenates all embedded `MIGRATIONS` (`0000`–`0005`) in lexical/version order wrapped in a transaction (`BEGIN; ... COMMIT;`).
+    pub fn render_full_migration_bundle() -> String {
+        let mut bundle = String::from("BEGIN;\n\n");
+        for migration in &MIGRATIONS {
+            bundle.push_str(&format!(
+                "-- === Migration {:04}: {} ===\n{}\n\n",
+                migration.version,
+                migration.name,
+                migration.sql.trim()
+            ));
+        }
+        bundle.push_str("COMMIT;\n");
+        bundle
+    }
+
+    /// Canonical `SELECT ... FOR UPDATE SKIP LOCKED` outbox job claim statement (`T01`, `@S24`).
+    pub fn claim_next_outbox_job_sql() -> &'static str {
+        "UPDATE outbox_jobs \
+         SET state = 'leased', locked_by = $1, locked_until = $2, attempt_count = attempt_count + 1 \
+         WHERE job_id = ( \
+             SELECT job_id FROM outbox_jobs \
+             WHERE state = 'queued' AND available_at <= $3 \
+             ORDER BY available_at ASC, job_id ASC \
+             FOR UPDATE SKIP LOCKED \
+             LIMIT 1 \
+         ) \
+         RETURNING job_id, account_id, job_type, state, payload_json, attempt_count, max_attempts, locked_by, locked_until, available_at, created_at;"
+    }
+
+    /// Canonical expired lease-reaping and dead-letter transition SQL (`T01`).
+    pub fn reap_expired_leases_sql() -> &'static str {
+        "UPDATE outbox_jobs \
+         SET state = CASE WHEN attempt_count >= max_attempts THEN 'failed' ELSE 'queued' END, \
+             locked_by = NULL, \
+             locked_until = NULL, \
+             completed_at = CASE WHEN attempt_count >= max_attempts THEN $1 ELSE completed_at END, \
+             last_error = CASE WHEN attempt_count >= max_attempts THEN 'lease_expired_max_attempts_exceeded' ELSE 'worker_lease_expired_requeued' END \
+         WHERE state IN ('in_flight', 'leased') AND locked_until < $1 \
+         RETURNING job_id, account_id, state, attempt_count, max_attempts;"
+    }
+
+    /// Canonical tenant-scoped `Idempotency-Key` acquisition SQL (`T01`, `@S24`).
+    pub fn idempotency_begin_sql() -> &'static str {
+        "INSERT INTO idempotency_keys (account_id, operation_id, idempotency_key, request_sha256, state, expires_at) \
+         VALUES ($1, $2, $3, $4, 'in_flight', $5) \
+         ON CONFLICT (account_id, operation_id, idempotency_key) DO NOTHING \
+         RETURNING account_id, operation_id, idempotency_key, request_sha256, state, response_status, response_body;"
+    }
+
+    /// Canonical tenant-scoped optimistic concurrency schedule update SQL (`T01`, `@S22`, `@S24`).
+    pub fn optimistic_schedule_update_sql() -> &'static str {
+        "UPDATE schedule_revisions \
+         SET etag_version = etag_version + 1, \
+             timezone = COALESCE($4, timezone), \
+             weekly_available_minutes = COALESCE($5, weekly_available_minutes), \
+             required_minutes = COALESCE($6, required_minutes), \
+             feasibility_status = $7, \
+             sessions_json = COALESCE($8, sessions_json) \
+         WHERE account_id = $1 AND curriculum_id = $2 AND etag_version = $3 \
+         RETURNING schedule_revision_id, account_id, curriculum_id, curriculum_revision_id, etag_version, feasibility_status;"
+    }
+
+    /// Canonical `pg_stat_user_tables` bloat and autovacuum monitoring query (`T01`).
+    pub fn pg_bloat_monitoring_sql() -> &'static str {
+        "SELECT \
+             relname AS table_name, \
+             n_live_tup, \
+             n_dead_tup, \
+             CASE WHEN (n_live_tup + n_dead_tup) = 0 THEN 0.0 \
+                  ELSE ROUND((n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)::NUMERIC), 4) \
+             END AS dead_tuple_ratio, \
+             EXTRACT(EPOCH FROM (NOW() - COALESCE(last_autovacuum, last_vacuum)))::BIGINT AS last_autovacuum_age_seconds \
+         FROM pg_stat_user_tables \
+         WHERE relname IN ('outbox_jobs', 'idempotency_keys', 'progress_events', 'schedule_revisions') \
+         ORDER BY dead_tuple_ratio DESC;"
+    }
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PersistenceError {
     #[error("security error: {0}")]
@@ -8752,5 +8835,77 @@ mod tests {
             filter_res,
             Err(PersistenceError::InsufficientCatalogCoverage { .. })
         ));
+    }
+
+    #[test]
+    fn postgres_transactional_statements_migration_bundle_and_parameterized_queries_preserve_invariants() {
+        let bundle = PostgresTransactionalStatements::render_full_migration_bundle();
+        assert!(bundle.starts_with("BEGIN;\n"));
+        assert!(bundle.ends_with("COMMIT;\n"));
+
+        // Verify all 6 migrations appear in strict lexical/version order
+        let mut last_offset = 0usize;
+        for migration in &MIGRATIONS {
+            let marker = format!(
+                "-- === Migration {:04}: {} ===",
+                migration.version, migration.name
+            );
+            let idx = bundle
+                .find(&marker)
+                .unwrap_or_else(|| panic!("missing migration marker `{marker}`"));
+            assert!(
+                idx >= last_offset,
+                "migration `{}` appeared out of order",
+                migration.name
+            );
+            last_offset = idx;
+        }
+
+        // Verify all core domain tables are covered by the rendered migration bundle
+        for required_table in [
+            "accounts",
+            "curriculum_revisions",
+            "public_template_revisions",
+            "idempotency_keys",
+            "outbox_jobs",
+            "catalog_resources",
+            "reviewed_assessments",
+            "provider_credentials",
+            "hosted_credit_wallets",
+            "publications",
+            "deletion_tombstones",
+        ] {
+            let create_stmt = format!("CREATE TABLE IF NOT EXISTS {required_table}");
+            assert!(
+                bundle.contains(&create_stmt),
+                "migration bundle must define `{create_stmt}`"
+            );
+        }
+
+        let claim_sql = PostgresTransactionalStatements::claim_next_outbox_job_sql();
+        assert!(claim_sql.contains("UPDATE outbox_jobs"));
+        assert!(claim_sql.contains("FOR UPDATE SKIP LOCKED"));
+        assert!(claim_sql.contains("locked_by = $1"));
+        assert!(claim_sql.contains("locked_until = $2"));
+        assert!(claim_sql.contains("available_at <= $3"));
+        assert!(claim_sql.contains("RETURNING"));
+
+        let reap_sql = PostgresTransactionalStatements::reap_expired_leases_sql();
+        assert!(reap_sql.contains("UPDATE outbox_jobs"));
+        assert!(reap_sql.contains("attempt_count >= max_attempts"));
+        assert!(reap_sql.contains("locked_until < $1"));
+
+        let idem_sql = PostgresTransactionalStatements::idempotency_begin_sql();
+        assert!(idem_sql.contains("INSERT INTO idempotency_keys"));
+        assert!(idem_sql.contains("account_id"));
+        assert!(idem_sql.contains("ON CONFLICT (account_id, operation_id, idempotency_key) DO NOTHING"));
+
+        let sched_sql = PostgresTransactionalStatements::optimistic_schedule_update_sql();
+        assert!(sched_sql.contains("UPDATE schedule_revisions"));
+        assert!(sched_sql.contains("WHERE account_id = $1 AND curriculum_id = $2 AND etag_version = $3"));
+
+        let bloat_sql = PostgresTransactionalStatements::pg_bloat_monitoring_sql();
+        assert!(bloat_sql.contains("FROM pg_stat_user_tables"));
+        assert!(bloat_sql.contains("outbox_jobs"));
     }
 }
