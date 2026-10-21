@@ -309,6 +309,196 @@ export function getDialogLightDismissFallbackScript(): string {
 })();`;
 }
 
+type SfIconName =
+  | "learn" | "explore" | "settings"
+  | "today" | "plan" | "progress" | "resources"
+  | "zoom-in" | "zoom-out" | "reset" | "focus"
+  | "check" | "status-done" | "status-open" | "status-progress" | "status-review";
+
+const SF_ICON_PATHS: Record<SfIconName, string> = {
+  learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
+  explore: `<circle cx="8" cy="8" r="5.25"/><path d="m9.95 6.05-1.15 3.15-3.15 1.15 1.15-3.15z"/>`,
+  settings: `<path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5"/><circle cx="5.5" cy="4.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>`,
+  today: `<rect x="2.75" y="3.5" width="10.5" height="9.75" rx="1.5"/><path d="M2.75 6.5h10.5M5.5 2.5v2M10.5 2.5v2"/>`,
+  plan: `<circle cx="4" cy="4.5" r="1.5"/><circle cx="12" cy="4.5" r="1.5"/><circle cx="8" cy="12" r="1.5"/><path d="M5.3 5.4 6.9 10.6M10.7 5.4 9.1 10.6"/>`,
+  progress: `<path d="M3 13V8.5M8 13V4M13 13V6.5"/>`,
+  resources: `<path d="M4.25 2.75h5.4l2.1 2.1v8.15a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V3.5a.75.75 0 0 1 .75-.75z"/><path d="M9.6 2.75V5h2.15"/>`,
+  "zoom-in": `<circle cx="7" cy="7" r="3.75"/><path d="m10 10 3.25 3.25M7 5.25v3.5M5.25 7h3.5"/>`,
+  "zoom-out": `<circle cx="7" cy="7" r="3.75"/><path d="m10 10 3.25 3.25M5.25 7h3.5"/>`,
+  reset: `<path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 2.75V5.5h-2.75"/>`,
+  focus: `<circle cx="8" cy="8" r="2"/><path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15"/>`,
+  check: `<path d="M3.25 8.25 6.4 11.4 12.75 4.6"/>`,
+  "status-done": `<circle cx="8" cy="8" r="5.25"/><path d="M5.2 8.2 7.15 10.15 10.9 6"/>`,
+  "status-open": `<circle cx="8" cy="8" r="5.25"/>`,
+  "status-progress": `<circle cx="8" cy="8" r="5.25"/><path d="M8 4.7V8l2.2 1.35"/>`,
+  "status-review": `<circle cx="8" cy="8" r="5.25"/><path d="M8 5.15v3.2M8 11.05h.01"/>`,
+};
+
+function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
+  return `<svg class="sf-icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SF_ICON_PATHS[name]}</svg>`;
+}
+
+function statusIconName(status: string): SfIconName {
+  if (status === "completed" || status === "self_reported_completed") return "status-done";
+  if (status === "in_progress") return "status-progress";
+  if (status === "needs_review") return "status-review";
+  return "status-open";
+}
+
+function statusMark(status: string): string {
+  const tone = status === "completed" || status === "self_reported_completed" ? " is-done" : status === "in_progress" ? " is-progress" : "";
+  return `<span class="status-icon${tone}">${sfIcon(statusIconName(status), 15)}<span class="visually-hidden">${escapeHtml(status)}</span></span>`;
+}
+
+function durationPill(minutes: number, title?: string): string {
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
+  return `<span class="duration-pill"${titleAttr}>${minutes}m</span>`;
+}
+
+function disclosure(summary: string, body: string): string {
+  return `<details class="minimal-disclosure"><summary>${escapeHtml(summary)}</summary>${body}</details>`;
+}
+
+function renderTopDestButton(dest: TopLevelDestination, className: string, isCurrent: boolean): string {
+  const icon: SfIconName = dest === "Learn" ? "learn" : dest === "Explore" ? "explore" : "settings";
+  return `<button type="button" class="${className}${isCurrent ? " is-active" : ""}" data-action="navigate-top" data-destination="${dest}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${dest}</span></button>`;
+}
+
+function renderLearnSubButton(sub: LearnSubDestination, isCurrent: boolean): string {
+  const icon: SfIconName = sub === "Today" ? "today" : sub === "Plan" ? "plan" : sub === "Progress" ? "progress" : "resources";
+  return `<button type="button" class="nav-sub-btn${isCurrent ? " is-active" : ""}" data-action="navigate-learn-sub" data-sub-destination="${sub}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${sub}</span></button>`;
+}
+
+function renderMapControl(control: "zoom_in" | "zoom_out" | "fit_view" | "reset_focus", label: string, icon: SfIconName): string {
+  return `<button type="button" class="btn-secondary map-control-btn" data-action="map-control" data-map-control="${control}" aria-label="${label}" title="${label}">${sfIcon(icon, 16)}</button>`;
+}
+
+function diagramTitle(title: string, max = 28): string {
+  const stripped = title.replace(/^Module\s+\d+:\s*/i, "");
+  return stripped.length <= max ? stripped : `${stripped.slice(0, max - 1)}…`;
+}
+
+function topicLabel(topicId: string): string {
+  return topicId
+    .replace(/^topic-/, "")
+    .split("-")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function shortSessionLabel(startAt: string): string {
+  const date = new Date(startAt);
+  if (Number.isNaN(date.getTime())) return startAt.slice(0, 10);
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(date);
+}
+
+function renderSessionFlowSvg(
+  steps: readonly { readonly label: string; readonly done: boolean; readonly active: boolean }[],
+  studyMinutes: number,
+  plannedMinutes: number,
+): string {
+  const ringR = 50;
+  const ringC = 2 * Math.PI * ringR;
+  const ratio = plannedMinutes > 0 ? Math.min(1, Math.max(0, studyMinutes / plannedMinutes)) : 0;
+  const filled = ratio * ringC;
+  const ringCx = 86;
+  const ringCy = 84;
+  const count = Math.max(steps.length, 1);
+  const startX = 248;
+  const endX = 664;
+  const span = count === 1 ? 0 : (endX - startX) / (count - 1);
+  const nodeY = 72;
+  const nodes = steps.map((step, index) => {
+    const cx = Math.round(startX + span * index);
+    const fill = step.done ? "var(--color-accent)" : step.active ? "var(--color-accent-surface)" : "var(--color-surface)";
+    const stroke = step.done ? "none" : "var(--color-border-control)";
+    const mark = step.done
+      ? `<path d="M${cx - 6} ${nodeY} l4 4 8-8" fill="none" stroke="var(--color-surface)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`
+      : step.active
+        ? `<circle cx="${cx}" cy="${nodeY}" r="3.5" fill="var(--color-accent)" stroke="none"/>`
+        : "";
+    const connector = index === 0 ? "" : `<line x1="${Math.round(startX + span * (index - 1) + 22)}" y1="${nodeY}" x2="${cx - 22}" y2="${nodeY}" stroke="${steps[index - 1]?.done ? "var(--color-accent)" : "var(--color-border-control)"}" stroke-width="1.5" stroke-linecap="round"/>`;
+    return `${connector}<g><circle cx="${cx}" cy="${nodeY}" r="18" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>${mark}<text x="${cx}" y="112" text-anchor="middle" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(step.label)}</text></g>`;
+  }).join("");
+  const aria = `Session flow and study ring. ${steps.map((step) => `${step.label} ${step.done ? "complete" : "open"}`).join(", ")}. ${studyMinutes} study minutes of ${plannedMinutes} planned.`;
+  return `<svg class="session-flow-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 720 148" width="100%"><circle cx="${ringCx}" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="${ringCx}" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 ${ringCx} ${ringCy})"/>` : ""}<text x="${ringCx}" y="80" text-anchor="middle" fill="var(--color-text-primary)" font-size="28" font-weight="600" font-family="var(--font-sans)">${studyMinutes}</text><text x="${ringCx}" y="100" text-anchor="middle" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">min</text>${nodes}</svg>`;
+}
+
+function renderProficiencyPartitionSvg(
+  topics: readonly { readonly label: string; readonly demonstrated: number; readonly total: number }[],
+): string {
+  const demonstrated = topics.reduce((sum, topic) => sum + topic.demonstrated, 0);
+  const total = topics.reduce((sum, topic) => sum + topic.total, 0);
+  const ratio = total > 0 ? Math.min(1, demonstrated / total) : 0;
+  const ringR = 46;
+  const ringC = 2 * Math.PI * ringR;
+  const filled = ratio * ringC;
+  const height = Math.max(176, 40 + topics.length * 48);
+  const ringCy = Math.round(height / 2);
+  const rows = topics.map((topic, index) => {
+    const y = 28 + index * 48;
+    const frac = topic.total > 0 ? Math.min(1, topic.demonstrated / topic.total) : 0;
+    const track = 280;
+    const demoW = frac <= 0 ? 0 : Math.max(10, Math.round(track * frac));
+    return `<g><text x="168" y="${y + 13}" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(topic.label)}</text><rect x="328" y="${y}" width="${track}" height="16" rx="8" fill="var(--color-surface-secondary)"/>${demoW > 0 ? `<rect x="328" y="${y}" width="${demoW}" height="16" rx="8" fill="var(--color-success-text)"/>` : ""}<text x="656" y="${y + 13}" text-anchor="end" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">${topic.demonstrated}/${topic.total}</text></g>`;
+  }).join("");
+  const aria = `Proficiency and diagnostic partition. Demonstrated ${demonstrated} of ${total}. Unassessed ${Math.max(0, total - demonstrated)}.`;
+  return `<svg class="proficiency-partition-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 680 ${height}" width="100%"><circle cx="78" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="78" cy="${ringCy}" r="${ringR}" fill="none" stroke="var(--color-success-text)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 78 ${ringCy})"/>` : ""}<text x="78" y="${ringCy + 4}" text-anchor="middle" fill="var(--color-text-primary)" font-size="16" font-weight="600" font-family="var(--font-sans)">${demonstrated}/${total}</text><circle cx="40" cy="${height - 18}" r="4" fill="var(--color-success-text)"/><text x="50" y="${height - 14}" fill="var(--color-text-secondary)" font-size="11" font-family="var(--font-sans)">Demonstrated</text><circle cx="138" cy="${height - 18}" r="4" fill="var(--color-border-subtle)"/><text x="148" y="${height - 14}" fill="var(--color-text-secondary)" font-size="11" font-family="var(--font-sans)">Unassessed</text>${rows}</svg>`;
+}
+
+function renderWalletGaugeSvg(
+  availableMinor: number,
+  reservedMinor: number,
+  buckets: readonly { readonly id: string; readonly label: string; readonly knownMinor: number; readonly unknown: boolean; readonly amountLabel: string }[],
+): string {
+  const available = Math.max(0, availableMinor);
+  const reserved = Math.max(0, reservedMinor);
+  const walletTotal = available + reserved;
+  const ratio = walletTotal > 0 ? available / walletTotal : 0;
+  const ringR = 48;
+  const ringC = 2 * Math.PI * ringR;
+  const filled = Math.min(1, Math.max(0, ratio)) * ringC;
+  const maxMinor = Math.max(1, ...buckets.map((bucket) => bucket.knownMinor));
+  const rows = buckets.map((bucket, index) => {
+    const y = 36 + index * 42;
+    const track = 240;
+    const fillW = bucket.knownMinor <= 0 ? 0 : Math.max(8, Math.round((bucket.knownMinor / maxMinor) * track));
+    return `<g data-bucket-id="${escapeHtml(bucket.id)}"><text x="180" y="${y}" fill="var(--color-text-primary)" font-size="13" font-weight="600" font-family="var(--font-sans)">${escapeHtml(bucket.label)}</text><rect x="276" y="${y - 12}" width="${track}" height="14" rx="7" fill="${bucket.unknown ? "none" : "var(--color-surface-secondary)"}"${bucket.unknown ? ` stroke="var(--color-border-control)" stroke-dasharray="4 3"` : ""}/>${fillW > 0 ? `<rect x="276" y="${y - 12}" width="${fillW}" height="14" rx="7" fill="var(--color-accent)"/>` : ""}<text x="656" y="${y}" text-anchor="end" fill="var(--color-text-secondary)" font-size="12" font-weight="600" font-family="var(--font-sans)">${escapeHtml(bucket.amountLabel)}</text></g>`;
+  }).join("");
+  const aria = `Wallet gauge ${formatMinorCurrency(available)}. Four bucket cost bars.`;
+  return `<svg class="wallet-gauge-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 680 196" width="100%"><circle cx="84" cy="98" r="${ringR}" fill="none" stroke="var(--color-border-subtle)" stroke-width="8"/>${filled > 0 ? `<circle cx="84" cy="98" r="${ringR}" fill="none" stroke="var(--color-accent)" stroke-width="8" stroke-linecap="round" stroke-dasharray="${filled.toFixed(2)} ${(ringC - filled).toFixed(2)}" transform="rotate(-90 84 98)"/>` : ""}<text x="84" y="96" text-anchor="middle" fill="var(--color-text-primary)" font-size="15" font-weight="600" font-family="var(--font-sans)">${escapeHtml(formatMinorCurrency(available))}</text><text x="84" y="114" text-anchor="middle" fill="var(--color-text-secondary)" font-size="11" font-weight="600" font-family="var(--font-sans)">available</text>${rows}</svg>`;
+}
+
+function renderModuleFlowSvg(
+  modules: readonly { readonly id: string; readonly title: string; readonly prerequisiteIds: readonly string[] }[],
+): string {
+  const nodeW = 210;
+  const nodeH = 56;
+  const gap = 88;
+  const count = Math.max(modules.length, 1);
+  const width = Math.max(640, 32 + count * nodeW + Math.max(0, count - 1) * gap);
+  const y = 46;
+  const positions = new Map<string, number>();
+  modules.forEach((mod, index) => positions.set(mod.id, 20 + index * (nodeW + gap)));
+  const edges = modules.flatMap((mod) => mod.prerequisiteIds.map((predId) => {
+    const x1 = positions.get(predId);
+    const x2 = positions.get(mod.id);
+    if (x1 === undefined || x2 === undefined) return "";
+    const yMid = y + nodeH / 2;
+    const start = x1 + nodeW;
+    const end = x2;
+    const mid = (start + end) / 2;
+    return `<path d="M ${start} ${yMid} C ${mid} ${yMid}, ${mid} ${yMid}, ${end - 8} ${yMid}" fill="none" stroke="var(--color-border-control)" stroke-width="1.5" marker-end="url(#module-flow-arrow)"/>`;
+  })).join("");
+  const nodes = modules.map((mod) => {
+    const x = positions.get(mod.id) ?? 0;
+    return `<g><rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="14" fill="var(--color-surface)" stroke="var(--color-border-subtle)" stroke-width="1"/><text x="${x + nodeW / 2}" y="${y + 34}" text-anchor="middle" fill="var(--color-text-primary)" font-size="14" font-weight="600" font-family="var(--font-sans)">${escapeHtml(diagramTitle(mod.title))}</text></g>`;
+  }).join("");
+  const aria = `Module dependency flow. ${modules.map((mod) => diagramTitle(mod.title)).join(" to ")}.`;
+  return `<svg class="module-flow-svg" role="img" aria-label="${escapeHtml(aria)}" viewBox="0 0 ${width} 148" width="100%"><defs><marker id="module-flow-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)"/></marker></defs>${edges}${nodes}</svg>`;
+}
+
 function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
   const { svgViewport, moduleMapNodes, objectiveMapNodes, mapEdges } = planModel;
   const edgesHtml = mapEdges
@@ -317,33 +507,39 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
       const midX = Math.round((fromX + toX) / 2);
       const pathD = `M ${fromX} ${fromY} C ${midX} ${fromY}, ${midX} ${toY}, ${toX} ${toY}`;
       const dashAttr = edge.satisfied ? "" : ' stroke-dasharray="6 4"';
-      return `<path class="map-edge" data-edge-id="${escapeHtml(edge.edgeId)}" data-from="${escapeHtml(edge.fromNodeId)}" data-to="${escapeHtml(edge.toNodeId)}" data-satisfied="${edge.satisfied}" d="${pathD}" fill="none" stroke="var(--color-border-control)" stroke-width="2"${dashAttr} marker-end="url(#dag-arrow)" aria-label="${escapeHtml(edge.textMeaning)}" />`;
+      return `<path class="map-edge" data-edge-id="${escapeHtml(edge.edgeId)}" data-from="${escapeHtml(edge.fromNodeId)}" data-to="${escapeHtml(edge.toNodeId)}" data-satisfied="${edge.satisfied}" d="${pathD}" fill="none" stroke="var(--color-border-control)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"${dashAttr} marker-end="url(#dag-arrow)" aria-label="${escapeHtml(edge.textMeaning)}" />`;
     })
     .join("\n            ");
 
   const nodesHtml = [...moduleMapNodes, ...objectiveMapNodes]
     .map((node) => {
       const isSelected = node.selected || node.nodeId === planModel.selectedModuleId || node.nodeId === planModel.focusedNodeId;
-      const strokeColor = isSelected ? "var(--color-accent)" : "var(--color-border-control)";
-      const strokeWidth = isSelected ? "3" : "1.5";
+      const strokeColor = "none";
+      const strokeWidth = "0";
       const fillSurface = isSelected ? "var(--color-accent-surface)" : "var(--color-surface)";
+      const elevFilter = isSelected ? "url(#node-elev-selected)" : "url(#node-elev)";
       const moduleIdAttr = node.kind === "module" ? node.nodeId : (planModel.selectedModuleId ?? "module-foundations");
       const durationText = node.durationTriplet
         ? `${node.durationTriplet.min}/${node.durationTriplet.point}/${node.durationTriplet.max}m`
         : node.requirementLevel;
+      const nodeTypeface = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', sans-serif";
 
       return `<g class="map-node" tabindex="0" role="button" data-action="select-map-node" data-node-id="${escapeHtml(node.nodeId)}" data-node-kind="${escapeHtml(node.kind)}" data-module-id="${escapeHtml(moduleIdAttr)}" data-selected="${isSelected}" data-in-neighborhood="${node.inFocusedNeighborhood}" data-opaque-surface="true" aria-pressed="${isSelected}" aria-label="${escapeHtml(`${node.kind}: ${node.title}. ${node.executionBadge.nonColorCue}. ${node.proficiencyBadge.nonColorCue}`)}" transform="translate(${node.x}, ${node.y})">
-              <rect width="${node.width}" height="${node.height}" rx="10" ry="10" fill="${fillSurface}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />
-              <text x="14" y="26" fill="var(--color-text-primary)" font-size="13" font-weight="600">${escapeHtml(node.title.slice(0, 34))}</text>
-              <text x="14" y="48" fill="var(--color-text-secondary)" font-size="11">${escapeHtml(node.executionBadge.nonColorCue.slice(0, 38))}</text>
-              <text x="14" y="68" fill="var(--color-text-secondary)" font-size="11">${escapeHtml(node.proficiencyBadge.nonColorCue.slice(0, 38))}</text>
-              <text x="14" y="88" fill="var(--color-accent)" font-size="11" font-weight="600">${escapeHtml(durationText)}</text>
+              <rect width="${node.width}" height="${node.height}" rx="14" ry="14" fill="${fillSurface}" stroke="${strokeColor}" stroke-width="${strokeWidth}" filter="${elevFilter}" />
+              <text x="16" y="24" fill="var(--color-text-primary)" font-size="12.5" font-weight="600" font-family="${nodeTypeface}" letter-spacing="-0.02em">${escapeHtml(node.title.slice(0, 34))}</text>
+              <text x="16" y="44" fill="var(--color-text-secondary)" font-size="11" font-family="${nodeTypeface}">${escapeHtml(node.executionBadge.nonColorCue.slice(0, 38))}</text>
+              <text x="16" y="62" fill="var(--color-text-secondary)" font-size="11" font-family="${nodeTypeface}">${escapeHtml(node.proficiencyBadge.nonColorCue.slice(0, 38))}</text>
+              <text x="16" y="80" fill="var(--color-accent)" font-size="11" font-weight="600" font-family="${nodeTypeface}">${escapeHtml(durationText)}</text>
             </g>`;
     })
     .join("\n            ");
 
-  return `<svg class="plan-dag-svg" role="group" aria-label="Curriculum prerequisite DAG map" viewBox="${escapeHtml(svgViewport.viewBox)}" width="100%" height="360" data-zoom="${svgViewport.zoom}" data-focused-node="${escapeHtml(svgViewport.focusedNodeId ?? "")}" data-opaque-surface="true">
-          <defs><marker id="dag-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)" /></marker></defs>
+  return `<svg class="plan-dag-svg" role="group" aria-label="Curriculum prerequisite DAG map" viewBox="${escapeHtml(svgViewport.viewBox)}" width="100%" height="400" overflow="visible" data-zoom="${svgViewport.zoom}" data-focused-node="${escapeHtml(svgViewport.focusedNodeId ?? "")}" data-opaque-surface="true">
+          <defs>
+            <filter id="node-elev" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#17191C" flood-opacity="0.10" /></filter>
+            <filter id="node-elev-selected" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#17191C" flood-opacity="0.14" /></filter>
+            <marker id="dag-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)" /></marker>
+          </defs>
           <g class="map-edges-layer">${edgesHtml}</g>
           <g class="map-nodes-layer">${nodesHtml}</g>
         </svg>`;
@@ -477,36 +673,45 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     { displayMode: "block" },
   );
 
-  const topNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => {
-    const isCurrent = dest === activeTopLevel;
-    return `<button type="button" class="nav-top-btn${isCurrent ? " is-active" : ""}" data-action="navigate-top" data-destination="${dest}" aria-current="${isCurrent ? "page" : "false"}">${dest}</button>`;
-  }).join("\n          ");
+  const topNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => renderTopDestButton(dest, "nav-top-btn", dest === activeTopLevel)).join("\n          ");
+  const bottomNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => renderTopDestButton(dest, "bottom-nav-btn", dest === activeTopLevel)).join("\n    ");
+  const learnSubNavHtml = LEARN_SUB_DESTINATIONS.map((sub) => renderLearnSubButton(sub, activeTopLevel === "Learn" && sub === activeLearnSub)).join("\n            ");
 
-  const learnSubNavHtml = LEARN_SUB_DESTINATIONS.map((sub) => {
-    const isCurrent = activeTopLevel === "Learn" && sub === activeLearnSub;
-    return `<button type="button" class="nav-sub-btn${isCurrent ? " is-active" : ""}" data-action="navigate-learn-sub" data-sub-destination="${sub}" aria-current="${isCurrent ? "page" : "false"}">${sub}</button>`;
-  }).join("\n            ");
+  const pipelineOrder = ["theory", "worked_example", "coding"] as const;
+  const pipelineLabels: Record<(typeof pipelineOrder)[number], string> = {
+    theory: "Theory", worked_example: "Worked Example", coding: "Coding",
+  };
+  const pipelineSource = todayState.todayCards.find((card) =>
+    pipelineOrder.every((type) => card.activityBreakdown.some((act) => act.type === type)),
+  ) ?? todayState.todayCards[0];
+  const pipelineSteps = pipelineOrder.map((type) => {
+    const act = pipelineSource?.activityBreakdown.find((item) => item.type === type);
+    const status = act?.executionStatus ?? "not_started";
+    return {
+      label: pipelineLabels[type],
+      done: status === "completed" || status === "self_reported_completed",
+      active: status === "in_progress",
+    };
+  });
+  const sessionFlowSvg = renderSessionFlowSvg(pipelineSteps, todayState.totalStudyMinutes, pipelineSource?.durationMinutes ?? 0);
 
   const todayCardsHtml = todayState.todayCards
     .map((card) => {
       const activitiesHtml = card.activityBreakdown
         .map((act) => {
           const isCompleted = act.executionStatus === "self_reported_completed" || act.executionStatus === "completed";
-          return `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}" data-opaque-surface="true">
-                  <div class="activity-header"><span class="activity-title">${escapeHtml(act.title)}</span><span class="badge badge-type">${escapeHtml(act.type)}</span><span class="badge badge-duration">${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min</span></div>
-                  <div class="two-layer-badges"><span class="badge badge-execution" data-layer="activity_execution">Activity execution: ${escapeHtml(act.executionStatus)}</span><span class="badge badge-proficiency" data-layer="objective_proficiency">Objective proficiency: ${escapeHtml(act.objectiveProficiencyStatus)} (never conflated)</span></div>
-                  <p class="activity-reason">${escapeHtml(act.scheduledReason)}</p>
-                  <div class="activity-actions"><button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="${escapeHtml(act.activityId)}" data-event-id="evt-complete-${escapeHtml(act.activityId)}" aria-pressed="${isCompleted}">${isCompleted ? "Self-reported completed (idempotent)" : "Mark self-reported completed"}</button></div>
+          const id = escapeHtml(act.activityId);
+          return `<li class="today-activity-item" data-activity-id="${id}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}" data-opaque-surface="true">
+                  <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span>${durationPill(act.durationTriplet.point, `${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min`)}<button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${isCompleted}" aria-label="${isCompleted ? "Self-reported completed" : "Mark self-reported completed"}">${sfIcon("check", 15)}<span>${isCompleted ? "Done" : "Complete"}</span></button></div>
+                  ${disclosure("Details", `<div class="two-layer-badges"><span class="badge badge-execution" data-layer="activity_execution">Activity execution: ${escapeHtml(act.executionStatus)}</span><span class="badge badge-proficiency" data-layer="objective_proficiency">Objective proficiency: ${escapeHtml(act.objectiveProficiencyStatus)} (never conflated)</span></div><p class="activity-reason">${escapeHtml(act.scheduledReason)}</p>`)}
                 </li>`;
         })
         .join("\n              ");
 
-      return `<article class="study-card today-session-card" data-session-id="${escapeHtml(card.sessionId)}" data-opaque-surface="true">
-            <header class="card-header">
-              <div><h3>Session: ${escapeHtml(card.sessionId)}</h3><p class="meta-text">Starts: <time datetime="${escapeHtml(card.startAt)}">${escapeHtml(card.startAt)}</time> · Planned: ${card.durationMinutes} min</p></div>
-              <span class="badge badge-review-separation" data-review-separation-valid="${card.reviewSeparation.valid}">${escapeHtml(card.reviewSeparation.separationSummary)}</span>
-            </header>
+      return `<article class="study-card today-session-card" data-session-id="${escapeHtml(card.sessionId)}" data-review-separation-valid="${card.reviewSeparation.valid}" data-opaque-surface="true">
+            <header class="activity-row"><h3>${escapeHtml(shortSessionLabel(card.startAt))}</h3>${durationPill(card.durationMinutes)}</header>
             <ul class="today-activity-list">${activitiesHtml}</ul>
+            ${disclosure("Schedule", `<p class="meta-text">Starts: <time datetime="${escapeHtml(card.startAt)}">${escapeHtml(card.startAt)}</time></p><span class="badge badge-review-separation" data-review-separation-valid="${card.reviewSeparation.valid}">${escapeHtml(card.reviewSeparation.separationSummary)}</span>`)}
           </article>`;
     })
     .join("\n          ");
@@ -531,23 +736,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             )
             .join("\n                ");
 
-          return `<li class="outline-activity-card${isSelectedAct ? " is-selected" : ""}" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedAct}" data-opaque-surface="true">
-                <div class="outline-activity-header"><strong>${escapeHtml(act.title)}</strong><span class="badge badge-triplet" title="ceil_per_activity planning bounds">Duration: ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min</span></div>
-                <div class="two-layer-badges"><span class="badge badge-execution">${escapeHtml(act.executionBadge.nonColorCue)}</span><span class="badge badge-proficiency">${escapeHtml(act.objectiveProficiencyBadge.nonColorCue)}</span></div>
-                ${bridgeHtml}
-                <div class="provenance-list">${provenanceHtml}</div>
+          return `<li class="outline-activity-card${isSelectedAct ? " is-selected" : ""}" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedAct}" data-opaque-surface="true">
+                <div class="activity-row"><button type="button" class="row-hit" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedAct}">${statusMark(act.executionStatus)}<strong>${escapeHtml(act.title)}</strong>${durationPill(act.durationTriplet.point, `${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min`)}</button></div>
+                ${disclosure("Sources", `<div class="two-layer-badges"><span class="badge badge-execution">${escapeHtml(act.executionBadge.nonColorCue)}</span><span class="badge badge-proficiency">${escapeHtml(act.objectiveProficiencyBadge.nonColorCue)}</span></div>${bridgeHtml}<div class="provenance-list">${provenanceHtml}</div>`)}
               </li>`;
         })
         .join("\n              ");
 
       return `<article class="study-card outline-module-card${isSelectedMod ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedMod}" data-opaque-surface="true">
-            <header class="card-header">
-              <div><h3>${escapeHtml(mod.title)}</h3><p class="meta-text">${escapeHtml(mod.summary)}</p></div>
-              <div class="module-meta">
-                <span class="badge badge-triplet">Module Triplet: ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min</span>
-                <button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedMod}">${isSelectedMod ? "Selected Module" : "Select Module"}</button>
-              </div>
-            </header>
+            <header class="activity-row">${statusMark(mod.executionStatus)}<h3>${escapeHtml(mod.title)}</h3>${durationPill(mod.durationTriplet.point, `Module Triplet: ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min`)}<button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedMod}" aria-label="${isSelectedMod ? "Selected Module" : "Select Module"}">${isSelectedMod ? "Selected" : "Select"}</button></header>
+            ${disclosure("Module", `<p class="meta-text">${escapeHtml(mod.summary)}</p><span class="badge badge-triplet">Module Triplet: ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min</span>`)}
             <ul class="outline-activity-list">${activitiesHtml}</ul>
           </article>`;
     })
@@ -573,18 +771,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     .filter((card, idx, arr) => arr.findIndex((c) => c.resourceVersionId === card.resourceVersionId) === idx);
 
   const resourcesHtml = resourceCards
-    .map(
-      (card) => `<article class="study-card resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
-            <header class="card-header"><h3>${escapeHtml(card.title)}</h3><span class="badge badge-publisher">Publisher: ${escapeHtml(card.verifiedPublisher)}</span></header>
-            <p class="meta-text">Version captured: <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(card.versionTimestamp)}</time> · Access model: <strong>${escapeHtml(card.accessModel)}</strong></p>
-            <p>${escapeHtml(card.selectionRationale)}</p>
-            <div class="resource-badges">
-              <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">Rights (${escapeHtml(card.rightsBadge.basis)}): ${escapeHtml(card.rightsBadge.label)}</span>
-              ${card.optionalCertificationBadge ? `<span class="badge badge-cert-cost" data-optional-certification="true">${escapeHtml(card.optionalCertificationBadge.label)} — Separate optional cost (${formatMinorCurrency(4900, "USD")})</span>` : `<span class="badge badge-cert-none">No paid certification required ($0.00 core access)</span>`}
-            </div>
-            ${card.canonicalUrl ? `<p><a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open External Source (Does Not Auto-Complete Activity)</a></p>` : ""}
-          </article>`,
-    )
+    .map((card) => {
+      const rights = `<span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.basis)}</span>`;
+      const cert = card.optionalCertificationBadge
+        ? `<span class="badge badge-cert-cost" data-optional-certification="true">Cert ${formatMinorCurrency(4900, "USD")}</span>`
+        : `<span class="badge badge-cert-none">$0.00</span>`;
+      const openLink = card.canonicalUrl
+        ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary" aria-label="Open External Source (Does Not Auto-Complete Activity)">Open</a>`
+        : "";
+      const detail = `<p class="meta-text">Version captured: <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(card.versionTimestamp)}</time> · Access model: <strong>${escapeHtml(card.accessModel)}</strong></p><p>${escapeHtml(card.selectionRationale)}</p><p>Rights (${escapeHtml(card.rightsBadge.basis)}): ${escapeHtml(card.rightsBadge.label)}</p>${card.optionalCertificationBadge ? `<p>${escapeHtml(card.optionalCertificationBadge.label)}. Separate optional cost (${formatMinorCurrency(4900, "USD")}).</p>` : `<p>No paid certification required ($0.00 core access).</p>`}`;
+      return `<article class="study-card resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
+            <header class="activity-row"><h3>${escapeHtml(card.title)}</h3>${rights}${cert}${openLink}</header>
+            <p class="meta-text">Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
+            ${disclosure("Provenance", detail)}
+          </article>`;
+    })
     .join("\n          ");
 
   const fourBucketsHtml = Object.values(costBreakdown.buckets)
@@ -604,47 +805,65 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     upvoteCount: 14, viewerHasUpvoted: false,
   };
 
+  const partitionTopics = proficiency.topic_coverage.map((topic) => {
+    const demonstrated = typeof topic.demonstrated_objective_count === "number" ? topic.demonstrated_objective_count : 0;
+    const assessed = Array.isArray(topic.assessed_objective_version_ids) ? topic.assessed_objective_version_ids.length : 0;
+    const unassessed = Array.isArray(topic.unassessed_objective_version_ids) ? topic.unassessed_objective_version_ids.length : 0;
+    const total = typeof topic.total_objective_count === "number" ? topic.total_objective_count : assessed + unassessed;
+    return { label: topicLabel(topic.topic_id), demonstrated, total: Math.max(total, demonstrated) };
+  });
+  const proficiencyPartitionSvg = renderProficiencyPartitionSvg(partitionTopics);
+  const walletGaugeSvg = renderWalletGaugeSvg(
+    billingState.wallet.available_minor,
+    billingState.wallet.reserved_minor,
+    (["app_service_access", "ai_inference", "learning_materials", "certification_and_compute"] as const).map((id) => {
+      const bucket = costBreakdown.buckets[id];
+      const label = id === "app_service_access" ? "App" : id === "ai_inference" ? "Inference" : id === "learning_materials" ? "Materials" : "Cert";
+      return {
+        id: bucket.bucketId,
+        label,
+        knownMinor: bucket.knownTotalMinor,
+        unknown: bucket.hasUnknownPrices,
+        amountLabel: bucket.hasUnknownPrices ? "Unknown" : formatMinorCurrency(bucket.knownTotalMinor, bucket.currency),
+      };
+    }),
+  );
+  const moduleFlowSvg = renderModuleFlowSvg(DEFAULT_PUBLIC_CURRICULUM.content.modules.map((mod) => ({
+    id: mod.module_id, title: mod.title, prerequisiteIds: mod.prerequisite_module_ids ?? [],
+  })));
+
   const openDialogId = inputState.openDialogId ?? null;
   const isLearn = activeTopLevel === "Learn";
 
   return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   <header class="app-header nav-chrome-glass" role="banner">
-    <div class="brand-cluster"><span class="brand-title">Curriculum.io</span><span class="badge badge-honest-policy">Two-Layer Mastery &amp; Verified Provenance</span></div>
+    <div class="brand-cluster"><span class="brand-title">Curriculum.io</span></div>
     <nav class="top-level-nav" aria-label="Primary navigation">${topNavHtml}</nav>
     <div class="header-status">
-      <span class="badge" data-study-minutes="${todayState.totalStudyMinutes}">Study time: ${todayState.totalStudyMinutes} min</span>
-      <span class="badge" data-self-reported-count="${todayState.selfReportedCompletedCount}">Self-reported: ${todayState.selfReportedCompletedCount}</span>
+      <span class="duration-pill" data-study-minutes="${todayState.totalStudyMinutes}" title="Study minutes">${todayState.totalStudyMinutes}m</span>
+      <span class="duration-pill" data-self-reported-count="${todayState.selfReportedCompletedCount}" title="Self-reported completions">${todayState.selfReportedCompletedCount}</span>
     </div>
   </header>
 
   <div class="app-body-grid">
     <aside class="app-sidebar nav-chrome-glass" aria-label="Section 9.3 Workspace Navigation">
-      <div class="sidebar-section"><h2 class="sidebar-heading">Learn Destinations</h2><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
-      <div class="sidebar-section"><h2 class="sidebar-heading">Active Plan Summary</h2><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">Total Duration Triplet: <strong>${basePlanModel.totalDurationTriplet.min}/${basePlanModel.totalDurationTriplet.point}/${basePlanModel.totalDurationTriplet.max} min</strong></p></div>
+      <div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
+      <div class="sidebar-section"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p>${durationPill(basePlanModel.totalDurationTriplet.point, `Total Duration Triplet: ${basePlanModel.totalDurationTriplet.min}/${basePlanModel.totalDurationTriplet.point}/${basePlanModel.totalDurationTriplet.max} min`)}</div>
     </aside>
 
-    <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
+    <main id="main-workspace" class="app-main-workspace reading-measure" role="main" tabindex="-1">
       <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
-          <div class="section-header">
-            <h2>Today's Study Queue</h2>
-            <div class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)}</div>
-          </div>
-          <div class="study-card honest-two-layer-summary" data-opaque-surface="true">
-            <h3>Honest Two-Layer Status Summary (@S17, @S23)</h3>
-            <p>Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but <strong>never</strong> upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
-            <div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}">
-              <div class="math-caption">Key Derivation Target (Scaled Dot-Product Attention):</div>
-              ${attentionFormula.mathml}
-            </div>
-          </div>
+          <div class="section-header"><h2>Today</h2></div>
+          <figure class="diagram-hero">${sessionFlowSvg}</figure>
+          ${disclosure("Status", `<div class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</div><div class="study-card honest-two-layer-summary" data-opaque-surface="true"><h3>Honest Two-Layer Status Summary (@S17, @S23)</h3><p>Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but <strong>never</strong> upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p><div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}"><div class="math-caption">Key Derivation Target (Scaled Dot-Product Attention):</div>${attentionFormula.mathml}</div></div>`)}
           <div class="today-sessions-grid">${todayCardsHtml}</div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"}>
           <div class="section-header">
-            <div><h2>Synchronized Curriculum Plan (Map &amp; Outline)</h2><p class="meta-text">100% keyboard &amp; action parity (@S75) · Selected Module: <code>${escapeHtml(basePlanModel.selectedModuleId ?? "none")}</code> · Selected Activity: <code>${escapeHtml(basePlanModel.selectedActivityId ?? "none")}</code></p></div>
+            <h2>Plan</h2>
             <div class="plan-toolbar">
               <div class="plan-view-switcher" role="group" aria-label="Synchronized Plan View Switcher">
                 ${PLAN_SYNCHRONIZED_VIEWS.map((view) => {
@@ -652,107 +871,82 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   return `<button type="button" class="btn-secondary${isActiveView ? " is-active" : ""}" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${isActiveView}">${view}</button>`;
                 }).join("\n                ")}
               </div>
-              <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate Revision (${escapeHtml(revisionActivationReq.revisionId)})</button>
+              <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" aria-label="Activate Revision (${escapeHtml(revisionActivationReq.revisionId)})">Activate</button>
             </div>
           </div>
           <div class="study-card plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
             <div class="map-controls-bar" role="toolbar" aria-label="Non-dragging Map Viewport Controls">
-              <button type="button" class="btn-secondary" data-action="map-control" data-map-control="zoom_in">Zoom In</button>
-              <button type="button" class="btn-secondary" data-action="map-control" data-map-control="zoom_out">Zoom Out</button>
-              <button type="button" class="btn-secondary" data-action="map-control" data-map-control="fit_view">Reset View</button>
-              <button type="button" class="btn-secondary" data-action="map-control" data-map-control="reset_focus">Focus Neighborhood</button>
-              <span class="meta-text">Use Arrow keys (ArrowRight/ArrowLeft/ArrowDown/ArrowUp) to navigate nodes without dragging.</span>
+              ${renderMapControl("zoom_in", "Zoom In", "zoom-in")}
+              ${renderMapControl("zoom_out", "Zoom Out", "zoom-out")}
+              ${renderMapControl("fit_view", "Reset View", "reset")}
+              ${renderMapControl("reset_focus", "Focus Neighborhood", "focus")}
             </div>
             ${renderPlanDagSvgHtml(basePlanModel)}
+            ${disclosure("Keys", `<p class="meta-text">Use Arrow keys (ArrowRight/ArrowLeft/ArrowDown/ArrowUp) to navigate nodes without dragging. Selected Module: <code>${escapeHtml(basePlanModel.selectedModuleId ?? "none")}</code> · Selected Activity: <code>${escapeHtml(basePlanModel.selectedActivityId ?? "none")}</code></p>`)}
           </div>
           <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${outlineModulesHtml}</div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
-          <div class="section-header"><h2>Objective Proficiency &amp; Topic Diagnostics</h2><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Open Adaptation Diff Preview</button></div>
-          <div class="study-card" data-opaque-surface="true">
-            <h3>Objective Proficiency Table (Two-Layer Evidence Ledger)</h3>
-            <p class="meta-text">Canonical Proficiency States: ${canonicalStatusesLegendHtml}</p>
-            <div class="table-responsive">
-              <table class="proficiency-table">
-                <thead><tr><th scope="col">Objective</th><th scope="col">Proficiency Status</th><th scope="col">Activity Execution</th><th scope="col">Evidence Support &amp; Refs</th></tr></thead>
-                <tbody>${proficiencyRowsHtml}</tbody>
-              </table>
-            </div>
-          </div>
-          <div class="study-card diagnostic-panel" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
-            <h3>Topic Diagnostic Panel (${escapeHtml(diagnosticState.diagnostic_session_id)})</h3>
-            <p>Session State: <strong>${escapeHtml(diagnosticState.state)}</strong> · Assessed Objectives: <code>${escapeHtml(diagnosticState.assessed_objective_version_ids.join(", ") || "none")}</code> · Unassessed Objectives: <code>${escapeHtml(diagnosticState.unassessed_objective_version_ids.join(", ") || "none")}</code></p>
-            <p class="meta-text">Stopping early preserves demonstrated objectives while explicitly keeping untested objectives <code>unassessed</code> rather than inferred from neighboring topics (@S19, @S64, @S70).</p>
-            <div class="action-row"><button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop Diagnostic Early (Preserve Unassessed)</button></div>
-          </div>
+          <div class="section-header"><h2>Progress</h2><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff" aria-label="Open Adaptation Diff Preview">Diff</button></div>
+          <figure class="diagram-hero">${proficiencyPartitionSvg}</figure>
+          ${disclosure("Ledger", `<div class="study-card" data-opaque-surface="true"><h3>Objective Proficiency Table (Two-Layer Evidence Ledger)</h3><p class="meta-text">Canonical Proficiency States: ${canonicalStatusesLegendHtml}</p><div class="table-responsive"><table class="proficiency-table"><thead><tr><th scope="col">Objective</th><th scope="col">Proficiency Status</th><th scope="col">Activity Execution</th><th scope="col">Evidence Support &amp; Refs</th></tr></thead><tbody>${proficiencyRowsHtml}</tbody></table></div></div><div class="study-card diagnostic-panel" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true"><h3>Topic Diagnostic Panel (${escapeHtml(diagnosticState.diagnostic_session_id)})</h3><p>Session State: <strong>${escapeHtml(diagnosticState.state)}</strong> · Assessed Objectives: <code>${escapeHtml(diagnosticState.assessed_objective_version_ids.join(", ") || "none")}</code> · Unassessed Objectives: <code>${escapeHtml(diagnosticState.unassessed_objective_version_ids.join(", ") || "none")}</code></p><p class="meta-text">Stopping early preserves demonstrated objectives while explicitly keeping untested objectives <code>unassessed</code> rather than inferred from neighboring topics (@S19, @S64, @S70).</p><div class="action-row"><button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop Diagnostic Early (Preserve Unassessed)</button></div></div>`)}
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-resources" data-learn-panel="Resources" data-active="${isLearn && activeLearnSub === "Resources"}"${isLearn && activeLearnSub === "Resources" ? "" : " hidden"}>
-          <div class="section-header"><h2>Reviewed Catalog Resources &amp; Provenance</h2><p class="meta-text">Every resource card displays verified publisher provenance, <code>link_and_metadata_only</code> rights boundaries, and separate optional certification costs.</p></div>
+          <div class="section-header"><h2>Resources</h2></div>
           <div class="resources-grid">${resourcesHtml}</div>
         </section>
       </section>
 
       <section class="top-level-panel" id="panel-explore" data-top-panel="Explore" data-active="${activeTopLevel === "Explore"}"${activeTopLevel === "Explore" ? "" : " hidden"}>
         <div class="section-header">
-          <h2>Explore Public Curriculum Templates</h2>
+          <h2>Explore</h2>
           <div class="action-row">
-            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Publication Preview &amp; Redaction Audit</button>
-            <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-partial-adoption">Configure Partial Adoption</button>
+            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview" aria-label="Publication Preview and Redaction Audit">Preview</button>
+            <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-partial-adoption" aria-label="Configure Partial Adoption">Adopt</button>
           </div>
         </div>
+        <figure class="diagram-hero">${moduleFlowSvg}</figure>
         <article class="study-card public-template-card" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" data-opaque-surface="true">
-          <header class="card-header">
-            <div><h3>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h3><p class="meta-text">Published by <strong>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}</strong> · License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code> · Revision #${DEFAULT_PUBLIC_CURRICULUM.revision_number}</p></div>
-            <div class="upvote-cluster"><button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" aria-pressed="${upvoteInfo.viewerHasUpvoted}">▲ Upvote Revision (${upvoteInfo.upvoteCount ?? 0})</button></div>
-          </header>
-          <p>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p>
-          <p class="meta-text">Transitive Prerequisite Resolution: Selecting <code>public-module-attention</code> automatically includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>
+          <header class="activity-row"><h3>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h3><button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" aria-pressed="${upvoteInfo.viewerHasUpvoted}">▲ Upvote Revision (${upvoteInfo.upvoteCount ?? 0})</button></header>
+          ${disclosure("Template", `<p class="meta-text">Published by <strong>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}</strong> · License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code> · Revision #${DEFAULT_PUBLIC_CURRICULUM.revision_number}</p><p>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p><p class="meta-text">Transitive Prerequisite Resolution: Selecting <code>public-module-attention</code> automatically includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>`)}
         </article>
       </section>
 
       <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
-        <div class="section-header"><h2>Workspace Settings, BYOK Custody, Billing &amp; Privacy</h2></div>
+        <div class="section-header"><h2>Settings</h2></div>
+        <figure class="diagram-hero">${walletGaugeSvg}</figure>
+        ${disclosure("Buckets", `${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}<p>Available Hosted Balance: <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong> · Reserved Ceiling Hold: <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong></p><div class="four-bucket-grid">${fourBucketsHtml}</div>`)}
         <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Appearance &amp; Accessibility Theme</h3>
+          <h3>Theme</h3>
           <div class="theme-selector-group" role="group" aria-label="Theme Mode Selector">
-            ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="btn-secondary${themePreference === mode ? " is-active" : ""}" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">Theme: ${mode}</button>`).join("\n            ")}
+            ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="btn-secondary${themePreference === mode ? " is-active" : ""}" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n            ")}
           </div>
         </article>
         <article class="study-card settings-card" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
-          <h3>BYOK Encrypted Credential Custody (OpenAI, Anthropic, Google Gemini)</h3>
-          <p class="disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
-          <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
+          <h3>Keys</h3>
           <ul class="credential-list">
-            ${byokState.credentials.map((cred) => `<li class="credential-item" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}"><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong> (<code>${escapeHtml(cred.provider_id)}</code>) — Masked: <code>${escapeHtml(cred.masked_hint)}</code> · Status: <span class="badge">${escapeHtml(cred.status)}</span> · ETag: <code>${escapeHtml(cred.etag ?? "")}</code></li>`).join("\n            ")}
+            ${byokState.credentials.map((cred) => `<li class="credential-item activity-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}"><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong><code>${escapeHtml(cred.masked_hint)}</code><span class="badge">${escapeHtml(cred.status)}</span></li>`).join("\n            ")}
           </ul>
+          ${disclosure("Custody", `<p class="disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p><p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p><ul>${byokState.credentials.map((cred) => `<li><code>${escapeHtml(cred.provider_id)}</code> ETag <code>${escapeHtml(cred.etag ?? "")}</code></li>`).join("")}</ul>`)}
         </article>
         <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Hosted Inference Wallet &amp; 4-Bucket Cost Breakdown</h3>
-          <p>Available Hosted Balance: <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong> · Reserved Ceiling Hold: <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong></p>
-          ${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
-          <div class="four-bucket-grid">${fourBucketsHtml}</div>
+          <h3>Reminders</h3>
+          <div class="activity-row"><span class="duration-pill">${escapeHtml(reminderState.timezone)}</span><span class="duration-pill">${escapeHtml(reminderState.quiet_hours.start_local_time)}-${escapeHtml(reminderState.quiet_hours.end_local_time)}</span><span class="duration-pill">${reminderState.lead_time_minutes}m</span></div>
+          ${disclosure("Delivery", `<p class="disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)}</p>`)}
         </article>
         <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Study Reminders &amp; Quiet Hours</h3>
-          <p>Timezone: <code>${escapeHtml(reminderState.timezone)}</code> · Quiet Hours: <code>${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}</code> · Lead Time: ${reminderState.lead_time_minutes} min</p>
-          <p class="disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)}</p>
-        </article>
-        <article class="study-card settings-card" data-opaque-surface="true">
-          <h3>Account Data Export &amp; Privacy</h3>
-          <p>${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
-          <div class="action-row"><button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Review Account Export &amp; Destructive Deletion</button></div>
+          <h3>Privacy</h3>
+          <div class="action-row"><button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion" aria-label="Review Account Export and Destructive Deletion">Export &amp; deletion</button></div>
+          ${disclosure("Privacy", `<p>${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>`)}
         </article>
       </section>
     </main>
   </div>
 
   <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">
-    ${TOP_LEVEL_DESTINATIONS.map((dest) => {
-      const isCurrent = dest === activeTopLevel;
-      return `<button type="button" class="bottom-nav-btn${isCurrent ? " is-active" : ""}" data-action="navigate-top" data-destination="${dest}" aria-current="${isCurrent ? "page" : "false"}">${dest}</button>`;
-    }).join("\n    ")}
+    ${bottomNavHtml}
   </nav>
 
   <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title" data-opaque-surface="true"${openDialogId === "dialog-adaptation-diff" ? " open" : ""}>
