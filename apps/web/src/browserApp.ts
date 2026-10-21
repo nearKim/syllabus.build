@@ -54,7 +54,7 @@ export interface CurriculumWebAppStateInput {
   readonly loadMoreNote?: string | null; readonly intakeNote?: string | null;
   readonly keyActionNote?: string | null; readonly snoozeNote?: string | null;
   readonly rescheduleSessionId?: string | null; readonly rescheduleValue?: string | null;
-  readonly depthOverrideReset?: boolean;
+  readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -331,7 +331,7 @@ type SfIconName =
   | "learn" | "explore" | "settings"
   | "today" | "plan" | "progress" | "resources"
   | "zoom-in" | "zoom-out" | "reset" | "focus"
-  | "check" | "status-done" | "status-open" | "status-progress" | "status-review";
+  | "check";
 
 const SF_ICON_PATHS: Record<SfIconName, string> = {
   learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
@@ -346,26 +346,228 @@ const SF_ICON_PATHS: Record<SfIconName, string> = {
   reset: `<path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 2.75V5.5h-2.75"/>`,
   focus: `<circle cx="8" cy="8" r="2"/><path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15"/>`,
   check: `<path d="M3.25 8.25 6.4 11.4 12.75 4.6"/>`,
-  "status-done": `<circle cx="8" cy="8" r="5.25"/><path d="M5.2 8.2 7.15 10.15 10.9 6"/>`,
-  "status-open": `<circle cx="8" cy="8" r="5.25"/>`,
-  "status-progress": `<circle cx="8" cy="8" r="5.25"/><path d="M8 4.7V8l2.2 1.35"/>`,
-  "status-review": `<circle cx="8" cy="8" r="5.25"/><path d="M8 5.15v3.2M8 11.05h.01"/>`,
 };
 
 function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
   return `<svg class="sf-icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SF_ICON_PATHS[name]}</svg>`;
 }
 
-function statusIconName(status: string): SfIconName {
-  if (status === "completed" || status === "self_reported_completed") return "status-done";
-  if (status === "in_progress") return "status-progress";
-  if (status === "needs_review") return "status-review";
-  return "status-open";
+type GlyphTone = "todo" | "doing" | "done";
+type GlyphKind = "module" | "gate";
+type StudyModule = PlanMapAndOutlineModel["outlineModules"][number];
+type StudyActivity = StudyModule["activities"][number];
+
+const STUDY_TRACKS = [
+  { id: "theory", title: "Theory & Worked Examples" },
+  { id: "practice", title: "Practice & Coding Lab" },
+  { id: "review", title: "Spaced Review" },
+  { id: "gate", title: "Gate" },
+] as const;
+
+type StudyTrackId = (typeof STUDY_TRACKS)[number]["id"];
+
+function executionTone(status: string): GlyphTone {
+  if (status === "completed" || status === "waived") return "done";
+  if (status === "in_progress" || status === "self_reported_completed") return "doing";
+  return "todo";
 }
 
-function statusMark(status: string): string {
-  const tone = status === "completed" || status === "self_reported_completed" ? " is-done" : status === "in_progress" ? " is-progress" : "";
-  return `<span class="status-icon${tone}">${sfIcon(statusIconName(status), 15)}<span class="visually-hidden">${escapeHtml(status)}</span></span>`;
+function gateTone(status: string): GlyphTone {
+  return status === "demonstrated" ? "done" : "todo";
+}
+
+function statusGlyph(type: GlyphKind, tone: GlyphTone, size = 20): string {
+  const shape = type === "gate"
+    ? `<path class="st-g-shape" d="M10 1.7 18.3 10 10 18.3 1.7 10Z" />`
+    : `<rect class="st-g-shape" x="1.25" y="1.25" width="17.5" height="17.5" rx="4.5" />`;
+  const mark = type === "gate"
+    ? (tone === "done" ? `<path class="st-g-check" d="M6.6 10.2 8.9 12.5 13.5 7.6" />` : "")
+    : tone === "doing"
+      ? `<path class="st-g-half" d="M10 1.25H5.75a4.5 4.5 0 0 0-4.5 4.5v8.5a4.5 4.5 0 0 0 4.5 4.5H10Z" />`
+      : tone === "done"
+        ? `<path class="st-g-check" d="M5.5 10.4 8.4 13.3 14.6 6.8" />`
+        : "";
+  return `<svg class="st-glyph" viewBox="0 0 20 20" width="${size}" height="${size}" aria-hidden="true" data-type="${type}" data-status="${tone}">${shape}${mark}</svg>`;
+}
+
+function unitMarker(tone: GlyphTone): string {
+  const body = tone === "done"
+    ? `<circle class="st-m-disc" cx="12" cy="12" r="10" /><path class="st-m-check" d="M7.3 12.3 10.4 15.4 16.6 8.8" />`
+    : `<circle class="st-m-ring" cx="12" cy="12" r="9.2" />${tone === "doing" ? `<circle class="st-m-dot" cx="12" cy="12" r="4" />` : ""}`;
+  return `<svg class="st-marker" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" data-status="${tone}">${body}</svg>`;
+}
+
+function statusKeyHtml(): string {
+  const item = (type: GlyphKind, tone: GlyphTone, label: string) =>
+    `<li>${statusGlyph(type, tone, 16)}<span>${label}</span></li>`;
+  return `<ul class="st-key">${item("module", "todo", "Not started")}${item("module", "doing", "In progress")}${item("module", "done", "Done")}${item("gate", "todo", "Not passed")}${item("gate", "done", "Passed")}</ul>`;
+}
+
+function studyTrackId(activity: Pick<StudyActivity, "type" | "masteryGated">): StudyTrackId {
+  if (activity.type === "quiz" || activity.masteryGated) return "gate";
+  if (activity.type === "review") return "review";
+  if (activity.type === "coding" || activity.type === "project" || activity.type === "reflection") return "practice";
+  return "theory";
+}
+
+function sourceHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+function kindLabel(type: string): string {
+  switch (type) {
+    case "theory": return "Theory";
+    case "worked_example": return "Worked example";
+    case "coding": return "Coding";
+    case "project": return "Project";
+    case "reflection": return "Reflection";
+    case "review": return "Review";
+    case "quiz": return "Gate";
+    default: return type;
+  }
+}
+
+function activityClosed(status: string): boolean {
+  return status === "completed" || status === "self_reported_completed" || status === "waived";
+}
+
+function unitProgress(activities: readonly StudyActivity[]): { done: number; total: number; left: number } {
+  const done = activities.filter((activity) => activityClosed(activity.executionStatus)).length;
+  const left = activities
+    .filter((activity) => !activityClosed(activity.executionStatus))
+    .reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
+  return { done, total: activities.length, left };
+}
+
+function unitProgressLabel(progress: { done: number; total: number; left: number }): string {
+  return progress.left > 0 ? `${progress.done} of ${progress.total} · ${progress.left}m left` : `${progress.done} of ${progress.total}`;
+}
+
+function displayUnitTitle(title: string): string {
+  return title.replace(/^Module\s+\d+\s*:\s*/, "");
+}
+
+function activityGlyph(activity: StudyActivity): { type: GlyphKind; tone: GlyphTone } {
+  if (studyTrackId(activity) === "gate") return { type: "gate", tone: gateTone(activity.objectiveProficiencyStatus) };
+  return { type: "module", tone: executionTone(activity.executionStatus) };
+}
+
+function statusWords(activity: StudyActivity): string {
+  if (studyTrackId(activity) === "gate") {
+    return activity.objectiveProficiencyStatus === "demonstrated" ? "Passed" : "Not passed";
+  }
+  if (activity.executionStatus === "self_reported_completed") return "Self-reported completed";
+  if (activity.executionStatus === "completed") return "Completed";
+  if (activity.executionStatus === "in_progress") return "In progress";
+  if (activity.executionStatus === "waived") return "Waived by reviewed evidence";
+  return "Not started";
+}
+
+function renderStudyNode(
+  activity: StudyActivity,
+  moduleId: string,
+  ordinal: number,
+  showOrdinal: boolean,
+  selectedActivityId: string | null,
+): string {
+  const glyph = activityGlyph(activity);
+  const host = sourceHost(activity.resourceProvenanceCards[0]?.canonicalUrl ?? null);
+  const kicker = `${showOrdinal ? `<span class="st-ord">${ordinal}</span> ` : ""}${escapeHtml(host ?? kindLabel(activity.type))}`;
+  const selected = activity.activityId === selectedActivityId;
+  const isGate = glyph.type === "gate";
+  const bridge = activity.prerequisiteBridgeRecommendation?.recommended
+    ? `<span class="st-sr">Prerequisite Bridge Warning: ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</span>`
+    : "";
+  const eventAttr = isGate ? "" : ` data-event-id="evt-complete-${escapeHtml(activity.activityId)}"`;
+  return `<article class="st-node" data-activity-id="${escapeHtml(activity.activityId)}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${escapeHtml(moduleId)}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
+    <button type="button" class="st-open" data-action="select-outline-activity" data-activity-id="${escapeHtml(activity.activityId)}" data-module-id="${escapeHtml(moduleId)}" aria-pressed="${selected}">
+      <span class="st-kicker">${kicker}</span>
+      <span class="st-title">${escapeHtml(activity.title)}</span>
+      <span class="st-time">${activity.durationTriplet.point}m</span>
+      <span class="st-sr">Activity execution: ${escapeHtml(activity.executionStatus)}. Objective proficiency: ${escapeHtml(activity.objectiveProficiencyStatus)} (never conflated). ${escapeHtml(activity.executionBadge.nonColorCue)} ${escapeHtml(activity.objectiveProficiencyBadge.nonColorCue)} ${activity.required ? "Required" : "Optional"}. Effort ${activity.durationTriplet.min}/${activity.durationTriplet.point}/${activity.durationTriplet.max} min. Predecessors: ${escapeHtml(activity.prerequisiteActivityIds.join(", ") || "none")}.</span>
+    </button>
+    <button type="button" class="st-status-btn" data-action="${isGate ? "select-outline-activity" : "complete-activity"}" data-activity-id="${escapeHtml(activity.activityId)}" data-module-id="${escapeHtml(moduleId)}"${eventAttr} aria-pressed="${activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed"}">
+      ${statusGlyph(glyph.type, glyph.tone, 20)}
+      <span class="st-sr">${escapeHtml(statusWords(activity))}. ${escapeHtml(activity.title)}</span>
+    </button>
+    ${bridge}
+  </article>`;
+}
+
+function renderStudyOrderBoard(
+  idPrefix: string,
+  modules: readonly StudyModule[],
+  selectedModuleId: string | null,
+  selectedActivityId: string | null,
+): string {
+  const activities = modules.flatMap((mod) => mod.activities);
+  const headCells = STUDY_TRACKS.map((track) => {
+    const progress = unitProgress(activities.filter((activity) => studyTrackId(activity) === track.id));
+    const sub = track.id === "gate" ? `<span class="st-colhead-sub">Mastery checkpoint</span>` : "";
+    return `<th class="st-colhead" scope="col"><span class="st-colhead-title">${track.title}</span>${sub}<span class="st-colhead-meta">${unitProgressLabel(progress)}</span></th>`;
+  }).join("");
+  const rows = modules.map((mod, index) => {
+    const selected = mod.moduleId === selectedModuleId;
+    const progress = unitProgress(mod.activities);
+    const cells = STUDY_TRACKS.map((track) => {
+      const inTrack = mod.activities.filter((activity) => studyTrackId(activity) === track.id);
+      const body = inTrack.length === 0
+        ? `<p class="st-none">None</p>`
+        : inTrack.map((activity, activityIndex) => renderStudyNode(activity, mod.moduleId, activityIndex + 1, inTrack.length > 1, selectedActivityId)).join("");
+      return `<td class="st-cell">${body}</td>`;
+    }).join("");
+    return `<tr class="study-card outline-module-card${selected ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${selected}" data-opaque-surface="true">
+      <th class="st-rail" scope="row">
+        ${unitMarker(executionTone(mod.executionStatus))}
+        <div class="st-rail-text">
+          <button type="button" class="st-unit-hit" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}">
+            <span class="st-unit-label">Unit ${index + 1}</span>
+            <span class="st-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
+            <span class="st-unit-meta">${unitProgressLabel(progress)}</span>
+            <span class="st-sr">${selected ? "Selected" : "Select"} ${escapeHtml(mod.title)}. ${mod.required ? "Required" : "Optional"}. ${escapeHtml(mod.summary)}</span>
+          </button>
+        </div>
+      </th>
+      ${cells}
+    </tr>`;
+  }).join("");
+  const spine = modules.map((mod, index) => {
+    const selected = mod.moduleId === selectedModuleId;
+    const nodes = mod.activities.map((activity, activityIndex) => renderStudyNode(activity, mod.moduleId, activityIndex + 1, true, selectedActivityId)).join("");
+    return `<div class="st-sunit" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${selected}">
+      <div class="st-shead">
+        ${unitMarker(executionTone(mod.executionStatus))}
+        <button type="button" class="st-unit-hit" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}">
+          <span class="st-unit-label">Unit ${index + 1}</span>
+          <span class="st-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
+          <span class="st-unit-meta">${unitProgressLabel(unitProgress(mod.activities))}</span>
+        </button>
+      </div>
+      <div class="st-sbody">${nodes}</div>
+    </div>`;
+  }).join("");
+  return `<section class="st-board" aria-labelledby="${idPrefix}-title">
+    <div class="st-board-intro">
+      <h2 id="${idPrefix}-title">In study order</h2>
+      <p id="${idPrefix}-order">Each row is one unit, in study order. Across a row: Theory &amp; Worked Examples, Practice &amp; Coding Lab, Spaced Review, then Gate.</p>
+      ${statusKeyHtml()}
+    </div>
+    <div class="st-table-wrap">
+      <table class="st-table" aria-describedby="${idPrefix}-order">
+        <colgroup><col class="st-col-rail"><col><col><col><col></colgroup>
+        <thead><tr><th class="st-colhead" scope="col"><span class="st-colhead-title">Unit</span></th>${headCells}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="st-spine">${spine}</div>
+  </section>`;
 }
 
 function renderTopDestButton(dest: TopLevelDestination, className: string, isCurrent: boolean): string {
@@ -590,42 +792,45 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const rescheduleSessionId = inputState.rescheduleSessionId ?? null;
   const rescheduleValue = inputState.rescheduleValue ?? null;
   const depthOverrideReset = inputState.depthOverrideReset ?? false;
+  const studyDetailOpen = inputState.studyDetailOpen ?? false;
 
   const isExecutionDone = (status: string) => status === "completed" || status === "self_reported_completed";
   const nextSession = todayState.nextSession;
   const nextActivity = nextSession?.activityBreakdown.find((act) => !isExecutionDone(act.executionStatus))
     ?? nextSession?.activityBreakdown[0]
     ?? null;
+  const outlineById = new Map(basePlanModel.outlineActivities.map((act) => [act.activityId, act]));
+  const sessionNode = (act: (typeof todayState.todayCards)[number]["activityBreakdown"][number]) => {
+    const outline = outlineById.get(act.activityId);
+    return outline
+      ? renderStudyNode(outline, act.moduleId, 1, false, basePlanModel.selectedActivityId)
+      : `<span class="st-title">${escapeHtml(act.title)}</span><span class="st-time">${act.durationTriplet.point}m</span>`;
+  };
 
   const renderSessionActivity = (
     act: (typeof todayState.todayCards)[number]["activityBreakdown"][number],
   ) => {
-    const done = isExecutionDone(act.executionStatus);
     const id = escapeHtml(act.activityId);
     const accessText = act.resourceProvenanceLinks.length === 0
       ? "No external setup is required for this task."
       : act.resourceProvenanceLinks.map((link) => `${link.title}. Access: ${link.accessModel}. Rights: ${link.rightsBadge.label}.`).join(" ");
     return `<li class="today-activity-item" data-activity-id="${id}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}">
-      <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span><strong>${act.requirementLevel === "optional" ? "Optional" : "Required"}</strong></div>
-      <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min.</p>
-      <p class="meta-text">Activity execution: ${escapeHtml(act.executionStatus)}. Objective proficiency: ${escapeHtml(act.objectiveProficiencyStatus)} (never conflated).</p>
-      <p class="prose">${escapeHtml(accessText)}</p>
-      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${done ? "Self-reported completed" : "Mark self-reported completed"}</button>
+      ${sessionNode(act)}
+      <span class="st-sr">${escapeHtml(accessText)}</span>
     </li>`;
   };
 
   const nextActivitiesHtml = (nextSession?.activityBreakdown ?? []).map((act) => renderSessionActivity(act)).join("\n");
   const reviewItemsHtml = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
     `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}" data-review-separation-valid="${card.reviewSeparation.valid}">
-      <div class="activity-row">${statusMark(act.executionStatus)}<span class="activity-title">${escapeHtml(act.title)}</span><strong>${act.requirementLevel === "optional" ? "Optional" : "Required"}</strong></div>
-      <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min. Scheduled ${escapeHtml(shortSessionLabel(card.startAt))}.</p>
-      <p class="prose">${escapeHtml(card.reviewSeparation.separationSummary)} ${escapeHtml(act.scheduledReason)}</p>
+      ${sessionNode(act)}
+      <span class="st-sr">Scheduled ${escapeHtml(shortSessionLabel(card.startAt))}. ${escapeHtml(card.reviewSeparation.separationSummary)} ${escapeHtml(act.scheduledReason)}</span>
     </li>`,
   )).join("\n");
   const completedItems = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)));
   const completedHtml = completedItems.length === 0
     ? `<p class="meta-text">No self-reported completions yet.</p>`
-    : `<ul class="today-activity-list">${completedItems.map((act) => `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}"><span class="activity-title">${escapeHtml(act.title)}</span><span class="meta-text">Self-reported completed. Objective proficiency is unchanged.</span></li>`).join("")}</ul>`;
+    : `<ul class="today-activity-list">${completedItems.map((act) => `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}">${sessionNode(act)}<span class="st-sr">Self-reported completed. Objective proficiency is unchanged.</span></li>`).join("")}</ul>`;
 
   const nextAccessText = !nextActivity || nextActivity.resourceProvenanceLinks.length === 0
     ? "No external setup is required for this task."
@@ -650,59 +855,45 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     return `<div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div><p class="prose warning-copy">Study ahead records a started event only. It does not complete prerequisites, create a waiver, or change proficiency. Skip this activity records self_reported_skipped for this activity only.</p>${ahead}${skipped}`;
   };
 
-  const outlineModulesHtml = basePlanModel.outlineModules.map((mod) => {
-    const isSelectedMod = mod.moduleId === basePlanModel.selectedModuleId;
-    const activitiesHtml = mod.activities.map((act) => {
-      const isSelectedAct = act.activityId === basePlanModel.selectedActivityId;
-      const bridgeHtml = act.prerequisiteBridgeRecommendation?.recommended
-        ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${act.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(act.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(act.unmetPrerequisiteActivityIds.join(", ") || "none")}.</div>${aheadActions(act.activityId, act.title)}`
-        : "";
-      const provenanceHtml = act.resourceProvenanceCards.map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
-        <span>Publisher: <strong>${escapeHtml(card.verifiedPublisher)}</strong></span>
-        <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.label)}</span>
-        <span>Access: ${escapeHtml(card.accessModel)}</span>
-        ${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}.</span>` : `<span>No separate certification price.</span>`}
-        ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open verified resource</a>` : ""}
-      </div>`).join("\n");
-      return `<li class="outline-activity-card${isSelectedAct ? " is-selected" : ""}" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedAct}">
-        <div class="activity-row"><button type="button" class="row-hit" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedAct}">${statusMark(act.executionStatus)}<strong>${escapeHtml(act.title)}</strong></button><strong>${act.required ? "Required" : "Optional"}</strong></div>
-        <p>Effort ${act.durationTriplet.min}/${act.durationTriplet.point}/${act.durationTriplet.max} min.</p>
-        <div class="two-layer-badges"><span class="badge badge-execution">${escapeHtml(act.executionBadge.nonColorCue)}</span><span class="badge badge-proficiency">${escapeHtml(act.objectiveProficiencyBadge.nonColorCue)}</span></div>
-        <p class="meta-text">Predecessors: ${escapeHtml(act.prerequisiteActivityIds.join(", ") || "none")}.</p>
-        ${bridgeHtml}
-        <div class="provenance-list">${provenanceHtml}</div>
-      </li>`;
-    }).join("\n");
-    return `<article class="study-card outline-module-card${isSelectedMod ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelectedMod}" data-opaque-surface="true">
-      <header class="activity-row">${statusMark(mod.executionStatus)}<h3>${escapeHtml(mod.title)}</h3><strong>${mod.required ? "Required" : "Optional"}</strong><button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelectedMod}">${isSelectedMod ? "Selected" : "Select"}</button></header>
-      <p class="prose">${escapeHtml(mod.summary)}</p>
-      <p>Effort ${mod.durationTriplet.min}/${mod.durationTriplet.point}/${mod.durationTriplet.max} min.</p>
-      <ul class="outline-activity-list">${activitiesHtml}</ul>
-    </article>`;
-  }).join("\n");
+  const outlineModulesHtml = renderStudyOrderBoard("study-plan", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
+  const todayStudyBoardHtml = renderStudyOrderBoard("study-today", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
+  const progressStudyBoardHtml = renderStudyOrderBoard("study-progress", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
 
   const selectedModule = basePlanModel.outlineModules.find((mod) => mod.moduleId === basePlanModel.selectedModuleId) ?? basePlanModel.outlineModules[0];
   const selectedActivity = selectedModule?.activities.find((act) => act.activityId === basePlanModel.selectedActivityId) ?? selectedModule?.activities[0];
   const mathLevels = [...new Set((selectedModule?.objectives ?? []).map((obj) => obj.level))].join(", ") || "Not stated";
+  const selectedUnitIndex = selectedModule ? basePlanModel.outlineModules.findIndex((mod) => mod.moduleId === selectedModule.moduleId) : -1;
   const selectedBridge = selectedActivity?.prerequisiteBridgeRecommendation?.recommended
-    ? `<div class="prerequisite-bridge-warning" role="status"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(selectedActivity.prerequisiteBridgeRecommendation.reason)}</div>`
+    ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${selectedActivity.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(selectedActivity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(selectedActivity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</div>`
     : "";
-  const selectedResources = (selectedModule?.activities ?? []).flatMap((act) => act.resourceProvenanceCards)
-    .filter((card, index, all) => all.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === index);
-  const selectedResourceHtml = selectedResources.map((card) => `<p class="prose">Publisher: ${escapeHtml(card.verifiedPublisher)}. Access: ${escapeHtml(card.accessModel)}. Rights: ${escapeHtml(card.rightsBadge.label)}.${card.optionalCertificationBadge ? ` Optional certification ${formatMinorCurrency(4900, "USD")}.` : ""}</p>`).join("");
-  const selectedDetailHtml = selectedModule && selectedActivity ? `<aside class="selected-module-detail surface-panel" data-opaque-surface="true">
-    <h2>${escapeHtml(selectedModule.title)}</h2>
-    <p><strong>${selectedModule.required ? "Required" : "Optional"}</strong></p>
-    <p>Mathematical treatment: ${escapeHtml(mathLevels)}.</p>
-    <p>Effort ${selectedModule.durationTriplet.min}/${selectedModule.durationTriplet.point}/${selectedModule.durationTriplet.max} min.</p>
-    <p class="prose">${escapeHtml(selectedModule.summary)}</p>
-    ${selectedResourceHtml}
-    <h3>${escapeHtml(selectedActivity.title)}</h3>
-    <p><strong>${selectedActivity.required ? "Required" : "Optional"}</strong>. Effort ${selectedActivity.durationTriplet.min}/${selectedActivity.durationTriplet.point}/${selectedActivity.durationTriplet.max} min.</p>
-    <p class="meta-text">Predecessors: ${escapeHtml(selectedActivity.prerequisiteActivityIds.join(", ") || "none")}. Successors stay on the activities that list this one.</p>
-    ${selectedBridge}
-    ${aheadActions(selectedActivity.activityId, selectedActivity.title)}
-  </aside>` : "";
+  const selectedProvenanceHtml = (selectedActivity?.resourceProvenanceCards ?? []).map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
+    <span>Publisher: <strong>${escapeHtml(card.verifiedPublisher)}</strong></span>
+    <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.label)}</span>
+    <span>Access: ${escapeHtml(card.accessModel)}</span>
+    ${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}.</span>` : `<span>No separate certification price.</span>`}
+    ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open verified resource</a>` : ""}
+  </div>`).join("");
+  const selectedGlyph = selectedActivity ? activityGlyph(selectedActivity) : { type: "module" as const, tone: "todo" as const };
+  const selectedDetailHtml = selectedModule && selectedActivity ? `<div class="st-sheet" data-open="${studyDetailOpen}">
+    <button type="button" class="st-scrim" data-action="close-study-detail" aria-label="Close details"></button>
+    <aside class="st-panel selected-module-detail" data-open="${studyDetailOpen}" data-opaque-surface="true" aria-label="${escapeHtml(selectedActivity.title)}">
+      <div class="st-panel-head">
+        <p class="st-context">Unit ${selectedUnitIndex + 1} · ${escapeHtml(kindLabel(selectedActivity.type))}</p>
+        <h2>${escapeHtml(selectedActivity.title)}</h2>
+        <button type="button" class="st-panel-close" data-action="close-study-detail">Close</button>
+      </div>
+      <p class="st-status-row">${statusGlyph(selectedGlyph.type, selectedGlyph.tone, 20)}<span>${escapeHtml(statusWords(selectedActivity))}</span></p>
+      <p class="prose">${escapeHtml(selectedModule.summary)}</p>
+      <p>Mathematical treatment: ${escapeHtml(mathLevels)}.</p>
+      <p>${selectedActivity.required ? "Required" : "Optional"}. Effort ${selectedActivity.durationTriplet.min}/${selectedActivity.durationTriplet.point}/${selectedActivity.durationTriplet.max} min.</p>
+      <p class="prose">Activity execution: ${escapeHtml(selectedActivity.executionStatus)}. Objective proficiency: ${escapeHtml(selectedActivity.objectiveProficiencyStatus)} (never conflated).</p>
+      <p class="meta-text">Predecessors: ${escapeHtml(selectedActivity.prerequisiteActivityIds.join(", ") || "none")}. Successors stay on the activities that list this one.</p>
+      ${selectedProvenanceHtml}
+      ${selectedBridge}
+      ${aheadActions(selectedActivity.activityId, selectedActivity.title)}
+      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${escapeHtml(selectedActivity.activityId)}" data-event-id="evt-complete-${escapeHtml(selectedActivity.activityId)}" aria-pressed="${isExecutionDone(selectedActivity.executionStatus)}">${isExecutionDone(selectedActivity.executionStatus) ? "Self-reported completed" : "Mark self-reported completed"}</button>
+    </aside>
+  </div>` : "";
 
   const relationshipLegend = `<figure class="relationship-legend">
     <figcaption>Relationship legend</figcaption>
@@ -717,10 +908,14 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const canonicalStatusesLegendHtml = OBJECTIVE_PROFICIENCY_BADGE_STATUSES.map(
     (st) => `<span class="badge badge-proficiency-status" data-proficiency-status="${st}">${st}</span>`,
   ).join(" ");
+  const proficiencyGlyph = (status: string): string => {
+    if (status === "demonstrated" || status === "unassessed") return statusGlyph("gate", gateTone(status), 20);
+    return statusGlyph("module", status === "not_started" ? "todo" : "doing", 20);
+  };
   const proficiencyRowsHtml = basePlanModel.objectiveTracks.map((obj) => `<tr data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
     <td><strong>${escapeHtml(obj.title)}</strong><div class="meta-text">${escapeHtml(obj.objectiveVersionId)}</div></td>
-    <td><span class="badge badge-proficiency">${escapeHtml(obj.proficiencyStatus)} (${escapeHtml(obj.proficiencyBadge.nonColorCue)})</span></td>
-    <td><span class="badge badge-execution">${escapeHtml(obj.executionStatus)} (${escapeHtml(obj.executionBadge.nonColorCue)})</span></td>
+    <td><span class="st-status-static">${proficiencyGlyph(obj.proficiencyStatus)}<span class="st-sr">${escapeHtml(obj.proficiencyStatus)} (${escapeHtml(obj.proficiencyBadge.nonColorCue)})</span></span></td>
+    <td><span class="st-status-static">${statusGlyph("module", executionTone(obj.executionStatus), 20)}<span class="st-sr">${escapeHtml(obj.executionStatus)} (${escapeHtml(obj.executionBadge.nonColorCue)})</span></span></td>
     <td>${escapeHtml(obj.proficiencyBadge.evidenceSupport)} (${obj.proficiencyBadge.evidenceRefs.length > 0 ? escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", ")) : "none"}) <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button></td>
   </tr>`).join("\n");
 
@@ -833,6 +1028,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
           </div>
           ${recoveryBanner}
+          <div class="st-layout">
+            ${todayStudyBoardHtml}
+            ${selectedDetailHtml}
+          </div>
           <section class="surface-panel next-session-panel" data-opaque-surface="true" data-review-separation-valid="${nextSession?.reviewSeparation.valid ?? todayState.reviewSeparationValid}">
             <h2>Next session</h2>
             ${nextActivity ? `<p>Capability: ${escapeHtml(nextActivity.moduleTitle)}</p><p>Task: ${escapeHtml(nextActivity.title)}</p><p>Effort ${nextActivity.durationTriplet.min}/${nextActivity.durationTriplet.point}/${nextActivity.durationTriplet.max} min. <strong>${nextActivity.requirementLevel === "optional" ? "Optional" : "Required"}</strong></p><p class="prose">Required access and setup: ${escapeHtml(nextAccessText)}</p><p class="prose"><strong>Why this is next.</strong> ${escapeHtml(nextActivity.scheduledReason)}</p><div class="action-row"><a class="btn-primary" href="#study-workspace">Continue attention mechanisms</a></div>` : `<p>No session is scheduled.</p>`}
@@ -914,6 +1113,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Required activities completed</h2><p><strong>${requiredSummary}</strong></p></section>
             <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Objectives with qualifying evidence</h2><p><strong>${evidenceSummary}</strong></p></section>
             <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Reviews due</h2><p><strong>${reviewSummary}</strong></p></section>
+          </div>
+          <div class="st-layout">
+            ${progressStudyBoardHtml}
+            ${selectedDetailHtml}
           </div>
           <section class="surface-panel" data-opaque-surface="true">
             <h2>Objective evidence ledger</h2>
@@ -1226,6 +1429,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let rescheduleSessionId: string | null = initialState.rescheduleSessionId ?? null;
   let rescheduleValue: string | null = initialState.rescheduleValue ?? null;
   let depthOverrideReset = initialState.depthOverrideReset ?? false;
+  let studyDetailOpen = initialState.studyDetailOpen ?? false;
   const adoptedSelectedModuleIds: string[] = [...(initialState.adoptedSelectedModuleIds ?? ["public-module-attention"])];
   let upvotedRevisionIds: string[] = [...(initialState.upvotedRevisionIds ?? [])];
   let openDialogId: string | null = initialState.openDialogId ?? null;
@@ -1268,7 +1472,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       studyAheadActivityId, skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
-      depthOverrideReset,
+      depthOverrideReset, studyDetailOpen,
     };
   };
 
@@ -1296,6 +1500,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     selectPlanModule(moduleId: string, _sourceView?: PlanSynchronizedView) {
       selectedModuleId = moduleId;
       focusedNodeId = moduleId;
+      studyDetailOpen = true;
       const matchedMod = buildCurrentPlanModel().outlineModules.find((m) => m.moduleId === moduleId);
       if (matchedMod?.activityIds.length && (!selectedActivityId || !matchedMod.activityIds.includes(selectedActivityId))) {
         selectedActivityId = matchedMod.activityIds[0] ?? null;
@@ -1304,6 +1509,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
       selectedActivityId = activityId;
+      studyDetailOpen = true;
       const targetModId =
         explicitModuleId ?? buildCurrentPlanModel().outlineModules.find((m) => m.activityIds.includes(activityId))?.moduleId;
       if (targetModId) {
@@ -1353,7 +1559,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     applyUiAction(action: string, data: Readonly<Record<string, string | undefined>> = {}, submittedChoice: string | null = null) {
       let handled = true;
-      if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
+      if (action === "close-study-detail") studyDetailOpen = false;
+      else if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
       else if (action === "toggle-reduce-motion") reduceMotion = !reduceMotion;
       else if (action === "request-hint") hintRequested = true;
       else if (action === "study-worked-solution") workedSolutionRevealed = true;
