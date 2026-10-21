@@ -14,6 +14,26 @@ import { createWebAppServer } from "../src/server.mjs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 
+// The Today study-flow board, from its section tag to the end of its table.
+function todayBoard(html) {
+  const start = html.indexOf('<section class="flow-board" aria-labelledby="flow-today-title"');
+  assert.ok(start >= 0, "Today study-flow board is missing");
+  return html.slice(start, html.indexOf("</table>", start));
+}
+
+function columnTitles(html) {
+  const board = todayBoard(html);
+  const head = board.slice(board.indexOf("<thead>"), board.indexOf("</thead>"));
+  return [...head.matchAll(/<span class="colhead-title">([^<]+)<\/span>/g)].map((match) => match[1]);
+}
+
+function unitRow(html, moduleId) {
+  const board = todayBoard(html);
+  const start = board.search(new RegExp(`<tr class="study-card outline-module-card[^"]*" data-module-id="${moduleId}"`));
+  assert.ok(start >= 0, `row for ${moduleId} is missing`);
+  return board.slice(start, board.indexOf("</tr>", start));
+}
+
 test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG DAG Map + Outline, MathML, opaque surfaces, and <dialog closedby='any'> modals", () => {
   const html = renderCurriculumWebAppHtml();
 
@@ -210,6 +230,96 @@ test("mountCurriculumWebApp and createCurriculumWebAppController deterministical
   assert.ok(settingsHtml.includes('data-theme="dark"'));
 });
 
+test("Study flow matrix follows the chosen flow order: theory_first vs application_first", () => {
+  const theoryFirst = renderCurriculumWebAppHtml();
+  assert.deepEqual(columnTitles(theoryFirst), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
+  assert.ok(theoryFirst.includes('<ol class="macro-stage" aria-label="Units in study order">'));
+  assert.ok(todayBoard(theoryFirst).includes('data-action="set-flow-order" data-flow-order="theory_first" aria-pressed="true"'));
+
+  // Unit 1 reads Lecture -> Deep Dive -> Code -> Gate: three arrowheads, and the Review column is passed through.
+  const unitOne = unitRow(theoryFirst, "module-foundations");
+  assert.equal(unitOne.match(/data-seg="in" data-style="solid"/g)?.length, 3);
+  assert.ok(unitOne.includes('<td class="flow-cell" data-track="review" data-empty="true"><svg class="matrix-svg" data-seg="through"'));
+  assert.ok(unitOne.includes('class="gate-diamond" data-action="select-outline-module" data-module-id="module-foundations" data-status="passed"'));
+  const order = ["activity-theory", "activity-example", "activity-coding"].map((id) => unitOne.indexOf(`data-activity-id="${id}"`));
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+
+  // Unit 2 ends at its quiz gate; work that depends on the quiz stays off the arrow chain.
+  const unitTwo = unitRow(theoryFirst, "module-attention");
+  assert.ok(unitTwo.includes('class="gate-diamond" data-action="select-outline-activity" data-activity-id="activity-quiz"'));
+  assert.equal(unitTwo.includes('data-seg="in"'), false);
+  assert.equal(unitTwo.match(/After the gate/g)?.length, 2);
+
+  const codeFirst = renderCurriculumWebAppHtml({ flowOrder: "application_first" });
+  assert.deepEqual(columnTitles(codeFirst), ["Unit", "Code", "Lecture", "Deep Dive", "Review", "Gate"]);
+  const codeRow = unitRow(codeFirst, "module-foundations");
+  assert.ok(codeRow.indexOf('data-activity-id="activity-coding"') < codeRow.indexOf('data-activity-id="activity-theory"'));
+  // The view moved the code lab ahead of its prerequisite, so the card says so instead of hiding the dependency.
+  assert.ok(codeRow.includes("Needs Deep Dive first"));
+  assert.ok(codeFirst.includes("This plan was generated theory first."));
+  assert.equal(theoryFirst.includes("Needs Deep Dive first"), false);
+
+  assert.deepEqual(columnTitles(renderCurriculumWebAppHtml({ flowOrder: "balanced" })), ["Unit", "Lecture", "Code", "Deep Dive", "Review", "Gate"]);
+});
+
+test("Deep Dive time-saver and compact Spaced Review collapse columns without hiding required work", () => {
+  const skipped = renderCurriculumWebAppHtml({ deepDive: "skipped" });
+  assert.deepEqual(columnTitles(skipped), ["Unit", "Lecture", "Code", "Review", "Gate"]);
+  const board = todayBoard(skipped);
+  assert.equal(board.includes('data-activity-id="activity-reflection"'), false, "optional enrichment should be hidden");
+  // The required worked example moves into the Lecture column after the theory reading.
+  const lectureCell = unitRow(skipped, "module-foundations").match(/<td class="flow-cell" data-track="lecture".*?<\/td>/s)?.[0] ?? "";
+  assert.ok(lectureCell.indexOf('data-activity-id="activity-theory"') < lectureCell.indexOf('data-activity-id="activity-example"'));
+  assert.ok(board.includes("Time-saver hides 1 optional deep dive (15 min). Required deep dives stay in the Lecture column."));
+
+  const compact = renderCurriculumWebAppHtml({ spacedReview: "compact" });
+  assert.deepEqual(columnTitles(compact), ["Unit", "Lecture", "Deep Dive", "Code", "Gate"]);
+  const gateCell = unitRow(compact, "module-attention").match(/<td class="flow-cell" data-track="gate".*?<\/td>/s)?.[0] ?? "";
+  assert.ok(gateCell.includes('data-activity-id="activity-review"'), "compact reviews stay visible under the gate");
+
+  // The same switches drive the mounted app, and unknown values are rejected at the boundary.
+  const root = { innerHTML: "" };
+  const app = mountCurriculumWebApp(root);
+  assert.equal(app.applyUiAction("set-flow-order", { flowOrder: "application_first" }).handled, true);
+  assert.equal(app.applyUiAction("set-deep-dive", { deepDive: "skipped" }).handled, true);
+  assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Code", "Lecture", "Review", "Gate"]);
+  assert.equal(app.applyUiAction("set-flow-order", { flowOrder: "sideways" }).handled, false);
+  assert.equal(app.getState().flowOrder, "application_first");
+  app.applyUiAction("set-deep-dive", { deepDive: "included" });
+  app.applyUiAction("set-flow-order", { flowOrder: "theory_first" });
+  assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
+});
+
+test("the activity inspector is one modal drawer that never takes width from the matrix", () => {
+  const html = renderCurriculumWebAppHtml();
+  assert.equal(html.split('id="learn-detail-inspector"').length - 1, 1);
+  assert.ok(html.includes('<dialog id="learn-detail-inspector" class="inspector" closedby="any" aria-labelledby="learn-detail-inspector-title" data-open="false"'));
+  assert.equal(/class="st-layout"|class="plan-split"/.test(html), false);
+
+  // Only visible text counts: synthetic hrefs may point at example.invalid, labels never do.
+  assert.equal(html.replace(/<[^>]+>/g, " ").includes("example.invalid"), false);
+
+  const app = mountCurriculumWebApp({ innerHTML: "" });
+  app.selectPlanActivity("activity-coding");
+  const opened = app.renderHtml();
+  assert.ok(opened.includes('aria-labelledby="learn-detail-inspector-title" data-open="true"'));
+  assert.ok(opened.includes('<button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">'));
+  assert.ok(opened.includes('<h2 id="learn-detail-inspector-title" tabindex="-1" autofocus>Implement Reversible Tokenizer &amp; Shape Validator</h2>'));
+  app.applyUiAction("close-study-detail");
+  assert.ok(app.renderHtml().includes('aria-labelledby="learn-detail-inspector-title" data-open="false"'));
+  app.selectPlanActivity("activity-coding");
+  app.navigateLearnSubDestination("Progress");
+  assert.equal(app.getState().studyDetailOpen, false, "navigation closes the drawer");
+
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /dialog\.inspector\s*\{[^}]*position:\s*fixed;[^}]*overscroll-behavior:\s*contain;/s);
+  assert.match(css, /html\s*\{[^}]*scrollbar-gutter:\s*stable;/s);
+  assert.match(css, /\.node-card\s*\{[^}]*min-height:/s);
+  assert.equal(/\.node-card\s*\{[^}]*[^-]height:\s*84px/s.test(css), false, "node cards must not use a fixed height");
+  assert.match(css, /\.node-title\s*\{[^}]*overflow-wrap:\s*break-word;\s*word-break:\s*normal;/s);
+  assert.equal(/\.curriculum-app-shell\s*\{[^}]*overflow-wrap:\s*anywhere/s.test(css), false, "the shell must not let words split mid-letter");
+});
+
 test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synthetic API fallback", async () => {
   const { server } = createWebAppServer();
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -242,6 +352,18 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const stateJson = await stateRes.json();
     assert.equal(stateJson.state.selfReportedCompletedCount, 1);
     assert.ok(stateJson.html.includes('data-self-reported-count="1"'));
+
+    // The hydration client forwards every other data-action; the server routes it through applyUiAction.
+    const clientJs = await (await fetch(`${baseUrl}/client.js`)).text();
+    assert.ok(clientJs.includes('dialog.id === INSPECTOR_ID ? "close-study-detail" : "close-dialog"'));
+    const flowRes = await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "set-flow-order", flowOrder: "application_first" }),
+    });
+    const flowJson = await flowRes.json();
+    assert.equal(flowJson.state.flowOrder, "application_first");
+    assert.deepEqual(columnTitles(flowJson.html), ["Unit", "Code", "Lecture", "Deep Dive", "Review", "Gate"]);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

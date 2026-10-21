@@ -259,6 +259,8 @@ export function escapeHtml(raw: string): string {
 
 function latexToSpokenLabel(latex: string): string {
   const spoken = latex
+    .replace(/\\(?:mathrm|text|operatorname)\{([^{}]*)\}/g, " $1 ")
+    .replace(/\\(?:left|right)(?![a-zA-Z])/g, " ")
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1) divided by ($2)")
     .replace(/\\sqrt\{([^}]+)\}/g, "square root of ($1)")
     .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, "sum from $1 to $2")
@@ -267,33 +269,110 @@ function latexToSpokenLabel(latex: string): string {
     .replace(/_\{([^}]+)\}|_([a-zA-Z0-9]+)/g, (_, a, b) => ` subscript ${a ?? b}`)
     .replace(/\\(?:alpha|beta|gamma|delta|theta|lambda|sigma|pi|omega|nabla|partial)/g, (m) => m.slice(1))
     .replace(/\\(?:cdot|times)/g, " times ")
-    .replace(/\\(?:leq|le)/g, " less than or equal to ")
-    .replace(/\\(?:geq|ge)/g, " greater than or equal to ")
-    .replace(/\\(?:neq|ne)/g, " not equal to ")
-    .replace(/\\(?:in)/g, " in ")
+    .replace(/\\(?:leq|le)(?![a-zA-Z])/g, " less than or equal to ")
+    .replace(/\\(?:geq|ge)(?![a-zA-Z])/g, " greater than or equal to ")
+    .replace(/\\(?:neq|ne)(?![a-zA-Z])/g, " not equal to ")
+    .replace(/\\in(?![a-zA-Z])/g, " in ")
     .replace(/[\\{}]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
   return spoken ? `Mathematical expression: ${spoken}` : "Mathematical expression";
 }
 
+const LATEX_SYMBOLS: Readonly<Record<string, readonly ["mi" | "mo", string]>> = {
+  alpha: ["mi", "α"], beta: ["mi", "β"], gamma: ["mi", "γ"], delta: ["mi", "δ"], theta: ["mi", "θ"],
+  lambda: ["mi", "λ"], sigma: ["mi", "σ"], pi: ["mi", "π"], omega: ["mi", "ω"], nabla: ["mi", "∇"], partial: ["mi", "∂"],
+  cdot: ["mo", "⋅"], times: ["mo", "×"], le: ["mo", "≤"], leq: ["mo", "≤"], ge: ["mo", "≥"], geq: ["mo", "≥"],
+  ne: ["mo", "≠"], neq: ["mo", "≠"], in: ["mo", "∈"], sum: ["mo", "∑"], int: ["mo", "∫"],
+};
+
+// Recursive descent over the LaTeX subset that curriculum formulas use: groups, \frac, \sqrt,
+// \mathrm-style text, \left/\right fences, sub/superscripts, and named symbols.
 function tokenizeLatexToMrowContent(latex: string): string {
-  const fracMatch = /^\\frac\{([^{}]+)\}\{([^{}]+)\}$/.exec(latex.trim());
-  if (fracMatch?.[1] && fracMatch[2]) {
-    return `<mfrac><mrow>${tokenizeLatexToMrowContent(fracMatch[1])}</mrow><mrow>${tokenizeLatexToMrowContent(fracMatch[2])}</mrow></mfrac>`;
-  }
-  const tokens: string[] = [];
-  const tokenRe = /\\[a-zA-Z]+|[0-9]+(?:\.[0-9]+)?|[a-zA-Z]|[+\-=*/()^_<>]/g;
-  let match: RegExpExecArray | null;
-  while ((match = tokenRe.exec(latex)) !== null) {
-    const tok = match[0];
-    if (!tok) continue;
-    if (/^[0-9]/.test(tok)) tokens.push(`<mn>${escapeHtml(tok)}</mn>`);
-    else if (/^[a-zA-Z]$/.test(tok)) tokens.push(`<mi>${escapeHtml(tok)}</mi>`);
-    else if (tok.startsWith("\\")) tokens.push(`<mi>${escapeHtml(tok.slice(1))}</mi>`);
-    else tokens.push(`<mo>${escapeHtml(tok)}</mo>`);
-  }
-  return tokens.length === 0 ? `<mtext>${escapeHtml(latex)}</mtext>` : tokens.join("");
+  let pos = 0;
+  const peek = (): string => latex[pos] ?? "";
+  const skipSpaces = (): void => {
+    while (/\s/.test(peek())) pos++;
+  };
+  const readName = (): string => {
+    const start = pos;
+    while (/[a-zA-Z]/.test(peek())) pos++;
+    return latex.slice(start, pos);
+  };
+  const readRawGroup = (): string => {
+    skipSpaces();
+    if (peek() !== "{") return "";
+    const start = ++pos;
+    for (let depth = 1; pos < latex.length && depth > 0; pos++) {
+      if (latex[pos] === "{") depth++;
+      else if (latex[pos] === "}") depth--;
+    }
+    return latex.slice(start, pos - 1);
+  };
+  const group = (): string => {
+    skipSpaces();
+    if (peek() !== "{") return atom() || "<mrow></mrow>";
+    pos++;
+    const inner = sequence("}");
+    pos++;
+    return `<mrow>${inner}</mrow>`;
+  };
+  const atom = (): string => {
+    skipSpaces();
+    const ch = peek();
+    if (ch === "") return "";
+    if (ch === "{") return group();
+    pos++;
+    if (ch === "\\") {
+      const name = readName();
+      if (!name) return `<mo>${escapeHtml(latex[pos++] ?? "")}</mo>`;
+      if (name === "frac") return `<mfrac>${group()}${group()}</mfrac>`;
+      if (name === "sqrt") return `<msqrt>${group()}</msqrt>`;
+      if (name === "mathrm" || name === "text" || name === "operatorname") return `<mi mathvariant="normal">${escapeHtml(readRawGroup())}</mi>`;
+      // Only \left...\right fences stretch, and only to the content between them.
+      if (name === "left") {
+        const open = fence();
+        const inner = sequence(undefined, true);
+        if (!latex.startsWith("\\right", pos)) return `<mrow>${open}${inner}</mrow>`;
+        pos += "\\right".length;
+        return `<mrow>${open}${inner}${fence()}</mrow>`;
+      }
+      if (name === "right") return fence();
+      const symbol = LATEX_SYMBOLS[name];
+      return symbol ? `<${symbol[0]}>${symbol[1]}</${symbol[0]}>` : `<mi>${escapeHtml(name)}</mi>`;
+    }
+    if (/[0-9]/.test(ch)) {
+      const start = pos - 1;
+      while (/[0-9.]/.test(peek())) pos++;
+      return `<mn>${escapeHtml(latex.slice(start, pos))}</mn>`;
+    }
+    if (/[a-zA-Z]/.test(ch)) return `<mi>${escapeHtml(ch)}</mi>`;
+    return /[()[\]|]/.test(ch) ? `<mo stretchy="false">${escapeHtml(ch)}</mo>` : `<mo>${escapeHtml(ch)}</mo>`;
+  };
+  const fence = (): string => {
+    skipSpaces();
+    const ch = latex[pos++] ?? "";
+    return ch === "." || ch === "" ? "" : `<mo>${escapeHtml(ch)}</mo>`;
+  };
+  const sequence = (end?: string, untilRight = false): string => {
+    let out = "";
+    for (skipSpaces(); pos < latex.length && peek() !== end && !(untilRight && latex.startsWith("\\right", pos)); skipSpaces()) {
+      if (peek() === "}") {
+        pos++;
+        continue;
+      }
+      const base = atom() || "<mrow></mrow>";
+      let sub = "";
+      let sup = "";
+      for (skipSpaces(); peek() === "_" || peek() === "^"; skipSpaces()) {
+        if (latex[pos++] === "_") sub = group();
+        else sup = group();
+      }
+      out += sub && sup ? `<msubsup>${base}${sub}${sup}</msubsup>` : sub ? `<msub>${base}${sub}</msub>` : sup ? `<msup>${base}${sup}</msup>` : base;
+    }
+    return out;
+  };
+  return sequence() || `<mtext>${escapeHtml(latex)}</mtext>`;
 }
 
 export function renderAccessibleMathFormula(

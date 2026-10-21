@@ -55,6 +55,7 @@ export interface CurriculumWebAppStateInput {
   readonly keyActionNote?: string | null; readonly snoozeNote?: string | null;
   readonly rescheduleSessionId?: string | null; readonly rescheduleValue?: string | null;
   readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
+  readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -331,7 +332,7 @@ type SfIconName =
   | "learn" | "explore" | "settings"
   | "today" | "plan" | "progress" | "resources"
   | "zoom-in" | "zoom-out" | "reset" | "focus"
-  | "check";
+  | "check" | "close";
 
 const SF_ICON_PATHS: Record<SfIconName, string> = {
   learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
@@ -346,35 +347,145 @@ const SF_ICON_PATHS: Record<SfIconName, string> = {
   reset: `<path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 2.75V5.5h-2.75"/>`,
   focus: `<circle cx="8" cy="8" r="2"/><path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15"/>`,
   check: `<path d="M3.25 8.25 6.4 11.4 12.75 4.6"/>`,
+  close: `<path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/>`,
 };
 
 function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
   return `<svg class="sf-icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SF_ICON_PATHS[name]}</svg>`;
 }
 
+const INSPECTOR_ID = "learn-detail-inspector";
+
+const FLOW_ORDERS = ["theory_first", "application_first", "balanced"] as const;
+const DEEP_DIVE_MODES = ["included", "skipped"] as const;
+const SPACED_REVIEW_MODES = ["included", "compact"] as const;
+export type FlowOrder = (typeof FLOW_ORDERS)[number];
+export type DeepDiveMode = (typeof DEEP_DIVE_MODES)[number];
+export type SpacedReviewMode = (typeof SPACED_REVIEW_MODES)[number];
+
+const isOneOf = <T extends string>(values: readonly T[], value: unknown): value is T =>
+  (values as readonly unknown[]).includes(value);
+
 type GlyphTone = "todo" | "doing" | "done";
 type GlyphKind = "module" | "gate";
 type StudyModule = PlanMapAndOutlineModel["outlineModules"][number];
 type StudyActivity = StudyModule["activities"][number];
+type RightsBadge = StudyActivity["resourceProvenanceCards"][number]["rightsBadge"];
+type FlowTrackId = "lecture" | "deep_dive" | "code" | "review" | "gate";
+type SegmentStyle = "solid" | "dashed";
 
-const STUDY_TRACKS = [
-  { id: "theory", title: "Theory & Worked Examples" },
-  { id: "practice", title: "Practice & Coding Lab" },
-  { id: "review", title: "Spaced Review" },
-  { id: "gate", title: "Gate" },
-] as const;
+const TRACK_OF_TYPE: Readonly<Record<StudyActivity["type"], FlowTrackId>> = {
+  theory: "lecture", worked_example: "deep_dive", reflection: "deep_dive",
+  coding: "code", project: "code", review: "review", quiz: "gate",
+};
 
-type StudyTrackId = (typeof STUDY_TRACKS)[number]["id"];
+const TRACK_LABELS: Readonly<Record<FlowTrackId, { readonly column: string; readonly badge: string }>> = {
+  lecture: { column: "Lecture", badge: "Lecture" },
+  deep_dive: { column: "Deep Dive", badge: "Deep Dive" },
+  code: { column: "Code", badge: "Code Lab" },
+  review: { column: "Review", badge: "Spaced Review" },
+  gate: { column: "Gate", badge: "Gate" },
+};
+
+const FLOW_ORDER_OPTIONS: Readonly<Record<FlowOrder, { readonly label: string; readonly name: string; readonly tracks: readonly FlowTrackId[] }>> = {
+  theory_first: { label: "Lecture → Deep Dive → Code → Gate", name: "theory first", tracks: ["lecture", "deep_dive", "code"] },
+  application_first: { label: "Code → Lecture → Deep Dive → Gate", name: "code first", tracks: ["code", "lecture", "deep_dive"] },
+  balanced: { label: "Balanced Flow", name: "balanced", tracks: ["lecture", "code", "deep_dive"] },
+};
+
+interface FlowView {
+  readonly order: FlowOrder;
+  readonly deepDive: DeepDiveMode;
+  readonly spacedReview: SpacedReviewMode;
+  readonly plannedOrder: FlowOrder;
+}
+
+function plannedFlowOrder(curriculum: Record<string, unknown>): FlowOrder {
+  const applied = curriculum["sequence_preference_applied"];
+  return isOneOf(FLOW_ORDERS, applied) ? applied : "theory_first";
+}
+
+const trackOf = (activity: StudyActivity): FlowTrackId => (activity.masteryGated ? "gate" : TRACK_OF_TYPE[activity.type]);
+
+// Flow tracks in the chosen order, then the optional Review column, then the Gate.
+function flowColumns(view: FlowView): readonly FlowTrackId[] {
+  const tracks = FLOW_ORDER_OPTIONS[view.order].tracks.filter((track) => track !== "deep_dive" || view.deepDive === "included");
+  return [...tracks, ...(view.spacedReview === "included" ? ["review" as const] : []), "gate"];
+}
+
+function humanize(value: string): string {
+  const words = value.replace(/_/g, " ").trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+const fit = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
+
+const rightsWords = (badge: RightsBadge): string => `${humanize(badge.basis)}${badge.externalLinkOnly ? " (external link only)" : ""}`;
+
+const isClosed = (status: string): boolean => status === "completed" || status === "self_reported_completed" || status === "waived";
 
 function executionTone(status: string): GlyphTone {
-  if (status === "completed" || status === "waived") return "done";
-  if (status === "in_progress" || status === "self_reported_completed") return "doing";
-  return "todo";
+  if (isClosed(status)) return "done";
+  return status === "in_progress" ? "doing" : "todo";
 }
 
-function gateTone(status: string): GlyphTone {
-  return status === "demonstrated" ? "done" : "todo";
+function executionWords(status: string): string {
+  if (status === "self_reported_completed") return "Self-reported completed";
+  if (status === "completed") return "Completed";
+  if (status === "in_progress") return "In progress";
+  if (status === "waived") return "Waived by reviewed evidence";
+  return "Not started";
 }
+
+const effortWords = ({ min, point, max }: { readonly min: number; readonly point: number; readonly max: number }): string =>
+  min === max ? `${point} min` : `${point} min (${min}–${max})`;
+
+interface UnitProgress { readonly done: number; readonly total: number; readonly left: number; readonly started: boolean }
+
+// Optional work stays out of the denominator (Section 9.7).
+function unitProgress(activities: readonly StudyActivity[]): UnitProgress {
+  const required = activities.filter((activity) => activity.required);
+  const open = required.filter((activity) => !isClosed(activity.executionStatus));
+  return {
+    done: required.length - open.length,
+    total: required.length,
+    left: open.reduce((sum, activity) => sum + activity.durationTriplet.point, 0),
+    started: activities.some((activity) => activity.executionStatus !== "not_started"),
+  };
+}
+
+function unitTone(progress: UnitProgress): GlyphTone {
+  if (progress.total > 0 && progress.done === progress.total) return "done";
+  return progress.started ? "doing" : "todo";
+}
+
+function progressLabel(progress: UnitProgress): string {
+  if (progress.total === 0) return "Optional only";
+  return progress.left > 0 ? `${progress.done}/${progress.total} · ${progress.left}m` : `${progress.done}/${progress.total}`;
+}
+
+interface GateStatus { readonly passed: boolean; readonly demonstrated: number; readonly total: number }
+
+function gateStatus(statuses: readonly string[]): GateStatus {
+  const demonstrated = statuses.filter((status) => status === "demonstrated").length;
+  return { passed: statuses.length > 0 && demonstrated === statuses.length, demonstrated, total: statuses.length };
+}
+
+const gateCriteria = (gate: GateStatus): string => gate.total === 0
+  ? "No objectives mapped"
+  : `${gate.passed ? "Passed" : "Not passed"} · ${gate.demonstrated} of ${gate.total} objective${gate.total === 1 ? "" : "s"} demonstrated`;
+
+const gateActivities = (mod: StudyModule): readonly StudyActivity[] => mod.activities.filter((activity) => trackOf(activity) === "gate");
+
+// A unit's gate is its quiz or mastery-gated work; a unit without one is gated by its own objectives.
+function unitGate(mod: StudyModule): GateStatus {
+  const gates = gateActivities(mod);
+  return gates.length > 0
+    ? gateStatus(gates.flatMap((activity) => activity.objectiveProficiencyBadges.map((badge) => badge.status)))
+    : gateStatus(mod.objectives.map((objective) => objective.proficiencyStatus));
+}
+
+const displayUnitTitle = (title: string): string => title.replace(/^Module\s+\d+\s*:\s*/, "");
 
 function statusGlyph(type: GlyphKind, tone: GlyphTone, size = 20): string {
   const shape = type === "gate"
@@ -390,184 +501,340 @@ function statusGlyph(type: GlyphKind, tone: GlyphTone, size = 20): string {
   return `<svg class="st-glyph" viewBox="0 0 20 20" width="${size}" height="${size}" aria-hidden="true" data-type="${type}" data-status="${tone}">${shape}${mark}</svg>`;
 }
 
-function unitMarker(tone: GlyphTone): string {
+function unitMarker(tone: GlyphTone, size = 24): string {
   const body = tone === "done"
     ? `<circle class="st-m-disc" cx="12" cy="12" r="10" /><path class="st-m-check" d="M7.3 12.3 10.4 15.4 16.6 8.8" />`
-    : `<circle class="st-m-ring" cx="12" cy="12" r="9.2" />${tone === "doing" ? `<circle class="st-m-dot" cx="12" cy="12" r="4" />` : ""}`;
-  return `<svg class="st-marker" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" data-status="${tone}">${body}</svg>`;
+    : `<circle class="st-m-ring" cx="12" cy="12" r="9.2" />${tone === "doing" ? `<path class="st-m-half" d="M12 2.8a9.2 9.2 0 0 0 0 18.4Z" />` : ""}`;
+  return `<svg class="st-marker" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true" data-status="${tone}">${body}</svg>`;
 }
 
-function statusKeyHtml(): string {
-  const item = (type: GlyphKind, tone: GlyphTone, label: string) =>
-    `<li>${statusGlyph(type, tone, 16)}<span>${label}</span></li>`;
-  return `<ul class="st-key">${item("module", "todo", "Not started")}${item("module", "doing", "In progress")}${item("module", "done", "Done")}${item("gate", "todo", "Not passed")}${item("gate", "done", "Passed")}</ul>`;
+const ARROW_SVG = (className: string, style: SegmentStyle = "solid"): string =>
+  `<svg class="${className}" viewBox="0 0 28 12" width="28" height="12" aria-hidden="true" data-style="${style}"><line x1="1" y1="6" x2="26" y2="6" /><path d="M20.5 2 26 6 20.5 10" /></svg>`;
+
+// One horizontal piece of a row connector. A cell draws only the part inside its own padding box.
+function connectorSvg(kind: "in" | "out" | "through", style: SegmentStyle): string {
+  const head = kind === "in" ? `<svg x="100%" overflow="visible"><path d="M-7.5 2 -1.5 6 -7.5 10" /></svg>` : "";
+  return `<svg class="matrix-svg" data-seg="${kind}" data-style="${style}" aria-hidden="true"><line x1="0" y1="6" x2="100%" y2="6" />${head}</svg>`;
 }
 
-function studyTrackId(activity: Pick<StudyActivity, "type" | "masteryGated">): StudyTrackId {
-  if (activity.type === "quiz" || activity.masteryGated) return "gate";
-  if (activity.type === "review") return "review";
-  if (activity.type === "coding" || activity.type === "project" || activity.type === "reflection") return "practice";
-  return "theory";
+function flowKeyHtml(): string {
+  const item = (glyph: string, label: string) => `<li>${glyph}<span>${label}</span></li>`;
+  return `<ul class="flow-key" aria-label="Flowchart key">${item(statusGlyph("module", "todo", 16), "Not started")}${item(statusGlyph("module", "doing", 16), "In progress")}${item(statusGlyph("module", "done", 16), "Done")}${item(statusGlyph("gate", "todo", 16), "Gate not passed")}${item(statusGlyph("gate", "done", 16), "Gate passed")}${item(ARROW_SVG("key-line"), "Next step")}${item(ARROW_SVG("key-line", "dashed"), "Optional enrichment")}</ul>`;
 }
 
-function sourceHost(url: string | null): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
-    return parsed.hostname.replace(/^www\./, "");
-  } catch {
-    return null;
-  }
+function checkButton(activity: StudyActivity, className: string): string {
+  const id = escapeHtml(activity.activityId);
+  const done = activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed";
+  return `<button type="button" class="${className}" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${statusGlyph("module", executionTone(activity.executionStatus), 20)}<span class="st-sr">${done ? "Self-reported completed" : "Mark self-reported completed"}: ${escapeHtml(activity.title)}</span></button>`;
 }
 
-function kindLabel(type: string): string {
-  switch (type) {
-    case "theory": return "Theory";
-    case "worked_example": return "Worked example";
-    case "coding": return "Coding";
-    case "project": return "Project";
-    case "reflection": return "Reflection";
-    case "review": return "Review";
-    case "quiz": return "Gate";
-    default: return type;
-  }
-}
+const bridgeSr = (activity: StudyActivity): string => activity.prerequisiteBridgeRecommendation?.recommended
+  ? `<span class="st-sr">Prerequisite Bridge Warning: ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</span>`
+  : "";
 
-function activityClosed(status: string): boolean {
-  return status === "completed" || status === "self_reported_completed" || status === "waived";
-}
-
-function unitProgress(activities: readonly StudyActivity[]): { done: number; total: number; left: number } {
-  const done = activities.filter((activity) => activityClosed(activity.executionStatus)).length;
-  const left = activities
-    .filter((activity) => !activityClosed(activity.executionStatus))
-    .reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
-  return { done, total: activities.length, left };
-}
-
-function unitProgressLabel(progress: { done: number; total: number; left: number }): string {
-  return progress.left > 0 ? `${progress.done} of ${progress.total} · ${progress.left}m left` : `${progress.done} of ${progress.total}`;
-}
-
-function displayUnitTitle(title: string): string {
-  return title.replace(/^Module\s+\d+\s*:\s*/, "");
-}
-
-function activityGlyph(activity: StudyActivity): { type: GlyphKind; tone: GlyphTone } {
-  if (studyTrackId(activity) === "gate") return { type: "gate", tone: gateTone(activity.objectiveProficiencyStatus) };
-  return { type: "module", tone: executionTone(activity.executionStatus) };
-}
-
-function statusWords(activity: StudyActivity): string {
-  if (studyTrackId(activity) === "gate") {
-    return activity.objectiveProficiencyStatus === "demonstrated" ? "Passed" : "Not passed";
-  }
-  if (activity.executionStatus === "self_reported_completed") return "Self-reported completed";
-  if (activity.executionStatus === "completed") return "Completed";
-  if (activity.executionStatus === "in_progress") return "In progress";
-  if (activity.executionStatus === "waived") return "Waived by reviewed evidence";
-  return "Not started";
-}
-
-function renderStudyNode(
-  activity: StudyActivity,
-  moduleId: string,
-  ordinal: number,
-  showOrdinal: boolean,
-  selectedActivityId: string | null,
-): string {
-  const glyph = activityGlyph(activity);
-  const host = sourceHost(activity.resourceProvenanceCards[0]?.canonicalUrl ?? null);
-  const kicker = `${showOrdinal ? `<span class="st-ord">${ordinal}</span> ` : ""}${escapeHtml(host ?? kindLabel(activity.type))}`;
+function renderNodeCard(activity: StudyActivity, selectedActivityId: string | null, hint: string | null): string {
+  const id = escapeHtml(activity.activityId);
+  const mod = escapeHtml(activity.moduleId);
+  const track = trackOf(activity);
   const selected = activity.activityId === selectedActivityId;
-  const isGate = glyph.type === "gate";
-  const bridge = activity.prerequisiteBridgeRecommendation?.recommended
-    ? `<span class="st-sr">Prerequisite Bridge Warning: ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</span>`
-    : "";
-  const eventAttr = isGate ? "" : ` data-event-id="evt-complete-${escapeHtml(activity.activityId)}"`;
-  return `<article class="st-node" data-activity-id="${escapeHtml(activity.activityId)}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${escapeHtml(moduleId)}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
-    <button type="button" class="st-open" data-action="select-outline-activity" data-activity-id="${escapeHtml(activity.activityId)}" data-module-id="${escapeHtml(moduleId)}" aria-pressed="${selected}">
-      <span class="st-kicker">${kicker}</span>
-      <span class="st-title">${escapeHtml(activity.title)}</span>
-      <span class="st-time">${activity.durationTriplet.point}m</span>
-      <span class="st-sr">Activity execution: ${escapeHtml(activity.executionStatus)}. Objective proficiency: ${escapeHtml(activity.objectiveProficiencyStatus)} (never conflated). ${escapeHtml(activity.executionBadge.nonColorCue)} ${escapeHtml(activity.objectiveProficiencyBadge.nonColorCue)} ${activity.required ? "Required" : "Optional"}. Effort ${activity.durationTriplet.min}/${activity.durationTriplet.point}/${activity.durationTriplet.max} min. Predecessors: ${escapeHtml(activity.prerequisiteActivityIds.join(", ") || "none")}.</span>
-    </button>
-    <button type="button" class="st-status-btn" data-action="${isGate ? "select-outline-activity" : "complete-activity"}" data-activity-id="${escapeHtml(activity.activityId)}" data-module-id="${escapeHtml(moduleId)}"${eventAttr} aria-pressed="${activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed"}">
-      ${statusGlyph(glyph.type, glyph.tone, 20)}
-      <span class="st-sr">${escapeHtml(statusWords(activity))}. ${escapeHtml(activity.title)}</span>
-    </button>
-    ${bridge}
-  </article>`;
+  const { min, point, max } = activity.durationTriplet;
+  return `<article class="node-card" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${mod}" data-track="${track}" data-required="${activity.required}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
+      <button type="button" class="node-open" data-action="select-outline-activity" data-activity-id="${id}" data-module-id="${mod}" aria-pressed="${selected}">
+        <span class="node-badge">${TRACK_LABELS[track].badge}${activity.required ? "" : " · Optional"}</span>
+        <span class="node-title">${escapeHtml(activity.title)}</span>${hint ? `<span class="node-hint">${escapeHtml(hint)}</span>` : ""}
+        <span class="node-foot"><span class="duration-pill">${point}m</span></span>
+        <span class="st-sr">${executionWords(activity.executionStatus)}. ${activity.required ? "Required" : "Optional"}. About ${point} minutes, range ${min} to ${max}. Objective proficiency: ${escapeHtml(humanize(activity.objectiveProficiencyStatus))}.</span>
+      </button>
+      ${checkButton(activity, "node-check")}${bridgeSr(activity)}
+    </article>`;
 }
 
-function renderStudyOrderBoard(
-  idPrefix: string,
-  modules: readonly StudyModule[],
-  selectedModuleId: string | null,
-  selectedActivityId: string | null,
+function renderGateDiamond(mod: StudyModule, gate: StudyActivity | null, selectedActivityId: string | null): string {
+  const status = gate
+    ? gateStatus(gate.objectiveProficiencyBadges.map((badge) => badge.status))
+    : gateStatus(mod.objectives.map((objective) => objective.proficiencyStatus));
+  const selected = gate !== null && gate.activityId === selectedActivityId;
+  const target = gate
+    ? `data-action="select-outline-activity" data-activity-id="${escapeHtml(gate.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}"`
+    : `data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}"`;
+  return `<button type="button" class="gate-diamond" ${target} data-status="${status.passed ? "passed" : "open"}">
+      <svg class="gate-shape" viewBox="0 0 84 84" width="84" height="84" aria-hidden="true"><rect x="14" y="14" width="56" height="56" rx="8" transform="rotate(45 42 42)" />${status.passed ? `<path d="M31 43 39 51 54 34" />` : ""}</svg>
+      <span class="st-sr">Gate. </span><span class="gate-title">${escapeHtml(gate ? gate.title : "Objective check")}</span>
+      <span class="gate-criteria">${gateCriteria(status)}${gate ? ` · ${gate.durationTriplet.point}m` : ""}</span>
+    </button>${gate ? bridgeSr(gate) : ""}`;
+}
+
+interface UnitPlacement {
+  readonly mod: StudyModule;
+  readonly cells: ReadonlyMap<FlowTrackId, readonly StudyActivity[]>;
+  readonly hidden: readonly StudyActivity[];
+  readonly postGate: ReadonlySet<string>;
+}
+
+// Reviews and work that depends on the gate keep their column but stay off the row's arrow chain.
+function placeUnit(mod: StudyModule, view: FlowView): UnitPlacement {
+  const gateIds = new Set(gateActivities(mod).map((activity) => activity.activityId));
+  const postGate = new Set<string>();
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const activity of mod.activities) {
+      if (gateIds.has(activity.activityId) || postGate.has(activity.activityId)) continue;
+      if (activity.prerequisiteActivityIds.some((id) => gateIds.has(id) || postGate.has(id))) {
+        postGate.add(activity.activityId);
+        grew = true;
+      }
+    }
+  }
+  const cells = new Map<FlowTrackId, StudyActivity[]>();
+  const hidden: StudyActivity[] = [];
+  // Pre-gate work goes first in each column, so an arrow always lands on a card that belongs to the chain.
+  const ordered = [...mod.activities].sort((a, b) => Number(postGate.has(a.activityId)) - Number(postGate.has(b.activityId)));
+  for (const activity of ordered) {
+    const own = trackOf(activity);
+    const skipDeepDive = own === "deep_dive" && view.deepDive === "skipped";
+    // The time-saver drops optional deep dives only; required work is never hidden.
+    if (skipDeepDive && !activity.required) {
+      hidden.push(activity);
+      continue;
+    }
+    const column: FlowTrackId = skipDeepDive ? "lecture" : own === "review" && view.spacedReview === "compact" ? "gate" : own;
+    cells.set(column, [...(cells.get(column) ?? []), activity]);
+  }
+  return { mod, cells, hidden, postGate };
+}
+
+function renderUnitRow(
+  units: readonly UnitPlacement[], index: number, columns: readonly FlowTrackId[],
+  selectedModuleId: string | null, selectedActivityId: string | null,
 ): string {
-  const activities = modules.flatMap((mod) => mod.activities);
-  const headCells = STUDY_TRACKS.map((track) => {
-    const progress = unitProgress(activities.filter((activity) => studyTrackId(activity) === track.id));
-    const sub = track.id === "gate" ? `<span class="st-colhead-sub">Mastery checkpoint</span>` : "";
-    return `<th class="st-colhead" scope="col"><span class="st-colhead-title">${track.title}</span>${sub}<span class="st-colhead-meta">${unitProgressLabel(progress)}</span></th>`;
+  const unit = units[index];
+  if (!unit) return "";
+  const { mod, cells, postGate } = unit;
+  const modId = escapeHtml(mod.moduleId);
+  const selected = mod.moduleId === selectedModuleId;
+  const progress = unitProgress(mod.activities);
+  const tone = unitTone(progress);
+  const previous = units[index - 1];
+  const spineIn = previous ? (unitTone(unitProgress(previous.mod.activities)) === "done" ? "done" : "todo") : "none";
+  const spineOut = index < units.length - 1 ? (tone === "done" ? "done" : "todo") : "none";
+  const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review" && !postGate.has(activity.activityId);
+
+  const columnOf = new Map<string, number>();
+  columns.forEach((track, column) => (cells.get(track) ?? []).forEach((activity) => columnOf.set(activity.activityId, column)));
+  // A reordered view keeps the plan's prerequisites, so name the later column a card still depends on.
+  const hintFor = (activity: StudyActivity, column: number): string | null => {
+    if (postGate.has(activity.activityId)) return "After the gate";
+    if (trackOf(activity) === "review") return "Scheduled revisit";
+    const later = activity.prerequisiteActivityIds.map((id) => columnOf.get(id) ?? -1).filter((other) => other > column);
+    const track = later.length > 0 ? columns[Math.min(...later)] : undefined;
+    return track ? `Needs ${TRACK_LABELS[track].column} first` : null;
+  };
+
+  const chain = columns.flatMap((track, column) => (track === "gate" || (cells.get(track) ?? []).some(onChain) ? [column] : []));
+  const optionalAt = (column: number): boolean => {
+    const items = (cells.get(columns[column] ?? "gate") ?? []).filter((activity) => onChain(activity) || trackOf(activity) === "gate");
+    return items.length > 0 && items.every((activity) => !activity.required);
+  };
+  const segments = new Map<number, string[]>();
+  const crossed = new Set<number>();
+  const addSegment = (column: number, svg: string) => segments.set(column, [...(segments.get(column) ?? []), svg]);
+  chain.forEach((to, k) => {
+    const from = chain[k - 1];
+    if (from === undefined) return;
+    const style: SegmentStyle = optionalAt(from) || optionalAt(to) ? "dashed" : "solid";
+    addSegment(from, connectorSvg("out", style));
+    for (let column = from + 1; column < to; column++) {
+      addSegment(column, connectorSvg("through", style));
+      crossed.add(column);
+    }
+    addSegment(to, connectorSvg("in", style));
+  });
+
+  const cellsHtml = columns.map((track, column) => {
+    const items = cells.get(track) ?? [];
+    const gates = items.filter((activity) => trackOf(activity) === "gate");
+    const cards = items.filter((activity) => trackOf(activity) !== "gate")
+      .map((activity) => renderNodeCard(activity, selectedActivityId, hintFor(activity, column))).join("");
+    const diamonds = track !== "gate" ? ""
+      : gates.length > 0 ? gates.map((gate) => renderGateDiamond(mod, gate, selectedActivityId)).join("") : renderGateDiamond(mod, null, selectedActivityId);
+    // A card in a column the arrow passes over sits below the line instead of under it.
+    const state = items.length === 0 ? ` data-empty="true"` : crossed.has(column) ? ` data-crossed="true"` : "";
+    return `<td class="flow-cell" data-track="${track}"${track === "gate" ? "" : state}>${(segments.get(column) ?? []).join("")}${diamonds}${cards}</td>`;
   }).join("");
-  const rows = modules.map((mod, index) => {
-    const selected = mod.moduleId === selectedModuleId;
-    const progress = unitProgress(mod.activities);
-    const cells = STUDY_TRACKS.map((track) => {
-      const inTrack = mod.activities.filter((activity) => studyTrackId(activity) === track.id);
-      const body = inTrack.length === 0
-        ? `<p class="st-none">None</p>`
-        : inTrack.map((activity, activityIndex) => renderStudyNode(activity, mod.moduleId, activityIndex + 1, inTrack.length > 1, selectedActivityId)).join("");
-      return `<td class="st-cell">${body}</td>`;
-    }).join("");
-    return `<tr class="study-card outline-module-card${selected ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${selected}" data-opaque-surface="true">
-      <th class="st-rail" scope="row">
-        ${unitMarker(executionTone(mod.executionStatus))}
-        <div class="st-rail-text">
-          <button type="button" class="st-unit-hit" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}">
-            <span class="st-unit-label">Unit ${index + 1}</span>
-            <span class="st-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
-            <span class="st-unit-meta">${unitProgressLabel(progress)}</span>
-            <span class="st-sr">${selected ? "Selected" : "Select"} ${escapeHtml(mod.title)}. ${mod.required ? "Required" : "Optional"}. ${escapeHtml(mod.summary)}</span>
-          </button>
-        </div>
-      </th>
-      ${cells}
-    </tr>`;
-  }).join("");
-  const spine = modules.map((mod, index) => {
-    const selected = mod.moduleId === selectedModuleId;
-    const nodes = mod.activities.map((activity, activityIndex) => renderStudyNode(activity, mod.moduleId, activityIndex + 1, true, selectedActivityId)).join("");
-    return `<div class="st-sunit" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${selected}">
-      <div class="st-shead">
-        ${unitMarker(executionTone(mod.executionStatus))}
-        <button type="button" class="st-unit-hit" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}">
-          <span class="st-unit-label">Unit ${index + 1}</span>
-          <span class="st-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
-          <span class="st-unit-meta">${unitProgressLabel(unitProgress(mod.activities))}</span>
+
+  const rail = `<th class="flow-rail" scope="row" data-spine-in="${spineIn}" data-spine-out="${spineOut}">
+        ${index > 0 ? `<svg class="spine-head" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1 5 5 9 1" /></svg>` : ""}
+        <button type="button" class="unit-hit" data-action="select-outline-module" data-module-id="${modId}" aria-pressed="${selected}">
+          ${unitMarker(tone)}
+          <span class="unit-badge">U${index + 1}</span>
+          <span class="unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
+          <span class="unit-meta">${progressLabel(progress)}</span>
+          <span class="st-sr">${selected ? "Selected" : "Select"} unit ${index + 1}. ${progress.done} of ${progress.total} required activities done. ${mod.required ? "Required" : "Optional"}. ${escapeHtml(mod.summary)}</span>
         </button>
-      </div>
-      <div class="st-sbody">${nodes}</div>
+      </th>`;
+  return `<tr class="study-card outline-module-card${selected ? " is-selected" : ""}" data-module-id="${modId}" data-selected="${selected}" data-opaque-surface="true" data-unit-status="${tone}">${rail}${cellsHtml}</tr>`;
+}
+
+function renderFlowToolbar(idPrefix: string, view: FlowView): string {
+  const group = (key: string, label: string, action: string, options: readonly (readonly [string, string])[], current: string) => `<div class="flow-control">
+        <span class="flow-control-label" id="${idPrefix}-${key}-label">${label}</span>
+        <div class="segmented" role="group" aria-labelledby="${idPrefix}-${key}-label">${options.map(([value, text]) => `<button type="button" class="seg-btn" data-action="${action}" data-${key}="${value}" aria-pressed="${value === current}">${text}</button>`).join("")}</div>
+      </div>`;
+  return `<div class="flow-toolbar" role="group" aria-label="Flowchart layout">
+      ${group("flow-order", "Flow order", "set-flow-order", FLOW_ORDERS.map((order) => [order, FLOW_ORDER_OPTIONS[order].label] as const), view.order)}
+      ${group("deep-dive", "Deep Dive", "set-deep-dive", [["included", "Included"], ["skipped", "Skipped (Time-saver)"]], view.deepDive)}
+      ${group("spaced-review", "Spaced Review", "set-spaced-review", [["included", "Included"], ["compact", "Compact"]], view.spacedReview)}
     </div>`;
+}
+
+function renderFlowBoard(
+  idPrefix: string, modules: readonly StudyModule[], selectedModuleId: string | null, selectedActivityId: string | null, view: FlowView,
+): string {
+  const units = modules.map((mod) => placeUnit(mod, view));
+  const columns = flowColumns(view);
+  const notes: string[] = [];
+  if (view.order !== view.plannedOrder) {
+    notes.push(`This plan was generated ${FLOW_ORDER_OPTIONS[view.plannedOrder].name}. Another order moves the columns only, so a card marked “Needs … first” keeps its prerequisite.`);
+  }
+  if (view.order === "balanced") notes.push("Balanced Flow alternates Lecture, Code, and Deep Dive before each gate.");
+  if (view.deepDive === "skipped") {
+    const hidden = units.flatMap((unit) => unit.hidden);
+    const minutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
+    notes.push(hidden.length > 0
+      ? `Time-saver hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${minutes} min). Required deep dives stay in the Lecture column.`
+      : "Time-saver found no optional deep dives. Required deep dives stay in the Lecture column.");
+  }
+  const headCells = columns.map((track) => {
+    if (track === "gate") {
+      const passed = modules.filter((mod) => unitGate(mod).passed).length;
+      return `<th scope="col" class="flow-colhead" data-track="gate"><span class="colhead-title">Gate</span><span class="colhead-meta">${passed}/${modules.length} passed</span></th>`;
+    }
+    const inColumn = units.flatMap((unit) => unit.cells.get(track) ?? []);
+    return `<th scope="col" class="flow-colhead" data-track="${track}"><span class="colhead-title">${TRACK_LABELS[track].column}</span><span class="colhead-meta">${progressLabel(unitProgress(inColumn))}</span></th>`;
   }).join("");
-  return `<section class="st-board" aria-labelledby="${idPrefix}-title">
-    <div class="st-board-intro">
-      <h2 id="${idPrefix}-title">In study order</h2>
-      <p id="${idPrefix}-order">Each row is one unit, in study order. Across a row: Theory &amp; Worked Examples, Practice &amp; Coding Lab, Spaced Review, then Gate.</p>
-      ${statusKeyHtml()}
+  const rows = units.map((_, index) => renderUnitRow(units, index, columns, selectedModuleId, selectedActivityId)).join("");
+  return `<section class="flow-board" aria-labelledby="${idPrefix}-title" data-flow-order="${view.order}" data-deep-dive="${view.deepDive}" data-spaced-review="${view.spacedReview}">
+    <div class="flow-head">
+      <h2 id="${idPrefix}-title">Study flow</h2>
+      <p id="${idPrefix}-desc" class="meta-text">Each row is one unit in the chosen order. Every row ends at its gate.</p>
     </div>
-    <div class="st-table-wrap">
-      <table class="st-table" aria-describedby="${idPrefix}-order">
-        <colgroup><col class="st-col-rail"><col><col><col><col></colgroup>
-        <thead><tr><th class="st-colhead" scope="col"><span class="st-colhead-title">Unit</span></th>${headCells}</tr></thead>
+    ${renderFlowToolbar(idPrefix, view)}
+    ${notes.map((note) => `<p class="flow-note">${escapeHtml(note)}</p>`).join("")}
+    <div class="matrix-stage">
+      <table class="matrix-table" aria-describedby="${idPrefix}-desc" style="--tracks: ${columns.length - 1}">
+        <colgroup><col class="col-rail">${columns.map((track) => `<col class="${track === "gate" ? "col-gate" : "col-track"}">`).join("")}</colgroup>
+        <thead><tr><th scope="col" class="flow-colhead"><span class="colhead-title">Unit</span><span class="colhead-meta">${units.length} in order</span></th>${headCells}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
-    <div class="st-spine">${spine}</div>
+    ${flowKeyHtml()}
   </section>`;
+}
+
+function renderMacroStage(modules: readonly StudyModule[], selectedModuleId: string | null): string {
+  const steps = modules.map((mod, index) => {
+    const progress = unitProgress(mod.activities);
+    const tone = unitTone(progress);
+    const gate = unitGate(mod);
+    const percent = progress.total === 0 ? 0 : Math.round((progress.done / progress.total) * 100);
+    return `<li class="macro-step">
+        <button type="button" class="macro-node" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" data-status="${tone}" aria-pressed="${mod.moduleId === selectedModuleId}">
+          <span class="macro-top">${unitMarker(tone, 20)}<span class="unit-badge">U${index + 1}</span><span class="macro-meta">${progressLabel(progress)}</span></span>
+          <span class="macro-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
+          <span class="macro-bar" aria-hidden="true"><span style="width: ${percent}%"></span></span>
+          <span class="st-sr">${progress.done} of ${progress.total} required activities done. Gate ${gate.passed ? "passed" : "not passed"}.</span>
+        </button>
+        ${ARROW_SVG("macro-link")}
+        <span class="macro-gate" data-status="${gate.passed ? "passed" : "open"}" aria-hidden="true">${statusGlyph("gate", gate.passed ? "done" : "todo", 24)}</span>
+        ${index < modules.length - 1 ? ARROW_SVG("macro-link") : ""}
+      </li>`;
+  }).join("");
+  return `<ol class="macro-stage" aria-label="Units in study order">${steps}</ol>`;
+}
+
+function renderStepRow(activity: StudyActivity, selectedActivityId: string | null, note: string, extraAttrs = ""): string {
+  const id = escapeHtml(activity.activityId);
+  const selected = activity.activityId === selectedActivityId;
+  const track = trackOf(activity);
+  const status = track === "gate"
+    ? `<span class="step-check">${statusGlyph("gate", gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)).passed ? "done" : "todo", 20)}</span>`
+    : checkButton(activity, "step-check");
+  return `<li class="today-activity-item step-row" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-selected="${selected}"${extraAttrs}>
+      ${status}
+      <button type="button" class="step-open" data-action="select-outline-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" aria-pressed="${selected}">
+        <span class="step-title">${escapeHtml(activity.title)}</span>
+        <span class="step-meta">${TRACK_LABELS[track].badge} · ${activity.durationTriplet.point}m${activity.required ? "" : " · Optional"}</span>
+      </button>
+      <span class="st-sr">${escapeHtml(note)}</span>
+    </li>`;
+}
+
+interface InspectorInput {
+  readonly mod: StudyModule;
+  readonly activity: StudyActivity;
+  readonly unitNumber: number;
+  readonly open: boolean;
+  readonly titleOf: (activityId: string) => string;
+  readonly studyAheadRequested: boolean;
+  readonly skipRecorded: boolean;
+}
+
+function renderInspector({ mod, activity, unitNumber, open, titleOf, studyAheadRequested, skipRecorded }: InspectorInput): string {
+  const id = escapeHtml(activity.activityId);
+  const title = escapeHtml(activity.title);
+  const track = trackOf(activity);
+  const done = activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed";
+  const gate = track === "gate" ? gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)) : null;
+  const glyph = gate ? statusGlyph("gate", gate.passed ? "done" : "todo", 20) : statusGlyph("module", executionTone(activity.executionStatus), 20);
+  const fact = (term: string, value: string) => `<div><dt>${term}</dt><dd>${escapeHtml(value)}</dd></div>`;
+  const levels = [...new Set(mod.objectives.map((objective) => humanize(objective.level)))].join(", ") || "Not stated";
+  const criteria = mod.objectives.map((objective) => `<li data-objective-id="${escapeHtml(objective.objectiveId)}">
+          ${statusGlyph("gate", objective.proficiencyStatus === "demonstrated" ? "done" : "todo", 16)}
+          <div><p class="criteria-title">${escapeHtml(objective.title)}</p><p class="meta-text">${escapeHtml(objective.successCriterion || "No success criterion stated.")}</p><p class="meta-text">${escapeHtml(humanize(objective.proficiencyStatus))}</p></div>
+        </li>`).join("");
+  const resources = activity.resourceProvenanceCards.map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
+          <p class="criteria-title">${escapeHtml(card.title)}</p>
+          <p class="meta-text">Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
+          <p class="badge-row"><span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(rightsWords(card.rightsBadge))}</span><span class="badge">${escapeHtml(humanize(card.accessModel))} access</span>${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">Optional certificate ${formatMinorCurrency(4900, "USD")}</span>` : ""}</p>
+          ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open resource<span class="st-sr"> in a new tab</span></a>` : ""}
+        </div>`).join("");
+  const bridge = activity.prerequisiteBridgeRecommendation?.recommended
+    ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${activity.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.map(titleOf).join(", ") || "none")}.</div>`
+    : "";
+  const notes = [
+    studyAheadRequested ? `Study ahead requested for ${activity.title}. Unmet prerequisites, evidence, and waivers stay unchanged.` : "",
+    skipRecorded ? `Skip recorded for ${activity.title} only. Prerequisite evidence was not created.` : "",
+  ].filter(Boolean).map((note) => `<p class="prose" role="status">${escapeHtml(note)}</p>`).join("");
+  return `<dialog id="${INSPECTOR_ID}" class="inspector" closedby="any" aria-labelledby="${INSPECTOR_ID}-title" data-open="${open}" data-opaque-surface="true">
+    <header class="inspector-head">
+      <p class="inspector-context">Unit ${unitNumber} · ${TRACK_LABELS[track].badge}</p>
+      <h2 id="${INSPECTOR_ID}-title" tabindex="-1" autofocus>${title}</h2>
+      <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">${sfIcon("close")}</button>
+    </header>
+    <div class="inspector-scroll" data-scroll-region>
+      <p class="inspector-status">${glyph}<span>${gate ? (gate.passed ? "Passed" : "Not passed") : executionWords(activity.executionStatus)}</span></p>
+      <dl class="fact-list">
+        ${fact("Effort", effortWords(activity.durationTriplet))}
+        ${fact("Requirement", activity.required ? "Required" : "Optional")}
+        ${fact("Activity", executionWords(activity.executionStatus))}
+        ${fact("Objective", humanize(activity.objectiveProficiencyStatus))}
+        ${fact("Math treatment", levels)}
+        ${fact("Comes after", activity.prerequisiteActivityIds.map(titleOf).join(", ") || "None")}
+      </dl>
+      <p class="meta-text">Activity execution and objective proficiency stay separate. Completing this activity does not demonstrate the objective.</p>
+      ${mod.summary ? `<p class="prose">${escapeHtml(mod.summary)}</p>` : ""}
+      ${bridge}
+      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-gate"><h3 id="${INSPECTOR_ID}-gate">Unit gate</h3><ul class="criteria-list">${criteria || `<li class="meta-text">No objectives are mapped to this unit.</li>`}</ul></section>
+      ${resources ? `<section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-resources"><h3 id="${INSPECTOR_ID}-resources">Resource</h3>${resources}</section>` : ""}
+      ${notes}
+    </div>
+    <div class="inspector-actions">
+      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${done ? "Self-reported completed" : "Mark self-reported completed"}</button>
+      <div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div>
+      <p class="meta-text">Study ahead records a started event only. It does not complete prerequisites, create a waiver, or change proficiency. Skip records self_reported_skipped for this activity only.</p>
+    </div>
+  </dialog>`;
 }
 
 function renderTopDestButton(dest: TopLevelDestination, className: string, isCurrent: boolean): string {
@@ -595,6 +862,25 @@ function shortSessionLabel(startAt: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(date);
 }
 
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" }).format(date);
+}
+
+// Map node labels: two title lines plus short status words. Full text stays in aria-label.
+function titleLines(text: string, max: number): readonly [string, string] {
+  const words = text.split(/\s+/);
+  let first = "";
+  let index = 0;
+  for (; index < words.length; index++) {
+    const next = first ? `${first} ${words[index] ?? ""}` : words[index] ?? "";
+    if (first && next.length > max) break;
+    first = next;
+  }
+  return [fit(first, max), fit(words.slice(index).join(" "), max)];
+}
+
 function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
   const { svgViewport, moduleMapNodes, objectiveMapNodes, mapEdges } = planModel;
   const edgesHtml = mapEdges
@@ -611,21 +897,19 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
     .map((node) => {
       const isSelected = node.selected || node.nodeId === planModel.selectedModuleId || node.nodeId === planModel.focusedNodeId;
       const strokeColor = isSelected ? "var(--color-accent)" : "var(--color-border-control)";
-      const strokeWidth = "1.5";
       const fillSurface = isSelected ? "var(--color-accent-surface)" : "var(--color-surface)";
       const elevFilter = isSelected ? "url(#node-elev-selected)" : "url(#node-elev)";
       const moduleIdAttr = node.kind === "module" ? node.nodeId : (planModel.selectedModuleId ?? "module-foundations");
-      const durationText = node.durationTriplet
-        ? `${node.durationTriplet.min}/${node.durationTriplet.point}/${node.durationTriplet.max}m`
-        : node.requirementLevel;
+      const durationText = node.durationTriplet ? effortWords(node.durationTriplet) : humanize(node.requirementLevel);
+      const [line1, line2] = titleLines(displayUnitTitle(node.title), 28);
       const nodeTypeface = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', sans-serif";
 
       return `<g class="map-node" tabindex="0" role="button" data-action="select-map-node" data-node-id="${escapeHtml(node.nodeId)}" data-node-kind="${escapeHtml(node.kind)}" data-module-id="${escapeHtml(moduleIdAttr)}" data-selected="${isSelected}" data-in-neighborhood="${node.inFocusedNeighborhood}" data-opaque-surface="true" aria-pressed="${isSelected}" aria-label="${escapeHtml(`${node.kind}: ${node.title}. ${node.executionBadge.nonColorCue}. ${node.proficiencyBadge.nonColorCue}`)}" transform="translate(${node.x}, ${node.y})">
-              <rect width="${node.width}" height="${node.height}" rx="14" ry="14" fill="${fillSurface}" stroke="${strokeColor}" stroke-width="${strokeWidth}" filter="${elevFilter}" />
-              <text x="16" y="24" fill="var(--color-text-primary)" font-size="12.5" font-weight="600" font-family="${nodeTypeface}" letter-spacing="-0.02em">${escapeHtml(node.title.slice(0, 34))}</text>
-              <text x="16" y="44" fill="var(--color-text-secondary)" font-size="11" font-family="${nodeTypeface}">${escapeHtml(node.executionBadge.nonColorCue.slice(0, 38))}</text>
-              <text x="16" y="62" fill="var(--color-text-secondary)" font-size="11" font-family="${nodeTypeface}">${escapeHtml(node.proficiencyBadge.nonColorCue.slice(0, 38))}</text>
-              <text x="16" y="80" fill="var(--color-accent)" font-size="11" font-weight="600" font-family="${nodeTypeface}">${escapeHtml(durationText)}</text>
+              <rect width="${node.width}" height="${node.height}" rx="14" ry="14" fill="${fillSurface}" stroke="${strokeColor}" stroke-width="1.5" filter="${elevFilter}" />
+              <text x="16" y="24" fill="var(--color-text-primary)" font-size="12.5" font-weight="600" font-family="${nodeTypeface}" letter-spacing="-0.02em">${escapeHtml(line1)}</text>
+              <text x="16" y="40" fill="var(--color-text-primary)" font-size="12.5" font-weight="600" font-family="${nodeTypeface}" letter-spacing="-0.02em">${escapeHtml(line2)}</text>
+              <text x="16" y="60" fill="var(--color-text-secondary)" font-size="11" font-family="${nodeTypeface}">${escapeHtml(`${executionWords(node.executionStatus)} · ${humanize(node.proficiencyStatus)}`)}</text>
+              <text x="16" y="77" fill="var(--color-accent)" font-size="11" font-weight="600" font-family="${nodeTypeface}">${escapeHtml(durationText)}</text>
             </g>`;
     })
     .join("\n            ");
@@ -793,48 +1077,41 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const rescheduleValue = inputState.rescheduleValue ?? null;
   const depthOverrideReset = inputState.depthOverrideReset ?? false;
   const studyDetailOpen = inputState.studyDetailOpen ?? false;
+  const plannedOrder = plannedFlowOrder(curriculum);
+  const flowView: FlowView = {
+    order: inputState.flowOrder ?? plannedOrder,
+    deepDive: inputState.deepDive ?? "included",
+    spacedReview: inputState.spacedReview ?? "included",
+    plannedOrder,
+  };
+  const isLearn = activeTopLevel === "Learn";
 
   const isExecutionDone = (status: string) => status === "completed" || status === "self_reported_completed";
   const nextSession = todayState.nextSession;
   const nextActivity = nextSession?.activityBreakdown.find((act) => !isExecutionDone(act.executionStatus))
     ?? nextSession?.activityBreakdown[0]
     ?? null;
+  const modules = basePlanModel.outlineModules;
+  const selectedModuleId = basePlanModel.selectedModuleId;
+  const selectedActivityId = basePlanModel.selectedActivityId;
   const outlineById = new Map(basePlanModel.outlineActivities.map((act) => [act.activityId, act]));
-  const sessionNode = (act: (typeof todayState.todayCards)[number]["activityBreakdown"][number]) => {
-    const outline = outlineById.get(act.activityId);
-    return outline
-      ? renderStudyNode(outline, act.moduleId, 1, false, basePlanModel.selectedActivityId)
-      : `<span class="st-title">${escapeHtml(act.title)}</span><span class="st-time">${act.durationTriplet.point}m</span>`;
+  const titleOf = (activityId: string): string => outlineById.get(activityId)?.title ?? activityId;
+  const stepRow = (activityId: string, note: string, extraAttrs = ""): string => {
+    const activity = outlineById.get(activityId);
+    return activity ? renderStepRow(activity, selectedActivityId, note, extraAttrs) : "";
   };
+  const accessText = (links: StudyActivity["resourceProvenanceCards"]): string => links.length === 0
+    ? "No external setup is required for this task."
+    : links.map((link) => `${link.title}. ${humanize(link.accessModel)} access. ${rightsWords(link.rightsBadge)}.`).join(" ");
 
-  const renderSessionActivity = (
-    act: (typeof todayState.todayCards)[number]["activityBreakdown"][number],
-  ) => {
-    const id = escapeHtml(act.activityId);
-    const accessText = act.resourceProvenanceLinks.length === 0
-      ? "No external setup is required for this task."
-      : act.resourceProvenanceLinks.map((link) => `${link.title}. Access: ${link.accessModel}. Rights: ${link.rightsBadge.label}.`).join(" ");
-    return `<li class="today-activity-item" data-activity-id="${id}" data-execution-status="${escapeHtml(act.executionStatus)}" data-proficiency-status="${escapeHtml(act.objectiveProficiencyStatus)}">
-      ${sessionNode(act)}
-      <span class="st-sr">${escapeHtml(accessText)}</span>
-    </li>`;
-  };
-
-  const nextActivitiesHtml = (nextSession?.activityBreakdown ?? []).map((act) => renderSessionActivity(act)).join("\n");
+  const nextStepsHtml = (nextSession?.activityBreakdown ?? []).map((act) => stepRow(act.activityId, accessText(act.resourceProvenanceLinks))).join("");
   const reviewItemsHtml = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
-    `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}" data-review-separation-valid="${card.reviewSeparation.valid}">
-      ${sessionNode(act)}
-      <span class="st-sr">Scheduled ${escapeHtml(shortSessionLabel(card.startAt))}. ${escapeHtml(card.reviewSeparation.separationSummary)} ${escapeHtml(act.scheduledReason)}</span>
-    </li>`,
-  )).join("\n");
+    stepRow(act.activityId, `Scheduled ${shortSessionLabel(card.startAt)}. ${card.reviewSeparation.separationSummary} ${act.scheduledReason}`, ` data-review-separation-valid="${card.reviewSeparation.valid}"`),
+  )).join("");
   const completedItems = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)));
   const completedHtml = completedItems.length === 0
     ? `<p class="meta-text">No self-reported completions yet.</p>`
-    : `<ul class="today-activity-list">${completedItems.map((act) => `<li class="today-activity-item" data-activity-id="${escapeHtml(act.activityId)}" data-execution-status="${escapeHtml(act.executionStatus)}">${sessionNode(act)}<span class="st-sr">Self-reported completed. Objective proficiency is unchanged.</span></li>`).join("")}</ul>`;
-
-  const nextAccessText = !nextActivity || nextActivity.resourceProvenanceLinks.length === 0
-    ? "No external setup is required for this task."
-    : nextActivity.resourceProvenanceLinks.map((link) => `${link.title}. Access: ${link.accessModel}. Rights: ${link.rightsBadge.label}.`).join(" ");
+    : `<ul class="today-activity-list step-list">${completedItems.map((act) => stepRow(act.activityId, "Self-reported completed. Objective proficiency is unchanged.")).join("")}</ul>`;
 
   const requiredActivities = basePlanModel.outlineActivities.filter((act) => act.required);
   const requiredCompleted = requiredActivities.filter((act) => isExecutionDone(act.executionStatus)).length;
@@ -844,97 +1121,65 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const evidenceSummary = `${demonstratedObjectives} of ${basePlanModel.objectiveTracks.length} objectives demonstrated`;
   const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
-  const aheadActions = (activityId: string, title: string) => {
-    const id = escapeHtml(activityId);
-    const ahead = studyAheadActivityId === activityId
-      ? `<p class="prose">Study ahead requested for ${escapeHtml(title)}. Unmet prerequisites, evidence, and waivers stay unchanged.</p>`
-      : "";
-    const skipped = skippedActivityIds.has(activityId)
-      ? `<p class="prose">Skip recorded for ${escapeHtml(title)} only. Prerequisite evidence was not created.</p>`
-      : "";
-    return `<div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div><p class="prose warning-copy">Study ahead records a started event only. It does not complete prerequisites, create a waiver, or change proficiency. Skip this activity records self_reported_skipped for this activity only.</p>${ahead}${skipped}`;
-  };
+  const macroStageHtml = renderMacroStage(modules, selectedModuleId);
+  const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView);
+  const planBoardHtml = renderFlowBoard("flow-plan", modules, selectedModuleId, selectedActivityId, flowView);
 
-  const outlineModulesHtml = renderStudyOrderBoard("study-plan", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
-  const todayStudyBoardHtml = renderStudyOrderBoard("study-today", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
-  const progressStudyBoardHtml = renderStudyOrderBoard("study-progress", basePlanModel.outlineModules, basePlanModel.selectedModuleId, basePlanModel.selectedActivityId);
-
-  const selectedModule = basePlanModel.outlineModules.find((mod) => mod.moduleId === basePlanModel.selectedModuleId) ?? basePlanModel.outlineModules[0];
-  const selectedActivity = selectedModule?.activities.find((act) => act.activityId === basePlanModel.selectedActivityId) ?? selectedModule?.activities[0];
-  const mathLevels = [...new Set((selectedModule?.objectives ?? []).map((obj) => obj.level))].join(", ") || "Not stated";
-  const selectedUnitIndex = selectedModule ? basePlanModel.outlineModules.findIndex((mod) => mod.moduleId === selectedModule.moduleId) : -1;
-  const selectedBridge = selectedActivity?.prerequisiteBridgeRecommendation?.recommended
-    ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${selectedActivity.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(selectedActivity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(selectedActivity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</div>`
+  const selectedModule = modules.find((mod) => mod.moduleId === selectedModuleId) ?? modules[0];
+  const selectedActivity = selectedModule?.activities.find((act) => act.activityId === selectedActivityId) ?? selectedModule?.activities[0];
+  const inspectorHtml = selectedModule && selectedActivity
+    ? renderInspector({
+      mod: selectedModule, activity: selectedActivity, unitNumber: modules.indexOf(selectedModule) + 1,
+      open: studyDetailOpen && isLearn, titleOf,
+      studyAheadRequested: studyAheadActivityId === selectedActivity.activityId,
+      skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
+    })
     : "";
-  const selectedProvenanceHtml = (selectedActivity?.resourceProvenanceCards ?? []).map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
-    <span>Publisher: <strong>${escapeHtml(card.verifiedPublisher)}</strong></span>
-    <span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.label)}</span>
-    <span>Access: ${escapeHtml(card.accessModel)}</span>
-    ${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}.</span>` : `<span>No separate certification price.</span>`}
-    ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open verified resource</a>` : ""}
-  </div>`).join("");
-  const selectedGlyph = selectedActivity ? activityGlyph(selectedActivity) : { type: "module" as const, tone: "todo" as const };
-  const selectedDetailHtml = selectedModule && selectedActivity ? `<div class="st-sheet" data-open="${studyDetailOpen}">
-    <button type="button" class="st-scrim" data-action="close-study-detail" aria-label="Close details"></button>
-    <aside class="st-panel selected-module-detail" data-open="${studyDetailOpen}" data-opaque-surface="true" aria-label="${escapeHtml(selectedActivity.title)}">
-      <div class="st-panel-head">
-        <p class="st-context">Unit ${selectedUnitIndex + 1} · ${escapeHtml(kindLabel(selectedActivity.type))}</p>
-        <h2>${escapeHtml(selectedActivity.title)}</h2>
-        <button type="button" class="st-panel-close" data-action="close-study-detail">Close</button>
-      </div>
-      <p class="st-status-row">${statusGlyph(selectedGlyph.type, selectedGlyph.tone, 20)}<span>${escapeHtml(statusWords(selectedActivity))}</span></p>
-      <p class="prose">${escapeHtml(selectedModule.summary)}</p>
-      <p>Mathematical treatment: ${escapeHtml(mathLevels)}.</p>
-      <p>${selectedActivity.required ? "Required" : "Optional"}. Effort ${selectedActivity.durationTriplet.min}/${selectedActivity.durationTriplet.point}/${selectedActivity.durationTriplet.max} min.</p>
-      <p class="prose">Activity execution: ${escapeHtml(selectedActivity.executionStatus)}. Objective proficiency: ${escapeHtml(selectedActivity.objectiveProficiencyStatus)} (never conflated).</p>
-      <p class="meta-text">Predecessors: ${escapeHtml(selectedActivity.prerequisiteActivityIds.join(", ") || "none")}. Successors stay on the activities that list this one.</p>
-      ${selectedProvenanceHtml}
-      ${selectedBridge}
-      ${aheadActions(selectedActivity.activityId, selectedActivity.title)}
-      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${escapeHtml(selectedActivity.activityId)}" data-event-id="evt-complete-${escapeHtml(selectedActivity.activityId)}" aria-pressed="${isExecutionDone(selectedActivity.executionStatus)}">${isExecutionDone(selectedActivity.executionStatus) ? "Self-reported completed" : "Mark self-reported completed"}</button>
-    </aside>
-  </div>` : "";
 
+  const legendArrow = (tone: "control" | "accent", style: SegmentStyle) =>
+    `<svg class="legend-swatch" viewBox="0 0 64 20" width="64" height="20" aria-hidden="true" data-tone="${tone}" data-style="${style}"><line x1="2" y1="10" x2="58" y2="10" /><path d="M52 5 58 10 52 15" /></svg>`;
   const relationshipLegend = `<figure class="relationship-legend">
     <figcaption>Relationship legend</figcaption>
     <ul>
-      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><defs><marker id="legend-arrow-prereq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-border-control)"/></marker></defs><line x1="2" y1="10" x2="50" y2="10" stroke="var(--color-border-control)" stroke-width="2" marker-end="url(#legend-arrow-prereq)"/></svg><span><strong>Prerequisite.</strong> Solid directed edge. Required capability before an activity; identify unmet capabilities.</span></li>
-      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><defs><marker id="legend-arrow-seq" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="var(--color-accent)"/></marker></defs><line x1="2" y1="6" x2="50" y2="6" stroke="var(--color-accent)" stroke-width="2" marker-end="url(#legend-arrow-seq)"/><line x1="2" y1="14" x2="50" y2="14" stroke="var(--color-accent)" stroke-width="2"/></svg><span><strong>Recommended sequence.</strong> Distinct directed style. Suggested order, not a hard gate.</span></li>
-      <li><svg class="legend-swatch" viewBox="0 0 64 20" aria-hidden="true"><line x1="2" y1="10" x2="58" y2="10" stroke="var(--color-border-control)" stroke-width="2" stroke-dasharray="5 4"/></svg><span><strong>Optional enrichment.</strong> Dashed branch with label. Optional work excluded from required-completion denominator.</span></li>
+      <li>${legendArrow("control", "solid")}<span><strong>Prerequisite.</strong> Solid directed edge. Required capability before an activity; identify unmet capabilities.</span></li>
+      <li>${legendArrow("accent", "solid")}<span><strong>Recommended sequence.</strong> Distinct directed style. Suggested order, not a hard gate.</span></li>
+      <li>${legendArrow("control", "dashed")}<span><strong>Optional enrichment.</strong> Dashed branch with label. Optional work excluded from required-completion denominator.</span></li>
       <li><span class="badge">Review</span><span><strong>Review.</strong> Separate badge/list connection. Scheduled revisit; does not form a prerequisite cycle.</span></li>
     </ul>
   </figure>`;
 
   const canonicalStatusesLegendHtml = OBJECTIVE_PROFICIENCY_BADGE_STATUSES.map(
-    (st) => `<span class="badge badge-proficiency-status" data-proficiency-status="${st}">${st}</span>`,
+    (st) => `<span class="badge badge-proficiency-status" data-proficiency-status="${st}">${humanize(st)}</span>`,
   ).join(" ");
   const proficiencyGlyph = (status: string): string => {
-    if (status === "demonstrated" || status === "unassessed") return statusGlyph("gate", gateTone(status), 20);
+    if (status === "demonstrated" || status === "unassessed") return statusGlyph("gate", status === "demonstrated" ? "done" : "todo", 20);
     return statusGlyph("module", status === "not_started" ? "todo" : "doing", 20);
   };
   const proficiencyRowsHtml = basePlanModel.objectiveTracks.map((obj) => `<tr data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
     <td><strong>${escapeHtml(obj.title)}</strong><div class="meta-text">${escapeHtml(obj.objectiveVersionId)}</div></td>
-    <td><span class="st-status-static">${proficiencyGlyph(obj.proficiencyStatus)}<span class="st-sr">${escapeHtml(obj.proficiencyStatus)} (${escapeHtml(obj.proficiencyBadge.nonColorCue)})</span></span></td>
-    <td><span class="st-status-static">${statusGlyph("module", executionTone(obj.executionStatus), 20)}<span class="st-sr">${escapeHtml(obj.executionStatus)} (${escapeHtml(obj.executionBadge.nonColorCue)})</span></span></td>
-    <td>${escapeHtml(obj.proficiencyBadge.evidenceSupport)} (${obj.proficiencyBadge.evidenceRefs.length > 0 ? escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", ")) : "none"}) <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button></td>
+    <td><span class="st-status-static">${proficiencyGlyph(obj.proficiencyStatus)}<span>${escapeHtml(humanize(obj.proficiencyStatus))}</span></span><span class="st-sr">${escapeHtml(obj.proficiencyBadge.nonColorCue)}</span></td>
+    <td><span class="st-status-static">${statusGlyph("module", executionTone(obj.executionStatus), 20)}<span>${escapeHtml(executionWords(obj.executionStatus))}</span></span><span class="st-sr">${escapeHtml(obj.executionBadge.nonColorCue)}</span></td>
+    <td><span class="evidence-cell">${escapeHtml(humanize(obj.proficiencyBadge.evidenceSupport))}${obj.proficiencyBadge.evidenceRefs.length > 0 ? ` · <code>${escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", "))}</code>` : ""}</span> <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button></td>
   </tr>`).join("\n");
 
   const resourceCards = basePlanModel.outlineActivities.flatMap((act) => act.resourceProvenanceCards)
     .filter((card, idx, arr) => arr.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === idx);
   const resourcesHtml = resourceCards.map((card) => {
-    const rights = `<span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(card.rightsBadge.basis)}</span>`;
     const cert = card.optionalCertificationBadge
       ? `<span class="badge badge-cert-cost" data-optional-certification="true">Optional certification ${formatMinorCurrency(4900, "USD")}</span>`
       : `<span class="badge badge-cert-none">Core access ${formatMinorCurrency(0, "USD")}</span>`;
     const openLink = card.canonicalUrl
-      ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open source</a>`
+      ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open source<span class="st-sr"> in a new tab</span></a>`
       : "";
     return `<article class="resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
-      <header class="activity-row"><h3>${escapeHtml(card.title)}</h3>${rights}${cert}${openLink}</header>
-      <p>Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
-      <p class="prose">Version captured: <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(card.versionTimestamp)}</time>. Access: <strong>${escapeHtml(card.accessModel)}</strong>. Rights (${escapeHtml(card.rightsBadge.basis)}): ${escapeHtml(card.rightsBadge.label)}</p>
-      <p class="prose">${escapeHtml(card.selectionRationale)}</p>
-      ${card.optionalCertificationBadge ? `<p class="warning-copy">${escapeHtml(card.optionalCertificationBadge.label)} Separate optional cost ${formatMinorCurrency(4900, "USD")}. Opening the source does not mark the activity complete.</p>` : `<p>No paid certification is required for core access (${formatMinorCurrency(0, "USD")}). Opening the source does not mark the activity complete.</p>`}
+      <div class="resource-main">
+        <h3>${escapeHtml(card.title)}</h3>
+        <p class="meta-text">${escapeHtml(card.verifiedPublisher)} · Version captured <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(formatDate(card.versionTimestamp))}</time></p>
+        <p class="badge-row"><span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(rightsWords(card.rightsBadge))}</span><span class="badge">${escapeHtml(humanize(card.accessModel))} access</span>${cert}</p>
+        <p class="prose">${escapeHtml(card.selectionRationale)}</p>
+        ${card.optionalCertificationBadge ? `<p class="prose warning-copy">${escapeHtml(card.optionalCertificationBadge.label)}. Separate optional cost ${formatMinorCurrency(4900, "USD")}. Opening the source does not mark the activity complete.</p>` : `<p class="prose meta-text">No paid certification is required for core access (${formatMinorCurrency(0, "USD")}). Opening the source does not mark the activity complete.</p>`}
+      </div>
+      ${openLink}
     </article>`;
   }).join("\n");
 
@@ -951,7 +1196,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     upvoteCount: 14, viewerHasUpvoted: false,
   };
   const ownedCard = publicationState.ownedPublicationCards[0];
-  const revisionHistoryHtml = publicationState.ownedRevisions.map((rev) => `<li>Revision ${rev.revision_number} <code>${escapeHtml(rev.publication_revision_id)}</code>. State: ${escapeHtml(rev.state)}. Visibility: ${escapeHtml(rev.visibility)}. Upvotes: ${rev.upvote_count ?? "withheld"}. Published <time datetime="${escapeHtml(rev.published_at)}">${escapeHtml(rev.published_at)}</time>.</li>`).join("");
+  const revisionHistoryHtml = publicationState.ownedRevisions.map((rev) => `<li>Revision ${rev.revision_number} <code>${escapeHtml(rev.publication_revision_id)}</code>. State: ${escapeHtml(rev.state)}. Visibility: ${escapeHtml(rev.visibility)}. Upvotes: ${rev.upvote_count ?? "withheld"}. Published <time datetime="${escapeHtml(rev.published_at)}">${escapeHtml(formatDate(rev.published_at))}</time>.</li>`).join("");
   const adaptationChoiceCopy = adaptationChoice === "accept_reviewed"
     ? "Accept revision was reviewed on this screen. No live adaptation route accepted it, so the current plan stays in place."
     : adaptationChoice === "keep_current"
@@ -981,10 +1226,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       : "";
     return `<li class="schedule-row">
       <p><strong>${escapeHtml(shortSessionLabel(startAt))}</strong> · ${duration} min · <time datetime="${escapeHtml(startAt)}">${escapeHtml(startAt)}</time></p>
-      <label class="field" for="reschedule-${escapeHtml(sessionId)}">New local time
-        <input id="reschedule-${escapeHtml(sessionId)}" type="datetime-local" data-reschedule-for="${escapeHtml(sessionId)}" name="reschedule-${escapeHtml(sessionId)}">
-      </label>
-      <button type="button" class="btn-secondary" data-action="reschedule-session" data-session-id="${escapeHtml(sessionId)}">Reschedule</button>
+      <div class="schedule-edit">
+        <label class="field" for="reschedule-${escapeHtml(sessionId)}">New local time
+          <input id="reschedule-${escapeHtml(sessionId)}" type="datetime-local" data-reschedule-for="${escapeHtml(sessionId)}" name="reschedule-${escapeHtml(sessionId)}">
+        </label>
+        <button type="button" class="btn-secondary" data-action="reschedule-session" data-session-id="${escapeHtml(sessionId)}">Reschedule</button>
+      </div>
       ${preview}
     </li>`;
   }).join("\n");
@@ -997,8 +1244,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const recoveryBanner = `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
 
   const openDialogId = inputState.openDialogId ?? null;
-  const isLearn = activeTopLevel === "Learn";
-  const dialogOpen = (id: string) => openDialogId === id ? " open" : "";
+  const dialogOpen = (id: string) => ` data-open="${openDialogId === id}"`;
+  const totalEffort = basePlanModel.totalDurationTriplet;
 
   return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
@@ -1013,7 +1260,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   <div class="app-body-grid">
     <aside class="app-sidebar" aria-label="Learn sections">
       <div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
-      <div class="sidebar-section"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">Effort ${basePlanModel.totalDurationTriplet.min}/${basePlanModel.totalDurationTriplet.point}/${basePlanModel.totalDurationTriplet.max} min</p></div>
+      <div class="sidebar-section sidebar-goal"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">About ${totalEffort.point} min planned (${totalEffort.min}–${totalEffort.max})</p></div>
     </aside>
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
@@ -1021,22 +1268,30 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <div class="section-header">
             <h1 class="page-title">Today</h1>
             <div class="plan-toolbar">
-              <label class="field" for="selected-plan">Selected plan
+              <label class="field field-inline" for="selected-plan"><span>Selected plan</span>
                 <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
               </label>
               <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
           </div>
           ${recoveryBanner}
-          <div class="st-layout">
-            ${todayStudyBoardHtml}
-            ${selectedDetailHtml}
-          </div>
-          <section class="surface-panel next-session-panel" data-opaque-surface="true" data-review-separation-valid="${nextSession?.reviewSeparation.valid ?? todayState.reviewSeparationValid}">
-            <h2>Next session</h2>
-            ${nextActivity ? `<p>Capability: ${escapeHtml(nextActivity.moduleTitle)}</p><p>Task: ${escapeHtml(nextActivity.title)}</p><p>Effort ${nextActivity.durationTriplet.min}/${nextActivity.durationTriplet.point}/${nextActivity.durationTriplet.max} min. <strong>${nextActivity.requirementLevel === "optional" ? "Optional" : "Required"}</strong></p><p class="prose">Required access and setup: ${escapeHtml(nextAccessText)}</p><p class="prose"><strong>Why this is next.</strong> ${escapeHtml(nextActivity.scheduledReason)}</p><div class="action-row"><a class="btn-primary" href="#study-workspace">Continue attention mechanisms</a></div>` : `<p>No session is scheduled.</p>`}
-            <ul class="today-activity-list">${nextActivitiesHtml}</ul>
+          <section class="next-session-panel" data-opaque-surface="true" data-review-separation-valid="${nextSession?.reviewSeparation.valid ?? todayState.reviewSeparationValid}" aria-labelledby="next-session-title">
+            <div class="next-session-lead">
+              <h2 id="next-session-title">Next session</h2>
+              ${nextSession ? `<p class="meta-text">${escapeHtml(shortSessionLabel(nextSession.startAt))} · ${nextSession.durationMinutes} min</p>` : ""}
+              ${nextActivity ? `<dl class="fact-list">
+                <div><dt>Capability</dt><dd>${escapeHtml(displayUnitTitle(nextActivity.moduleTitle))}</dd></div>
+                <div><dt>Task</dt><dd>${escapeHtml(nextActivity.title)}</dd></div>
+                <div><dt>Effort</dt><dd>${effortWords(nextActivity.durationTriplet)} · ${nextActivity.requirementLevel === "optional" ? "Optional" : "Required"}</dd></div>
+                <div><dt>Access and setup</dt><dd>${escapeHtml(accessText(nextActivity.resourceProvenanceLinks))}</dd></div>
+              </dl>
+              <p class="prose"><strong>Why this is next.</strong> ${escapeHtml(nextActivity.scheduledReason)}</p>
+              <div class="action-row"><a class="btn-primary" href="#study-workspace">Continue ${escapeHtml(displayUnitTitle(nextActivity.moduleTitle))}</a></div>` : `<p>No session is scheduled.</p>`}
+            </div>
+            ${nextStepsHtml ? `<div class="next-session-steps"><h3>In this session</h3><ol class="today-activity-list step-list">${nextStepsHtml}</ol></div>` : ""}
           </section>
+          ${macroStageHtml}
+          ${todayBoardHtml}
           <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
             <h2>Study</h2>
             <p class="prose">One task: ${escapeHtml(nextActivity?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextActivity?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
@@ -1056,19 +1311,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             ${hintHtml}
             ${solutionHtml}
             <div class="honest-two-layer-summary">
-              <h3>Honest Two-Layer Status Summary (@S17, @S23)</h3>
+              <h3>Honest Two-Layer Status Summary</h3>
               <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
             </div>
           </section>
-          <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}">
-            <h2>Review queue</h2>
-            <p class="prose">Due and scheduled spaced review stays in a separate session.</p>
-            <ul class="today-activity-list">${reviewItemsHtml}</ul>
-          </section>
-          <section class="completed-history">
-            <h2>Completed work</h2>
-            ${completedHtml}
-          </section>
+          <div class="today-lists">
+            <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}">
+              <h2>Review queue</h2>
+              <p class="meta-text">Due and scheduled spaced review stays in a separate session.</p>
+              ${reviewItemsHtml ? `<ul class="today-activity-list step-list">${reviewItemsHtml}</ul>` : `<p class="meta-text">No reviews are due.</p>`}
+            </section>
+            <section class="completed-history">
+              <h2>Completed work</h2>
+              ${completedHtml}
+            </section>
+          </div>
           <div class="action-row">
             <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Plan</button>
             <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Settings">Schedule</button>
@@ -1079,45 +1336,38 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <div class="section-header">
             <h1 class="page-title">Plan</h1>
             <div class="plan-toolbar">
-              <div class="plan-view-switcher" role="group" aria-label="Map or outline">
-                ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="btn-secondary${view === activePlanView ? " is-active" : ""}" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
+              <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
+                ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
               </div>
               <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
             </div>
           </div>
-          <p class="prose">${escapeHtml(basePlanModel.goal.summary)}</p>
-          <p>${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
-          <p class="prose">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
-          ${relationshipLegend}
-          <div class="plan-split">
-            <div class="plan-focus-column">
-              <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
-                <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
-                  ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
-                  ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
-                  ${renderMapControl("fit_view", "Reset View", "Fit", "reset")}
-                  ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
-                </div>
-                ${renderPlanDagSvgHtml(basePlanModel)}
-                <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
-              </div>
-              <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${outlineModulesHtml}</div>
+          <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
+          <p class="meta-text">${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
+          <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
+          ${macroStageHtml}
+          <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
+            <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
+              ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
+              ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
+              ${renderMapControl("fit_view", "Reset View", "Fit", "reset")}
+              ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
             </div>
-            ${selectedDetailHtml}
+            ${renderPlanDagSvgHtml(basePlanModel)}
+            <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
           </div>
+          <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${planBoardHtml}</div>
+          ${relationshipLegend}
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
           <h1 class="page-title">Progress</h1>
           <div class="progress-summaries">
-            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Required activities completed</h2><p><strong>${requiredSummary}</strong></p></section>
-            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Objectives with qualifying evidence</h2><p><strong>${evidenceSummary}</strong></p></section>
-            <section class="surface-panel progress-summary" data-opaque-surface="true"><h2>Reviews due</h2><p><strong>${reviewSummary}</strong></p></section>
+            <section class="progress-summary"><h2>Required activities completed</h2><p>${requiredSummary}</p></section>
+            <section class="progress-summary"><h2>Objectives with qualifying evidence</h2><p>${evidenceSummary}</p></section>
+            <section class="progress-summary"><h2>Reviews due</h2><p>${reviewSummary}</p></section>
           </div>
-          <div class="st-layout">
-            ${progressStudyBoardHtml}
-            ${selectedDetailHtml}
-          </div>
+          ${macroStageHtml}
           <section class="surface-panel" data-opaque-surface="true">
             <h2>Objective evidence ledger</h2>
             <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
@@ -1151,27 +1401,29 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       <section class="top-level-panel" id="panel-explore" data-top-panel="Explore" data-active="${activeTopLevel === "Explore"}"${activeTopLevel === "Explore" ? "" : " hidden"}>
         <h1 class="page-title">Explore</h1>
         <form class="discovery-filters" role="search" aria-label="Discovery filters">
-          <label class="field" for="discovery-query">Search query <input id="discovery-query" type="search" name="query"></label>
-          <label class="field" for="discovery-topic">Topic <input id="discovery-topic" type="text" name="topic"></label>
-          <label class="field" for="discovery-depth">Mathematical depth
-            <select id="discovery-depth" name="math_depth"><option>Intuitive</option><option>Applied</option><option selected>Formal</option></select>
-          </label>
-          <fieldset class="choice-group"><legend>Access</legend>
-            ${choiceRadio("access", "free_only", "Free-only", "Hide revisions that allow paid materials.", false)}
-            ${choiceRadio("access", "paid_allowed", "Paid allowed", "Include revisions that allow paid materials.", true)}
-          </fieldset>
-          <fieldset class="choice-group"><legend>Ordering</legend>
-            ${choiceRadio("ordering", "newest", "Newest", "Default order is the newest public revision.", true)}
-            ${choiceRadio("ordering", "upvotes", "Popular upvotes", "Popular means upvotes for the displayed revision.", false)}
-          </fieldset>
-          <button type="button" class="btn-secondary" data-action="load-more">Load more</button>
+          <div class="filter-fields">
+            <label class="field" for="discovery-query">Search query <input id="discovery-query" type="search" name="query"></label>
+            <label class="field" for="discovery-topic">Topic <input id="discovery-topic" type="text" name="topic"></label>
+            <label class="field" for="discovery-depth">Mathematical depth
+              <select id="discovery-depth" name="math_depth"><option>Intuitive</option><option>Applied</option><option selected>Formal</option></select>
+            </label>
+          </div>
+          <div class="filter-choices">
+            <fieldset class="choice-group"><legend>Access</legend>
+              ${choiceRadio("access", "free_only", "Free-only", "Hide revisions that allow paid materials.", false)}
+              ${choiceRadio("access", "paid_allowed", "Paid allowed", "Include revisions that allow paid materials.", true)}
+            </fieldset>
+            <fieldset class="choice-group"><legend>Ordering</legend>
+              ${choiceRadio("ordering", "newest", "Newest", "Default order is the newest public revision.", true)}
+              ${choiceRadio("ordering", "upvotes", "Popular upvotes", "Popular means upvotes for the displayed revision.", false)}
+            </fieldset>
+          </div>
         </form>
-        ${loadMoreNote ? `<p class="prose" role="status">${escapeHtml(loadMoreNote)}</p>` : ""}
         <article class="surface-panel public-template-card" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" data-opaque-surface="true">
-          <p class="warning-copy">Community publication — not automatically educationally reviewed</p>
+          <p class="warning-copy">Community publication. It has not automatically passed educational review.</p>
           <h2>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h2>
           <p class="prose">${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p>
-          <p>Intended audience: learners studying transformer foundations. Mathematical depth: Formal. Prerequisites: tokenization before attention. Access: free learning materials, with inference priced separately. Revision ${DEFAULT_PUBLIC_CURRICULUM.revision_number}.</p>
+          <p class="prose">Intended audience: learners studying transformer foundations. Mathematical depth: Formal. Prerequisites: tokenization before attention. Access: free learning materials, with inference priced separately. Revision ${DEFAULT_PUBLIC_CURRICULUM.revision_number}.</p>
           <p>Author: ${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}. License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code>.</p>
           <p class="meta-text">Selecting <code>public-module-attention</code> includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>
           <div class="action-row">
@@ -1180,9 +1432,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Publication preview</button>
           </div>
         </article>
+        <div class="action-row load-more-row"><button type="button" class="btn-secondary" data-action="load-more">Load more</button></div>
+        ${loadMoreNote ? `<p class="prose" role="status">${escapeHtml(loadMoreNote)}</p>` : ""}
         <section class="surface-panel my-publications" data-opaque-surface="true">
           <h2>My Publications</h2>
-          <p class="prose">Owner state is requested with <code>Cache-Control: no-store</code> (${escapeHtml(publicationState.cachePolicy)}).</p>
+          <p class="meta-text">Owner records load fresh on every visit and are never cached.</p>
           ${ownedCard ? `<p><strong>${escapeHtml(ownedCard.displayTitleText)}</strong>. State: ${escapeHtml(ownedCard.state)}. Visibility: ${escapeHtml(ownedCard.visibility)}. ${escapeHtml(ownedCard.upvoteDisplayText)}.</p>` : ""}
           <h3>Revision history</h3>
           <ol>${revisionHistoryHtml}</ol>
@@ -1201,8 +1455,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           </section>
           <section class="surface-panel settings-group" data-opaque-surface="true">
             <h2>Appearance</h2>
-            <div class="theme-selector-group" role="group" aria-label="Theme">
-              ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="btn-secondary${themePreference === mode ? " is-active" : ""}" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+            <div class="theme-selector-group segmented" role="group" aria-label="Theme">
+              ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
             </div>
             <label class="switch-field"><input type="checkbox" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}> Solid surfaces</label>
             <label class="switch-field"><input type="checkbox" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}> Reduce motion</label>
@@ -1214,12 +1468,14 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <p class="prose">Browser notification permission is requested only after Enable reminders. A denied or unsupported permission leaves Today and the schedule usable. Initial notification copy stays generic.</p>
             <p>Timezone: <code>${escapeHtml(reminderState.timezone)}</code> (${escapeHtml(timezoneLabel)}).</p>
             <p>Quiet hours: ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}. Lead time ${reminderState.lead_time_minutes} min. Reminders are ${remindersPaused ? "paused" : "not paused"}.</p>
-            <label class="field" for="snooze-minutes">Snooze
-              <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
-            </label>
-            <div class="action-row">
-              <button type="button" class="btn-secondary" data-action="snooze-reminder">Snooze</button>
-              <button type="button" class="btn-secondary" data-action="pause-reminders">${remindersPaused ? "Resume reminders" : "Pause"}</button>
+            <div class="schedule-edit">
+              <label class="field" for="snooze-minutes">Snooze
+                <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
+              </label>
+              <div class="action-row">
+                <button type="button" class="btn-secondary" data-action="snooze-reminder">Snooze</button>
+                <button type="button" class="btn-secondary" data-action="pause-reminders">${remindersPaused ? "Resume reminders" : "Pause"}</button>
+              </div>
             </div>
             ${snoozeNote ? `<p class="prose" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
             <p class="prose disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
@@ -1231,10 +1487,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <p class="prose">Mode: ${escapeHtml(byokState.mode)}. Hosted fallback is off. Saving a key does not authorize a chargeable model test. The service stores the key encrypted, identifies the provider, and the provider bills inference.</p>
             <p class="prose disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
             <p class="prose disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
-            <label class="field" for="byok-key">Provider key <span class="meta-text">Transient and optional until you replace a key</span>
-              <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
-            </label>
-            <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
+            <div class="schedule-edit">
+              <label class="field" for="byok-key">Provider key <span class="meta-text">Transient and optional until you replace a key</span>
+                <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
+              </label>
+              <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
+            </div>
             <ul class="credential-list">
               ${byokState.credentials.map((cred) => `<li class="credential-item" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
                 <p><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong> <code>${escapeHtml(cred.masked_hint)}</code> <span class="badge">${escapeHtml(cred.status)}</span></p>
@@ -1243,7 +1501,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
                   <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}">Delete connection</button>
                 </div>
-                <p class="prose">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
+                <p class="prose meta-text">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
               </li>`).join("\n")}
             </ul>
             ${keyActionNote ? `<p class="prose" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
@@ -1270,12 +1528,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       </section>
     </main>
   </div>
+  ${inspectorHtml}
   <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">${bottomNavHtml}</nav>
 
-  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title" data-opaque-surface="true"${dialogOpen("dialog-new-curriculum")}>
+  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p class="prose">Goal and scope → Background and approach → Time and access → Review and generate</p>
+      <p class="prose meta-text">Goal and scope → Background and approach → Time and access → Review and generate</p>
       <section>
         <h3>Goal and scope</h3>
         <label class="field" for="intake-goal">What do you want to learn? <span class="meta-text">Required</span>
@@ -1301,10 +1560,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           ${choiceRadio("math-depth", "intuitive", "Intuitive", "Conceptual explanations with necessary mathematical ideas.", false)}
           ${choiceRadio("math-depth", "applied", "Applied", "Mathematics used for implementation and evaluation.", false)}
           ${choiceRadio("math-depth", "formal", "Formal", "Relevant assumptions, derivations, and proof or mathematical reasoning where appropriate. Proofs are not promised for every engineering activity.", true)}
-          <p>Inherited: Tokenization — Formal. This follows the global default.</p>
-          <p>${depthOverrideReset ? "Matrix calculus override removed. Inherited depth follows the global default." : "Override: Matrix calculus — Formal."}</p>
+          <p>Inherited: Tokenization, Formal. This follows the global default.</p>
+          <p>${depthOverrideReset ? "Matrix calculus override removed. Inherited depth follows the global default." : "Override: Matrix calculus, Formal."}</p>
           <label class="field" for="topic-depth-override">Per-topic override <span class="meta-text">Optional</span>
-            <select id="topic-depth-override" name="topic-depth-override"><option>Matrix calculus — Formal</option></select>
+            <select id="topic-depth-override" name="topic-depth-override"><option>Matrix calculus: Formal</option></select>
           </label>
           <button type="button" class="btn-secondary" data-action="reset-depth-override">Reset to default</button>
         </fieldset>
@@ -1348,14 +1607,14 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>
 
-  <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title" data-opaque-surface="true"${dialogOpen("dialog-adaptation-diff")}>
+  <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title"${dialogOpen("dialog-adaptation-diff")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       ${adaptationBody}
     </form>
   </dialog>
 
-  <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title" data-opaque-surface="true"${dialogOpen("dialog-partial-adoption")}>
+  <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title"${dialogOpen("dialog-partial-adoption")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-partial-adoption-title">Partial Curriculum Adoption &amp; Prerequisite Closure</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p>Requested Module: <code>${escapeHtml(partialAdoptionScope.requestedModuleIds.join(", "))}</code></p>
@@ -1365,16 +1624,17 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>
 
-  <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title" data-opaque-surface="true"${dialogOpen("dialog-publication-preview")}>
+  <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title"${dialogOpen("dialog-publication-preview")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-publication-preview-title">Publication Preview &amp; Private Field Redaction</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p>Preview ID: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.preview_id)}</code>. Visibility: Public — appears in discovery and can be read by others. Unlisted — anyone with the link can read it; excluded from app-controlled discovery. Unlisted does not mean confidential.</p>
+      <p>Preview ID: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.preview_id)}</code>.</p>
+      <p class="prose">Visibility: Public — appears in discovery and can be read by others. Unlisted — anyone with the link can read it; excluded from app-controlled discovery. Unlisted does not mean confidential.</p>
       <p>Excluded Private Fields (Never Published): <code>${escapeHtml(publicationState.excludedPrivateFields.join(", "))}</code></p>
       <p>Terms Policy: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms_policy_id)}</code> (${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms.content_license_id)})</p>
     </form>
   </dialog>
 
-  <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title" data-opaque-surface="true"${dialogOpen("dialog-unpublish")}>
+  <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies.</p>
@@ -1382,7 +1642,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>
 
-  <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title" data-opaque-surface="true"${dialogOpen("dialog-account-deletion")}>
+  <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title"${dialogOpen("dialog-account-deletion")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p>Export Scope Included: <code>${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}</code></p>
@@ -1438,6 +1698,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const schedule = initialState.schedule ?? DEFAULT_SYNTHETIC_SCHEDULE;
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
   const catalogResources = initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
+  let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(curriculum);
+  let deepDive: DeepDiveMode = initialState.deepDive ?? "included";
+  let spacedReview: SpacedReviewMode = initialState.spacedReview ?? "included";
 
   const todayController = createTodayViewController({
     curriculum, schedule, proficiency, catalogResources,
@@ -1472,7 +1735,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       studyAheadActivityId, skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
-      depthOverrideReset, studyDetailOpen,
+      depthOverrideReset, studyDetailOpen, flowOrder, deepDive, spacedReview,
     };
   };
 
@@ -1484,17 +1747,20 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     navigateTopLevel(destination: TopLevelDestination) {
       topLevel = destination;
+      studyDetailOpen = false;
       return getState();
     },
     navigateLearnSubDestination(subDestination: LearnSubDestination) {
       topLevel = "Learn";
       learnSubDestination = subDestination;
+      studyDetailOpen = false;
       return getState();
     },
     switchPlanView(view: PlanSynchronizedView) {
       topLevel = "Learn";
       learnSubDestination = "Plan";
       planView = view;
+      studyDetailOpen = false;
       return getState();
     },
     selectPlanModule(moduleId: string, _sourceView?: PlanSynchronizedView) {
@@ -1559,7 +1825,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     applyUiAction(action: string, data: Readonly<Record<string, string | undefined>> = {}, submittedChoice: string | null = null) {
       let handled = true;
+      const value = (key: string) => data[key];
       if (action === "close-study-detail") studyDetailOpen = false;
+      else if (action === "set-flow-order" && isOneOf(FLOW_ORDERS, value("flowOrder"))) flowOrder = value("flowOrder") as FlowOrder;
+      else if (action === "set-deep-dive" && isOneOf(DEEP_DIVE_MODES, value("deepDive"))) deepDive = value("deepDive") as DeepDiveMode;
+      else if (action === "set-spaced-review" && isOneOf(SPACED_REVIEW_MODES, value("spacedReview"))) spacedReview = value("spacedReview") as SpacedReviewMode;
       else if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
       else if (action === "toggle-reduce-motion") reduceMotion = !reduceMotion;
       else if (action === "request-hint") hintRequested = true;
@@ -1604,55 +1874,51 @@ export interface MountableRootElement {
   addEventListener?: (type: string, listener: (event: unknown) => void) => void;
 }
 
+interface MountedDialog {
+  readonly id?: string;
+  readonly open?: boolean;
+  showModal?: () => void;
+  close?: () => void;
+  getAttribute?: (name: string) => string | null;
+  getBoundingClientRect?: () => { top: number; left: number; width: number; height: number };
+  addEventListener?: (type: string, listener: (ev: { target?: unknown; clientX?: number; clientY?: number }) => void) => void;
+}
+
 export function mountCurriculumWebApp(
   rootElement: MountableRootElement,
   initialState: CurriculumWebAppStateInput = {},
 ): CurriculumWebAppController {
   const controller = createCurriculumWebAppController(initialState);
 
+  // Native Esc, backdrop, and close() all fire "close"; the controller state follows it.
   function bindDialogs(): void {
     if (typeof rootElement.querySelectorAll !== "function") return;
-    const dialogs = Array.from(rootElement.querySelectorAll('dialog[closedby="any"]')) as Array<{
-      close?: () => void;
-      getBoundingClientRect?: () => { top: number; left: number; width: number; height: number };
-      addEventListener?: (type: string, listener: (ev: { target?: unknown; clientX?: number; clientY?: number }) => void) => void;
-    }>;
-
     const supportsClosedBy =
       typeof globalThis.HTMLDialogElement !== "undefined" && "closedBy" in globalThis.HTMLDialogElement.prototype;
-
-    if (!supportsClosedBy) {
-      for (const dialog of dialogs) {
-        dialog.addEventListener?.("click", (event) => {
-          if (event.target !== dialog || typeof dialog.getBoundingClientRect !== "function") return;
-          const rect = dialog.getBoundingClientRect();
-          const clientX = event.clientX ?? -1;
-          const clientY = event.clientY ?? -1;
-          const inContent =
-            rect.top <= clientY && clientY <= rect.top + rect.height && rect.left <= clientX && clientX <= rect.left + rect.width;
-          if (!inContent) {
-            dialog.close?.();
-            controller.closeDialog();
-          }
-        });
-      }
+    for (const dialog of Array.from(rootElement.querySelectorAll("dialog")) as MountedDialog[]) {
+      dialog.addEventListener?.("close", () => {
+        if (dialog.id === INSPECTOR_ID) controller.applyUiAction("close-study-detail");
+        else controller.closeDialog();
+        syncDom();
+      });
+      if (supportsClosedBy || dialog.getAttribute?.("closedby") !== "any") continue;
+      dialog.addEventListener?.("click", (event) => {
+        if (event.target !== dialog || typeof dialog.getBoundingClientRect !== "function") return;
+        const rect = dialog.getBoundingClientRect();
+        const clientX = event.clientX ?? -1;
+        const clientY = event.clientY ?? -1;
+        const inContent =
+          rect.top <= clientY && clientY <= rect.top + rect.height && rect.left <= clientX && clientX <= rect.left + rect.width;
+        if (!inContent) dialog.close?.();
+      });
     }
   }
 
   function syncDom(): void {
     rootElement.innerHTML = controller.renderHtml();
     bindDialogs();
-    const activeDialogId = controller.getState().openDialogId;
-    if (activeDialogId && typeof rootElement.querySelector === "function") {
-      const dialogEl = rootElement.querySelector(`#${activeDialogId}`) as { open?: boolean; showModal?: () => void } | null;
-      if (dialogEl && typeof dialogEl.showModal === "function" && !dialogEl.open) {
-        try {
-          dialogEl.showModal();
-        } catch {
-          // Synthetic DOM fallback: [open] attribute is already set.
-        }
-      }
-    }
+    const marked = rootElement.querySelector?.('dialog[data-open="true"]') as MountedDialog | null | undefined;
+    if (marked && typeof marked.showModal === "function" && !marked.open) marked.showModal();
   }
 
   syncDom();
@@ -1737,4 +2003,3 @@ export function mountCurriculumWebApp(
     applyUiAction: withSync(controller.applyUiAction),
   };
 }
-

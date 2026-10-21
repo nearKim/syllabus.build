@@ -34,8 +34,71 @@ ${fallbackScript}
 (function hydrateCurriculumWebApp() {
   const root = document.getElementById("app");
   if (!root) return;
+  const INSPECTOR_ID = "learn-detail-inspector";
+  const supportsClosedBy = "closedBy" in HTMLDialogElement.prototype;
+  let inspectorOpenerKey = null;
+
+  // A selector that finds the same control again after the server re-renders the app,
+  // scoped to the dialog that held it so a match behind a modal is never chosen.
+  function keyFor(el) {
+    if (!el || !el.attributes || !root.contains(el)) return null;
+    const dialog = el.closest("dialog");
+    if (el.id) return { selector: "#" + CSS.escape(el.id), dialogId: dialog ? dialog.id : null };
+    const parts = Array.from(el.attributes)
+      .filter((attr) => attr.name.startsWith("data-"))
+      .map((attr) => "[" + attr.name + '="' + CSS.escape(attr.value) + '"]');
+    if (parts.length === 0) return null;
+    const kind = el.classList.length > 0 ? "." + CSS.escape(el.classList[0]) : el.localName;
+    return { selector: kind + parts.join(""), dialogId: dialog ? dialog.id : null };
+  }
+
+  function focusKey(key) {
+    if (!key) return false;
+    const scope = key.dialogId ? document.getElementById(key.dialogId) : root;
+    const match = scope && Array.from(scope.querySelectorAll(key.selector)).find((el) => el.getClientRects().length > 0);
+    if (match) match.focus({ preventScroll: true });
+    return Boolean(match);
+  }
+
+  // Every way a dialog closes (button, Esc, backdrop) fires "close"; tell the server once, from here.
+  function bindDialogs() {
+    root.querySelectorAll("dialog").forEach((dialog) => {
+      if (dialog.dataset.closeBound === "true") return;
+      dialog.dataset.closeBound = "true";
+      dialog.addEventListener("close", () => {
+        dispatchServerRender({ action: dialog.id === INSPECTOR_ID ? "close-study-detail" : "close-dialog" });
+      });
+      if (supportsClosedBy || dialog.getAttribute("closedby") !== "any" || dialog.dataset.lightDismissBound === "true") return;
+      dialog.dataset.lightDismissBound = "true";
+      dialog.addEventListener("click", (event) => {
+        if (event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const inside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
+        if (!inside) dialog.close();
+      });
+    });
+  }
+
+  function openDialogScroll() {
+    const open = new Map();
+    root.querySelectorAll("dialog[open]").forEach((dialog) => {
+      open.set(dialog.id, (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop);
+    });
+    return open;
+  }
+
+  // The server marks the dialog to show; open it as a real modal. A dialog that was already open skips its entry slide.
+  function openMarkedDialogs(previous) {
+    root.querySelectorAll('dialog[data-open="true"]').forEach((dialog) => {
+      if (dialog.open) return;
+      if (previous.has(dialog.id)) dialog.setAttribute("data-instant", "");
+      dialog.showModal();
+      (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = previous.get(dialog.id) || 0;
+    });
+  }
 
   async function dispatchServerRender(patch) {
+    let payload;
     try {
       const response = await fetch("/api/ui-state", {
         method: "POST",
@@ -43,52 +106,27 @@ ${fallbackScript}
         body: JSON.stringify(patch),
       });
       if (!response.ok) return false;
-      const payload = await response.json();
-      if (payload && typeof payload.html === "string") {
-        root.innerHTML = payload.html;
-        if (payload.state && payload.state.themePreference) {
-          const resolved = payload.state.themePreference === "dark" ? "dark" : "light";
-          document.documentElement.setAttribute("data-theme", resolved);
-        }
-        rebindDialogs();
-        if (payload.state && payload.state.openDialogId) {
-          const dlg = document.getElementById(payload.state.openDialogId);
-          if (dlg && typeof dlg.showModal === "function" && !dlg.open) {
-            try { dlg.showModal(); } catch {}
-          }
-        }
-        return true;
-      }
+      payload = await response.json();
     } catch {
-      // Fallback to local DOM state if server endpoint is unreachable
+      // Keep the current DOM when the local server endpoint is unreachable.
+      return false;
     }
-    return false;
+    if (!payload || typeof payload.html !== "string") return false;
+    const focusedKey = keyFor(document.activeElement);
+    const previous = openDialogScroll();
+    root.innerHTML = payload.html;
+    if (payload.state && payload.state.themePreference) {
+      const resolved = payload.state.themePreference === "dark" ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", resolved);
+    }
+    bindDialogs();
+    openMarkedDialogs(previous);
+    if (!focusKey(focusedKey) && patch.action === "close-study-detail") focusKey(inspectorOpenerKey);
+    return true;
   }
 
-  function rebindDialogs() {
-    const dialogs = root.querySelectorAll('dialog[closedby="any"]');
-    if (!('closedBy' in HTMLDialogElement.prototype)) {
-      dialogs.forEach((dialog) => {
-        if (dialog.dataset.lightDismissBound === 'true') return;
-        dialog.dataset.lightDismissBound = 'true';
-        dialog.addEventListener('click', (event) => {
-          if (event.target !== dialog) return;
-          const rect = dialog.getBoundingClientRect();
-          const isDialogContent = (
-            rect.top <= event.clientY &&
-            event.clientY <= rect.top + rect.height &&
-            rect.left <= event.clientX &&
-            event.clientX <= rect.left + rect.width
-          );
-          if (isDialogContent) return;
-          dialog.close();
-          dispatchServerRender({ action: "close-dialog" });
-        });
-      });
-    }
-  }
-
-  rebindDialogs();
+  bindDialogs();
+  openMarkedDialogs(new Map());
 
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
@@ -97,21 +135,21 @@ ${fallbackScript}
 
     if (action === "open-dialog" && target.dataset.dialogId) {
       const dialog = document.getElementById(target.dataset.dialogId);
-      if (dialog && typeof dialog.showModal === "function") {
-        dialog.showModal();
-      }
+      if (dialog && !dialog.open) dialog.showModal();
       dispatchServerRender({ action: "open-dialog", dialogId: target.dataset.dialogId });
       return;
     }
 
-    if (action === "close-dialog") {
+    if (action === "close-dialog" || action === "close-study-detail") {
       event.preventDefault();
       const dialog = target.closest("dialog");
-      if (dialog && typeof dialog.close === "function") {
-        dialog.close();
-      }
-      dispatchServerRender({ action: "close-dialog" });
+      if (dialog && dialog.open) dialog.close();
+      else dispatchServerRender({ action });
       return;
+    }
+
+    if (action === "select-map-node" || action === "select-outline-module" || action === "select-outline-activity") {
+      inspectorOpenerKey = keyFor(target);
     }
 
     if (action === "navigate-top" && target.dataset.destination) {
@@ -145,6 +183,17 @@ ${fallbackScript}
       dispatchServerRender({ action: "set-theme", themeValue: target.dataset.themeValue });
     } else if (action === "toggle-upvote") {
       dispatchServerRender({ action: "toggle-upvote", revisionId: target.dataset.revisionId });
+    } else {
+      const patch = Object.assign({}, target.dataset);
+      if (action === "submit-practice") {
+        const checked = root.querySelector('input[name="practice-choice"]:checked');
+        if (checked) patch.practiceChoice = checked.value;
+      }
+      if (action === "reschedule-session" && target.dataset.sessionId) {
+        const input = root.querySelector('[data-reschedule-for="' + CSS.escape(target.dataset.sessionId) + '"]');
+        patch.rescheduleValue = input ? input.value : "";
+      }
+      dispatchServerRender(patch);
     }
   });
 
@@ -304,6 +353,9 @@ export function createWebAppServer(options = {}) {
             controller.openDialog(cmd.dialogId);
           } else if (cmd.action === "close-dialog") {
             controller.closeDialog();
+          } else if (typeof cmd.action === "string") {
+            const data = Object.fromEntries(Object.entries(cmd).filter(([, value]) => typeof value === "string"));
+            controller.applyUiAction(cmd.action, data, data.practiceChoice ?? null);
           }
 
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });

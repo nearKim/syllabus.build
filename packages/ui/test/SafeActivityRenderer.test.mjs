@@ -170,6 +170,22 @@ test("renderAccessibleMathFormula produces MathML + aria-label on an opaque scro
   assert.ok(!formula.mathml.includes("<script>"));
 });
 
+test("renderAccessibleMathFormula parses nested fractions, roots, text, fences, and scripts instead of printing command names", () => {
+  const { mathml, ariaLabel } = renderAccessibleMathFormula(
+    "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
+    { displayMode: "block" }
+  );
+  assert.ok(ariaLabel.startsWith("Mathematical expression: Attention (Q, K, V) = softmax"));
+  assert.ok(!/less than|mathrm/.test(ariaLabel), `spoken label misreads commands: ${ariaLabel}`);
+  assert.ok(mathml.includes('<mi mathvariant="normal">Attention</mi>'));
+  assert.ok(mathml.includes('<mi mathvariant="normal">softmax</mi>'));
+  assert.ok(mathml.includes("<mfrac><mrow><mi>Q</mi><msup><mi>K</mi><mi>T</mi></msup></mrow><mrow><msqrt><mrow><msub><mi>d</mi><mi>k</mi></msub></mrow></msqrt></mrow></mfrac>"));
+  assert.ok(mathml.includes("<mo>(</mo><mfrac>"));
+  for (const commandName of ["mathrm", "frac", "sqrt", "left", "right"]) {
+    assert.ok(!mathml.includes(`<mi>${commandName}</mi>`), `command name ${commandName} leaked into the output`);
+  }
+});
+
 test("Theme controller and surface styles enforce light/dark/system resolution, opaque study surfaces, glass fallbacks, reduced motion, and forced-colors (@S69, @S70, @S78, @S79, @S86, @S87)", () => {
   assert.equal(resolveThemeMode("light", "dark"), "light");
   assert.equal(resolveThemeMode("dark", "light"), "dark");
