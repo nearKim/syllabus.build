@@ -520,8 +520,7 @@ section[id] {
   gap: var(--space-2);
 }
 
-.badge-cert-cost,
-.badge-cert-optional {
+.badge-cert-cost {
   background-color: var(--color-warning-surface);
   color: var(--color-warning-text);
 }
@@ -973,16 +972,16 @@ textarea {
   border-radius: var(--radius-control);
 }
 
+/* Fixed layout gives every track column and the gate column the same width. */
 .matrix-table {
   --rail-w: 144px;
-  --gate-w: 152px;
   --track-min: 144px;
   --pad-x: 10px;
   --pad-y: 16px;
-  --node-min: 84px;
+  --node-min: 96px;
   --link-y: calc(var(--pad-y) + var(--node-min) / 2);
   width: 100%;
-  min-width: calc(var(--rail-w) + var(--gate-w) + var(--tracks, 3) * var(--track-min));
+  min-width: calc(var(--rail-w) + (var(--tracks, 3) + 1) * var(--track-min));
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -990,10 +989,6 @@ textarea {
 
 .col-rail {
   width: var(--rail-w);
-}
-
-.col-gate {
-  width: var(--gate-w);
 }
 
 .flow-colhead {
@@ -1187,10 +1182,12 @@ textarea {
   color: var(--color-accent);
 }
 
-/* Node cards: track badge, duration, checkbox, title. Height grows with text; words never split. */
+/* Node cards: title, duration, optional mark, and check. At the default text size every card is 96px:
+   1px border, 9px padding, three 17px title lines, 3px gap, 22px foot, 9px padding, 1px border.
+   A longer title stops after three lines. Larger text still grows the card, and words never split. */
 .node-card {
   position: relative;
-  min-height: var(--node-min, 84px);
+  min-height: var(--node-min, 96px);
   border: var(--hairline);
   border-radius: var(--radius-control);
   background: var(--color-surface);
@@ -1212,16 +1209,15 @@ textarea {
 }
 
 .node-open {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
-  align-content: start;
-  justify-content: stretch;
-  justify-items: start;
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 3px;
   width: 100%;
   min-width: 0;
-  min-height: var(--node-min, 84px);
-  padding: 9px 10px 10px;
+  min-height: calc(var(--node-min, 96px) - 2px);
+  padding: 9px 10px;
   border: 0;
   border-radius: inherit;
   background: transparent;
@@ -1229,34 +1225,43 @@ textarea {
   text-align: left;
 }
 
-.node-badge {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-text-secondary);
-}
-
-.node-foot {
-  display: flex;
-  align-items: flex-end;
-  align-self: end;
-  min-height: 24px;
-  padding-right: 34px;
-}
-
 .node-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 17px;
   overflow-wrap: break-word;
   word-break: normal;
   hyphens: manual;
 }
 
-.node-hint {
+.node-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  padding-right: 34px;
+}
+
+.node-duration {
+  font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 500;
-  color: var(--color-warning-text);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.node-optional {
+  padding: 0 6px;
+  border: 1px dashed var(--color-border-control);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--color-text-secondary);
 }
 
 .node-check,
@@ -1298,7 +1303,8 @@ textarea {
   gap: 4px;
   width: 100%;
   min-width: 0;
-  padding: 0 0 var(--space-1);
+  /* Centers the 84px diamond on the row line, which runs through the middle of a 96px card. */
+  padding: calc((var(--node-min, 84px) - 84px) / 2) 0 var(--space-1);
   border: 0;
   border-radius: var(--radius-control);
   background: transparent;
@@ -1360,9 +1366,9 @@ textarea {
   text-align: left;
 }
 
-/* When the stage is narrower than the table (four tracks need 872px), each unit wraps into
+/* When the stage is narrower than the table (four tracks and the gate need 864px), each unit wraps into
    flowing cards that still end at its gate. Nothing is clipped and no column is crushed. */
-@container matrix (max-width: 871.98px) {
+@container matrix (max-width: 863.98px) {
   .matrix-table,
   .matrix-table tbody,
   .matrix-table th,
@@ -1426,9 +1432,10 @@ textarea {
     padding-left: 0;
   }
 
+  /* Cells do not grow, so every wrapped card keeps the same 13rem width. */
   .flow-cell,
   .flow-cell[data-crossed="true"] {
-    flex: 1 1 13rem;
+    flex: 0 1 13rem;
     min-width: 0;
     padding: 0;
   }
@@ -1436,6 +1443,10 @@ textarea {
   .flow-cell[data-track="gate"] {
     flex-basis: 100%;
     text-align: left;
+  }
+
+  .flow-cell[data-track="gate"] .node-card {
+    max-width: 13rem;
   }
 
   .gate-diamond {
@@ -1453,26 +1464,43 @@ textarea {
   }
 }
 
-/* Today: one Next-up bar. Progress on the left; the next activity and Resume on the right.
-   On a narrow screen the right part wraps to its own line and the title truncates. */
-.next-up-bar {
+/* Today: one header card. The first row holds the title and plan controls. The second row holds
+   progress, the next activity, and Resume. On a narrow screen the next activity wraps to its own
+   line and its title truncates. */
+.today-unified-header {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+  padding: var(--space-5);
+  border-radius: var(--radius-surface);
+  background-color: var(--color-surface);
+}
+
+.today-unified-header > .section-header,
+.today-unified-header > .status-banner {
+  margin: 0;
+}
+
+.today-next {
   display: flex;
   flex-wrap: wrap;
   align-items: safe center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-5);
-  margin: 0 0 var(--space-6);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
-  border-radius: var(--radius-surface);
-  background-color: var(--color-surface);
+  padding-top: var(--space-4);
+  border-top: var(--hairline);
 }
 
-.next-up-bar p {
+.today-next p {
   margin: 0;
 }
 
 .next-up-progress {
-  font-size: 14px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  font-size: 13px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
@@ -1508,28 +1536,6 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 600;
-}
-
-.fact-list {
-  display: grid;
-  gap: 10px;
-  margin: var(--space-4) 0;
-}
-
-.fact-list > div {
-  display: grid;
-  grid-template-columns: minmax(7rem, 9rem) minmax(0, 1fr);
-  gap: var(--space-3);
-}
-
-.fact-list dt {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-}
-
-.fact-list dd {
-  margin: 0;
-  min-inline-size: 0;
 }
 
 .today-activity-list {
@@ -1812,10 +1818,6 @@ math {
   margin: 0;
 }
 
-.resource-link {
-  font-weight: 500;
-}
-
 /* Explore */
 .discovery-filters {
   margin: 0 0 var(--space-5);
@@ -2027,6 +2029,10 @@ dialog.inspector::backdrop {
   .inspector-close:hover {
     background: var(--tint-12);
   }
+
+  .status-toggle:hover {
+    background: var(--tint-8);
+  }
 }
 
 .inspector-scroll {
@@ -2044,15 +2050,142 @@ dialog.inspector::backdrop {
   margin: 0;
 }
 
-.inspector-status {
+/* Header pills: the execution status toggle and the objective proficiency label */
+.inspector-pills {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: safe center;
   gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.status-toggle {
+  min-width: 0;
+  gap: 6px;
+  padding: 6px 14px 6px 10px;
+  border-radius: 999px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-.inspector-scroll .fact-list > div {
-  grid-template-columns: 7.5rem minmax(0, 1fr);
+.proficiency-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.proficiency-pill[data-proficiency-status="demonstrated"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
+/* Dependency flow: prerequisites, this activity, and what it leads to, joined by a short rail.
+   Every row starts its icon 12px in, so the rail at 19px runs through the icon centers. */
+.dep-flow,
+.dep-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dep-step + .dep-step {
+  position: relative;
+  margin-top: var(--space-4);
+}
+
+.dep-step + .dep-step::before {
+  content: "";
+  position: absolute;
+  top: -14px;
+  left: 19px;
+  width: 2px;
+  height: 12px;
+  background: var(--line);
+}
+
+.dep-label,
+.dep-row,
+.dep-current {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+}
+
+.dep-label {
+  margin: 0 0 var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.dep-row,
+.dep-none {
+  min-height: 36px;
+  font-size: 14px;
+}
+
+.dep-none {
+  display: flex;
+  align-items: center;
+  padding-left: calc(var(--space-3) + 24px);
+  color: var(--color-text-secondary);
+}
+
+.dep-current {
+  min-height: 44px;
+  border-radius: var(--radius-control);
+  background: var(--color-accent-surface);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Details table: an icon and key on the left, the value on the right */
+.meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.meta-table th,
+.meta-table td {
+  padding: var(--space-2) 0;
+  border-top: var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.meta-table tr:first-child > * {
+  border-top: 0;
+}
+
+.meta-table th {
+  width: 7.5rem;
+  padding-right: var(--space-3);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.meta-key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.meta-line {
+  display: block;
+}
+
+.meta-line + .meta-line {
+  margin-top: var(--space-1);
 }
 
 .inspector-section h3 {
@@ -2078,24 +2211,12 @@ dialog.inspector::backdrop {
   margin-top: 3px;
 }
 
-.criteria-list p,
-.provenance-chip p {
+.criteria-list p {
   margin: 0 0 2px;
 }
 
 .criteria-title {
   font-weight: 600;
-}
-
-.provenance-chip {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.provenance-chip + .provenance-chip {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: var(--hairline);
 }
 
 .inspector-actions {
@@ -2112,11 +2233,6 @@ dialog.inspector::backdrop {
 
 .inspector-actions .action-row > * {
   flex: 1 1 0;
-}
-
-.inspector-actions .meta-text {
-  margin: 0;
-  font-size: 13px;
 }
 
 .compact-bottom-nav {
@@ -2269,11 +2385,6 @@ dialog.inspector::backdrop {
   .resource-catalog-card {
     grid-template-columns: 1fr;
   }
-
-  .fact-list > div {
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
 }
 
 /* 2. Medium (768px to 1199px): navigation rail plus one main column */
@@ -2380,7 +2491,10 @@ dialog.inspector::backdrop {
   .node-card,
   .macro-node,
   .surface-panel,
+  .today-unified-header,
   .badge,
+  .proficiency-pill,
+  .dep-current,
   .seg-btn[aria-pressed="true"],
   .switch-track {
     border: 1px solid CanvasText;

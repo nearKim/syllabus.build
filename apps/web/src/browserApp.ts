@@ -83,6 +83,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     scope_note: "Formal math depth preserved; self-reported activity completion never substitutes for demonstrated proficiency.",
   },
   language: "en", sequence_preference_applied: "theory_first",
+  instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
   objectives: [
     {
       objective_id: "objective-tokenization", objective_version_id: "objective-tokenization-v1", topic_id: "topic-tokenization",
@@ -332,7 +333,8 @@ type SfIconName =
   | "learn" | "explore" | "settings"
   | "today" | "plan" | "progress" | "resources"
   | "zoom-in" | "zoom-out" | "reset" | "focus"
-  | "check" | "close";
+  | "check" | "close"
+  | "clock" | "rigor" | "pin" | "arrow-up-left" | "arrow-down-right";
 
 const SF_ICON_PATHS: Record<SfIconName, string> = {
   learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
@@ -348,6 +350,11 @@ const SF_ICON_PATHS: Record<SfIconName, string> = {
   focus: `<circle cx="8" cy="8" r="2"/><path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15"/>`,
   check: `<path d="M3.25 8.25 6.4 11.4 12.75 4.6"/>`,
   close: `<path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/>`,
+  clock: `<circle cx="8" cy="8" r="5.25"/><path d="M8 5.25V8l1.9 1.25"/>`,
+  rigor: `<path d="M3 2.75v10.5h10.5z"/><path d="M3 10.5h2.75v2.75"/>`,
+  pin: `<path d="M6 2.75h4l-.6 3.6 1.85 2.15h-6.5L6.6 6.35z"/><path d="M8 8.5v4.75"/>`,
+  "arrow-up-left": `<path d="M11.25 11.25 4.75 4.75M4.75 10V4.75H10"/>`,
+  "arrow-down-right": `<path d="M4.75 4.75 11.25 11.25M11.25 6v5.25H6"/>`,
 };
 
 function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
@@ -387,17 +394,16 @@ const TRACK_LABELS: Readonly<Record<FlowTrackId, { readonly column: string; read
   gate: { column: "Gate", badge: "Gate" },
 };
 
-const FLOW_ORDER_OPTIONS: Readonly<Record<FlowOrder, { readonly label: string; readonly name: string; readonly tracks: readonly FlowTrackId[] }>> = {
-  theory_first: { label: "Theory", name: "theory first", tracks: ["lecture", "deep_dive", "code"] },
-  application_first: { label: "Code first", name: "code first", tracks: ["code", "lecture", "deep_dive"] },
-  balanced: { label: "Balanced", name: "balanced", tracks: ["lecture", "code", "deep_dive"] },
+const FLOW_ORDER_OPTIONS: Readonly<Record<FlowOrder, { readonly label: string; readonly tracks: readonly FlowTrackId[] }>> = {
+  theory_first: { label: "Theory", tracks: ["lecture", "deep_dive", "code"] },
+  application_first: { label: "Code first", tracks: ["code", "lecture", "deep_dive"] },
+  balanced: { label: "Balanced", tracks: ["lecture", "code", "deep_dive"] },
 };
 
 interface FlowView {
   readonly order: FlowOrder;
   readonly deepDive: DeepDiveMode;
   readonly spacedReview: SpacedReviewMode;
-  readonly plannedOrder: FlowOrder;
 }
 
 function plannedFlowOrder(curriculum: Record<string, unknown>): FlowOrder {
@@ -438,7 +444,7 @@ function executionWords(status: string): string {
 }
 
 const effortWords = ({ min, point, max }: { readonly min: number; readonly point: number; readonly max: number }): string =>
-  min === max ? `${point} min` : `${point} min (${min}–${max})`;
+  min === max ? `${point} min` : `${point} min (${min}–${max} min)`;
 
 interface UnitProgress { readonly done: number; readonly total: number; readonly left: number; readonly started: boolean }
 
@@ -532,17 +538,16 @@ const bridgeSr = (activity: StudyActivity): string => activity.prerequisiteBridg
   ? `<span class="st-sr">Prerequisite Bridge Warning: ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.join(", ") || "none")}.</span>`
   : "";
 
-function renderNodeCard(activity: StudyActivity, selectedActivityId: string | null, hint: string | null): string {
+// A card holds only its title, duration, optional mark, and check. The column header names the track.
+function renderNodeCard(activity: StudyActivity, selectedActivityId: string | null): string {
   const id = escapeHtml(activity.activityId);
   const mod = escapeHtml(activity.moduleId);
-  const track = trackOf(activity);
   const selected = activity.activityId === selectedActivityId;
   const { min, point, max } = activity.durationTriplet;
-  return `<article class="node-card" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${mod}" data-track="${track}" data-required="${activity.required}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
+  return `<article class="node-card" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${mod}" data-track="${trackOf(activity)}" data-required="${activity.required}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
       <button type="button" class="node-open" data-action="select-outline-activity" data-activity-id="${id}" data-module-id="${mod}" aria-pressed="${selected}">
-        <span class="node-badge">${TRACK_LABELS[track].badge}${activity.required ? "" : " · Optional"}</span>
-        <span class="node-title">${escapeHtml(activity.title)}</span>${hint ? `<span class="node-hint">${escapeHtml(hint)}</span>` : ""}
-        <span class="node-foot"><span class="duration-pill">${point}m</span></span>
+        <span class="node-title">${escapeHtml(activity.title)}</span>
+        <span class="node-foot"><span class="node-duration">${point}m</span>${activity.required ? "" : `<span class="node-optional">Optional</span>`}</span>
         <span class="st-sr">${executionWords(activity.executionStatus)}. ${activity.required ? "Required" : "Optional"}. About ${point} minutes, range ${min} to ${max}. Objective proficiency: ${escapeHtml(humanize(activity.objectiveProficiencyStatus))}.</span>
       </button>
       ${checkButton(activity, "node-check")}${bridgeSr(activity)}
@@ -571,8 +576,8 @@ interface UnitPlacement {
   readonly postGate: ReadonlySet<string>;
 }
 
-// Reviews and work that depends on the gate keep their column but stay off the row's arrow chain.
-function placeUnit(mod: StudyModule, view: FlowView): UnitPlacement {
+// Work that depends on the unit's gate, directly or through other work, comes after the gate.
+function postGateIds(mod: StudyModule): ReadonlySet<string> {
   const gateIds = new Set(gateActivities(mod).map((activity) => activity.activityId));
   const postGate = new Set<string>();
   let grew = true;
@@ -586,6 +591,12 @@ function placeUnit(mod: StudyModule, view: FlowView): UnitPlacement {
       }
     }
   }
+  return postGate;
+}
+
+// Reviews and work that depends on the gate keep their column but stay off the row's arrow chain.
+function placeUnit(mod: StudyModule, view: FlowView): UnitPlacement {
+  const postGate = postGateIds(mod);
   const cells = new Map<FlowTrackId, StudyActivity[]>();
   const hidden: StudyActivity[] = [];
   // Pre-gate work goes first in each column, so an arrow always lands on a card that belongs to the chain.
@@ -620,17 +631,6 @@ function renderUnitRow(
   const spineOut = index < units.length - 1 ? (tone === "done" ? "done" : "todo") : "none";
   const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review" && !postGate.has(activity.activityId);
 
-  const columnOf = new Map<string, number>();
-  columns.forEach((track, column) => (cells.get(track) ?? []).forEach((activity) => columnOf.set(activity.activityId, column)));
-  // A reordered view keeps the plan's prerequisites, so name the later column a card still depends on.
-  const hintFor = (activity: StudyActivity, column: number): string | null => {
-    if (postGate.has(activity.activityId)) return "After the gate";
-    if (trackOf(activity) === "review") return "Scheduled revisit";
-    const later = activity.prerequisiteActivityIds.map((id) => columnOf.get(id) ?? -1).filter((other) => other > column);
-    const track = later.length > 0 ? columns[Math.min(...later)] : undefined;
-    return track ? `Needs ${TRACK_LABELS[track].column} first` : null;
-  };
-
   const chain = columns.flatMap((track, column) => (track === "gate" || (cells.get(track) ?? []).some(onChain) ? [column] : []));
   const optionalAt = (column: number): boolean => {
     const items = (cells.get(columns[column] ?? "gate") ?? []).filter((activity) => onChain(activity) || trackOf(activity) === "gate");
@@ -655,7 +655,7 @@ function renderUnitRow(
     const items = cells.get(track) ?? [];
     const gates = items.filter((activity) => trackOf(activity) === "gate");
     const cards = items.filter((activity) => trackOf(activity) !== "gate")
-      .map((activity) => renderNodeCard(activity, selectedActivityId, hintFor(activity, column))).join("");
+      .map((activity) => renderNodeCard(activity, selectedActivityId)).join("");
     const diamonds = track !== "gate" ? ""
       : gates.length > 0 ? gates.map((gate) => renderGateDiamond(mod, gate, selectedActivityId)).join("") : renderGateDiamond(mod, null, selectedActivityId);
     // A card in a column the arrow passes over sits below the line instead of under it.
@@ -692,18 +692,13 @@ function renderFlowBoard(
 ): string {
   const units = modules.map((mod) => placeUnit(mod, view));
   const columns = flowColumns(view);
-  const notes: string[] = [];
-  if (view.order !== view.plannedOrder) {
-    notes.push(`This plan was generated ${FLOW_ORDER_OPTIONS[view.plannedOrder].name}. Another order moves the columns only, so a card marked “Needs … first” keeps its prerequisite.`);
-  }
-  if (view.order === "balanced") notes.push("Balanced alternates Lecture, Code, and Deep Dive before each gate.");
-  if (view.deepDive === "skipped") {
-    const hidden = units.flatMap((unit) => unit.hidden);
-    const minutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
-    notes.push(hidden.length > 0
-      ? `Deep Dive off hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${minutes} min). Required deep dives stay in the Lecture column.`
-      : "No optional deep dives to hide. Required deep dives stay in the Lecture column.");
-  }
+  // The order tabs only move columns, so they add no text. Turning Deep Dive off reports what it hides.
+  const hidden = units.flatMap((unit) => unit.hidden);
+  const hiddenMinutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
+  const note = view.deepDive !== "skipped" ? ""
+    : hidden.length > 0
+      ? `Deep Dive off hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${hiddenMinutes} min). Required deep dives stay in the Lecture column.`
+      : "No optional deep dives to hide. Required deep dives stay in the Lecture column.";
   const headCells = columns.map((track) => {
     if (track === "gate") {
       const passed = modules.filter((mod) => unitGate(mod).passed).length;
@@ -718,10 +713,10 @@ function renderFlowBoard(
       <h2 id="${idPrefix}-title">Study flow</h2>
       ${renderFlowToolbar(idPrefix, view)}
     </div>
-    ${notes.map((note) => `<p class="flow-note">${escapeHtml(note)}</p>`).join("")}
+    ${note ? `<p class="flow-note">${escapeHtml(note)}</p>` : ""}
     <div class="matrix-stage">
       <table class="matrix-table" aria-labelledby="${idPrefix}-title" style="--tracks: ${columns.length - 1}">
-        <colgroup><col class="col-rail">${columns.map((track) => `<col class="${track === "gate" ? "col-gate" : "col-track"}">`).join("")}</colgroup>
+        <colgroup><col class="col-rail">${columns.map(() => `<col class="col-track">`).join("")}</colgroup>
         <thead><tr><th scope="col" class="flow-colhead"><span class="colhead-title">Unit</span><span class="colhead-meta">${units.length} in order</span></th>${headCells}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -768,36 +763,71 @@ function renderStepRow(activity: StudyActivity, selectedActivityId: string | nul
     </li>`;
 }
 
+const MATH_DEPTHS = ["intuitive", "applied", "formal"] as const;
+type MathDepth = (typeof MATH_DEPTHS)[number];
+
+const asRecord = (value: unknown): Readonly<Record<string, unknown>> =>
+  (value !== null && typeof value === "object" ? value as Record<string, unknown> : {});
+
+// The plan's applied math depth for some topics. A topic override wins over the plan default.
+function mathDepthFor(curriculum: Record<string, unknown>, topicIds: readonly string[]): string {
+  const prefs = asRecord(curriculum["instruction_preferences_applied"]);
+  const rawOverrides: unknown = prefs["topic_math_depth_overrides"];
+  const overrides = (Array.isArray(rawOverrides) ? rawOverrides : []).map(asRecord);
+  const depthOf = (topicId: string | null): unknown => overrides.find((entry) => entry["topic_id"] === topicId)?.["math_depth"] ?? prefs["math_depth"];
+  const depths = new Set((topicIds.length > 0 ? topicIds : [null]).map(depthOf).filter((depth): depth is MathDepth => isOneOf(MATH_DEPTHS, depth)));
+  return [...depths].map(humanize).join(", ") || "Not stated";
+}
+
+const activityGlyph = (activity: StudyActivity, size: number): string => trackOf(activity) === "gate"
+  ? statusGlyph("gate", gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)).passed ? "done" : "todo", size)
+  : statusGlyph("module", executionTone(activity.executionStatus), size);
+
 interface InspectorInput {
+  readonly modules: readonly StudyModule[];
   readonly mod: StudyModule;
   readonly activity: StudyActivity;
-  readonly unitNumber: number;
   readonly open: boolean;
-  readonly titleOf: (activityId: string) => string;
-  readonly whyNext: string | null;
+  readonly rigor: string;
   readonly studyAheadRequested: boolean;
   readonly skipRecorded: boolean;
 }
 
-function renderInspector({ mod, activity, unitNumber, open, titleOf, whyNext, studyAheadRequested, skipRecorded }: InspectorInput): string {
+// Drawer sections: status pills, dependency flow, details table, unit gate, then the actions.
+function renderInspector({ modules, mod, activity, open, rigor, studyAheadRequested, skipRecorded }: InspectorInput): string {
   const id = escapeHtml(activity.activityId);
   const title = escapeHtml(activity.title);
   const track = trackOf(activity);
+  const unitNumber = modules.indexOf(mod) + 1;
+  const all = modules.flatMap((unit, index) => unit.activities.map((item) => ({ item, unit: index + 1 })));
+  const byId = new Map(all.map((node) => [node.item.activityId, node]));
+  const titleOf = (activityId: string): string => byId.get(activityId)?.item.title ?? activityId;
   const done = activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed";
-  const gate = track === "gate" ? gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)) : null;
-  const glyph = gate ? statusGlyph("gate", gate.passed ? "done" : "todo", 20) : statusGlyph("module", executionTone(activity.executionStatus), 20);
-  const fact = (term: string, value: string) => `<div><dt>${term}</dt><dd>${escapeHtml(value)}</dd></div>`;
-  const levels = [...new Set(mod.objectives.map((objective) => humanize(objective.level)))].join(", ") || "Not stated";
+  const tone = executionTone(activity.executionStatus);
+  const statusWords = activity.executionStatus === "waived" ? "Waived" : tone === "done" ? "Done" : tone === "doing" ? "In progress" : "Not started";
+
+  // Each row shows a glyph for that step's own status. A gate reads as its unit's gate.
+  const line = (glyph: string, text: string): string => `<li class="dep-row">${glyph}<span>${escapeHtml(text)}</span></li>`;
+  const depRow = ({ item, unit }: { readonly item: StudyActivity; readonly unit: number }): string =>
+    line(activityGlyph(item, 16), trackOf(item) === "gate" ? `Unit ${unit} Gate` : item.title);
+  const prerequisites = activity.prerequisiteActivityIds.map((prereqId) => {
+    const node = byId.get(prereqId);
+    return node ? depRow(node) : line(statusGlyph("module", "todo", 16), prereqId);
+  }).join("") || `<li class="dep-none">None — Entry point</li>`;
+  // With no explicit successor, work before the gate leads to the gate. The gate and later work end the unit.
+  const successors = all.filter((node) => node.item.prerequisiteActivityIds.includes(activity.activityId));
+  const leadsTo = successors.length > 0 ? successors.map(depRow).join("")
+    : track === "gate" || postGateIds(mod).has(activity.activityId) ? `<li class="dep-none">None — End of unit</li>`
+    : line(statusGlyph("gate", unitGate(mod).passed ? "done" : "todo", 16), `Unit ${unitNumber} Gate`);
+
+  const sources = activity.resourceProvenanceCards.map((card) => `<span class="meta-line" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">${escapeHtml(card.verifiedPublisher)} · ${escapeHtml(humanize(card.accessModel))} · <span data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${card.rightsBadge.externalLinkOnly ? "External link" : escapeHtml(humanize(card.rightsBadge.basis))}</span>${card.optionalCertificationBadge ? ` · Optional certificate ${formatMinorCurrency(4900, "USD")}` : ""}</span>`).join("");
+  const metaRow = (icon: SfIconName, key: string, value: string): string =>
+    `<tr><th scope="row"><span class="meta-key">${sfIcon(icon)}${key}</span></th><td>${value}</td></tr>`;
+  const resource = activity.resourceProvenanceCards.find((card) => card.canonicalUrl);
   const criteria = mod.objectives.map((objective) => `<li data-objective-id="${escapeHtml(objective.objectiveId)}">
           ${statusGlyph("gate", objective.proficiencyStatus === "demonstrated" ? "done" : "todo", 16)}
           <div><p class="criteria-title">${escapeHtml(objective.title)}</p><p class="meta-text">${escapeHtml(objective.successCriterion || "No success criterion stated.")}</p><p class="meta-text">${escapeHtml(humanize(objective.proficiencyStatus))}</p></div>
         </li>`).join("");
-  const resources = activity.resourceProvenanceCards.map((card) => `<div class="provenance-chip" data-resource-version-id="${escapeHtml(card.resourceVersionId)}">
-          <p class="criteria-title">${escapeHtml(card.title)}</p>
-          <p class="meta-text">Publisher: ${escapeHtml(card.verifiedPublisher)}</p>
-          <p class="badge-row"><span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(rightsWords(card.rightsBadge))}</span><span class="badge">${escapeHtml(humanize(card.accessModel))} access</span>${card.optionalCertificationBadge ? `<span class="badge badge-cert-optional">Optional certificate ${formatMinorCurrency(4900, "USD")}</span>` : ""}</p>
-          ${card.canonicalUrl ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="resource-link">Open resource<span class="st-sr"> in a new tab</span></a>` : ""}
-        </div>`).join("");
   const bridge = activity.prerequisiteBridgeRecommendation?.recommended
     ? `<div class="prerequisite-bridge-warning" role="status" data-mastery-gated="${activity.masteryGated}"><strong>Prerequisite Bridge Warning:</strong> ${escapeHtml(activity.prerequisiteBridgeRecommendation.reason)} Unmet capabilities: ${escapeHtml(activity.unmetPrerequisiteActivityIds.map(titleOf).join(", ") || "none")}.</div>`
     : "";
@@ -810,30 +840,33 @@ function renderInspector({ mod, activity, unitNumber, open, titleOf, whyNext, st
       <p class="inspector-context">Unit ${unitNumber} · ${TRACK_LABELS[track].badge}</p>
       <h2 id="${INSPECTOR_ID}-title" tabindex="-1" autofocus>${title}</h2>
       <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">${sfIcon("close")}</button>
+      <div class="inspector-pills">
+        <button type="button" class="status-toggle" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${statusGlyph("module", tone, 16)}<span>${statusWords}</span><span class="st-sr">. ${done ? executionWords(activity.executionStatus) : "Mark self-reported completed"}</span></button>
+        <span class="proficiency-pill" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}">${statusGlyph("gate", activity.objectiveProficiencyStatus === "demonstrated" ? "done" : "todo", 16)}<span><span class="st-sr">Objective proficiency: </span>${escapeHtml(humanize(activity.objectiveProficiencyStatus))}</span></span>
+      </div>
     </header>
     <div class="inspector-scroll" data-scroll-region>
-      <p class="inspector-status">${glyph}<span>${gate ? (gate.passed ? "Passed" : "Not passed") : executionWords(activity.executionStatus)}</span></p>
-      <dl class="fact-list">
-        ${fact("Capability", displayUnitTitle(mod.title))}
-        ${fact("Effort", effortWords(activity.durationTriplet))}
-        ${fact("Requirement", activity.required ? "Required" : "Optional")}
-        ${fact("Activity", executionWords(activity.executionStatus))}
-        ${fact("Objective", humanize(activity.objectiveProficiencyStatus))}
-        ${fact("Math treatment", levels)}
-        ${fact("Comes after", activity.prerequisiteActivityIds.map(titleOf).join(", ") || "None")}
-      </dl>
-      ${whyNext ? `<p class="prose"><strong>Why this is next.</strong> ${escapeHtml(whyNext)}</p>` : ""}
-      <p class="meta-text">Activity execution and objective proficiency stay separate. Completing this activity does not demonstrate the objective.</p>
-      ${mod.summary ? `<p class="prose">${escapeHtml(mod.summary)}</p>` : ""}
+      <ol class="dep-flow" aria-label="Dependency flow">
+        <li class="dep-step"><p class="dep-label">${sfIcon("arrow-up-left")}Prerequisites</p><ul class="dep-list">${prerequisites}</ul></li>
+        <li class="dep-step dep-current">${activityGlyph(activity, 16)}<span>This activity</span></li>
+        <li class="dep-step"><p class="dep-label">${sfIcon("arrow-down-right")}Leads to</p><ul class="dep-list">${leadsTo}</ul></li>
+      </ol>
       ${bridge}
+      <table class="meta-table">
+        <caption class="st-sr">Activity details</caption>
+        <tbody>
+          ${metaRow("clock", "Duration", effortWords(activity.durationTriplet))}
+          ${metaRow("rigor", "Rigor", escapeHtml(rigor))}
+          ${metaRow("pin", "Type", activity.required ? "Required" : "Optional")}
+          ${metaRow("resources", "Source", sources || "No external source")}
+        </tbody>
+      </table>
       <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-gate"><h3 id="${INSPECTOR_ID}-gate">Unit gate</h3><ul class="criteria-list">${criteria || `<li class="meta-text">No objectives are mapped to this unit.</li>`}</ul></section>
-      ${resources ? `<section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-resources"><h3 id="${INSPECTOR_ID}-resources">Resource</h3>${resources}</section>` : ""}
       ${notes}
     </div>
     <div class="inspector-actions">
-      <button type="button" class="btn-primary btn-complete" data-action="complete-activity" data-activity-id="${id}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${done ? "Self-reported completed" : "Mark self-reported completed"}</button>
+      ${resource?.canonicalUrl ? `<a class="btn-primary" href="${escapeHtml(resource.canonicalUrl)}" target="_blank" rel="noopener noreferrer">Open verified resource<span aria-hidden="true">↗</span><span class="st-sr"> in a new tab</span></a>` : ""}
       <div class="action-row"><button type="button" class="btn-secondary" data-action="study-ahead" data-activity-id="${id}">Study ahead</button><button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button></div>
-      <p class="meta-text">Study ahead records a started event only. It does not complete prerequisites, create a waiver, or change proficiency. Skip records self_reported_skipped for this activity only.</p>
     </div>
   </dialog>`;
 }
@@ -1078,12 +1111,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const rescheduleValue = inputState.rescheduleValue ?? null;
   const depthOverrideReset = inputState.depthOverrideReset ?? false;
   const studyDetailOpen = inputState.studyDetailOpen ?? false;
-  const plannedOrder = plannedFlowOrder(curriculum);
   const flowView: FlowView = {
-    order: inputState.flowOrder ?? plannedOrder,
+    order: inputState.flowOrder ?? plannedFlowOrder(curriculum),
     deepDive: inputState.deepDive ?? "included",
     spacedReview: inputState.spacedReview ?? "included",
-    plannedOrder,
   };
   const isLearn = activeTopLevel === "Learn";
 
@@ -1094,7 +1125,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const selectedModuleId = basePlanModel.selectedModuleId;
   const selectedActivityId = basePlanModel.selectedActivityId;
   const outlineById = new Map(basePlanModel.outlineActivities.map((act) => [act.activityId, act]));
-  const titleOf = (activityId: string): string => outlineById.get(activityId)?.title ?? activityId;
   const stepRow = (activityId: string, note: string, extraAttrs = ""): string => {
     const activity = outlineById.get(activityId);
     return activity ? renderStepRow(activity, selectedActivityId, note, extraAttrs) : "";
@@ -1117,25 +1147,25 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
   const macroStageHtml = renderMacroStage(modules, selectedModuleId);
-  // Today's one line above the Study flow. Resume opens the drawer, which holds the details.
+  // The second row of Today's header card. Resume opens the drawer, which holds the details.
   const planProgress = unitProgress(basePlanModel.outlineActivities);
-  const nextUpBarHtml = `<div class="next-up-bar">
-            <p class="next-up-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</p>
-            ${nextUp ? `<div class="next-up">
-              <p class="next-up-text"><span class="next-up-label">Next:</span><span class="next-up-title">${escapeHtml(nextUp.title)}</span><span class="next-up-time">· ${nextUp.durationTriplet.point}m</span></p>
-              <button type="button" class="btn-primary" data-action="select-outline-activity" data-activity-id="${escapeHtml(nextUp.activityId)}" data-module-id="${escapeHtml(nextUp.moduleId)}">Resume<span aria-hidden="true">→</span></button>
-            </div>` : `<p class="next-up-text">Nothing is scheduled next.</p>`}
-          </div>`;
+  const nextUpRowHtml = `<div class="today-next">
+              <p class="next-up-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</p>
+              ${nextUp ? `<div class="next-up">
+                <p class="next-up-text"><span class="next-up-label">Next:</span><span class="next-up-title">${escapeHtml(nextUp.title)}</span><span class="next-up-time">· ${nextUp.durationTriplet.point}m</span></p>
+                <button type="button" class="btn-primary" data-action="select-outline-activity" data-activity-id="${escapeHtml(nextUp.activityId)}" data-module-id="${escapeHtml(nextUp.moduleId)}">Resume<span aria-hidden="true">→</span></button>
+              </div>` : `<p class="next-up-text">Nothing is scheduled next.</p>`}
+            </div>`;
   const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView);
   const planBoardHtml = renderFlowBoard("flow-plan", modules, selectedModuleId, selectedActivityId, flowView);
 
   const selectedModule = modules.find((mod) => mod.moduleId === selectedModuleId) ?? modules[0];
   const selectedActivity = selectedModule?.activities.find((act) => act.activityId === selectedActivityId) ?? selectedModule?.activities[0];
+  const topicOf = new Map(basePlanModel.objectiveTracks.map((obj) => [obj.objectiveId, obj.topicId]));
   const inspectorHtml = selectedModule && selectedActivity
     ? renderInspector({
-      mod: selectedModule, activity: selectedActivity, unitNumber: modules.indexOf(selectedModule) + 1,
-      open: studyDetailOpen && isLearn, titleOf,
-      whyNext: nextUp && nextUp.activityId === selectedActivity.activityId ? nextUp.scheduledReason : null,
+      modules, mod: selectedModule, activity: selectedActivity, open: studyDetailOpen && isLearn,
+      rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
       studyAheadRequested: studyAheadActivityId === selectedActivity.activityId,
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
     })
@@ -1271,17 +1301,19 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
-          <div class="section-header">
-            <h1 class="page-title">Today</h1>
-            <div class="plan-toolbar">
-              <label class="field field-inline" for="selected-plan"><span>Selected plan</span>
-                <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
-              </label>
-              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
+          <header class="today-unified-header" data-opaque-surface="true">
+            <div class="section-header">
+              <h1 class="page-title">Today</h1>
+              <div class="plan-toolbar">
+                <label class="field field-inline" for="selected-plan"><span>Selected plan</span>
+                  <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
+                </label>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
+              </div>
             </div>
-          </div>
-          ${recoveryBanner}
-          ${nextUpBarHtml}
+            ${recoveryBanner}
+            ${nextUpRowHtml}
+          </header>
           ${todayBoardHtml}
           <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
             <h2>Study</h2>
