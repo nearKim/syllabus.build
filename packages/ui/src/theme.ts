@@ -8,98 +8,34 @@ import { UI_TOKENS, type SemanticColorToken, type ThemeMode } from "./tokens.ts"
 
 export type ThemePreference = "light" | "dark" | "system";
 
-/**
- * Surfaces where study content, reading, math, code, assessments, evidence,
- * pricing, or consent are rendered. These surfaces MUST always remain 100% opaque
- * (`UI_TOKENS.effects.opaque_content === true`, `UI-008`, `UI-022`, `@S70`, `@S79`).
- */
 export const STUDY_SURFACE_KINDS = [
-  "reading",
-  "math",
-  "code",
-  "assessment",
-  "quiz",
-  "dense_table",
-  "evidence",
-  "pricing",
-  "consent",
-  "destructive_confirmation",
-  "study_card",
+  "reading", "math", "code", "assessment", "quiz", "dense_table",
+  "evidence", "pricing", "consent", "destructive_confirmation", "study_card",
 ] as const;
 
 export type StudySurfaceKind = (typeof STUDY_SURFACE_KINDS)[number];
 
-/**
- * Top-level navigation chrome where restrained translucent glass (`0.92` opacity,
- * `12px` backdrop blur) is permitted when system and user preferences allow it.
- */
 export const NAVIGATION_CHROME_SURFACE_KINDS = [
-  "navigation_header",
-  "bottom_navigation",
-  "compact_map_toolbar",
-  "navigation_chrome",
+  "navigation_header", "bottom_navigation", "compact_map_toolbar", "navigation_chrome",
 ] as const;
 
 export type NavigationChromeSurfaceKind = (typeof NAVIGATION_CHROME_SURFACE_KINDS)[number];
-
 export type SurfaceKind = StudySurfaceKind | NavigationChromeSurfaceKind;
 
-/**
- * Section 9.2 canonical typography scale and line-width bounds.
- */
 export const TYPOGRAPHY_TOKENS = {
-  page_title: {
-    compactPx: 28,
-    widePx: 36,
-    fontWeight: 600,
-    lineHeight: 1.15,
-  },
-  section_title: {
-    compactPx: 22,
-    widePx: 24,
-    fontWeight: 600,
-    lineHeight: 1.25,
-  },
-  card_title: {
-    compactPx: 18,
-    widePx: 18,
-    fontWeight: 600,
-    lineHeight: 1.35,
-  },
-  body: {
-    compactPx: 16,
-    widePx: 16,
-    fontWeight: 400,
-    lineHeight: 1.5,
-    minLineWidthCh: 60,
-    maxLineWidthCh: 70,
-  },
-  metadata: {
-    compactPx: 14,
-    widePx: 14,
-    fontWeight: 400,
-    lineHeight: 1.45,
-  },
+  page_title: { compactPx: 28, widePx: 36, fontWeight: 600, lineHeight: 1.15 },
+  section_title: { compactPx: 22, widePx: 24, fontWeight: 600, lineHeight: 1.25 },
+  card_title: { compactPx: 18, widePx: 18, fontWeight: 600, lineHeight: 1.35 },
+  body: { compactPx: 16, widePx: 16, fontWeight: 400, lineHeight: 1.5, minLineWidthCh: 60, maxLineWidthCh: 70 },
+  metadata: { compactPx: 14, widePx: 14, fontWeight: 400, lineHeight: 1.45 },
   code: {
-    compactPx: 14,
-    widePx: 14,
-    fontWeight: 400,
-    lineHeight: 1.55,
-    fontFamily:
-      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+    compactPx: 14, widePx: 14, fontWeight: 400, lineHeight: 1.55,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
   },
 } as const;
 
-export const CORNER_RADIUS_TOKENS = {
-  controlPx: 12,
-  cardPx: 16,
-  sheetPx: 24,
-} as const;
-
-export const CARD_PADDING_TOKENS = {
-  compactPx: 20,
-  widePx: 24,
-} as const;
+export const CORNER_RADIUS_TOKENS = { controlPx: 12, cardPx: 16, sheetPx: 24 } as const;
+export const CARD_PADDING_TOKENS = { compactPx: 20, widePx: 24 } as const;
 
 export interface EnvironmentMediaPreferences {
   readonly systemColorScheme?: ThemeMode;
@@ -160,13 +96,7 @@ export interface ResolvedMotionPolicy {
 }
 
 export type AuthoritativeJobStatus =
-  | "queued"
-  | "running"
-  | "validating"
-  | "succeeded"
-  | "failed"
-  | "cancel_requested"
-  | "cancelled";
+  | "queued" | "running" | "validating" | "succeeded" | "failed" | "cancel_requested" | "cancelled";
 
 export interface DeterministicStepIndicator {
   readonly status: AuthoritativeJobStatus;
@@ -177,147 +107,80 @@ export interface DeterministicStepIndicator {
 
 const STUDY_SURFACE_SET: ReadonlySet<string> = new Set(STUDY_SURFACE_KINDS);
 
-/**
- * Resolves `"light"`, `"dark"`, or `"system"` preference into an effective `ThemeMode`.
- */
 export function resolveThemeMode(
   preference: ThemePreference = "system",
-  systemColorScheme: ThemeMode = "light"
+  systemColorScheme: ThemeMode = "light",
 ): ThemeMode {
-  if (preference === "light" || preference === "dark") {
-    return preference;
-  }
-  return systemColorScheme === "dark" ? "dark" : "light";
+  return preference === "light" || preference === "dark"
+    ? preference
+    : systemColorScheme === "dark" ? "dark" : "light";
 }
 
-/**
- * Resolves the semantic color token dictionary for the active `ThemeMode`.
- * Includes `rootColorScheme: "light dark"` for `:root` viewport-level native control adaptation.
- */
 export function resolveThemePalette(
   preference: ThemePreference = "system",
-  systemColorScheme: ThemeMode = "light"
+  systemColorScheme: ThemeMode = "light",
 ): ResolvedThemePalette {
   const mode = resolveThemeMode(preference, systemColorScheme);
-  const colors = {} as Record<SemanticColorToken, string>;
-  const tokenKeys = Object.keys(UI_TOKENS.colors) as SemanticColorToken[];
-  for (const key of tokenKeys) {
-    colors[key] = UI_TOKENS.colors[key][mode];
-  }
-  return {
-    mode,
-    rootColorScheme: "light dark",
-    colors,
-  };
+  const colors = Object.fromEntries(
+    Object.entries(UI_TOKENS.colors).map(([k, v]) => [k, v[mode]]),
+  ) as Record<SemanticColorToken, string>;
+  return { mode, rootColorScheme: "light dark", colors };
 }
 
 export function isStudySurfaceKind(surfaceKind: SurfaceKind): surfaceKind is StudySurfaceKind {
   return STUDY_SURFACE_SET.has(surfaceKind);
 }
 
-/**
- * Computes surface styles enforcing:
- * 1. Opaque study surfaces (`opaque_content: true`) for reading, math, code, assessments,
- *    dense tables, evidence, pricing, and consent (`UI-008`, `UI-022`, `@S70`, `@S79`).
- * 2. Restrained glass (`glass_opacity: 0.92`, `backdrop_blur_css_px: 12`) strictly limited
- *    to top-level navigation chrome, with solid fallbacks when `prefers-reduced-transparency: reduce`,
- *    app `solidSurfaces`, `forced-colors: active`, or unsupported `backdrop-filter` applies.
- * 3. High-contrast semantic borders and explicit 2px focus ring with 2px offset.
- */
 export function resolveSurfaceStyle(
   surfaceKind: SurfaceKind,
   preferences: AppearancePreferences = {},
-  env: EnvironmentMediaPreferences = {}
+  env: EnvironmentMediaPreferences = {},
 ): ResolvedSurfaceStyle {
-  const palette = resolveThemePalette(
-    preferences.themePreference ?? "system",
-    env.systemColorScheme ?? "light"
-  );
-  const studySurface = isStudySurfaceKind(surfaceKind);
+  const palette = resolveThemePalette(preferences.themePreference ?? "system", env.systemColorScheme ?? "light");
+  const isStudySurface = isStudySurfaceKind(surfaceKind);
   const forcedColors = env.forcedColorsActive === true;
-  const backdropSupported = env.backdropFilterSupported !== false;
   const reducedTransparency =
     Boolean(preferences.solidSurfaces) ||
     (UI_TOKENS.effects.system_reduction_wins && Boolean(env.prefersReducedTransparency));
-
-  const mustUseSolidSurface =
-    studySurface ||
-    UI_TOKENS.effects.opaque_content && studySurface ||
-    reducedTransparency ||
-    !backdropSupported ||
-    forcedColors;
-
-  const opacity = mustUseSolidSurface ? 1 : UI_TOKENS.effects.glass_opacity;
-  const backdropBlurPx = mustUseSolidSurface ? 0 : UI_TOKENS.effects.backdrop_blur_css_px;
-  const backdropFilterCss = mustUseSolidSurface ? "none" : `blur(${backdropBlurPx}px)`;
-
-  const backgroundColor = forcedColors ? "Canvas" : palette.colors.surface;
-  const textColor = forcedColors ? "CanvasText" : palette.colors["text-primary"];
-  const secondaryTextColor = forcedColors ? "CanvasText" : palette.colors["text-secondary"];
-  const borderColor = forcedColors ? "ButtonBorder" : palette.colors["border-control"];
-  const focusColor = forcedColors ? "Highlight" : palette.colors.accent;
+  const opaque = isStudySurface || reducedTransparency || env.backdropFilterSupported === false || forcedColors;
+  const backdropBlurPx = opaque ? 0 : UI_TOKENS.effects.backdrop_blur_css_px;
 
   return {
     surfaceKind,
-    isStudySurface: studySurface,
-    opaque: mustUseSolidSurface,
-    opacity,
+    isStudySurface,
+    opaque,
+    opacity: opaque ? 1 : UI_TOKENS.effects.glass_opacity,
     backdropBlurPx,
-    backdropFilterCss,
-    usesSolidFallback: mustUseSolidSurface,
-    backgroundColor,
-    textColor,
-    secondaryTextColor,
-    borderColor,
+    backdropFilterCss: opaque ? "none" : `blur(${backdropBlurPx}px)`,
+    usesSolidFallback: opaque,
+    backgroundColor: forcedColors ? "Canvas" : palette.colors.surface,
+    textColor: forcedColors ? "CanvasText" : palette.colors["text-primary"],
+    secondaryTextColor: forcedColors ? "CanvasText" : palette.colors["text-secondary"],
+    borderColor: forcedColors ? "ButtonBorder" : palette.colors["border-control"],
     borderWidthPx: forcedColors ? 2 : 1,
     borderStyle: "solid",
-    focusRing: {
-      widthPx: 2,
-      offsetPx: 2,
-      style: "solid",
-      color: focusColor,
-    },
+    focusRing: { widthPx: 2, offsetPx: 2, style: "solid", color: forcedColors ? "Highlight" : palette.colors.accent },
     forcedColorsActive: forcedColors,
     shadowOnlyAffordanceAllowed: false,
   };
 }
 
-/**
- * Resolves motion durations and animation permissions (`UI-022`, `@S78`, `@S86`).
- * System `prefers-reduced-motion: reduce` always wins over app preferences
- * (`UI_TOKENS.effects.system_reduction_wins === true`).
- */
 export function resolveMotionPolicy(
   preferences: AppearancePreferences = {},
-  env: EnvironmentMediaPreferences = {}
+  env: EnvironmentMediaPreferences = {},
 ): ResolvedMotionPolicy {
   const reducedMotion =
     (UI_TOKENS.effects.system_reduction_wins && Boolean(env.prefersReducedMotion)) ||
     Boolean(preferences.reduceMotion);
-
-  if (reducedMotion) {
-    return {
-      reducedMotion: true,
-      systemReductionWins: true,
-      transitionMs: [0, 0] as const,
-      transitionDurationCss: "0ms",
-      sheetMaxMs: 0,
-      allowAnimatedSpinners: false,
-      allowDecorativeShimmer: false,
-      allowAnimatedGraphLayout: false,
-      allowParallax: false,
-    };
-  }
-
   return {
-    reducedMotion: false,
+    reducedMotion,
     systemReductionWins: true,
-    transitionMs: UI_TOKENS.effects.transition_ms,
-    transitionDurationCss: `${UI_TOKENS.effects.transition_ms[0]}ms`,
-    sheetMaxMs: UI_TOKENS.effects.sheet_max_ms,
-    allowAnimatedSpinners: true,
+    transitionMs: reducedMotion ? [0, 0] : UI_TOKENS.effects.transition_ms,
+    transitionDurationCss: reducedMotion ? "0ms" : `${UI_TOKENS.effects.transition_ms[0]}ms`,
+    sheetMaxMs: reducedMotion ? 0 : UI_TOKENS.effects.sheet_max_ms,
+    allowAnimatedSpinners: !reducedMotion,
     allowDecorativeShimmer: false,
-    allowAnimatedGraphLayout: true,
+    allowAnimatedGraphLayout: !reducedMotion,
     allowParallax: false,
   };
 }
@@ -332,23 +195,17 @@ const DETERMINISTIC_JOB_LABELS: Readonly<Record<AuthoritativeJobStatus, string>>
   cancelled: "Cancelled: Job terminated without activating a plan",
 };
 
-/**
- * Produces a deterministic step label for asynchronous generation/adaptation jobs.
- * Disables animated spinners when `prefers-reduced-motion: reduce` is active and
- * never fabricates progress percentages (`@S74`, `@S78`, `@S86`).
- */
 export function resolveDeterministicStepIndicator(
   status: AuthoritativeJobStatus,
   preferences: AppearancePreferences = {},
-  env: EnvironmentMediaPreferences = {}
+  env: EnvironmentMediaPreferences = {},
 ): DeterministicStepIndicator {
   const motion = resolveMotionPolicy(preferences, env);
-  const isInFlight = status === "queued" || status === "running" || status === "validating";
-
+  const inFlight = status === "queued" || status === "running" || status === "validating";
   return {
     status,
     stepLabel: DETERMINISTIC_JOB_LABELS[status],
-    showAnimatedSpinner: isInFlight && motion.allowAnimatedSpinners,
+    showAnimatedSpinner: inFlight && motion.allowAnimatedSpinners,
     fabricatedProgressPercentage: null,
   };
 }
@@ -374,13 +231,9 @@ export interface ThemeController {
   getStepIndicator(status: AuthoritativeJobStatus): DeterministicStepIndicator;
 }
 
-/**
- * Creates a presentation-only appearance controller (`UI-021`, `UI-022`, `UI-023`, `@S87`).
- * Appearance updates never mutate proficiency evidence, curriculum content, or billing state.
- */
 export function createThemeController(
   initialPreferences: AppearancePreferences = {},
-  initialEnv: EnvironmentMediaPreferences = {}
+  initialEnv: EnvironmentMediaPreferences = {},
 ): ThemeController {
   let preferences: AppearancePreferences = {
     themePreference: initialPreferences.themePreference ?? "system",
@@ -395,44 +248,28 @@ export function createThemeController(
     forcedColorsActive: initialEnv.forcedColorsActive ?? false,
   };
 
-  function getState(): ThemeControllerState {
-    const pref = preferences.themePreference ?? "system";
+  const getState = (): ThemeControllerState => {
+    const themePreference = preferences.themePreference ?? "system";
     const sysScheme = env.systemColorScheme ?? "light";
     return {
-      themePreference: pref,
-      resolvedThemeMode: resolveThemeMode(pref, sysScheme),
+      themePreference,
+      resolvedThemeMode: resolveThemeMode(themePreference, sysScheme),
       solidSurfaces: Boolean(preferences.solidSurfaces),
       reduceMotion: Boolean(preferences.reduceMotion),
       env,
-      palette: resolveThemePalette(pref, sysScheme),
+      palette: resolveThemePalette(themePreference, sysScheme),
       motionPolicy: resolveMotionPolicy(preferences, env),
       preservesLearningAndBillingState: true,
     };
-  }
+  };
 
   return {
     getState,
-    setThemePreference(themePreference: ThemePreference): ThemeControllerState {
-      preferences = { ...preferences, themePreference };
-      return getState();
-    },
-    setSolidSurfaces(solidSurfaces: boolean): ThemeControllerState {
-      preferences = { ...preferences, solidSurfaces };
-      return getState();
-    },
-    setReduceMotion(reduceMotion: boolean): ThemeControllerState {
-      preferences = { ...preferences, reduceMotion };
-      return getState();
-    },
-    setEnvironment(nextEnv: Partial<EnvironmentMediaPreferences>): ThemeControllerState {
-      env = { ...env, ...nextEnv };
-      return getState();
-    },
-    getSurfaceStyle(surfaceKind: SurfaceKind): ResolvedSurfaceStyle {
-      return resolveSurfaceStyle(surfaceKind, preferences, env);
-    },
-    getStepIndicator(status: AuthoritativeJobStatus): DeterministicStepIndicator {
-      return resolveDeterministicStepIndicator(status, preferences, env);
-    },
+    setThemePreference: (themePreference) => ((preferences = { ...preferences, themePreference }), getState()),
+    setSolidSurfaces: (solidSurfaces) => ((preferences = { ...preferences, solidSurfaces }), getState()),
+    setReduceMotion: (reduceMotion) => ((preferences = { ...preferences, reduceMotion }), getState()),
+    setEnvironment: (nextEnv) => ((env = { ...env, ...nextEnv }), getState()),
+    getSurfaceStyle: (surfaceKind) => resolveSurfaceStyle(surfaceKind, preferences, env),
+    getStepIndicator: (status) => resolveDeterministicStepIndicator(status, preferences, env),
   };
 }

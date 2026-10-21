@@ -79,31 +79,27 @@ export interface AutomatedAccessibilityAuditReport {
   readonly manualEvaluationMatrix: ManualWcagEvaluationMatrixSpec;
 }
 
-function parseHexChannel(hex: string, start: number): number {
+const parseHexChannel = (hex: string, start: number): number => {
   const raw = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
   return raw <= 0.04045 ? raw / 12.92 : Math.pow((raw + 0.055) / 1.055, 2.4);
-}
+};
 
 export function calculateRelativeLuminance(hexColor: string): number {
   const normalized = hexColor.trim().replace(/^#/, "");
   if (!/^[0-9a-fA-F]{6}$/.test(normalized)) {
     throw new Error(`Expected 6-digit hex color, received '${hexColor}'`);
   }
-  const r = parseHexChannel(normalized, 0);
-  const g = parseHexChannel(normalized, 2);
-  const b = parseHexChannel(normalized, 4);
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return (
+    0.2126 * parseHexChannel(normalized, 0) +
+    0.7152 * parseHexChannel(normalized, 2) +
+    0.0722 * parseHexChannel(normalized, 4)
+  );
 }
 
-export function calculateContrastRatio(
-  foregroundHex: string,
-  backgroundHex: string
-): number {
+export function calculateContrastRatio(foregroundHex: string, backgroundHex: string): number {
   const l1 = calculateRelativeLuminance(foregroundHex);
   const l2 = calculateRelativeLuminance(backgroundHex);
-  const lighter = Math.max(l1, l2);
-  const darker = Math.min(l1, l2);
-  return Number(((lighter + 0.05) / (darker + 0.05)).toFixed(2));
+  return Number(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)).toFixed(2));
 }
 
 export function minimumRatioForCategory(category: WcagContrastCategory): number {
@@ -116,77 +112,20 @@ const REQUIRED_TOKEN_PAIRS: ReadonlyArray<{
   readonly backgroundToken: SemanticColorToken;
   readonly category: WcagContrastCategory;
 }> = [
-  {
-    pairId: "text-primary-on-canvas",
-    foregroundToken: "text-primary",
-    backgroundToken: "canvas",
-    category: "normal_text",
-  },
-  {
-    pairId: "text-primary-on-surface",
-    foregroundToken: "text-primary",
-    backgroundToken: "surface",
-    category: "normal_text",
-  },
-  {
-    pairId: "text-primary-on-surface-secondary",
-    foregroundToken: "text-primary",
-    backgroundToken: "surface-secondary",
-    category: "normal_text",
-  },
-  {
-    pairId: "text-secondary-on-canvas",
-    foregroundToken: "text-secondary",
-    backgroundToken: "canvas",
-    category: "normal_text",
-  },
-  {
-    pairId: "text-secondary-on-surface",
-    foregroundToken: "text-secondary",
-    backgroundToken: "surface",
-    category: "normal_text",
-  },
-  {
-    pairId: "action-text-on-action-fill",
-    foregroundToken: "action-text",
-    backgroundToken: "action-fill",
-    category: "normal_text",
-  },
-  {
-    pairId: "success-text-on-success-surface",
-    foregroundToken: "success-text",
-    backgroundToken: "success-surface",
-    category: "normal_text",
-  },
-  {
-    pairId: "warning-text-on-warning-surface",
-    foregroundToken: "warning-text",
-    backgroundToken: "warning-surface",
-    category: "normal_text",
-  },
-  {
-    pairId: "danger-text-on-danger-surface",
-    foregroundToken: "danger-text",
-    backgroundToken: "danger-surface",
-    category: "normal_text",
-  },
-  {
-    pairId: "border-control-on-surface",
-    foregroundToken: "border-control",
-    backgroundToken: "surface",
-    category: "ui_component",
-  },
-  {
-    pairId: "accent-on-accent-surface",
-    foregroundToken: "accent",
-    backgroundToken: "accent-surface",
-    category: "ui_component",
-  },
+  { pairId: "text-primary-on-canvas", foregroundToken: "text-primary", backgroundToken: "canvas", category: "normal_text" },
+  { pairId: "text-primary-on-surface", foregroundToken: "text-primary", backgroundToken: "surface", category: "normal_text" },
+  { pairId: "text-primary-on-surface-secondary", foregroundToken: "text-primary", backgroundToken: "surface-secondary", category: "normal_text" },
+  { pairId: "text-secondary-on-canvas", foregroundToken: "text-secondary", backgroundToken: "canvas", category: "normal_text" },
+  { pairId: "text-secondary-on-surface", foregroundToken: "text-secondary", backgroundToken: "surface", category: "normal_text" },
+  { pairId: "action-text-on-action-fill", foregroundToken: "action-text", backgroundToken: "action-fill", category: "normal_text" },
+  { pairId: "success-text-on-success-surface", foregroundToken: "success-text", backgroundToken: "success-surface", category: "normal_text" },
+  { pairId: "warning-text-on-warning-surface", foregroundToken: "warning-text", backgroundToken: "warning-surface", category: "normal_text" },
+  { pairId: "danger-text-on-danger-surface", foregroundToken: "danger-text", backgroundToken: "danger-surface", category: "normal_text" },
+  { pairId: "border-control-on-surface", foregroundToken: "border-control", backgroundToken: "surface", category: "ui_component" },
+  { pairId: "accent-on-accent-surface", foregroundToken: "accent", backgroundToken: "accent-surface", category: "ui_component" },
 ];
 
-export function evaluateThemeTokenContrast(
-  mode: ThemeMode
-): readonly TokenContrastEvaluation[] {
+export function evaluateThemeTokenContrast(mode: ThemeMode): readonly TokenContrastEvaluation[] {
   const palette = resolveThemePalette(mode, mode);
   return REQUIRED_TOKEN_PAIRS.map((pair) => {
     const foregroundHex = palette.colors[pair.foregroundToken];
@@ -195,12 +134,9 @@ export function evaluateThemeTokenContrast(
     const contrastRatio = calculateContrastRatio(foregroundHex, backgroundHex);
     return {
       mode,
-      pairId: pair.pairId,
-      foregroundToken: pair.foregroundToken,
-      backgroundToken: pair.backgroundToken,
+      ...pair,
       foregroundHex,
       backgroundHex,
-      category: pair.category,
       minimumRequiredRatio,
       contrastRatio,
       passes: contrastRatio >= minimumRequiredRatio,
@@ -259,7 +195,7 @@ export const MANUAL_WCAG_22_AA_EVALUATION_MATRIX: ManualWcagEvaluationMatrixSpec
       requiredAssistiveTechOrEnvironment: ["KaTeX MathML output", "VoiceOver / NVDA math reading"],
       verificationSteps: [
         "Inspect rendered inline and display math blocks in study activities and assessment prompts.",
-        "Verify each formula includes semantic <math> MathML markup, an <annotation encoding=\"application/x-tex\"> source fallback, and an aria-label.",
+        'Verify each formula includes semantic <math> MathML markup, an <annotation encoding="application/x-tex"> source fallback, and an aria-label.',
       ],
       passCondition: "Mathematical expressions are navigable and readable by assistive technologies without relying on raster images.",
     },
@@ -315,49 +251,27 @@ export const MANUAL_WCAG_22_AA_EVALUATION_MATRIX: ManualWcagEvaluationMatrixSpec
 };
 
 export function runAutomatedAccessibilityRegressionCheck(
-  screens: readonly ScreenAccessibilityDescriptor[]
+  screens: readonly ScreenAccessibilityDescriptor[],
 ): AutomatedAccessibilityAuditReport {
   const violations: string[] = [];
-
-  const contrastEvaluations = [
-    ...evaluateThemeTokenContrast("light"),
-    ...evaluateThemeTokenContrast("dark"),
-  ];
-  for (const evaluation of contrastEvaluations) {
-    if (!evaluation.passes) {
-      violations.push(
-        `Contrast failure (${evaluation.mode}) ${evaluation.pairId}: ${evaluation.contrastRatio}:1 < ${evaluation.minimumRequiredRatio}:1`
-      );
+  const contrastEvaluations = [...evaluateThemeTokenContrast("light"), ...evaluateThemeTokenContrast("dark")];
+  for (const e of contrastEvaluations) {
+    if (!e.passes) {
+      violations.push(`Contrast failure (${e.mode}) ${e.pairId}: ${e.contrastRatio}:1 < ${e.minimumRequiredRatio}:1`);
     }
   }
 
   let opaqueSurfaceChecksPass = UI_TOKENS.effects.opaque_content === true;
   for (const surfaceKind of STUDY_SURFACE_KINDS) {
-    const resolved = resolveSurfaceStyle(surfaceKind, {
-      themePreference: "light",
-    });
-    const resolvedDark = resolveSurfaceStyle(surfaceKind, {
-      themePreference: "dark",
-    });
-    if (
-      !resolved.opaque ||
-      resolved.opacity !== 1 ||
-      resolved.backdropBlurPx !== 0 ||
-      !resolvedDark.opaque ||
-      resolvedDark.opacity !== 1 ||
-      resolvedDark.backdropBlurPx !== 0
-    ) {
+    const light = resolveSurfaceStyle(surfaceKind, { themePreference: "light" });
+    const dark = resolveSurfaceStyle(surfaceKind, { themePreference: "dark" });
+    if (!light.opaque || light.opacity !== 1 || light.backdropBlurPx !== 0 || !dark.opaque || dark.opacity !== 1 || dark.backdropBlurPx !== 0) {
       opaqueSurfaceChecksPass = false;
-      violations.push(
-        `Surface '${surfaceKind}' violated UI-001 opaque study surface rule.`
-      );
+      violations.push(`Surface '${surfaceKind}' violated UI-001 opaque study surface rule.`);
     }
   }
 
-  let touchTargetChecksPass =
-    UI_TOKENS.layout_css_px.touch_target_min >= 44 &&
-    UI_TOKENS.layout_css_px.primary_compact_target >= 48;
-
+  let touchTargetChecksPass = UI_TOKENS.layout_css_px.touch_target_min >= 44 && UI_TOKENS.layout_css_px.primary_compact_target >= 48;
   let zeroKeyboardTraps = true;
   let politeLiveRegionsVerified = true;
   let reflow320PxVerified = true;
@@ -373,9 +287,7 @@ export function runAutomatedAccessibilityRegressionCheck(
     }
     if (screen.touchTargetMinPx < 44 || screen.primaryCompactTargetPx < 48) {
       touchTargetChecksPass = false;
-      violations.push(
-        `Screen '${screen.screenId}' touch targets (${screen.touchTargetMinPx}px / ${screen.primaryCompactTargetPx}px) fall below 44px / 48px minimums.`
-      );
+      violations.push(`Screen '${screen.screenId}' touch targets (${screen.touchTargetMinPx}px / ${screen.primaryCompactTargetPx}px) fall below 44px / 48px minimums.`);
     }
     if (screen.keyboardTrapPresent) {
       zeroKeyboardTraps = false;

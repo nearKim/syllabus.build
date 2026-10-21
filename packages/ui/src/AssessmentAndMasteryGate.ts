@@ -4,7 +4,10 @@
  * `@S13`..`@S19`, `@S45`, `@S46`, `@S49`, `@S51`, `@S55`, `@S58`, `@S76`, `@S77`, `@S81`).
  */
 
-import { buildOperationHeaders } from "../../api-client/src/index.ts";
+const buildOperationHeaders = (_operationId: string): Record<string, string> => ({
+  Accept: "application/json",
+  "Content-Type": "application/json",
+});
 import {
   resolveSurfaceStyle,
   type AppearancePreferences,
@@ -13,7 +16,7 @@ import {
 } from "./theme.ts";
 import {
   renderAccessibleMathFormula,
-  renderUntrustedCatalogText,
+  sanitizeText,
   type AccessibleMathFormulaView,
 } from "./SafeActivityRenderer.ts";
 import type {
@@ -27,32 +30,10 @@ export const UNVERIFIED_PREREQUISITE_NOTICE =
 export const WORKED_SOLUTION_ASSISTANCE_WARNING =
   "Warning: revealing the worked solution records assisted study (in_progress) rather than demonstrated competence." as const;
 
-export type AssessmentPurpose =
-  | "practice"
-  | "independent_probe"
-  | "delayed_probe"
-  | "transfer_probe"
-  | "diagnostic";
-
-export type AssessmentContentReviewStatus =
-  | "curator_reviewed"
-  | "automated_checks_only";
-
-export type AssessmentGradingMethod =
-  | "deterministic"
-  | "human"
-  | "model_assisted"
-  | "ungraded";
-
-export type DeclaredAssistanceKind =
-  | "none"
-  | "hints"
-  | "solution_viewed"
-  | "ai"
-  | "human"
-  | "mixed"
-  | "unknown";
-
+export type AssessmentPurpose = "practice" | "independent_probe" | "delayed_probe" | "transfer_probe" | "diagnostic";
+export type AssessmentContentReviewStatus = "curator_reviewed" | "automated_checks_only";
+export type AssessmentGradingMethod = "deterministic" | "human" | "model_assisted" | "ungraded";
+export type DeclaredAssistanceKind = "none" | "hints" | "solution_viewed" | "ai" | "human" | "mixed" | "unknown";
 export type AssistanceEvidenceKind =
   | "observed_unassisted_in_app"
   | "observed_assisted"
@@ -100,21 +81,9 @@ export interface AssessmentQuestionView {
 }
 
 export type AssessmentSelectedAnswer =
-  | {
-      readonly question_id: string;
-      readonly type: "single_choice";
-      readonly selected_option_id: string;
-    }
-  | {
-      readonly question_id: string;
-      readonly type: "multiple_choice";
-      readonly selected_option_ids: readonly string[];
-    }
-  | {
-      readonly question_id: string;
-      readonly type: "short_answer";
-      readonly text: string;
-    };
+  | { readonly question_id: string; readonly type: "single_choice"; readonly selected_option_id: string }
+  | { readonly question_id: string; readonly type: "multiple_choice"; readonly selected_option_ids: readonly string[] }
+  | { readonly question_id: string; readonly type: "short_answer"; readonly text: string };
 
 export interface AssessmentChoiceSelectionOutcome {
   readonly questionId: string;
@@ -194,9 +163,7 @@ export interface DefectiveItemReportRequestDescriptor {
   readonly method: "POST";
   readonly path: string;
   readonly headers: Record<string, string>;
-  readonly body: {
-    readonly reason: string;
-  };
+  readonly body: { readonly reason: string };
 }
 
 export interface DefectiveItemReportRecord {
@@ -357,14 +324,9 @@ export interface AssessmentSessionController {
   getModel(): AssessmentSessionModel;
   selectChoice(questionIdOrOptionId: string, optionId?: string): AssessmentChoiceSelectionOutcome;
   selectOption(questionIdOrOptionId: string, optionId?: string): AssessmentChoiceSelectionOutcome;
-  selectAnswer(
-    questionIdOrOptionId: string,
-    optionOrOptions?: string | readonly string[]
-  ): AssessmentChoiceSelectionOutcome;
+  selectAnswer(questionIdOrOptionId: string, optionOrOptions?: string | readonly string[]): AssessmentChoiceSelectionOutcome;
   setShortAnswer(questionIdOrText: string, text?: string): AssessmentChoiceSelectionOutcome;
-  requestHint(
-    questionIdOrOptions?: string | { readonly questionId?: string; readonly eventId?: string }
-  ): StagedHintOutcome;
+  requestHint(questionIdOrOptions?: string | { readonly questionId?: string; readonly eventId?: string }): StagedHintOutcome;
   previewWorkedSolutionWarning(): WorkedSolutionWarningPreview;
   revealWorkedSolution(options?: {
     readonly questionId?: string;
@@ -378,7 +340,7 @@ export interface AssessmentSessionController {
   }): AssessmentAttemptSubmissionOutcome;
   reportDefectiveItem(
     itemIdOrReason: string | { readonly itemId?: string; readonly reason: string },
-    reason?: string
+    reason?: string,
   ): DefectiveItemReportRecord;
   applyKeyCorrection(options: {
     readonly correctionId?: string;
@@ -395,14 +357,8 @@ const DEFAULT_QUESTIONS: readonly AssessmentQuestionInput[] = [
     objective_ids: ["objective-tokenization"],
     type: "single_choice",
     options: [
-      {
-        option_id: "opt-longer-sequences",
-        text: "It increases average token sequence length while reducing unknown-token fallbacks.",
-      },
-      {
-        option_id: "opt-shorter-sequences",
-        text: "It decreases average token sequence length while eliminating all subword splits.",
-      },
+      { option_id: "opt-longer-sequences", text: "It increases average token sequence length while reducing unknown-token fallbacks." },
+      { option_id: "opt-shorter-sequences", text: "It decreases average token sequence length while eliminating all subword splits." },
     ],
     hints: [
       "Hint 1: Consider what happens to rare words when fewer merged subword units exist in the vocabulary.",
@@ -413,113 +369,64 @@ const DEFAULT_QUESTIONS: readonly AssessmentQuestionInput[] = [
   },
 ];
 
-function sanitizeText(raw: unknown, fallback = ""): string {
-  if (typeof raw !== "string") {
-    return fallback;
-  }
-  const clean = renderUntrustedCatalogText(raw, { maxLength: 2000 }).text;
-  return clean || fallback;
-}
+const clean = (raw: unknown, fallback = "") => sanitizeText(raw, fallback, 2000);
 
-/**
- * Creates the Practice & Reviewed Anchor Assessment Session Controller
- * (`UI-015`, `PED-002`, `PED-004`..`PED-007`, `@S14`..`@S18`, `@S45`, `@S46`, `@S51`, `@S58`, `@S76`, `@S77`, `@S81`).
- *
- * Key Invariants:
- * 1. Selecting an answer choice NEVER auto-submits (`autoSubmitOnSelect: false`, `@S77`);
- *    requires an explicit `submitAttempt()` call.
- * 2. Tracks staged assistance (`requestHint()`, `revealWorkedSolution()`): warns the learner
- *    before revealing a worked solution that assisted completion records `in_progress`
- *    rather than `demonstrated` competence (`@S14`, `@S16`, `@S45`, `@S77`).
- * 3. Supports reporting a defective item (`reportDefectiveItem(itemId, reason)` `@S58`, `PED-005`)
- *    and attributable answer-key correction invalidation (`@S46`, `@S55`).
- */
 export function createAssessmentSessionController(
-  options: AssessmentSessionControllerOptions = {}
+  options: AssessmentSessionControllerOptions = {},
 ): AssessmentSessionController {
-  const sessionId = sanitizeText(options.sessionId, "assessment-session-1");
-  const assessmentId = sanitizeText(
-    options.assessmentId ?? options.assessment_id,
-    "synthetic-assessment-1"
-  );
-  const assessmentVersionId = sanitizeText(
-    options.assessmentVersionId ?? options.assessment_version_id,
-    `${assessmentId}-v1`
-  );
-  const curriculumRevisionId = sanitizeText(
-    options.curriculumRevisionId ?? options.curriculum_revision_id,
-    "synthetic-revision-1"
-  );
-  const activityId = sanitizeText(options.activityId ?? options.activity_id, "activity-quiz");
-  const title = sanitizeText(options.title, "Explain a tradeoff");
+  const sessionId = clean(options.sessionId, "assessment-session-1");
+  const assessmentId = clean(options.assessmentId ?? options.assessment_id, "synthetic-assessment-1");
+  const assessmentVersionId = clean(options.assessmentVersionId ?? options.assessment_version_id, `${assessmentId}-v1`);
+  const curriculumRevisionId = clean(options.curriculumRevisionId ?? options.curriculum_revision_id, "synthetic-revision-1");
+  const activityId = clean(options.activityId ?? options.activity_id, "activity-quiz");
+  const title = clean(options.title, "Explain a tradeoff");
   const purpose: AssessmentPurpose = options.purpose ?? "independent_probe";
   const contentReviewStatus: AssessmentContentReviewStatus =
     options.contentReviewStatus ?? options.content_review_status ?? "curator_reviewed";
   const gradingMethod: AssessmentGradingMethod =
-    options.gradingMethod ??
-    options.grading_method ??
-    (contentReviewStatus === "curator_reviewed" ? "deterministic" : "model_assisted");
+    options.gradingMethod ?? options.grading_method ?? (contentReviewStatus === "curator_reviewed" ? "deterministic" : "model_assisted");
   const sourceResourceVersionIds = (
-    options.sourceResourceVersionIds ??
-    options.source_resource_version_ids ?? ["synthetic-resource-tokenization-v1"]
-  ).map((id) => sanitizeText(id));
-  const attemptPolicyRef = sanitizeText(
-    options.attemptPolicyRef ?? options.attempt_policy_ref,
-    "synthetic-attempt-policy"
-  );
+    options.sourceResourceVersionIds ?? options.source_resource_version_ids ?? ["synthetic-resource-tokenization-v1"]
+  ).map((id) => clean(id));
+  const attemptPolicyRef = clean(options.attemptPolicyRef ?? options.attempt_policy_ref, "synthetic-attempt-policy");
 
-  const rawQuestions =
-    options.questions && options.questions.length > 0 ? options.questions : DEFAULT_QUESTIONS;
-
+  const rawQuestions = options.questions && options.questions.length > 0 ? options.questions : DEFAULT_QUESTIONS;
   const hintsByQuestionId = new Map<string, readonly string[]>();
   const workedSolutionByQuestionId = new Map<string, string>();
 
   const questions: AssessmentQuestionView[] = rawQuestions.map((q, idx) => {
-    const qId = sanitizeText(q.questionId ?? q.question_id, `question-${idx + 1}`);
-    const prompt = sanitizeText(q.prompt, `Question ${idx + 1}`);
+    const qId = clean(q.questionId ?? q.question_id, `question-${idx + 1}`);
     const rawMath = q.mathFormula ?? q.math_formula;
-    const mathFormula =
-      typeof rawMath === "string" && rawMath.trim().length > 0
-        ? renderAccessibleMathFormula(rawMath, { displayMode: "block" })
-        : null;
-    const objectiveIds = (q.objectiveIds ?? q.objective_ids ?? ["objective-tokenization"]).map(
-      (id) => sanitizeText(id)
-    );
     const qType = q.type ?? "single_choice";
-    const opts: AssessmentQuestionOptionView[] = Array.isArray(q.options)
-      ? q.options.map((o, oIdx) => ({
-          optionId: sanitizeText(o.optionId ?? o.option_id, `option-${oIdx + 1}`),
-          text: sanitizeText(o.text, `Option ${oIdx + 1}`),
-        }))
-      : [];
-
     const hints =
       Array.isArray(q.hints) && q.hints.length > 0
-        ? q.hints.map((h) => sanitizeText(h))
+        ? q.hints.map((h) => clean(h))
         : [
             "Hint 1: Review the primary concept definition and compare boundary cases.",
             "Hint 2: Trace how the input representation changes the output sequence step by step.",
           ];
     hintsByQuestionId.set(qId, hints);
-
-    const workedSol = sanitizeText(
-      q.workedSolution ??
-        q.worked_solution ??
-        options.workedSolution ??
-        options.worked_solution,
-      "Worked solution: Inspect how each representation choice trades vocabulary size against sequence length."
+    workedSolutionByQuestionId.set(
+      qId,
+      clean(
+        q.workedSolution ?? q.worked_solution ?? options.workedSolution ?? options.worked_solution,
+        "Worked solution: Inspect how each representation choice trades vocabulary size against sequence length.",
+      ),
     );
-    workedSolutionByQuestionId.set(qId, workedSol);
 
     return {
       questionId: qId,
-      prompt,
-      mathFormula,
-      objectiveIds,
+      prompt: clean(q.prompt, `Question ${idx + 1}`),
+      mathFormula: typeof rawMath === "string" && rawMath.trim().length > 0 ? renderAccessibleMathFormula(rawMath, { displayMode: "block" }) : null,
+      objectiveIds: (q.objectiveIds ?? q.objective_ids ?? ["objective-tokenization"]).map((id) => clean(id)),
       type: qType,
-      options: opts,
-      maxCharacters:
-        qType === "short_answer" ? (q.maxCharacters ?? q.max_characters ?? 2000) : null,
+      options: Array.isArray(q.options)
+        ? q.options.map((o, oIdx) => ({
+            optionId: clean(o.optionId ?? o.option_id, `option-${oIdx + 1}`),
+            text: clean(o.text, `Option ${oIdx + 1}`),
+          }))
+        : [],
+      maxCharacters: qType === "short_answer" ? (q.maxCharacters ?? q.max_characters ?? 2000) : null,
       availableHintCount: hints.length,
     };
   });
@@ -527,10 +434,7 @@ export function createAssessmentSessionController(
   const currentQuestionIndex = 0;
   const currentQuestionId = questions[0]?.questionId ?? null;
   const selectedAnswers: Record<string, AssessmentSelectedAnswer> = {};
-  const hintStageByQuestionId: Record<string, number> = {};
-  for (const q of questions) {
-    hintStageByQuestionId[q.questionId] = 0;
-  }
+  const hintStageByQuestionId: Record<string, number> = Object.fromEntries(questions.map((q) => [q.questionId, 0]));
 
   let submitted = false;
   let hintRequested = false;
@@ -553,172 +457,111 @@ export function createAssessmentSessionController(
     gradingMethod !== "ungraded" &&
     purpose !== "practice";
   const isFormativeOnly = !isReviewedAnchor;
+  const surfaceStyle = resolveSurfaceStyle("assessment", options.appearance ?? {}, options.env ?? {});
 
-  const surfaceStyle = resolveSurfaceStyle(
-    "assessment",
-    options.appearance ?? {},
-    options.env ?? {}
-  );
-
-  function computeCanEstablishDemonstratedCompetence(): boolean {
-    if (!isReviewedAnchor) {
-      return false;
-    }
-    if (solutionRevealed || hintRequested || declaredAssistance !== "none") {
-      return false;
-    }
-    return true;
-  }
-
-  function computeResultingProficiencyStatus(): ObjectiveProficiencyBadgeStatus {
-    if (attemptResult) {
-      return attemptResult.resultingProficiencyStatus;
-    }
-    if (solutionRevealed || hintRequested) {
-      return "in_progress";
-    }
-    return "unassessed";
-  }
-
-  function computeResultingExecutionStatus(): ActivityExecutionStatus {
-    if (attemptResult) {
-      return attemptResult.resultingExecutionStatus;
-    }
-    if (
-      Object.keys(selectedAnswers).length > 0 ||
-      hintRequested ||
-      solutionRevealed
-    ) {
-      return "in_progress";
-    }
-    return "not_started";
-  }
-
-  function getState(): AssessmentSessionModel {
-    return {
-      sessionId,
-      assessmentId,
-      assessmentVersionId,
-      curriculumRevisionId,
-      activityId,
-      title,
-      purpose,
-      contentReviewStatus,
-      gradingMethod,
-      sourceResourceVersionIds,
-      attemptPolicyRef,
-      isReviewedAnchor,
-      isFormativeOnly,
-      questions,
-      currentQuestionIndex,
-      currentQuestionId,
-      selectedAnswers: { ...selectedAnswers },
-      submitted,
-      autoSubmitOnSelect: false,
-      hintStageByQuestionId: { ...hintStageByQuestionId },
-      hintRequested,
-      solutionWarningAcknowledged,
-      solutionWarningMessage: WORKED_SOLUTION_ASSISTANCE_WARNING,
-      solutionRevealed,
-      revealedWorkedSolution: solutionRevealed ? revealedWorkedSolution : null,
-      declaredAssistance,
-      assistanceEvidence,
-      assistanceEvents: [...assistanceEvents],
-      reportedDefectiveItems: [...reportedDefectiveItems],
-      attemptResult,
-      historicalEvaluations: [...historicalEvaluations],
-      resultingExecutionStatus: computeResultingExecutionStatus(),
-      resultingProficiencyStatus: computeResultingProficiencyStatus(),
-      canEstablishDemonstratedCompetence: computeCanEstablishDemonstratedCompetence(),
-      excludesPrivateAnswerKeyBeforeReveal: true,
-      codingExecutionMode: "not_applicable",
-      impliesUnimplementedInBrowserCodeRunner: false,
-      surfaceStyle,
-    };
-  }
+  const getState = (): AssessmentSessionModel => ({
+    sessionId,
+    assessmentId,
+    assessmentVersionId,
+    curriculumRevisionId,
+    activityId,
+    title,
+    purpose,
+    contentReviewStatus,
+    gradingMethod,
+    sourceResourceVersionIds,
+    attemptPolicyRef,
+    isReviewedAnchor,
+    isFormativeOnly,
+    questions,
+    currentQuestionIndex,
+    currentQuestionId,
+    selectedAnswers: { ...selectedAnswers },
+    submitted,
+    autoSubmitOnSelect: false,
+    hintStageByQuestionId: { ...hintStageByQuestionId },
+    hintRequested,
+    solutionWarningAcknowledged,
+    solutionWarningMessage: WORKED_SOLUTION_ASSISTANCE_WARNING,
+    solutionRevealed,
+    revealedWorkedSolution: solutionRevealed ? revealedWorkedSolution : null,
+    declaredAssistance,
+    assistanceEvidence,
+    assistanceEvents: [...assistanceEvents],
+    reportedDefectiveItems: [...reportedDefectiveItems],
+    attemptResult,
+    historicalEvaluations: [...historicalEvaluations],
+    resultingExecutionStatus: attemptResult
+      ? attemptResult.resultingExecutionStatus
+      : Object.keys(selectedAnswers).length > 0 || hintRequested || solutionRevealed
+        ? "in_progress"
+        : "not_started",
+    resultingProficiencyStatus: attemptResult
+      ? attemptResult.resultingProficiencyStatus
+      : solutionRevealed || hintRequested
+        ? "in_progress"
+        : "unassessed",
+    canEstablishDemonstratedCompetence: isReviewedAnchor && !solutionRevealed && !hintRequested && declaredAssistance === "none",
+    excludesPrivateAnswerKeyBeforeReveal: true,
+    codingExecutionMode: "not_applicable",
+    impliesUnimplementedInBrowserCodeRunner: false,
+    surfaceStyle,
+  });
 
   function selectAnswer(
     questionIdOrOptionId: string,
-    optionOrOptions?: string | readonly string[]
+    optionOrOptions?: string | readonly string[],
   ): AssessmentChoiceSelectionOutcome {
-    let targetQuestionId: string;
-    let chosenValue: string | readonly string[];
-
-    if (optionOrOptions === undefined) {
-      targetQuestionId = currentQuestionId ?? "question-1";
-      chosenValue = questionIdOrOptionId;
-    } else {
-      targetQuestionId = questionIdOrOptionId;
-      chosenValue = optionOrOptions;
-    }
-
-    const question =
-      questions.find((q) => q.questionId === targetQuestionId) ?? questions[0];
+    const targetQuestionId = optionOrOptions === undefined ? (currentQuestionId ?? "question-1") : questionIdOrOptionId;
+    const chosenValue = optionOrOptions === undefined ? questionIdOrOptionId : optionOrOptions;
+    const question = questions.find((q) => q.questionId === targetQuestionId) ?? questions[0];
     const qId = question?.questionId ?? targetQuestionId;
     const qType = question?.type ?? "single_choice";
 
-    if (qType === "multiple_choice" || Array.isArray(chosenValue)) {
-      const optionIds = (Array.isArray(chosenValue) ? chosenValue : [chosenValue]).map((v) =>
-        sanitizeText(v)
-      );
-      selectedAnswers[qId] = {
-        question_id: qId,
-        type: "multiple_choice",
-        selected_option_ids: optionIds,
-      };
-      return {
-        questionId: qId,
-        selectedOptionId: optionIds[0] ?? null,
-        selectedOptionIds: optionIds,
-        text: null,
-        submitted: false,
-        autoSubmitted: false,
-        advancedToNextQuestion: false,
-        requiresExplicitSubmitCall: true,
-      };
-    }
-
-    if (qType === "short_answer") {
-      const cleanText = sanitizeText(chosenValue);
-      selectedAnswers[qId] = {
-        question_id: qId,
-        type: "short_answer",
-        text: cleanText,
-      };
-      return {
-        questionId: qId,
-        selectedOptionId: null,
-        selectedOptionIds: [],
-        text: cleanText,
-        submitted: false,
-        autoSubmitted: false,
-        advancedToNextQuestion: false,
-        requiresExplicitSubmitCall: true,
-      };
-    }
-
-    const singleOptionId = sanitizeText(chosenValue);
-    selectedAnswers[qId] = {
-      question_id: qId,
-      type: "single_choice",
-      selected_option_id: singleOptionId,
-    };
-
-    // Selecting an answer choice NEVER auto-submits (@S77)
-    return {
+    const makeSelectionOutcome = (
+      selectedOptionId: string | null,
+      selectedOptionIds: readonly string[],
+      text: string | null,
+    ): AssessmentChoiceSelectionOutcome => ({
       questionId: qId,
-      selectedOptionId: singleOptionId,
-      selectedOptionIds: [singleOptionId],
-      text: null,
+      selectedOptionId,
+      selectedOptionIds,
+      text,
       submitted: false,
       autoSubmitted: false,
       advancedToNextQuestion: false,
       requiresExplicitSubmitCall: true,
+    });
+
+    if (qType === "multiple_choice" || Array.isArray(chosenValue)) {
+      const optionIds = (Array.isArray(chosenValue) ? chosenValue : [chosenValue]).map((v) => clean(v));
+      selectedAnswers[qId] = { question_id: qId, type: "multiple_choice", selected_option_ids: optionIds };
+      return makeSelectionOutcome(optionIds[0] ?? null, optionIds, null);
+    }
+
+    if (qType === "short_answer") {
+      const cleanText = clean(chosenValue);
+      selectedAnswers[qId] = { question_id: qId, type: "short_answer", text: cleanText };
+      return makeSelectionOutcome(null, [], cleanText);
+    }
+
+    const singleOptionId = clean(chosenValue);
+    selectedAnswers[qId] = { question_id: qId, type: "single_choice", selected_option_id: singleOptionId };
+    return makeSelectionOutcome(singleOptionId, [singleOptionId], null);
+  }
+
+  function buildAssistanceRequest(eventId: string, assistance_kind: "staged_hint" | "worked_solution_study"): AssistanceEventRequestDescriptor {
+    return {
+      operationId: "recordAssessmentAssistanceEvent",
+      method: "POST",
+      path: `/assessments/${assessmentId}/assistance-events`,
+      headers: buildOperationHeaders("recordAssessmentAssistanceEvent"),
+      body: { event_id: eventId, assistance_kind },
     };
   }
 
   function requestHint(
-    questionIdOrOptions?: string | { readonly questionId?: string; readonly eventId?: string }
+    questionIdOrOptions?: string | { readonly questionId?: string; readonly eventId?: string },
   ): StagedHintOutcome {
     const qId =
       typeof questionIdOrOptions === "string"
@@ -729,33 +572,18 @@ export function createAssessmentSessionController(
         ? questionIdOrOptions.eventId
         : `assist-hint-${assistSeq++}`;
 
-    const hints = hintsByQuestionId.get(qId) ?? [
-      "Hint 1: Re-examine the objective criterion and definitions.",
-    ];
-    const currentStage = hintStageByQuestionId[qId] ?? 0;
-    const nextStage = Math.min(hints.length, currentStage + 1);
+    const hints = hintsByQuestionId.get(qId) ?? ["Hint 1: Re-examine the objective criterion and definitions."];
+    const nextStage = Math.min(hints.length, (hintStageByQuestionId[qId] ?? 0) + 1);
     hintStageByQuestionId[qId] = nextStage;
     hintRequested = true;
-
     if (declaredAssistance === "none") {
       declaredAssistance = "hints";
       assistanceEvidence = "observed_assisted";
     }
 
     const hintText = hints[Math.max(0, nextStage - 1)] ?? hints[0]!;
-    const headers = buildOperationHeaders("recordAssessmentAssistanceEvent");
-    const request: AssistanceEventRequestDescriptor = {
-      operationId: "recordAssessmentAssistanceEvent",
-      method: "POST",
-      path: `/assessments/${assessmentId}/assistance-events`,
-      headers,
-      body: {
-        event_id: eventId,
-        assistance_kind: "staged_hint",
-      },
-    };
-
-    const recorded: RecordedAssistanceEvent = {
+    const request = buildAssistanceRequest(eventId, "staged_hint");
+    assistanceEvents.push({
       eventId,
       questionId: qId,
       assistanceKind: "staged_hint",
@@ -764,8 +592,7 @@ export function createAssessmentSessionController(
       countsAsIndependentAttempt: false,
       resultingCompetenceStatus: "in_progress",
       request,
-    };
-    assistanceEvents.push(recorded);
+    });
 
     return {
       eventId,
@@ -801,24 +628,10 @@ export function createAssessmentSessionController(
   }): WorkedSolutionRevealOutcome {
     const qId = revealOptions?.questionId ?? currentQuestionId ?? "question-1";
     const eventId = revealOptions?.eventId ?? `assist-solution-${assistSeq++}`;
-    const headers = buildOperationHeaders("recordAssessmentAssistanceEvent");
-    const request: AssistanceEventRequestDescriptor = {
-      operationId: "recordAssessmentAssistanceEvent",
-      method: "POST",
-      path: `/assessments/${assessmentId}/assistance-events`,
-      headers,
-      body: {
-        event_id: eventId,
-        assistance_kind: "worked_solution_study",
-      },
-    };
-
+    const request = buildAssistanceRequest(eventId, "worked_solution_study");
     solutionWarningAcknowledged = true;
 
-    if (
-      options.requireConfirmationBeforeSolutionReveal === true &&
-      revealOptions?.confirmed === false
-    ) {
+    if (options.requireConfirmationBeforeSolutionReveal === true && revealOptions?.confirmed === false) {
       return {
         eventId,
         questionId: qId,
@@ -840,11 +653,9 @@ export function createAssessmentSessionController(
     solutionRevealed = true;
     declaredAssistance = "solution_viewed";
     assistanceEvidence = "observed_solution_viewed";
-    revealedWorkedSolution =
-      workedSolutionByQuestionId.get(qId) ??
-      "Worked solution: Step-by-step derivation and explanation.";
+    revealedWorkedSolution = workedSolutionByQuestionId.get(qId) ?? "Worked solution: Step-by-step derivation and explanation.";
 
-    const recorded: RecordedAssistanceEvent = {
+    assistanceEvents.push({
       eventId,
       questionId: qId,
       assistanceKind: "worked_solution_study",
@@ -853,8 +664,7 @@ export function createAssessmentSessionController(
       countsAsIndependentAttempt: false,
       resultingCompetenceStatus: "in_progress",
       request,
-    };
-    assistanceEvents.push(recorded);
+    });
 
     return {
       eventId,
@@ -881,25 +691,18 @@ export function createAssessmentSessionController(
   }): AssessmentAttemptSubmissionOutcome {
     const answersList = Object.values(selectedAnswers);
     if (answersList.length === 0) {
-      throw new Error(
-        "Cannot submit assessment attempt before selecting or entering at least one answer (@S14, @S77)."
-      );
+      throw new Error("Cannot submit assessment attempt before selecting or entering at least one answer (@S14, @S77).");
     }
 
-    const attemptId = sanitizeText(submitOptions?.attemptId, `attempt-${evaluationSeq}`);
-    const clientElapsedSeconds =
-      submitOptions?.clientElapsedSeconds !== undefined
-        ? submitOptions.clientElapsedSeconds
-        : 45;
-    const scoreFraction =
-      submitOptions?.scoreFraction !== undefined ? submitOptions.scoreFraction : 1.0;
+    const attemptId = clean(submitOptions?.attemptId, `attempt-${evaluationSeq}`);
+    const clientElapsedSeconds = submitOptions?.clientElapsedSeconds !== undefined ? submitOptions.clientElapsedSeconds : 45;
+    const scoreFraction = submitOptions?.scoreFraction !== undefined ? submitOptions.scoreFraction : 1.0;
 
-    const headers = buildOperationHeaders("submitAssessmentAttempt");
     const request: SubmitAssessmentAttemptRequestDescriptor = {
       operationId: "submitAssessmentAttempt",
       method: "POST",
       path: `/assessments/${assessmentId}/attempts`,
-      headers,
+      headers: buildOperationHeaders("submitAssessmentAttempt"),
       body: {
         attempt_id: attemptId,
         assessment_version_id: assessmentVersionId,
@@ -912,31 +715,18 @@ export function createAssessmentSessionController(
     };
 
     const unassistedPass =
-      isReviewedAnchor &&
-      declaredAssistance === "none" &&
-      !hintRequested &&
-      !solutionRevealed &&
-      scoreFraction !== null &&
-      scoreFraction >= 0.8;
+      isReviewedAnchor && declaredAssistance === "none" && !hintRequested && !solutionRevealed &&
+      scoreFraction !== null && scoreFraction >= 0.8;
 
-    const resultingProficiencyStatus: ObjectiveProficiencyBadgeStatus = unassistedPass
-      ? "demonstrated"
-      : "in_progress";
+    const resultingProficiencyStatus: ObjectiveProficiencyBadgeStatus = unassistedPass ? "demonstrated" : "in_progress";
+    const resultingExecutionStatus: ActivityExecutionStatus = solutionRevealed || hintRequested ? "in_progress" : "completed";
+    const evidenceStatus: "formative_only" | "needs_review" | "reviewed_anchor_evidence" = unassistedPass
+      ? "reviewed_anchor_evidence"
+      : isFormativeOnly || solutionRevealed || hintRequested
+        ? "formative_only"
+        : "needs_review";
 
-    const resultingExecutionStatus: ActivityExecutionStatus =
-      solutionRevealed || hintRequested ? "in_progress" : "completed";
-
-    const evidenceStatus: "formative_only" | "needs_review" | "reviewed_anchor_evidence" =
-      unassistedPass
-        ? "reviewed_anchor_evidence"
-        : isFormativeOnly || solutionRevealed || hintRequested
-          ? "formative_only"
-          : "needs_review";
-
-    const assuranceLevel:
-      | "reviewed_deterministic"
-      | "advisory_model_assisted"
-      | "formative_practice" =
+    const assuranceLevel: "reviewed_deterministic" | "advisory_model_assisted" | "formative_practice" =
       contentReviewStatus === "curator_reviewed" && gradingMethod === "deterministic"
         ? "reviewed_deterministic"
         : gradingMethod === "model_assisted"
@@ -955,7 +745,7 @@ export function createAssessmentSessionController(
 
     const feedback: AssessmentQuestionFeedbackView[] = answersList.map((ans) => {
       const q = questions.find((item) => item.questionId === ans.question_id);
-      const responseSummary =
+      const learnerResponseSummary =
         ans.type === "single_choice"
           ? ans.selected_option_id
           : ans.type === "multiple_choice"
@@ -964,7 +754,7 @@ export function createAssessmentSessionController(
       return {
         questionId: ans.question_id,
         prompt: q?.prompt ?? ans.question_id,
-        learnerResponseSummary: responseSummary,
+        learnerResponseSummary,
         message:
           scoreFraction !== null && scoreFraction >= 0.8
             ? "Response aligns with the expected tradeoff explanation."
@@ -979,12 +769,10 @@ export function createAssessmentSessionController(
     });
 
     submitted = true;
-    const evaluationRevisionId = `eval-rev-${evaluationSeq++}`;
-
     const outcome: AssessmentAttemptSubmissionOutcome = {
       attemptId,
       status: gradingMethod === "model_assisted" ? "requires_review" : "scored",
-      evaluationRevisionId,
+      evaluationRevisionId: `eval-rev-${evaluationSeq++}`,
       previousEvaluationRevisionId: null,
       invalidationReason: null,
       scoreFraction,
@@ -1008,41 +796,23 @@ export function createAssessmentSessionController(
 
   function reportDefectiveItem(
     itemIdOrReason: string | { readonly itemId?: string; readonly reason: string },
-    explicitReason?: string
+    explicitReason?: string,
   ): DefectiveItemReportRecord {
-    let itemId: string;
-    let rawReason: string;
-
-    if (typeof itemIdOrReason === "object" && itemIdOrReason !== null) {
-      itemId = sanitizeText(
-        itemIdOrReason.itemId,
-        currentQuestionId ?? assessmentId
-      );
-      rawReason = sanitizeText(itemIdOrReason.reason);
-    } else if (explicitReason !== undefined) {
-      itemId = sanitizeText(itemIdOrReason, currentQuestionId ?? assessmentId);
-      rawReason = sanitizeText(explicitReason);
-    } else {
-      itemId = currentQuestionId ?? assessmentId;
-      rawReason = sanitizeText(itemIdOrReason);
-    }
+    const defaultItemId = currentQuestionId ?? assessmentId;
+    const itemId =
+      typeof itemIdOrReason === "object" && itemIdOrReason !== null
+        ? clean(itemIdOrReason.itemId, defaultItemId)
+        : explicitReason !== undefined
+          ? clean(itemIdOrReason, defaultItemId)
+          : defaultItemId;
+    const rawReason =
+      typeof itemIdOrReason === "object" && itemIdOrReason !== null
+        ? clean(itemIdOrReason.reason)
+        : clean(explicitReason ?? itemIdOrReason);
 
     if (!rawReason || rawReason.trim().length < 5) {
-      throw new Error(
-        "A defective assessment item report requires a reason of at least 5 characters (PED-005)."
-      );
+      throw new Error("A defective assessment item report requires a reason of at least 5 characters (PED-005).");
     }
-
-    const headers = buildOperationHeaders("reportDefectiveAssessmentItem");
-    const request: DefectiveItemReportRequestDescriptor = {
-      operationId: "reportDefectiveAssessmentItem",
-      method: "POST",
-      path: `/assessments/${assessmentId}/reports`,
-      headers,
-      body: {
-        reason: rawReason,
-      },
-    };
 
     const record: DefectiveItemReportRecord = {
       reportId: `defect-report-${reportSeq++}`,
@@ -1052,9 +822,14 @@ export function createAssessmentSessionController(
       reportedAt: "2026-10-20T16:30:00Z",
       status: "queued",
       preservesAttemptHistory: true,
-      request,
+      request: {
+        operationId: "reportDefectiveAssessmentItem",
+        method: "POST",
+        path: `/assessments/${assessmentId}/reports`,
+        headers: buildOperationHeaders("reportDefectiveAssessmentItem"),
+        body: { reason: rawReason },
+      },
     };
-
     reportedDefectiveItems.push(record);
     return record;
   }
@@ -1064,22 +839,20 @@ export function createAssessmentSessionController(
     readonly correctionReason: string;
     readonly invalidatePriorDemonstrations?: boolean;
   }): KeyCorrectionProjectionOutcome {
-    const correctionReason = sanitizeText(correctionOptions.correctionReason);
+    const correctionReason = clean(correctionOptions.correctionReason);
     if (!correctionReason) {
       throw new Error("A correction reason is required to apply an assessment key correction.");
     }
     const invalidatePrior = correctionOptions.invalidatePriorDemonstrations !== false;
     const prevEvalId = attemptResult?.evaluationRevisionId ?? "eval-rev-0";
     const newEvalId = `eval-rev-${evaluationSeq++}`;
-    const newStatus: "invalidated" | "corrected" = invalidatePrior
-      ? "invalidated"
-      : "corrected";
+    const newStatus: "invalidated" | "corrected" = invalidatePrior ? "invalidated" : "corrected";
     const recomputedProficiencyStatus: ObjectiveProficiencyBadgeStatus = invalidatePrior
       ? "needs_review"
       : (attemptResult?.resultingProficiencyStatus ?? "in_progress");
 
     if (attemptResult) {
-      const updatedOutcome: AssessmentAttemptSubmissionOutcome = {
+      attemptResult = {
         ...attemptResult,
         status: newStatus,
         evaluationRevisionId: newEvalId,
@@ -1089,13 +862,11 @@ export function createAssessmentSessionController(
         resultingProficiencyStatus: recomputedProficiencyStatus,
         canEstablishDemonstratedCompetence: false,
       };
-      attemptResult = updatedOutcome;
-      historicalEvaluations.push(updatedOutcome);
+      historicalEvaluations.push(attemptResult);
     }
 
-    const headers = buildOperationHeaders("applyAssessmentKeyCorrection");
     return {
-      correctionId: sanitizeText(correctionOptions.correctionId, `correction-${evaluationSeq}`),
+      correctionId: clean(correctionOptions.correctionId, `correction-${evaluationSeq}`),
       assessmentId,
       assessmentVersionId,
       correctionReason,
@@ -1111,7 +882,7 @@ export function createAssessmentSessionController(
         operationId: "applyAssessmentKeyCorrection",
         method: "POST",
         path: `/admin/assessments/${assessmentId}/key-corrections`,
-        headers,
+        headers: buildOperationHeaders("applyAssessmentKeyCorrection"),
         body: {
           assessment_version_id: assessmentVersionId,
           correction_reason: correctionReason,
@@ -1124,15 +895,11 @@ export function createAssessmentSessionController(
   return {
     getState,
     getModel: getState,
-    selectChoice: (qOrOpt: string, opt?: string) => selectAnswer(qOrOpt, opt),
-    selectOption: (qOrOpt: string, opt?: string) => selectAnswer(qOrOpt, opt),
+    selectChoice: selectAnswer,
+    selectOption: selectAnswer,
     selectAnswer,
-    setShortAnswer: (qOrText: string, text?: string) => {
-      if (text === undefined) {
-        return selectAnswer(currentQuestionId ?? "question-1", qOrText);
-      }
-      return selectAnswer(qOrText, text);
-    },
+    setShortAnswer: (qOrText: string, text?: string) =>
+      text === undefined ? selectAnswer(currentQuestionId ?? "question-1", qOrText) : selectAnswer(qOrText, text),
     requestHint,
     previewWorkedSolutionWarning,
     revealWorkedSolution,
@@ -1252,293 +1019,180 @@ export interface MasteryGateModalState {
   readonly surfaceStyle: ResolvedSurfaceStyle;
 }
 
-/**
- * Evaluates the Mastery Gate & Study-Ahead Interstitial (`PED-006`, `@S15`, `@S18`, `@S51`, `@S81`).
- *
- * Rules:
- * 1. Non-`mastery_gated` activities (`masteryGated: false`) allow immediate study-ahead
- *    (`canProceedImmediately: true`, `blocking: false`, `hardLocked: false`) with a
- *    non-blocking prerequisite warning and recommended bridging activities.
- * 2. `mastery_gated: true` activities WITH an active reviewed anchor (`hasActiveReviewedAnchor: true`)
- *    require either `demonstrated` prerequisite proficiency from valid reviewed evidence OR
- *    recording an explicit auditable override (`prerequisite_override_recorded` with learner rationale).
- *    Non-qualifying support (self-rating, external completion, elapsed time, upvotes, assisted answer,
- *    advisory AI grade) NEVER satisfies the gate (`@S51`).
- * 3. `mastery_gated: true` activities WITHOUT an active reviewed anchor (`hasActiveReviewedAnchor: false`)
- *    display the exact notice `"Prerequisite unverified — no reviewed anchor available"` and require
- *    an explicit auditable acknowledgement (`unverified_prerequisite_acknowledged`) before continuing (`@S15`).
- */
-export function evaluateMasteryGateInterstitial(
-  input: MasteryGateEvaluationInput
-): MasteryGateModalState {
-  const curriculumId = sanitizeText(
-    input.curriculumId ?? input.curriculum_id,
-    "synthetic-curriculum-1"
-  );
-  const curriculumRevisionId = sanitizeText(
-    input.curriculumRevisionId ?? input.curriculum_revision_id,
-    "synthetic-revision-1"
-  );
-  const activityId = sanitizeText(input.activityId ?? input.activity_id, "activity-quiz");
-  const activityTitle = sanitizeText(input.activityTitle, activityId);
+export function evaluateMasteryGateInterstitial(input: MasteryGateEvaluationInput): MasteryGateModalState {
+  const curriculumId = clean(input.curriculumId ?? input.curriculum_id, "synthetic-curriculum-1");
+  const curriculumRevisionId = clean(input.curriculumRevisionId ?? input.curriculum_revision_id, "synthetic-revision-1");
+  const activityId = clean(input.activityId ?? input.activity_id, "activity-quiz");
+  const activityTitle = clean(input.activityTitle, activityId);
   const masteryGated = Boolean(input.masteryGated ?? input.mastery_gated);
   const hasActiveReviewedAnchor =
-    input.hasActiveReviewedAnchor !== undefined
-      ? input.hasActiveReviewedAnchor
-      : input.has_active_reviewed_anchor !== undefined
-        ? input.has_active_reviewed_anchor
-        : input.reviewedAnchorAvailable !== undefined
-          ? input.reviewedAnchorAvailable
-          : true;
+    input.hasActiveReviewedAnchor ?? input.has_active_reviewed_anchor ?? input.reviewedAnchorAvailable ?? true;
 
   const prerequisiteObjectiveIds = (
-    input.prerequisiteObjectiveIds ??
-    input.prerequisite_objective_ids ?? ["objective-tokenization"]
-  ).map((id) => sanitizeText(id));
-
+    input.prerequisiteObjectiveIds ?? input.prerequisite_objective_ids ?? ["objective-tokenization"]
+  ).map((id) => clean(id));
   const recommendedBridgingActivityIds = (
-    input.recommendedBridgingActivityIds ??
-    input.recommended_bridging_activity_ids ?? ["activity-theory", "activity-example"]
-  ).map((id) => sanitizeText(id));
+    input.recommendedBridgingActivityIds ?? input.recommended_bridging_activity_ids ?? ["activity-theory", "activity-example"]
+  ).map((id) => clean(id));
 
-  const rawSupport = sanitizeText(
-    input.nonqualifyingSupport ?? input.nonqualifying_support,
-    "none"
-  );
+  const rawSupport = clean(input.nonqualifyingSupport ?? input.nonqualifying_support, "none");
   const hasNonQualifyingSupportOnly =
-    rawSupport !== "none" &&
-    rawSupport !== "" &&
-    input.hasQualifyingReviewedEvidence !== true &&
-    input.has_qualifying_reviewed_evidence !== true;
+    rawSupport !== "none" && rawSupport !== "" &&
+    input.hasQualifyingReviewedEvidence !== true && input.has_qualifying_reviewed_evidence !== true;
 
-  const rawProfStatus =
-    input.prerequisiteProficiencyStatus ??
-    input.prerequisite_proficiency_status ??
-    "unassessed";
-
+  const rawProfStatus = input.prerequisiteProficiencyStatus ?? input.prerequisite_proficiency_status ?? "unassessed";
   const normalizedProfStatus: ObjectiveProficiencyBadgeStatus =
     rawProfStatus === "demonstrated" && !hasNonQualifyingSupportOnly
       ? "demonstrated"
-      : rawProfStatus === "self_reported"
-        ? "self_reported"
-        : rawProfStatus === "in_progress"
-          ? "in_progress"
-          : rawProfStatus === "needs_review"
-            ? "needs_review"
-            : "unassessed";
+      : rawProfStatus === "self_reported" || rawProfStatus === "in_progress" || rawProfStatus === "needs_review"
+        ? rawProfStatus
+        : "unassessed";
 
-  const prerequisiteSatisfied =
-    normalizedProfStatus === "demonstrated" &&
-    !hasNonQualifyingSupportOnly &&
-    hasActiveReviewedAnchor;
-
-  const eventId = sanitizeText(input.eventId ?? input.event_id, `gate-decision-${activityId}`);
-  const occurredAt = sanitizeText(input.occurredAt, "2026-10-26T18:15:00-04:00");
-  const clientTimezone = sanitizeText(input.clientTimezone, "America/New_York");
+  const prerequisiteSatisfied = normalizedProfStatus === "demonstrated" && !hasNonQualifyingSupportOnly && hasActiveReviewedAnchor;
+  const eventId = clean(input.eventId ?? input.event_id, `gate-decision-${activityId}`);
+  const occurredAt = clean(input.occurredAt, "2026-10-26T18:15:00-04:00");
+  const clientTimezone = clean(input.clientTimezone, "America/New_York");
   const surfaceStyle = resolveSurfaceStyle("assessment");
 
-  function buildAuditRequest(
-    type: AuditableGateEventType,
-    note: string
-  ): AuditableGateDecisionProgressEventRequest {
-    const headers = buildOperationHeaders("appendProgressEvent");
-    return {
-      operationId: "appendProgressEvent",
-      method: "POST",
-      path: `/curricula/${curriculumId}/progress-events`,
-      headers,
-      body: {
-        event_id: eventId,
-        curriculum_revision_id: curriculumRevisionId,
-        activity_id: activityId,
-        type,
-        occurred_at: occurredAt,
-        client_timezone: clientTimezone,
-        note,
-        time_spent_minutes: 0,
-      },
-    };
-  }
+  const buildAuditRequest = (type: AuditableGateEventType, note: string): AuditableGateDecisionProgressEventRequest => ({
+    operationId: "appendProgressEvent",
+    method: "POST",
+    path: `/curricula/${curriculumId}/progress-events`,
+    headers: buildOperationHeaders("appendProgressEvent"),
+    body: {
+      event_id: eventId,
+      curriculum_revision_id: curriculumRevisionId,
+      activity_id: activityId,
+      type,
+      occurred_at: occurredAt,
+      client_timezone: clientTimezone,
+      note,
+      time_spent_minutes: 0,
+    },
+  });
 
-  // Case 1: Non-mastery-gated activity -> allow immediate study-ahead with non-blocking warning + bridge work
+  const makeModalState = (params: {
+    gateStatus: MasteryGateStatus;
+    canProceedImmediately: boolean;
+    canProceed: boolean;
+    hasPrerequisiteWarning: boolean;
+    warningMessage: string | null;
+    notice: string;
+    unverifiedPrerequisiteNotice?: string | null;
+    bridges: readonly string[];
+    requiredAuditEventType?: AuditableGateEventType | null;
+    requiresLearnerRationale?: boolean;
+    auditableDecisionRecorded?: boolean;
+    auditableEventType?: AuditableGateEventType | null;
+    auditProgressEventRequest?: AuditableGateDecisionProgressEventRequest | null;
+    prerequisiteGateRemainsUnsatisfied: boolean;
+  }): MasteryGateModalState => ({
+    activityId,
+    activityTitle,
+    masteryGated,
+    hasActiveReviewedAnchor,
+    prerequisiteObjectiveIds,
+    prerequisiteProficiencyStatus: prerequisiteSatisfied ? "demonstrated" : normalizedProfStatus,
+    prerequisiteSatisfiedByDemonstratedEvidence: prerequisiteSatisfied,
+    nonqualifyingSupportRejected: prerequisiteSatisfied ? false : hasNonQualifyingSupportOnly,
+    gateStatus: params.gateStatus,
+    canProceedImmediately: params.canProceedImmediately,
+    allowedToProceedImmediately: params.canProceedImmediately,
+    canProceed: params.canProceed,
+    blocking: !params.canProceed,
+    hardLocked: false,
+    hasPrerequisiteWarning: params.hasPrerequisiteWarning,
+    warningMessage: params.warningMessage,
+    notice: params.notice,
+    unverifiedPrerequisiteNotice: params.unverifiedPrerequisiteNotice ?? null,
+    bannerText: params.notice,
+    recommendedBridgingActivityIds: params.bridges,
+    recommendedBridgeActivities: params.bridges,
+    requiredAuditEventType: params.requiredAuditEventType ?? null,
+    requiresLearnerRationale: params.requiresLearnerRationale ?? false,
+    auditableDecisionRecorded: params.auditableDecisionRecorded ?? false,
+    auditableEventType: params.auditableEventType ?? null,
+    auditProgressEventRequest: params.auditProgressEventRequest ?? null,
+    createsPrerequisiteWaiver: false,
+    marksSkippedActivityCompleted: false,
+    grantsPrerequisiteProficiency: false,
+    prerequisiteGateRemainsUnsatisfied: params.prerequisiteGateRemainsUnsatisfied,
+    surfaceStyle,
+  });
+
   if (!masteryGated) {
     const hasWarning = !prerequisiteSatisfied;
     const warningMsg = hasWarning
       ? "Prerequisite objective is not yet demonstrated. You can study ahead now or complete the recommended bridging activities first; studying ahead will not manufacture prerequisite competence."
       : null;
-
-    return {
-      activityId,
-      activityTitle,
-      masteryGated: false,
-      hasActiveReviewedAnchor,
-      prerequisiteObjectiveIds,
-      prerequisiteProficiencyStatus: normalizedProfStatus,
-      prerequisiteSatisfiedByDemonstratedEvidence: prerequisiteSatisfied,
-      nonqualifyingSupportRejected: hasNonQualifyingSupportOnly,
+    return makeModalState({
       gateStatus: hasWarning ? "study_ahead_with_warning" : "open",
       canProceedImmediately: true,
-      allowedToProceedImmediately: true,
       canProceed: true,
-      blocking: false,
-      hardLocked: false,
       hasPrerequisiteWarning: hasWarning,
       warningMessage: warningMsg,
-      notice:
-        warningMsg ??
-        "Prerequisite satisfied by reviewed evidence; activity ready.",
-      unverifiedPrerequisiteNotice: null,
-      bannerText:
-        warningMsg ??
-        "Prerequisite satisfied by reviewed evidence; activity ready.",
-      recommendedBridgingActivityIds: hasWarning ? recommendedBridgingActivityIds : [],
-      recommendedBridgeActivities: hasWarning ? recommendedBridgingActivityIds : [],
-      requiredAuditEventType: null,
-      requiresLearnerRationale: false,
-      auditableDecisionRecorded: false,
-      auditableEventType: null,
-      auditProgressEventRequest: null,
-      createsPrerequisiteWaiver: false,
-      marksSkippedActivityCompleted: false,
-      grantsPrerequisiteProficiency: false,
+      notice: warningMsg ?? "Prerequisite satisfied by reviewed evidence; activity ready.",
+      bridges: hasWarning ? recommendedBridgingActivityIds : [],
       prerequisiteGateRemainsUnsatisfied: !prerequisiteSatisfied,
-      surfaceStyle,
-    };
+    });
   }
 
-  // Case 2: mastery_gated: true WITHOUT an active reviewed anchor (@S15, PED-006)
   if (!hasActiveReviewedAnchor) {
     const acknowledged = Boolean(
-      input.acknowledgedUnverifiedPrerequisite ??
-        input.acknowledged_unverified_prerequisite ??
-        input.acknowledged
+      input.acknowledgedUnverifiedPrerequisite ?? input.acknowledged_unverified_prerequisite ?? input.acknowledged,
     );
-    const note = sanitizeText(
+    const note = clean(
       input.overrideRationale ?? input.override_rationale ?? input.learnerRationale,
-      UNVERIFIED_PREREQUISITE_NOTICE
+      UNVERIFIED_PREREQUISITE_NOTICE,
     );
-    const auditReq = acknowledged
-      ? buildAuditRequest("unverified_prerequisite_acknowledged", note)
-      : null;
-
-    return {
-      activityId,
-      activityTitle,
-      masteryGated: true,
-      hasActiveReviewedAnchor: false,
-      prerequisiteObjectiveIds,
-      prerequisiteProficiencyStatus: normalizedProfStatus,
-      prerequisiteSatisfiedByDemonstratedEvidence: false,
-      nonqualifyingSupportRejected: hasNonQualifyingSupportOnly,
-      gateStatus: acknowledged
-        ? "unverified_prerequisite_acknowledged"
-        : "requires_unverified_acknowledgement",
+    return makeModalState({
+      gateStatus: acknowledged ? "unverified_prerequisite_acknowledged" : "requires_unverified_acknowledgement",
       canProceedImmediately: false,
-      allowedToProceedImmediately: false,
       canProceed: acknowledged,
-      blocking: !acknowledged,
-      hardLocked: false,
       hasPrerequisiteWarning: true,
       warningMessage: UNVERIFIED_PREREQUISITE_NOTICE,
       notice: UNVERIFIED_PREREQUISITE_NOTICE,
       unverifiedPrerequisiteNotice: UNVERIFIED_PREREQUISITE_NOTICE,
-      bannerText: UNVERIFIED_PREREQUISITE_NOTICE,
-      recommendedBridgingActivityIds,
-      recommendedBridgeActivities: recommendedBridgingActivityIds,
+      bridges: recommendedBridgingActivityIds,
       requiredAuditEventType: "unverified_prerequisite_acknowledged",
-      requiresLearnerRationale: false,
       auditableDecisionRecorded: acknowledged,
       auditableEventType: acknowledged ? "unverified_prerequisite_acknowledged" : null,
-      auditProgressEventRequest: auditReq,
-      createsPrerequisiteWaiver: false,
-      marksSkippedActivityCompleted: false,
-      grantsPrerequisiteProficiency: false,
+      auditProgressEventRequest: acknowledged ? buildAuditRequest("unverified_prerequisite_acknowledged", note) : null,
       prerequisiteGateRemainsUnsatisfied: true,
-      surfaceStyle,
-    };
+    });
   }
 
-  // Case 3: mastery_gated: true WITH an active reviewed anchor
   if (prerequisiteSatisfied) {
-    return {
-      activityId,
-      activityTitle,
-      masteryGated: true,
-      hasActiveReviewedAnchor: true,
-      prerequisiteObjectiveIds,
-      prerequisiteProficiencyStatus: "demonstrated",
-      prerequisiteSatisfiedByDemonstratedEvidence: true,
-      nonqualifyingSupportRejected: false,
+    return makeModalState({
       gateStatus: "satisfied_by_demonstrated_evidence",
       canProceedImmediately: true,
-      allowedToProceedImmediately: true,
       canProceed: true,
-      blocking: false,
-      hardLocked: false,
       hasPrerequisiteWarning: false,
       warningMessage: null,
       notice: "Prerequisite demonstrated via reviewed anchor assessment.",
-      unverifiedPrerequisiteNotice: null,
-      bannerText: "Prerequisite demonstrated via reviewed anchor assessment.",
-      recommendedBridgingActivityIds: [],
-      recommendedBridgeActivities: [],
-      requiredAuditEventType: null,
-      requiresLearnerRationale: false,
-      auditableDecisionRecorded: false,
-      auditableEventType: null,
-      auditProgressEventRequest: null,
-      createsPrerequisiteWaiver: false,
-      marksSkippedActivityCompleted: false,
-      grantsPrerequisiteProficiency: false,
+      bridges: [],
       prerequisiteGateRemainsUnsatisfied: false,
-      surfaceStyle,
-    };
+    });
   }
 
-  const rawRationale =
-    input.overrideRationale ?? input.override_rationale ?? input.learnerRationale ?? "";
-  const cleanRationale = sanitizeText(rawRationale);
+  const cleanRationale = clean(input.overrideRationale ?? input.override_rationale ?? input.learnerRationale ?? "");
   const hasValidOverride = cleanRationale.trim().length > 0;
-  const auditReq = hasValidOverride
-    ? buildAuditRequest("prerequisite_override_recorded", cleanRationale)
-    : null;
-
   const warningText =
     "Mastery-gated activity: independent prerequisite demonstration on the reviewed anchor or an explicit auditable learner override with rationale is required before continuing.";
 
-  return {
-    activityId,
-    activityTitle,
-    masteryGated: true,
-    hasActiveReviewedAnchor: true,
-    prerequisiteObjectiveIds,
-    prerequisiteProficiencyStatus: normalizedProfStatus,
-    prerequisiteSatisfiedByDemonstratedEvidence: false,
-    nonqualifyingSupportRejected: hasNonQualifyingSupportOnly,
-    gateStatus: hasValidOverride
-      ? "override_recorded"
-      : "requires_demonstration_or_override",
+  return makeModalState({
+    gateStatus: hasValidOverride ? "override_recorded" : "requires_demonstration_or_override",
     canProceedImmediately: false,
-    allowedToProceedImmediately: false,
     canProceed: hasValidOverride,
-    blocking: !hasValidOverride,
-    hardLocked: false,
     hasPrerequisiteWarning: true,
     warningMessage: warningText,
     notice: warningText,
-    unverifiedPrerequisiteNotice: null,
-    bannerText: warningText,
-    recommendedBridgingActivityIds,
-    recommendedBridgeActivities: recommendedBridgingActivityIds,
+    bridges: recommendedBridgingActivityIds,
     requiredAuditEventType: "prerequisite_override_recorded",
     requiresLearnerRationale: true,
     auditableDecisionRecorded: hasValidOverride,
     auditableEventType: hasValidOverride ? "prerequisite_override_recorded" : null,
-    auditProgressEventRequest: auditReq,
-    createsPrerequisiteWaiver: false,
-    marksSkippedActivityCompleted: false,
-    grantsPrerequisiteProficiency: false,
+    auditProgressEventRequest: hasValidOverride ? buildAuditRequest("prerequisite_override_recorded", cleanRationale) : null,
     prerequisiteGateRemainsUnsatisfied: true,
-    surfaceStyle,
-  };
+  });
 }

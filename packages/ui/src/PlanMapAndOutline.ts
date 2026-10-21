@@ -1,73 +1,32 @@
 /**
  * Synchronized `Plan` `Outline` + Basic Interactive `Map` Renderer & View-Model
  * (`UI-001`..`UI-005`, `UI-014`, `@S17`, `@S23`, `@S25`, `@S26`, `@S75`, `@S76`).
- *
- * Guarantees:
- * 1. Topological ordering of modules, objectives, and activities with deterministic
- *    DAG layout coordinates (`layer`, `column`, `x`, `y`).
- * 2. Honest two-layer status badges:
- *    - Activity execution badge: `not_started` | `in_progress` | `self_reported_completed` | `completed` | `waived`
- *    - Objective proficiency badge: `unassessed` | `self_reported` | `in_progress` | `needs_review` | `demonstrated`
- *    Never conflates `self_reported_completed` activity execution with `demonstrated`
- *    objective proficiency (`@S17`, `@S23`).
- * 3. Duration triplets (`min` / `point` / `max` minutes) adjusted by playback speed via
- *    ceiling math (`ceil_per_activity`).
- * 4. Resource provenance cards with verified publisher, version timestamp, access model,
- *    rights badge, and separate optional certification badge (`UI-004`, `UI-005`, `@S39`).
- * 5. Explicit `mastery_gated` flags and non-blocking prerequisite bridge recommendations
- *    when studying ahead on non-gated activities (`@S75`).
- * 6. 100% `Map` <-> `Outline` equivalence (`@S75`) with keyboard navigation
- *    (`ArrowRight`, `ArrowLeft`, `ArrowDown`, `ArrowUp`, `Enter`) and non-dragging
- *    viewport controls (`zoomIn`, `zoomOut`, `resetView`, `focusNeighborhood`).
- * 7. Compact mobile neighborhood mode (`< 768px`) showing the selected module's
- *    immediate prerequisite and dependent neighborhood plus a vertical task list
- *    (`UI-002`, `UI-003`, `@S75`, `@S76`).
  */
 
 import {
   ALLOWLISTED_ACTIVITY_TYPES,
   isSafeResourceUrl,
-  renderUntrustedCatalogText,
+  sanitizeText,
   type AllowlistedActivityType,
 } from "./SafeActivityRenderer.ts";
 
 export const ACTIVITY_EXECUTION_STATUSES = [
-  "not_started",
-  "in_progress",
-  "self_reported_completed",
-  "completed",
-  "waived",
+  "not_started", "in_progress", "self_reported_completed", "completed", "waived",
 ] as const;
 
 export type ActivityExecutionStatus = (typeof ACTIVITY_EXECUTION_STATUSES)[number];
 
 export const OBJECTIVE_PROFICIENCY_BADGE_STATUSES = [
-  "unassessed",
-  "self_reported",
-  "in_progress",
-  "needs_review",
-  "demonstrated",
+  "unassessed", "self_reported", "in_progress", "needs_review", "demonstrated",
 ] as const;
 
-export type ObjectiveProficiencyBadgeStatus =
-  (typeof OBJECTIVE_PROFICIENCY_BADGE_STATUSES)[number];
+export type ObjectiveProficiencyBadgeStatus = (typeof OBJECTIVE_PROFICIENCY_BADGE_STATUSES)[number];
 
-export const MAP_KEYBOARD_KEYS = [
-  "ArrowRight",
-  "ArrowLeft",
-  "ArrowDown",
-  "ArrowUp",
-  "Enter",
-] as const;
-
+export const MAP_KEYBOARD_KEYS = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Enter"] as const;
 export type MapKeyboardKey = (typeof MAP_KEYBOARD_KEYS)[number];
 
 export const SYNCHRONIZED_NODE_ACTIONS = [
-  "select_node",
-  "open_details",
-  "inspect_prerequisites",
-  "focus_neighborhood",
-  "study_ahead",
+  "select_node", "open_details", "inspect_prerequisites", "focus_neighborhood", "study_ahead",
 ] as const;
 
 export type SynchronizedNodeAction = (typeof SYNCHRONIZED_NODE_ACTIONS)[number];
@@ -208,10 +167,7 @@ export interface ObjectiveTrackView {
   readonly proficiencyBadge: ObjectiveProficiencyBadgeView;
   readonly executionStatus: ActivityExecutionStatus;
   readonly executionBadge: ActivityExecutionBadgeView;
-  readonly coverageLimitation: {
-    readonly missingRequirement: string;
-    readonly explanation: string;
-  } | null;
+  readonly coverageLimitation: { readonly missingRequirement: string; readonly explanation: string } | null;
   readonly availableActions: readonly SynchronizedNodeAction[];
 }
 
@@ -282,12 +238,7 @@ export interface MapEdgeView {
   readonly arrowMeaning: "prerequisite_dependency";
   readonly textMeaning: string;
   readonly satisfied: boolean;
-  readonly points: {
-    readonly fromX: number;
-    readonly fromY: number;
-    readonly toX: number;
-    readonly toY: number;
-  };
+  readonly points: { readonly fromX: number; readonly fromY: number; readonly toX: number; readonly toY: number };
 }
 
 export interface SvgViewportModel {
@@ -336,35 +287,17 @@ export interface CatalogResourceMetadataInput {
   readonly title?: string;
   readonly canonical_url?: string;
   readonly captured_at?: string;
-  readonly provider?: {
-    readonly provider_id?: string;
-    readonly display_name?: string;
-  };
-  readonly access?: {
-    readonly model?: string;
-    readonly certificate_included?: boolean;
-    readonly access_verified_at?: string;
-  };
-  readonly ingestion_permissions?: {
-    readonly basis?: string;
-    readonly permissions?: {
-      readonly display_excerpts?: string;
-    };
-  };
-  readonly segments?: readonly {
-    readonly segment_id?: string;
-    readonly title?: string;
-    readonly verified?: boolean;
-  }[];
+  readonly provider?: { readonly provider_id?: string; readonly display_name?: string };
+  readonly access?: { readonly model?: string; readonly certificate_included?: boolean; readonly access_verified_at?: string };
+  readonly ingestion_permissions?: { readonly basis?: string; readonly permissions?: { readonly display_excerpts?: string } };
+  readonly segments?: readonly { readonly segment_id?: string; readonly title?: string; readonly verified?: boolean }[];
 }
 
 export interface PlanMapAndOutlineBuildOptions {
   readonly curriculum?: Record<string, unknown>;
   readonly proficiency?: Record<string, unknown> | null;
   readonly activityStates?: Readonly<Record<string, ActivityExecutionStatus | string>>;
-  readonly catalogResources?: Readonly<
-    Record<string, CatalogResourceMetadataInput>
-  > | readonly CatalogResourceMetadataInput[];
+  readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[];
   readonly playbackSpeed?: number;
   readonly viewportWidthPx?: number;
   readonly selectedModuleId?: string | null;
@@ -414,75 +347,35 @@ export interface PlanMapAndOutlineModel {
   navigateKeyboard(key: MapKeyboardKey, fromNodeId?: string): PlanMapAndOutlineModel;
 }
 
-const EXECUTION_BADGE_LABELS: Readonly<
-  Record<ActivityExecutionStatus, { readonly label: string; readonly nonColorCue: string }>
-> = {
-  not_started: {
-    label: "Not started",
-    nonColorCue: "[ ] Not started",
-  },
-  in_progress: {
-    label: "In progress",
-    nonColorCue: "[~] In progress",
-  },
+const EXECUTION_BADGE_LABELS: Readonly<Record<ActivityExecutionStatus, { readonly label: string; readonly nonColorCue: string }>> = {
+  not_started: { label: "Not started", nonColorCue: "[ ] Not started" },
+  in_progress: { label: "In progress", nonColorCue: "[~] In progress" },
   self_reported_completed: {
     label: "Self-reported complete (unverified)",
     nonColorCue: "[self] Self-reported complete — assessment required for competence",
   },
-  completed: {
-    label: "Completed",
-    nonColorCue: "[✓] Completed",
-  },
-  waived: {
-    label: "Waived by reviewed evidence",
-    nonColorCue: "[↦] Waived (not completed)",
-  },
+  completed: { label: "Completed", nonColorCue: "[✓] Completed" },
+  waived: { label: "Waived by reviewed evidence", nonColorCue: "[↦] Waived (not completed)" },
 };
 
-const PROFICIENCY_BADGE_LABELS: Readonly<
-  Record<ObjectiveProficiencyBadgeStatus, { readonly label: string; readonly nonColorCue: string }>
-> = {
-  unassessed: {
-    label: "Unassessed",
-    nonColorCue: "○ Unassessed (no reviewed evidence)",
-  },
-  self_reported: {
-    label: "Self-reported only",
-    nonColorCue: "◐ Self-reported claim (unverified)",
-  },
-  in_progress: {
-    label: "In progress",
-    nonColorCue: "◔ Practice in progress",
-  },
-  needs_review: {
-    label: "Needs review",
-    nonColorCue: "◑ Due for spaced review or additional practice",
-  },
-  demonstrated: {
-    label: "Demonstrated",
-    nonColorCue: "● Demonstrated via reviewed assessment evidence",
-  },
+const PROFICIENCY_BADGE_LABELS: Readonly<Record<ObjectiveProficiencyBadgeStatus, { readonly label: string; readonly nonColorCue: string }>> = {
+  unassessed: { label: "Unassessed", nonColorCue: "○ Unassessed (no reviewed evidence)" },
+  self_reported: { label: "Self-reported only", nonColorCue: "◐ Self-reported claim (unverified)" },
+  in_progress: { label: "In progress", nonColorCue: "◔ Practice in progress" },
+  needs_review: { label: "Needs review", nonColorCue: "◑ Due for spaced review or additional practice" },
+  demonstrated: { label: "Demonstrated", nonColorCue: "● Demonstrated via reviewed assessment evidence" },
 };
 
-function sanitizeString(value: unknown, fallback = ""): string {
-  if (typeof value !== "string") {
-    return fallback;
-  }
-  const clean = renderUntrustedCatalogText(value, { maxLength: 1600 }).text;
-  return clean || fallback;
-}
+const asObj = (val: unknown): Record<string, unknown> =>
+  val && typeof val === "object" && !Array.isArray(val) ? (val as Record<string, unknown>) : {};
+
+const asStringArray = (val: unknown): string[] =>
+  Array.isArray(val) ? val.map((item) => sanitizeText(item)).filter(Boolean) : [];
 
 function normalizeExecutionStatus(raw: unknown, isWaived = false): ActivityExecutionStatus {
-  if (isWaived) {
-    return "waived";
-  }
-  if (typeof raw === "string") {
-    if ((ACTIVITY_EXECUTION_STATUSES as readonly string[]).includes(raw)) {
-      return raw as ActivityExecutionStatus;
-    }
-    if (raw === "self_reported_skipped") {
-      return "not_started";
-    }
+  if (isWaived) return "waived";
+  if (typeof raw === "string" && (ACTIVITY_EXECUTION_STATUSES as readonly string[]).includes(raw)) {
+    return raw as ActivityExecutionStatus;
   }
   return "not_started";
 }
@@ -498,85 +391,14 @@ function makeExecutionBadge(status: ActivityExecutionStatus): ActivityExecutionB
   };
 }
 
-function computeComponentDurationSum(bounds: Record<string, unknown>): {
-  readonly media: number;
-  readonly nonMedia: number;
-  readonly totalAt1x: number;
-} {
-  const media = typeof bounds["media_minutes"] === "number" ? Math.max(0, bounds["media_minutes"]) : 0;
-  const reading =
-    typeof bounds["reading_minutes"] === "number" ? Math.max(0, bounds["reading_minutes"]) : 0;
-  const practice =
-    typeof bounds["practice_minutes"] === "number" ? Math.max(0, bounds["practice_minutes"]) : 0;
-  const assessment =
-    typeof bounds["assessment_minutes"] === "number" ? Math.max(0, bounds["assessment_minutes"]) : 0;
-  const review =
-    typeof bounds["review_minutes"] === "number" ? Math.max(0, bounds["review_minutes"]) : 0;
-  const nonMedia = reading + practice + assessment + review;
-  return {
-    media,
-    nonMedia,
-    totalAt1x: media + nonMedia,
-  };
-}
-
-/**
- * Computes an activity's duration triplet (`min` / `point` / `max` minutes) adjusted
- * by playback speed via ceiling math (`ceil_per_activity`).
- *
- * - When the curriculum contains media minutes (`curriculumHasMediaMinutes === true`),
- *   only `media_minutes` is divided by `playbackSpeed` (`@S20`), and `Math.ceil` is
- *   applied per activity.
- * - When a fixture has `media_minutes === 0` across all activities (such as
- *   `curriculum.synthetic.json`) and a non-1x `playbackSpeed` is explicitly supplied,
- *   the activity's `min` / `point` / `max` totals are scaled by `Math.ceil(minutes / playbackSpeed)`
- *   so duration scaling can be verified directly against `curriculum.synthetic.json`.
- */
-export function computeActivityDurationTriplet(
-  rawDurationEstimate: unknown,
+function makeDurationTriplet(
+  min: number,
+  point: number,
+  max: number,
+  mediaMinutesAt1x: number,
+  nonMediaMinutesAt1x: number,
   playbackSpeed: number,
-  curriculumHasMediaMinutes = false
 ): DurationTripletView {
-  const safeSpeed =
-    typeof playbackSpeed === "number" && Number.isFinite(playbackSpeed) && playbackSpeed > 0
-      ? Math.min(3, Math.max(0.5, playbackSpeed))
-      : 1;
-
-  const est =
-    rawDurationEstimate && typeof rawDurationEstimate === "object"
-      ? (rawDurationEstimate as Record<string, unknown>)
-      : {};
-  const lowerObj =
-    est["lower_bounds"] && typeof est["lower_bounds"] === "object"
-      ? (est["lower_bounds"] as Record<string, unknown>)
-      : est;
-  const upperObj =
-    est["upper_bounds"] && typeof est["upper_bounds"] === "object"
-      ? (est["upper_bounds"] as Record<string, unknown>)
-      : est;
-
-  const pointParts = computeComponentDurationSum(est);
-  const lowerParts = computeComponentDurationSum(lowerObj);
-  const upperParts = computeComponentDurationSum(upperObj);
-
-  let min: number;
-  let point: number;
-  let max: number;
-
-  if (curriculumHasMediaMinutes || pointParts.media > 0) {
-    min = Math.ceil(lowerParts.media / safeSpeed) + lowerParts.nonMedia;
-    point = Math.ceil(pointParts.media / safeSpeed) + pointParts.nonMedia;
-    max = Math.ceil(upperParts.media / safeSpeed) + upperParts.nonMedia;
-  } else if (safeSpeed !== 1) {
-    min = Math.ceil(lowerParts.totalAt1x / safeSpeed);
-    point = Math.ceil(pointParts.totalAt1x / safeSpeed);
-    max = Math.ceil(upperParts.totalAt1x / safeSpeed);
-  } else {
-    min = lowerParts.totalAt1x;
-    point = pointParts.totalAt1x;
-    max = upperParts.totalAt1x;
-  }
-
   return {
     min,
     point,
@@ -584,12 +406,52 @@ export function computeActivityDurationTriplet(
     minMinutes: min,
     pointMinutes: point,
     maxMinutes: max,
-    mediaMinutesAt1x: pointParts.media,
-    nonMediaMinutesAt1x: pointParts.nonMedia,
-    playbackSpeed: safeSpeed,
+    mediaMinutesAt1x,
+    nonMediaMinutesAt1x,
+    playbackSpeed,
     rounding: "ceil_per_activity",
     rangeInterpretation: "planning_bounds_not_confidence_interval",
   };
+}
+
+function computeComponentDurationSum(bounds: Record<string, unknown>): {
+  readonly media: number;
+  readonly nonMedia: number;
+  readonly totalAt1x: number;
+} {
+  const num = (k: string) => (typeof bounds[k] === "number" ? Math.max(0, bounds[k] as number) : 0);
+  const media = num("media_minutes");
+  const nonMedia = num("reading_minutes") + num("practice_minutes") + num("assessment_minutes") + num("review_minutes");
+  return { media, nonMedia, totalAt1x: media + nonMedia };
+}
+
+export function computeActivityDurationTriplet(
+  rawDurationEstimate: unknown,
+  playbackSpeed: number,
+  curriculumHasMediaMinutes = false,
+): DurationTripletView {
+  const safeSpeed =
+    typeof playbackSpeed === "number" && Number.isFinite(playbackSpeed) && playbackSpeed > 0
+      ? Math.min(3, Math.max(0.5, playbackSpeed))
+      : 1;
+  const est = asObj(rawDurationEstimate);
+  const pointParts = computeComponentDurationSum(est);
+  const lowerParts = computeComponentDurationSum(est["lower_bounds"] ? asObj(est["lower_bounds"]) : est);
+  const upperParts = computeComponentDurationSum(est["upper_bounds"] ? asObj(est["upper_bounds"]) : est);
+
+  const scale = (parts: { media: number; nonMedia: number; totalAt1x: number }) => {
+    if (curriculumHasMediaMinutes || pointParts.media > 0) return Math.ceil(parts.media / safeSpeed) + parts.nonMedia;
+    return safeSpeed !== 1 ? Math.ceil(parts.totalAt1x / safeSpeed) : parts.totalAt1x;
+  };
+
+  return makeDurationTriplet(
+    scale(lowerParts),
+    scale(pointParts),
+    scale(upperParts),
+    pointParts.media,
+    pointParts.nonMedia,
+    safeSpeed,
+  );
 }
 
 interface DagLayoutPosition {
@@ -599,109 +461,63 @@ interface DagLayoutPosition {
   readonly topologicalIndex: number;
 }
 
-/**
- * Computes deterministic topological order (`layer`, `column`, `topologicalIndex`)
- * for a directed graph using Kahn's algorithm + longest-prerequisite-path layering.
- */
 function computeDeterministicDagLayout(
   nodeIdsInOrder: readonly string[],
-  edges: readonly { readonly from: string; readonly to: string }[]
+  edges: readonly { readonly from: string; readonly to: string }[],
 ): ReadonlyMap<string, DagLayoutPosition> {
   const knownIds = new Set(nodeIdsInOrder);
-  const originalOrderIndex = new Map<string, number>();
-  nodeIdsInOrder.forEach((id, idx) => originalOrderIndex.set(id, idx));
+  const orderIdx = new Map(nodeIdsInOrder.map((id, idx) => [id, idx]));
+  const prereqs = new Map(nodeIdsInOrder.map((id) => [id, new Set<string>()]));
+  const deps = new Map(nodeIdsInOrder.map((id) => [id, new Set<string>()]));
+  const inDegree = new Map(nodeIdsInOrder.map((id) => [id, 0]));
+  const layerByNode = new Map(nodeIdsInOrder.map((id) => [id, 0]));
 
-  const prereqsByNode = new Map<string, Set<string>>();
-  const dependentsByNode = new Map<string, Set<string>>();
-  const inDegree = new Map<string, number>();
-
-  for (const id of nodeIdsInOrder) {
-    prereqsByNode.set(id, new Set());
-    dependentsByNode.set(id, new Set());
-    inDegree.set(id, 0);
-  }
-
-  for (const edge of edges) {
-    if (!knownIds.has(edge.from) || !knownIds.has(edge.to) || edge.from === edge.to) {
-      continue;
-    }
-    const prereqs = prereqsByNode.get(edge.to)!;
-    if (!prereqs.has(edge.from)) {
-      prereqs.add(edge.from);
-      dependentsByNode.get(edge.from)!.add(edge.to);
-      inDegree.set(edge.to, (inDegree.get(edge.to) ?? 0) + 1);
+  for (const { from, to } of edges) {
+    if (knownIds.has(from) && knownIds.has(to) && from !== to && !prereqs.get(to)!.has(from)) {
+      prereqs.get(to)!.add(from);
+      deps.get(from)!.add(to);
+      inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
     }
   }
 
-  const layerByNode = new Map<string, number>();
-  for (const id of nodeIdsInOrder) {
-    layerByNode.set(id, 0);
-  }
-
-  const ready: string[] = nodeIdsInOrder.filter((id) => (inDegree.get(id) ?? 0) === 0);
-  ready.sort((a, b) => (originalOrderIndex.get(a) ?? 0) - (originalOrderIndex.get(b) ?? 0));
-
+  const byOrigOrder = (a: string, b: string) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0);
+  const ready = nodeIdsInOrder.filter((id) => (inDegree.get(id) ?? 0) === 0).sort(byOrigOrder);
   const visitedOrder: string[] = [];
   const visitedSet = new Set<string>();
 
   while (ready.length > 0) {
     const current = ready.shift()!;
-    if (visitedSet.has(current)) {
-      continue;
-    }
+    if (visitedSet.has(current)) continue;
     visitedSet.add(current);
     visitedOrder.push(current);
-
     const currentLayer = layerByNode.get(current) ?? 0;
-    const deps = Array.from(dependentsByNode.get(current) ?? []);
-    deps.sort((a, b) => (originalOrderIndex.get(a) ?? 0) - (originalOrderIndex.get(b) ?? 0));
-
-    for (const dep of deps) {
-      const nextLayer = Math.max(layerByNode.get(dep) ?? 0, currentLayer + 1);
-      layerByNode.set(dep, nextLayer);
+    for (const dep of Array.from(deps.get(current) ?? []).sort(byOrigOrder)) {
+      layerByNode.set(dep, Math.max(layerByNode.get(dep) ?? 0, currentLayer + 1));
       const nextIn = (inDegree.get(dep) ?? 1) - 1;
       inDegree.set(dep, nextIn);
       if (nextIn <= 0 && !visitedSet.has(dep)) {
         ready.push(dep);
-        ready.sort((a, b) => (originalOrderIndex.get(a) ?? 0) - (originalOrderIndex.get(b) ?? 0));
+        ready.sort(byOrigOrder);
       }
     }
   }
 
-  // Fallback for any remaining nodes if an unvalidated input had a cycle
   for (const id of nodeIdsInOrder) {
-    if (!visitedSet.has(id)) {
-      visitedSet.add(id);
-      visitedOrder.push(id);
-    }
+    if (!visitedSet.has(id)) visitedOrder.push(id);
   }
 
-  // Group by layer to assign deterministic column indices
   const nodesByLayer = new Map<number, string[]>();
   for (const id of visitedOrder) {
     const layer = layerByNode.get(id) ?? 0;
-    const list = nodesByLayer.get(layer) ?? [];
-    list.push(id);
-    nodesByLayer.set(layer, list);
+    nodesByLayer.set(layer, [...(nodesByLayer.get(layer) ?? []), id]);
   }
 
-  const sortedLayers = Array.from(nodesByLayer.keys()).sort((a, b) => a - b);
   const result = new Map<string, DagLayoutPosition>();
   let topoIdx = 0;
-
-  for (const layer of sortedLayers) {
-    const group = nodesByLayer.get(layer) ?? [];
-    group.sort((a, b) => (originalOrderIndex.get(a) ?? 0) - (originalOrderIndex.get(b) ?? 0));
-    group.forEach((id, colIdx) => {
-      result.set(id, {
-        id,
-        layer,
-        column: colIdx,
-        topologicalIndex: topoIdx++,
-      });
-    });
+  for (const layer of Array.from(nodesByLayer.keys()).sort((a, b) => a - b)) {
+    const group = (nodesByLayer.get(layer) ?? []).sort(byOrigOrder);
+    group.forEach((id, column) => result.set(id, { id, layer, column, topologicalIndex: topoIdx++ }));
   }
-
   return result;
 }
 
@@ -709,53 +525,28 @@ function normalizeArgs(
   firstArg: Record<string, unknown> | PlanMapAndOutlineBuildOptions,
   secondArg?: Record<string, unknown> | PlanMapAndOutlineBuildOptions | null,
   thirdArg?: Readonly<Record<string, ActivityExecutionStatus | string>>,
-  fourthArg?: Partial<PlanMapAndOutlineBuildOptions>
-): {
-  readonly curriculum: Record<string, unknown>;
-  readonly options: PlanMapAndOutlineBuildOptions;
-} {
-  // Check if firstArg is an options envelope containing `curriculum`
+  fourthArg?: Partial<PlanMapAndOutlineBuildOptions>,
+): { readonly curriculum: Record<string, unknown>; readonly options: PlanMapAndOutlineBuildOptions } {
   if (
-    firstArg &&
-    typeof firstArg === "object" &&
-    "curriculum" in firstArg &&
-    firstArg["curriculum"] &&
-    typeof firstArg["curriculum"] === "object" &&
+    firstArg && typeof firstArg === "object" && "curriculum" in firstArg &&
+    firstArg["curriculum"] && typeof firstArg["curriculum"] === "object" &&
     !("schema_version" in firstArg && "modules" in firstArg)
   ) {
     const opts = firstArg as PlanMapAndOutlineBuildOptions;
-    return {
-      curriculum: opts.curriculum ?? {},
-      options: opts,
-    };
+    return { curriculum: opts.curriculum ?? {}, options: opts };
   }
-
   const curriculum = (firstArg as Record<string, unknown>) ?? {};
+  const isOptionsObj =
+    secondArg && typeof secondArg === "object" &&
+    ["activityStates", "playbackSpeed", "viewportWidthPx", "selectedModuleId", "selectedActivityId", "proficiency", "catalogResources", "zoom"]
+      .some((k) => k in secondArg);
 
-  // Check if secondArg is an options object vs a proficiency document
-  if (
-    secondArg &&
-    typeof secondArg === "object" &&
-    ("activityStates" in secondArg ||
-      "playbackSpeed" in secondArg ||
-      "viewportWidthPx" in secondArg ||
-      "selectedModuleId" in secondArg ||
-      "selectedActivityId" in secondArg ||
-      "proficiency" in secondArg ||
-      "catalogResources" in secondArg ||
-      "zoom" in secondArg)
-  ) {
-    const opts = secondArg as PlanMapAndOutlineBuildOptions;
+  if (isOptionsObj) {
     return {
       curriculum,
-      options: {
-        ...opts,
-        ...(thirdArg ? { activityStates: thirdArg } : {}),
-        ...(fourthArg ?? {}),
-      },
+      options: { ...(secondArg as PlanMapAndOutlineBuildOptions), ...(thirdArg ? { activityStates: thirdArg } : {}), ...(fourthArg ?? {}) },
     };
   }
-
   return {
     curriculum,
     options: {
@@ -767,15 +558,10 @@ function normalizeArgs(
 }
 
 function buildResourceLookup(
-  rawCatalog:
-    | Readonly<Record<string, CatalogResourceMetadataInput>>
-    | readonly CatalogResourceMetadataInput[]
-    | undefined
+  rawCatalog: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[] | undefined,
 ): ReadonlyMap<string, CatalogResourceMetadataInput> {
   const map = new Map<string, CatalogResourceMetadataInput>();
-  if (!rawCatalog) {
-    return map;
-  }
+  if (!rawCatalog) return map;
   if (Array.isArray(rawCatalog)) {
     for (const item of rawCatalog) {
       if (item && typeof item === "object" && typeof item.resource_version_id === "string") {
@@ -784,59 +570,35 @@ function buildResourceLookup(
     }
     return map;
   }
-  for (const [key, val] of Object.entries(rawCatalog)) {
-    if (val && typeof val === "object") {
-      map.set(key, val as CatalogResourceMetadataInput);
-    }
+  for (const [k, v] of Object.entries(rawCatalog)) {
+    if (v && typeof v === "object") map.set(k, v as CatalogResourceMetadataInput);
   }
   return map;
 }
 
-/**
- * Builds the deterministic `Plan` synchronized `Outline` + `Map` view-model (`T04`).
- */
 export function buildPlanMapAndOutlineModel(
   curriculumOrOptions: Record<string, unknown> | PlanMapAndOutlineBuildOptions,
   proficiencyOrOptions?: Record<string, unknown> | PlanMapAndOutlineBuildOptions | null,
   activityStatesArg?: Readonly<Record<string, ActivityExecutionStatus | string>>,
-  extraOptionsArg?: Partial<PlanMapAndOutlineBuildOptions>
+  extraOptionsArg?: Partial<PlanMapAndOutlineBuildOptions>,
 ): PlanMapAndOutlineModel {
-  const { curriculum, options } = normalizeArgs(
-    curriculumOrOptions,
-    proficiencyOrOptions,
-    activityStatesArg,
-    extraOptionsArg
-  );
+  const { curriculum, options } = normalizeArgs(curriculumOrOptions, proficiencyOrOptions, activityStatesArg, extraOptionsArg);
+  const schemaVersion = sanitizeText(curriculum["schema_version"], "0.2.0");
+  const curriculumId = sanitizeText(curriculum["curriculum_id"], "curriculum-default");
+  const revisionId = sanitizeText(curriculum["revision_id"], "revision-default");
+  const createdAt = sanitizeText(curriculum["created_at"], "2026-10-20T16:00:00Z");
 
-  const schemaVersion = sanitizeString(curriculum["schema_version"], "0.2.0");
-  const curriculumId = sanitizeString(curriculum["curriculum_id"], "curriculum-default");
-  const revisionId = sanitizeString(curriculum["revision_id"], "revision-default");
-  const createdAt = sanitizeString(curriculum["created_at"], "2026-10-20T16:00:00Z");
-
-  const rawGoal =
-    curriculum["goal"] && typeof curriculum["goal"] === "object"
-      ? (curriculum["goal"] as Record<string, unknown>)
-      : {};
+  const rawGoal = asObj(curriculum["goal"]);
   const goal = {
-    title: sanitizeString(rawGoal["title"], "Curriculum Plan"),
-    summary: sanitizeString(rawGoal["summary"], ""),
-    includedTopics: Array.isArray(rawGoal["included_topics"])
-      ? rawGoal["included_topics"].map((t) => sanitizeString(t)).filter(Boolean)
-      : [],
-    excludedTopics: Array.isArray(rawGoal["excluded_topics"])
-      ? rawGoal["excluded_topics"].map((t) => sanitizeString(t)).filter(Boolean)
-      : [],
-    scopeNote: sanitizeString(rawGoal["scope_note"], ""),
+    title: sanitizeText(rawGoal["title"], "Curriculum Plan"),
+    summary: sanitizeText(rawGoal["summary"], ""),
+    includedTopics: asStringArray(rawGoal["included_topics"]),
+    excludedTopics: asStringArray(rawGoal["excluded_topics"]),
+    scopeNote: sanitizeText(rawGoal["scope_note"], ""),
   };
 
-  const rawDurationPolicy =
-    curriculum["duration_policy"] && typeof curriculum["duration_policy"] === "object"
-      ? (curriculum["duration_policy"] as Record<string, unknown>)
-      : {};
-  const defaultSpeed =
-    typeof rawDurationPolicy["playback_speed"] === "number"
-      ? rawDurationPolicy["playback_speed"]
-      : 1;
+  const rawDurationPolicy = asObj(curriculum["duration_policy"]);
+  const defaultSpeed = typeof rawDurationPolicy["playback_speed"] === "number" ? rawDurationPolicy["playback_speed"] : 1;
   const playbackSpeed =
     typeof options.playbackSpeed === "number" && options.playbackSpeed > 0
       ? Math.min(3, Math.max(0.5, options.playbackSpeed))
@@ -845,72 +607,38 @@ export function buildPlanMapAndOutlineModel(
   const durationPolicy = {
     playbackSpeed,
     rounding: "ceil_per_activity" as const,
-    policyVersion: sanitizeString(
-      rawDurationPolicy["policy_version"],
-      "synthetic-duration-policy"
-    ),
+    policyVersion: sanitizeText(rawDurationPolicy["policy_version"], "synthetic-duration-policy"),
   };
 
-  const rawAdaptationContext =
-    curriculum["adaptation_context"] && typeof curriculum["adaptation_context"] === "object"
-      ? (curriculum["adaptation_context"] as Record<string, unknown>)
-      : {};
-  const waiverRefSet = new Set<string>(
-    Array.isArray(rawAdaptationContext["waiver_refs"])
-      ? rawAdaptationContext["waiver_refs"].map((r) => sanitizeString(r)).filter(Boolean)
-      : []
-  );
+  const waiverRefSet = new Set<string>(asStringArray(asObj(curriculum["adaptation_context"])["waiver_refs"]));
 
-  const rawCertificationOptions = Array.isArray(curriculum["certification_options"])
-    ? curriculum["certification_options"]
-    : [];
-  const certificationByResourceVersionId = new Map<
-    string,
-    { readonly rationale: string; readonly mappedObjectiveIds: readonly string[] }
-  >();
-  for (const rawCert of rawCertificationOptions) {
-    if (rawCert && typeof rawCert === "object") {
-      const cert = rawCert as Record<string, unknown>;
-      const rvId = sanitizeString(cert["resource_version_id"]);
-      if (rvId) {
-        certificationByResourceVersionId.set(rvId, {
-          rationale: sanitizeString(cert["rationale"], "Optional certification preparation"),
-          mappedObjectiveIds: Array.isArray(cert["mapped_objective_ids"])
-            ? cert["mapped_objective_ids"].map((id) => sanitizeString(id)).filter(Boolean)
-            : [],
-        });
-      }
+  const certificationByResourceVersionId = new Map<string, { readonly rationale: string; readonly mappedObjectiveIds: readonly string[] }>();
+  for (const rawCert of Array.isArray(curriculum["certification_options"]) ? curriculum["certification_options"] : []) {
+    const cert = asObj(rawCert);
+    const rvId = sanitizeText(cert["resource_version_id"]);
+    if (rvId) {
+      certificationByResourceVersionId.set(rvId, {
+        rationale: sanitizeText(cert["rationale"], "Optional certification preparation"),
+        mappedObjectiveIds: asStringArray(cert["mapped_objective_ids"]),
+      });
     }
   }
 
-  const rawCoverageLimitations = Array.isArray(curriculum["coverage_limitations"])
-    ? curriculum["coverage_limitations"]
-    : [];
-  const coverageLimitationByObjectiveId = new Map<
-    string,
-    { readonly missingRequirement: string; readonly explanation: string }
-  >();
-  for (const rawLim of rawCoverageLimitations) {
-    if (rawLim && typeof rawLim === "object") {
-      const lim = rawLim as Record<string, unknown>;
-      const objId = sanitizeString(lim["objective_id"]);
-      if (objId) {
-        coverageLimitationByObjectiveId.set(objId, {
-          missingRequirement: sanitizeString(lim["missing_requirement"], "source_coverage"),
-          explanation: sanitizeString(lim["explanation"], "Coverage limitation disclosed."),
-        });
-      }
+  const coverageLimitationByObjectiveId = new Map<string, { readonly missingRequirement: string; readonly explanation: string }>();
+  for (const rawLim of Array.isArray(curriculum["coverage_limitations"]) ? curriculum["coverage_limitations"] : []) {
+    const lim = asObj(rawLim);
+    const objId = sanitizeText(lim["objective_id"]);
+    if (objId) {
+      coverageLimitationByObjectiveId.set(objId, {
+        missingRequirement: sanitizeText(lim["missing_requirement"], "source_coverage"),
+        explanation: sanitizeText(lim["explanation"], "Coverage limitation disclosed."),
+      });
     }
   }
 
-  // Parse proficiency evidence lookup (`proficiency.synthetic.json`)
-  const proficiencyDoc = options.proficiency ?? null;
-  const rawObjectiveEvidence =
-    proficiencyDoc &&
-    typeof proficiencyDoc === "object" &&
-    Array.isArray(proficiencyDoc["objective_evidence"])
-      ? proficiencyDoc["objective_evidence"]
-      : [];
+  const rawObjectiveEvidence = Array.isArray(asObj(options.proficiency)["objective_evidence"])
+    ? (asObj(options.proficiency)["objective_evidence"] as unknown[])
+    : [];
 
   interface ParsedObjectiveEvidence {
     readonly objectiveId: string;
@@ -924,44 +652,26 @@ export function buildPlanMapAndOutlineModel(
 
   const evidenceByObjectiveId = new Map<string, ParsedObjectiveEvidence>();
   for (const rawEv of rawObjectiveEvidence) {
-    if (rawEv && typeof rawEv === "object") {
-      const ev = rawEv as Record<string, unknown>;
-      const objectiveId = sanitizeString(ev["objective_id"]);
-      const objectiveVersionId = sanitizeString(ev["objective_version_id"]);
-      const topicId = sanitizeString(ev["topic_id"]);
-      const rawStatus = sanitizeString(ev["status"], "unknown");
-      const rawSupport = sanitizeString(ev["evidence_support"], "none");
-      const evidenceSupport: "none" | "limited" | "corroborated" =
-        rawSupport === "corroborated" || rawSupport === "limited" ? rawSupport : "none";
-      const evidenceRefs = Array.isArray(ev["evidence_refs"])
-        ? ev["evidence_refs"].map((r) => sanitizeString(r)).filter(Boolean)
-        : [];
-      const refreshRecommended = ev["refresh_recommended"] === true;
-      const parsed: ParsedObjectiveEvidence = {
-        objectiveId,
-        objectiveVersionId,
-        topicId,
-        rawStatus,
-        evidenceSupport,
-        evidenceRefs,
-        refreshRecommended,
-      };
-      if (objectiveId) {
-        evidenceByObjectiveId.set(objectiveId, parsed);
-      }
-      if (objectiveVersionId) {
-        evidenceByObjectiveId.set(objectiveVersionId, parsed);
-      }
-    }
+    const ev = asObj(rawEv);
+    const objectiveId = sanitizeText(ev["objective_id"]);
+    const objectiveVersionId = sanitizeText(ev["objective_version_id"]);
+    const rawSupport = sanitizeText(ev["evidence_support"], "none");
+    const parsed: ParsedObjectiveEvidence = {
+      objectiveId,
+      objectiveVersionId,
+      topicId: sanitizeText(ev["topic_id"]),
+      rawStatus: sanitizeText(ev["status"], "unknown"),
+      evidenceSupport: rawSupport === "corroborated" || rawSupport === "limited" ? rawSupport : "none",
+      evidenceRefs: asStringArray(ev["evidence_refs"]),
+      refreshRecommended: ev["refresh_recommended"] === true,
+    };
+    if (objectiveId) evidenceByObjectiveId.set(objectiveId, parsed);
+    if (objectiveVersionId) evidenceByObjectiveId.set(objectiveVersionId, parsed);
   }
 
-  // Parse raw activities first to determine media minutes and activity execution states
   const rawActivities = Array.isArray(curriculum["activities"]) ? curriculum["activities"] : [];
   const curriculumHasMediaMinutes = rawActivities.some((rawAct) => {
-    if (!rawAct || typeof rawAct !== "object") return false;
-    const dur = (rawAct as Record<string, unknown>)["duration_estimate"];
-    if (!dur || typeof dur !== "object") return false;
-    const media = (dur as Record<string, unknown>)["media_minutes"];
+    const media = asObj(asObj(rawAct)["duration_estimate"])["media_minutes"];
     return typeof media === "number" && media > 0;
   });
 
@@ -969,162 +679,95 @@ export function buildPlanMapAndOutlineModel(
   const studyAheadSet = new Set<string>(options.studyAheadActivityIds ?? []);
   const catalogLookup = buildResourceLookup(options.catalogResources);
 
-  // Map module ownership of objectives and activities
   const rawModules = Array.isArray(curriculum["modules"]) ? curriculum["modules"] : [];
   const moduleIdByObjectiveId = new Map<string, string>();
   const moduleIdByActivityId = new Map<string, string>();
 
   for (const rawMod of rawModules) {
-    if (rawMod && typeof rawMod === "object") {
-      const m = rawMod as Record<string, unknown>;
-      const modId = sanitizeString(m["module_id"] ?? m["id"]);
-      const objIds = Array.isArray(m["objective_ids"]) ? m["objective_ids"] : [];
-      for (const oid of objIds) {
-        const cleanOid = sanitizeString(oid);
-        if (cleanOid && !moduleIdByObjectiveId.has(cleanOid)) {
-          moduleIdByObjectiveId.set(cleanOid, modId);
-        }
-      }
-      const actIds = Array.isArray(m["activity_ids"]) ? m["activity_ids"] : [];
-      for (const aid of actIds) {
-        const cleanAid = sanitizeString(aid);
-        if (cleanAid && !moduleIdByActivityId.has(cleanAid)) {
-          moduleIdByActivityId.set(cleanAid, modId);
-        }
-      }
+    const m = asObj(rawMod);
+    const modId = sanitizeText(m["module_id"] ?? m["id"]);
+    for (const oid of asStringArray(m["objective_ids"])) {
+      if (!moduleIdByObjectiveId.has(oid)) moduleIdByObjectiveId.set(oid, modId);
+    }
+    for (const aid of asStringArray(m["activity_ids"])) {
+      if (!moduleIdByActivityId.has(aid)) moduleIdByActivityId.set(aid, modId);
     }
   }
 
-  // Parse prerequisite_edges between objectives
-  const rawPrereqEdges = Array.isArray(curriculum["prerequisite_edges"])
-    ? curriculum["prerequisite_edges"]
-    : [];
   const objectiveEdges: { readonly from: string; readonly to: string }[] = [];
-  for (const rawEdge of rawPrereqEdges) {
-    if (rawEdge && typeof rawEdge === "object") {
-      const e = rawEdge as Record<string, unknown>;
-      const from = sanitizeString(e["from_objective_id"] ?? e["from"]);
-      const to = sanitizeString(e["to_objective_id"] ?? e["to"]);
-      if (from && to && from !== to) {
-        objectiveEdges.push({ from, to });
-      }
-    }
+  for (const rawEdge of Array.isArray(curriculum["prerequisite_edges"]) ? curriculum["prerequisite_edges"] : []) {
+    const e = asObj(rawEdge);
+    const from = sanitizeText(e["from_objective_id"] ?? e["from"]);
+    const to = sanitizeText(e["to_objective_id"] ?? e["to"]);
+    if (from && to && from !== to) objectiveEdges.push({ from, to });
   }
 
-  // Parse objectives and their initial execution / proficiency status
-  const rawObjectives = Array.isArray(curriculum["objectives"]) ? curriculum["objectives"] : [];
   const objectiveIdsInOrder: string[] = [];
   const rawObjectiveById = new Map<string, Record<string, unknown>>();
-  for (const rawObj of rawObjectives) {
-    if (rawObj && typeof rawObj === "object") {
-      const obj = rawObj as Record<string, unknown>;
-      const objId = sanitizeString(obj["objective_id"] ?? obj["id"]);
-      if (objId && !rawObjectiveById.has(objId)) {
-        objectiveIdsInOrder.push(objId);
-        rawObjectiveById.set(objId, obj);
-      }
+  for (const rawObj of Array.isArray(curriculum["objectives"]) ? curriculum["objectives"] : []) {
+    const obj = asObj(rawObj);
+    const objId = sanitizeText(obj["objective_id"] ?? obj["id"]);
+    if (objId && !rawObjectiveById.has(objId)) {
+      objectiveIdsInOrder.push(objId);
+      rawObjectiveById.set(objId, obj);
     }
   }
 
-  // Also include any objectives from proficiency.objective_evidence that aren't in curriculum.objectives
-  // so proficiency evidence for prerequisite objectives (e.g., objective-matrix-shapes, objective-matrix-calculus)
-  // is inspectable in objectiveTracks if referenced or present in proficiency doc
   for (const rawEv of rawObjectiveEvidence) {
-    if (rawEv && typeof rawEv === "object") {
-      const ev = rawEv as Record<string, unknown>;
-      const objId = sanitizeString(ev["objective_id"]);
-      if (objId && !rawObjectiveById.has(objId)) {
-        objectiveIdsInOrder.push(objId);
-        rawObjectiveById.set(objId, {
-          objective_id: objId,
-          objective_version_id: sanitizeString(ev["objective_version_id"], `${objId}-v1`),
-          topic_id: sanitizeString(ev["topic_id"], "topic-general"),
-          title: sanitizeString(ev["title"], objId),
-          description: sanitizeString(
-            ev["conditions_summary"],
-            "Prior proficiency profile objective."
-          ),
-          success_criterion: "Demonstrated under reviewed criterion policy.",
-          level: "introductory",
-          requirement_level: "required",
-          assessment_activity_ids: [],
-          prior_evidence_refs: Array.isArray(ev["evidence_refs"]) ? ev["evidence_refs"] : [],
-        });
-      }
+    const ev = asObj(rawEv);
+    const objId = sanitizeText(ev["objective_id"]);
+    if (objId && !rawObjectiveById.has(objId)) {
+      objectiveIdsInOrder.push(objId);
+      rawObjectiveById.set(objId, {
+        objective_id: objId,
+        objective_version_id: sanitizeText(ev["objective_version_id"], `${objId}-v1`),
+        topic_id: sanitizeText(ev["topic_id"], "topic-general"),
+        title: sanitizeText(ev["title"], objId),
+        description: sanitizeText(ev["conditions_summary"], "Prior proficiency profile objective."),
+        success_criterion: "Demonstrated under reviewed criterion policy.",
+        level: "introductory",
+        requirement_level: "required",
+        assessment_activity_ids: [],
+        prior_evidence_refs: Array.isArray(ev["evidence_refs"]) ? ev["evidence_refs"] : [],
+      });
     }
   }
 
   const objectiveLayout = computeDeterministicDagLayout(objectiveIdsInOrder, objectiveEdges);
-
-  // Map activities by ID and by objective ID
   const rawActivityById = new Map<string, Record<string, unknown>>();
   const activityIdsByObjectiveId = new Map<string, string[]>();
   const executionStatusByActivityId = new Map<string, ActivityExecutionStatus>();
 
   for (const rawAct of rawActivities) {
-    if (rawAct && typeof rawAct === "object") {
-      const act = rawAct as Record<string, unknown>;
-      const actId = sanitizeString(act["activity_id"] ?? act["id"]);
-      if (!actId) continue;
-      rawActivityById.set(actId, act);
-      const isWaived = waiverRefSet.has(actId);
-      const execStatus = normalizeExecutionStatus(activityStatesInput[actId], isWaived);
-      executionStatusByActivityId.set(actId, execStatus);
-
-      const objIds = Array.isArray(act["objective_ids"]) ? act["objective_ids"] : [];
-      for (const oid of objIds) {
-        const cleanOid = sanitizeString(oid);
-        if (cleanOid) {
-          const list = activityIdsByObjectiveId.get(cleanOid) ?? [];
-          list.push(actId);
-          activityIdsByObjectiveId.set(cleanOid, list);
-        }
-      }
+    const act = asObj(rawAct);
+    const actId = sanitizeText(act["activity_id"] ?? act["id"]);
+    if (!actId) continue;
+    rawActivityById.set(actId, act);
+    executionStatusByActivityId.set(actId, normalizeExecutionStatus(activityStatesInput[actId], waiverRefSet.has(actId)));
+    for (const oid of asStringArray(act["objective_ids"])) {
+      activityIdsByObjectiveId.set(oid, [...(activityIdsByObjectiveId.get(oid) ?? []), actId]);
     }
   }
 
-  // Resolve objective proficiency badge status (`@S17`, `@S23`):
-  // NEVER conflate `self_reported_completed` activity state with `demonstrated` proficiency!
   function resolveObjectiveProficiencyBadge(objectiveId: string): ObjectiveProficiencyBadgeView {
     const rawObj = rawObjectiveById.get(objectiveId);
-    const objVersionId = rawObj ? sanitizeString(rawObj["objective_version_id"], objectiveId) : objectiveId;
-    const ev =
-      evidenceByObjectiveId.get(objectiveId) ?? evidenceByObjectiveId.get(objVersionId) ?? null;
-
+    const objVersionId = rawObj ? sanitizeText(rawObj["objective_version_id"], objectiveId) : objectiveId;
+    const ev = evidenceByObjectiveId.get(objectiveId) ?? evidenceByObjectiveId.get(objVersionId) ?? null;
     const linkedActIds = activityIdsByObjectiveId.get(objectiveId) ?? [];
     const selfReportedActivityCompleted = linkedActIds.some(
-      (aid) => executionStatusByActivityId.get(aid) === "self_reported_completed"
+      (aid) => executionStatusByActivityId.get(aid) === "self_reported_completed",
     );
-
     const covLim = coverageLimitationByObjectiveId.get(objectiveId);
 
     let status: ObjectiveProficiencyBadgeStatus = "unassessed";
-    let evidenceSupport: "none" | "limited" | "corroborated" = "none";
-    let evidenceRefs: readonly string[] = [];
-
     if (ev) {
-      evidenceSupport = ev.evidenceSupport;
-      evidenceRefs = ev.evidenceRefs;
-      if (
-        ev.rawStatus === "demonstrated" &&
-        ev.evidenceRefs.length > 0 &&
-        ev.evidenceSupport !== "none" &&
-        !covLim
-      ) {
+      if (ev.rawStatus === "demonstrated" && ev.evidenceRefs.length > 0 && ev.evidenceSupport !== "none" && !covLim) {
         status = ev.refreshRecommended ? "needs_review" : "demonstrated";
       } else if (ev.rawStatus === "needs_practice" || ev.rawStatus === "needs_review") {
         status = "needs_review";
-      } else if (ev.rawStatus === "self_reported") {
-        status = "self_reported";
-      } else if (ev.rawStatus === "in_progress") {
-        status = "in_progress";
-      } else {
-        status = "unassessed";
+      } else if (ev.rawStatus === "self_reported" || ev.rawStatus === "in_progress") {
+        status = ev.rawStatus;
       }
-    } else {
-      // Activity execution state (`in_progress` or `self_reported_completed`) never
-      // inflates or alters objective proficiency without reviewed evidence (@S17, @S23).
-      status = "unassessed";
     }
 
     const meta = PROFICIENCY_BADGE_LABELS[status];
@@ -1134,25 +777,19 @@ export function buildPlanMapAndOutlineModel(
       status,
       label: meta.label,
       nonColorCue: meta.nonColorCue,
-      evidenceSupport,
-      evidenceRefs,
+      evidenceSupport: ev?.evidenceSupport ?? "none",
+      evidenceRefs: ev?.evidenceRefs ?? [],
       selfReportedActivityCompleted,
       conflatedWithActivityCompletion: false,
     };
   }
 
-  const proficiencyBadgeByObjectiveId = new Map<string, ObjectiveProficiencyBadgeView>();
-  for (const objId of objectiveIdsInOrder) {
-    proficiencyBadgeByObjectiveId.set(objId, resolveObjectiveProficiencyBadge(objId));
-  }
+  const proficiencyBadgeByObjectiveId = new Map(
+    objectiveIdsInOrder.map((objId) => [objId, resolveObjectiveProficiencyBadge(objId)]),
+  );
 
-  // Build objective prerequisite & dependent lookups
-  const prereqObjectivesByObj = new Map<string, string[]>();
-  const dependentObjectivesByObj = new Map<string, string[]>();
-  for (const objId of objectiveIdsInOrder) {
-    prereqObjectivesByObj.set(objId, []);
-    dependentObjectivesByObj.set(objId, []);
-  }
+  const prereqObjectivesByObj = new Map(objectiveIdsInOrder.map((id) => [id, [] as string[]]));
+  const dependentObjectivesByObj = new Map(objectiveIdsInOrder.map((id) => [id, [] as string[]]));
   for (const edge of objectiveEdges) {
     if (prereqObjectivesByObj.has(edge.to) && prereqObjectivesByObj.has(edge.from)) {
       prereqObjectivesByObj.get(edge.to)!.push(edge.from);
@@ -1160,111 +797,71 @@ export function buildPlanMapAndOutlineModel(
     }
   }
 
-  // Derive module prerequisite edges from:
-  // 1) explicit `prerequisite_module_ids` on a module if present
-  // 2) `prerequisite_edges` across objectives belonging to different modules
-  // 3) `prerequisite_activity_ids` across activities belonging to different modules
   const moduleIdsInOrder: string[] = [];
   const rawModuleById = new Map<string, Record<string, unknown>>();
   for (const rawMod of rawModules) {
-    if (rawMod && typeof rawMod === "object") {
-      const m = rawMod as Record<string, unknown>;
-      const modId = sanitizeString(m["module_id"] ?? m["id"]);
-      if (modId && !rawModuleById.has(modId)) {
-        moduleIdsInOrder.push(modId);
-        rawModuleById.set(modId, m);
-      }
+    const m = asObj(rawMod);
+    const modId = sanitizeText(m["module_id"] ?? m["id"]);
+    if (modId && !rawModuleById.has(modId)) {
+      moduleIdsInOrder.push(modId);
+      rawModuleById.set(modId, m);
     }
   }
 
   const moduleEdgeSet = new Set<string>();
   const moduleEdges: { readonly from: string; readonly to: string }[] = [];
-  function addModuleEdge(fromMod: string, toMod: string): void {
-    if (!fromMod || !toMod || fromMod === toMod) return;
-    if (!rawModuleById.has(fromMod) || !rawModuleById.has(toMod)) return;
+  const addModuleEdge = (fromMod: string | undefined, toMod: string | undefined) => {
+    if (!fromMod || !toMod || fromMod === toMod || !rawModuleById.has(fromMod) || !rawModuleById.has(toMod)) return;
     const key = `${fromMod}->${toMod}`;
     if (!moduleEdgeSet.has(key)) {
       moduleEdgeSet.add(key);
       moduleEdges.push({ from: fromMod, to: toMod });
     }
-  }
+  };
 
   for (const modId of moduleIdsInOrder) {
-    const rawMod = rawModuleById.get(modId)!;
-    const explicitPrereqs = Array.isArray(rawMod["prerequisite_module_ids"])
-      ? rawMod["prerequisite_module_ids"]
-      : [];
-    for (const p of explicitPrereqs) {
-      addModuleEdge(sanitizeString(p), modId);
+    for (const p of asStringArray(rawModuleById.get(modId)!["prerequisite_module_ids"])) {
+      addModuleEdge(p, modId);
     }
   }
-
   for (const edge of objectiveEdges) {
-    const fromMod = moduleIdByObjectiveId.get(edge.from);
-    const toMod = moduleIdByObjectiveId.get(edge.to);
-    if (fromMod && toMod) {
-      addModuleEdge(fromMod, toMod);
-    }
+    addModuleEdge(moduleIdByObjectiveId.get(edge.from), moduleIdByObjectiveId.get(edge.to));
   }
-
   for (const [actId, rawAct] of rawActivityById.entries()) {
     const toMod = moduleIdByActivityId.get(actId);
-    const prereqActIds = Array.isArray(rawAct["prerequisite_activity_ids"])
-      ? rawAct["prerequisite_activity_ids"]
-      : [];
-    for (const paid of prereqActIds) {
-      const fromMod = moduleIdByActivityId.get(sanitizeString(paid));
-      if (fromMod && toMod) {
-        addModuleEdge(fromMod, toMod);
-      }
+    for (const paid of asStringArray(rawAct["prerequisite_activity_ids"])) {
+      addModuleEdge(moduleIdByActivityId.get(paid), toMod);
     }
   }
 
   const moduleLayout = computeDeterministicDagLayout(moduleIdsInOrder, moduleEdges);
-  const sortedModuleIds = [...moduleIdsInOrder].sort((a, b) => {
-    const posA = moduleLayout.get(a)?.topologicalIndex ?? 0;
-    const posB = moduleLayout.get(b)?.topologicalIndex ?? 0;
-    return posA - posB;
-  });
+  const sortedModuleIds = [...moduleIdsInOrder].sort(
+    (a, b) => (moduleLayout.get(a)?.topologicalIndex ?? 0) - (moduleLayout.get(b)?.topologicalIndex ?? 0),
+  );
 
-  const prereqModulesByMod = new Map<string, string[]>();
-  const dependentModulesByMod = new Map<string, string[]>();
-  for (const modId of moduleIdsInOrder) {
-    prereqModulesByMod.set(modId, []);
-    dependentModulesByMod.set(modId, []);
-  }
+  const prereqModulesByMod = new Map(moduleIdsInOrder.map((id) => [id, [] as string[]]));
+  const dependentModulesByMod = new Map(moduleIdsInOrder.map((id) => [id, [] as string[]]));
   for (const edge of moduleEdges) {
     prereqModulesByMod.get(edge.to)!.push(edge.from);
     dependentModulesByMod.get(edge.from)!.push(edge.to);
   }
 
-  // Helper to build OutlineActivityView
   function buildOutlineActivity(actId: string, owningModuleId: string): OutlineActivityView {
     const rawAct = rawActivityById.get(actId) ?? {};
-    const rawType = sanitizeString(rawAct["type"] ?? rawAct["activity_type"], "theory");
-    const actType: AllowlistedActivityType = (
-      ALLOWLISTED_ACTIVITY_TYPES as readonly string[]
-    ).includes(rawType)
+    const rawType = sanitizeText(rawAct["type"] ?? rawAct["activity_type"], "theory");
+    const actType: AllowlistedActivityType = (ALLOWLISTED_ACTIVITY_TYPES as readonly string[]).includes(rawType)
       ? (rawType as AllowlistedActivityType)
       : "theory";
-
-    const title = sanitizeString(rawAct["title"], actId);
-    const reqLevel: "required" | "optional" =
-      rawAct["requirement_level"] === "optional" ? "optional" : "required";
-    const required = reqLevel === "required";
-    const isOptionalEnrichment = !required;
-
-    const objectiveIds = Array.isArray(rawAct["objective_ids"])
-      ? rawAct["objective_ids"].map((id) => sanitizeString(id)).filter(Boolean)
-      : [];
-    const prerequisiteActivityIds = Array.isArray(rawAct["prerequisite_activity_ids"])
-      ? rawAct["prerequisite_activity_ids"].map((id) => sanitizeString(id)).filter(Boolean)
-      : [];
+    const title = sanitizeText(rawAct["title"], actId);
+    const requirementLevel: "required" | "optional" = rawAct["requirement_level"] === "optional" ? "optional" : "required";
+    const required = requirementLevel === "required";
+    const objectiveIds = asStringArray(rawAct["objective_ids"]);
+    const prerequisiteActivityIds = asStringArray(rawAct["prerequisite_activity_ids"]);
 
     const prerequisiteBadges: PrerequisiteBadgeView[] = prerequisiteActivityIds.map((prereqId) => {
       const prereqStatus = executionStatusByActivityId.get(prereqId) ?? "not_started";
       const satisfied = prereqStatus === "completed" || prereqStatus === "waived";
-      const prereqTitle = sanitizeString(rawActivityById.get(prereqId)?.["title"], prereqId);
+      const prereqTitle = sanitizeText(rawActivityById.get(prereqId)?.["title"], prereqId);
       return {
         edgeId: `${prereqId}->${actId}`,
         fromId: prereqId,
@@ -1278,107 +875,61 @@ export function buildPlanMapAndOutlineModel(
       };
     });
 
-    const durationTriplet = computeActivityDurationTriplet(
-      rawAct["duration_estimate"],
-      playbackSpeed,
-      curriculumHasMediaMinutes
-    );
+    const durationTriplet = computeActivityDurationTriplet(rawAct["duration_estimate"], playbackSpeed, curriculumHasMediaMinutes);
 
-    const rawAssignments = Array.isArray(rawAct["resource_assignments"])
-      ? rawAct["resource_assignments"]
-      : [];
+    const rawAssignments = Array.isArray(rawAct["resource_assignments"]) ? rawAct["resource_assignments"] : [];
     const resourceProvenanceCards: ResourceProvenanceCardView[] = rawAssignments
       .filter((r): r is Record<string, unknown> => Boolean(r && typeof r === "object"))
       .map((assignment) => {
-        const rvId = sanitizeString(assignment["resource_version_id"], "unknown-resource");
-        const role: "primary" | "supplemental" =
-          assignment["role"] === "supplemental" ? "supplemental" : "primary";
-        const selectionRationale = sanitizeString(
-          assignment["selection_rationale"],
-          "Selected from approved catalog snapshot."
-        );
+        const rvId = sanitizeText(assignment["resource_version_id"], "unknown-resource");
+        const role: "primary" | "supplemental" = assignment["role"] === "supplemental" ? "supplemental" : "primary";
         const catalogMeta = catalogLookup.get(rvId);
-        const verifiedPublisher = sanitizeString(
-          catalogMeta?.provider?.display_name,
-          "Verified Catalog Publisher"
-        );
-        const versionTimestamp = sanitizeString(
-          catalogMeta?.captured_at ?? catalogMeta?.access?.access_verified_at,
-          createdAt
-        );
-        const accessModel = sanitizeString(catalogMeta?.access?.model, "free");
-        const rightsBasis = sanitizeString(
-          catalogMeta?.ingestion_permissions?.basis,
-          "metadata_only"
-        );
-        const displayExcerptsAllowed =
-          catalogMeta?.ingestion_permissions?.permissions?.display_excerpts === "allowed";
-
-        const rawSegments = Array.isArray(assignment["segment_ids"])
-          ? assignment["segment_ids"].map((s) => sanitizeString(s)).filter(Boolean)
-          : [];
-        // Omit unverified chapter or timestamp precision (`UI-004`, `@S26`)
+        const rightsBasis = sanitizeText(catalogMeta?.ingestion_permissions?.basis, "metadata_only");
+        const displayExcerptsAllowed = catalogMeta?.ingestion_permissions?.permissions?.display_excerpts === "allowed";
+        const rawSegments = asStringArray(assignment["segment_ids"]);
         const verifiedSegmentSet = new Set<string>(
           Array.isArray(catalogMeta?.segments)
-            ? catalogMeta.segments
-                .filter((s) => s && s.verified !== false && typeof s.segment_id === "string")
-                .map((s) => s.segment_id!)
-            : rawSegments
+            ? catalogMeta.segments.filter((s) => s && s.verified !== false && typeof s.segment_id === "string").map((s) => s.segment_id!)
+            : rawSegments,
         );
-        const verifiedSegments = rawSegments.filter((segId) => verifiedSegmentSet.has(segId));
-
         const certEntry = certificationByResourceVersionId.get(rvId);
-        const optionalCertificationBadge: OptionalCertificationBadgeView | null = certEntry
-          ? {
-              included: Boolean(catalogMeta?.access?.certificate_included),
-              relationship: "optional_preparation",
-              label: "Optional certification preparation (separate from core completion)",
-              rationale: certEntry.rationale,
-              verifiedIssuerUrl:
-                catalogMeta?.canonical_url && isSafeResourceUrl(catalogMeta.canonical_url)
-                  ? catalogMeta.canonical_url
-                  : null,
-              isAccreditedQualificationGuarantee: false,
-            }
-          : null;
-
-        const rawUrl = catalogMeta?.canonical_url;
-        const canonicalUrl =
-          typeof rawUrl === "string" && isSafeResourceUrl(rawUrl) ? rawUrl : null;
+        const canonicalUrl = catalogMeta?.canonical_url && isSafeResourceUrl(catalogMeta.canonical_url) ? catalogMeta.canonical_url : null;
 
         return {
           resourceVersionId: rvId,
           role,
-          title: sanitizeString(catalogMeta?.title, rvId),
-          verifiedPublisher,
-          versionTimestamp,
-          accessModel,
+          title: sanitizeText(catalogMeta?.title, rvId),
+          verifiedPublisher: sanitizeText(catalogMeta?.provider?.display_name, "Verified Catalog Publisher"),
+          versionTimestamp: sanitizeText(catalogMeta?.captured_at ?? catalogMeta?.access?.access_verified_at, createdAt),
+          accessModel: sanitizeText(catalogMeta?.access?.model, "free"),
           rightsBadge: {
             basis: rightsBasis,
-            label: displayExcerptsAllowed
-              ? `Rights: ${rightsBasis} (permitted excerpt)`
-              : `Rights: ${rightsBasis} (external link only)`,
+            label: displayExcerptsAllowed ? `Rights: ${rightsBasis} (permitted excerpt)` : `Rights: ${rightsBasis} (external link only)`,
             displayExcerptsAllowed,
             externalLinkOnly: !displayExcerptsAllowed,
           },
-          optionalCertificationBadge,
-          selectionRationale,
-          verifiedSegments,
+          optionalCertificationBadge: certEntry
+            ? {
+                included: Boolean(catalogMeta?.access?.certificate_included),
+                relationship: "optional_preparation",
+                label: "Optional certification preparation (separate from core completion)",
+                rationale: certEntry.rationale,
+                verifiedIssuerUrl: canonicalUrl,
+                isAccreditedQualificationGuarantee: false,
+              }
+            : null,
+          selectionRationale: sanitizeText(assignment["selection_rationale"], "Selected from approved catalog snapshot."),
+          verifiedSegments: rawSegments.filter((segId) => verifiedSegmentSet.has(segId)),
           canonicalUrl,
           omitsUnverifiedPrecision: true,
         };
       });
 
     const executionStatus = executionStatusByActivityId.get(actId) ?? "not_started";
-    const executionBadge = makeExecutionBadge(executionStatus);
-
-    const objectiveProficiencyBadges: ObjectiveProficiencyBadgeView[] =
+    const objectiveProficiencyBadges =
       objectiveIds.length > 0
-        ? objectiveIds.map(
-            (oid) => proficiencyBadgeByObjectiveId.get(oid) ?? resolveObjectiveProficiencyBadge(oid)
-          )
+        ? objectiveIds.map((oid) => proficiencyBadgeByObjectiveId.get(oid) ?? resolveObjectiveProficiencyBadge(oid))
         : [resolveObjectiveProficiencyBadge("unmapped-objective")];
-
     const primaryObjBadge = objectiveProficiencyBadges[0]!;
     const masteryGated = rawAct["mastery_gated"] === true;
 
@@ -1389,64 +940,35 @@ export function buildPlanMapAndOutlineModel(
 
     const unmetPrerequisiteObjectiveIds: string[] = [];
     for (const oid of objectiveIds) {
-      const prereqObjs = prereqObjectivesByObj.get(oid) ?? [];
-      for (const poid of prereqObjs) {
-        const pBadge = proficiencyBadgeByObjectiveId.get(poid);
-        if (!pBadge || pBadge.status !== "demonstrated") {
-          if (!unmetPrerequisiteObjectiveIds.includes(poid)) {
-            unmetPrerequisiteObjectiveIds.push(poid);
-          }
+      for (const poid of prereqObjectivesByObj.get(oid) ?? []) {
+        if (proficiencyBadgeByObjectiveId.get(poid)?.status !== "demonstrated" && !unmetPrerequisiteObjectiveIds.includes(poid)) {
+          unmetPrerequisiteObjectiveIds.push(poid);
         }
       }
     }
 
-    const hasUnmetPrereqs =
-      unmetPrerequisiteActivityIds.length > 0 || unmetPrerequisiteObjectiveIds.length > 0;
-    const isStudyingAhead = studyAheadSet.has(actId) || hasUnmetPrereqs;
+    const hasUnmetPrereqs = unmetPrerequisiteActivityIds.length > 0 || unmetPrerequisiteObjectiveIds.length > 0;
     const studyAheadAllowed = !masteryGated || !hasUnmetPrereqs;
+    const prerequisiteBridgeRecommendation: PrerequisiteBridgeRecommendation | null =
+      hasUnmetPrereqs || studyAheadSet.has(actId)
+        ? {
+            recommended: true,
+            blocking: masteryGated && hasUnmetPrereqs,
+            masteryGated,
+            reason: masteryGated
+              ? "Mastery-gated activity: demonstrated prerequisite proficiency is required before advancing."
+              : "Non-blocking prerequisite bridge recommendation: you can study ahead, or complete the recommended prerequisite bridge activities first.",
+            unmetPrerequisiteActivityIds,
+            unmetPrerequisiteObjectiveIds,
+            suggestedBridgeActivityIds: unmetPrerequisiteActivityIds.length > 0 ? unmetPrerequisiteActivityIds : prerequisiteActivityIds,
+          }
+        : null;
 
-    let prerequisiteBridgeRecommendation: PrerequisiteBridgeRecommendation | null = null;
-    if (hasUnmetPrereqs || studyAheadSet.has(actId)) {
-      prerequisiteBridgeRecommendation = {
-        recommended: true,
-        blocking: masteryGated && hasUnmetPrereqs,
-        masteryGated,
-        reason: masteryGated
-          ? "Mastery-gated activity: demonstrated prerequisite proficiency is required before advancing."
-          : "Non-blocking prerequisite bridge recommendation: you can study ahead, or complete the recommended prerequisite bridge activities first.",
-        unmetPrerequisiteActivityIds,
-        unmetPrerequisiteObjectiveIds,
-        suggestedBridgeActivityIds:
-          unmetPrerequisiteActivityIds.length > 0
-            ? unmetPrerequisiteActivityIds
-            : prerequisiteActivityIds,
-      };
-    } else if (isStudyingAhead && !masteryGated) {
-      prerequisiteBridgeRecommendation = {
-        recommended: true,
-        blocking: false,
-        masteryGated: false,
-        reason:
-          "Studying ahead on non-gated activity; prerequisite evidence remains unchanged.",
-        unmetPrerequisiteActivityIds: [],
-        unmetPrerequisiteObjectiveIds: [],
-        suggestedBridgeActivityIds: prerequisiteActivityIds,
-      };
-    }
-
-    const contentObj =
-      rawAct["content"] && typeof rawAct["content"] === "object"
-        ? (rawAct["content"] as Record<string, unknown>)
-        : {};
-    const promptSummary = sanitizeString(
-      contentObj["study_prompt"] ??
-        contentObj["example_prompt"] ??
-        contentObj["task_prompt"] ??
-        contentObj["recall_prompt"] ??
-        contentObj["reflection_prompt"] ??
-        contentObj["brief"] ??
-        title,
-      title
+    const contentObj = asObj(rawAct["content"]);
+    const promptSummary = sanitizeText(
+      contentObj["study_prompt"] ?? contentObj["example_prompt"] ?? contentObj["task_prompt"] ??
+      contentObj["recall_prompt"] ?? contentObj["reflection_prompt"] ?? contentObj["brief"] ?? title,
+      title,
     );
 
     return {
@@ -1455,16 +977,16 @@ export function buildPlanMapAndOutlineModel(
       title,
       type: actType,
       activityType: actType,
-      requirementLevel: reqLevel,
+      requirementLevel,
       required,
-      isOptionalEnrichment,
+      isOptionalEnrichment: !required,
       objectiveIds,
       prerequisiteActivityIds,
       prerequisiteBadges,
       durationTriplet,
       resourceProvenanceCards,
       executionStatus,
-      executionBadge,
+      executionBadge: makeExecutionBadge(executionStatus),
       objectiveProficiencyStatus: primaryObjBadge.status,
       objectiveProficiencyBadge: primaryObjBadge,
       objectiveProficiencyBadges,
@@ -1478,48 +1000,28 @@ export function buildPlanMapAndOutlineModel(
     };
   }
 
-  // Build ObjectiveTrackView list in topological order
-  const sortedObjectiveIds = [...objectiveIdsInOrder].sort((a, b) => {
-    const posA = objectiveLayout.get(a)?.topologicalIndex ?? 0;
-    const posB = objectiveLayout.get(b)?.topologicalIndex ?? 0;
-    return posA - posB;
-  });
+  const sortedObjectiveIds = [...objectiveIdsInOrder].sort(
+    (a, b) => (objectiveLayout.get(a)?.topologicalIndex ?? 0) - (objectiveLayout.get(b)?.topologicalIndex ?? 0),
+  );
 
   const objectiveTracks: ObjectiveTrackView[] = sortedObjectiveIds.map((objId) => {
     const rawObj = rawObjectiveById.get(objId) ?? {};
-    const layoutPos = objectiveLayout.get(objId) ?? {
-      id: objId,
-      layer: 0,
-      column: 0,
-      topologicalIndex: 0,
-    };
+    const layoutPos = objectiveLayout.get(objId) ?? { id: objId, layer: 0, column: 0, topologicalIndex: 0 };
     const prereqIds = prereqObjectivesByObj.get(objId) ?? [];
     const depIds = dependentObjectivesByObj.get(objId) ?? [];
-    const profBadge =
-      proficiencyBadgeByObjectiveId.get(objId) ?? resolveObjectiveProficiencyBadge(objId);
-
+    const profBadge = proficiencyBadgeByObjectiveId.get(objId) ?? resolveObjectiveProficiencyBadge(objId);
     const linkedActs = activityIdsByObjectiveId.get(objId) ?? [];
+
     let rollupExec: ActivityExecutionStatus = "not_started";
-    if (waiverRefSet.has(objId)) {
-      rollupExec = "waived";
-    } else if (
-      linkedActs.length > 0 &&
-      linkedActs.every((aid) => executionStatusByActivityId.get(aid) === "completed")
-    ) {
-      rollupExec = "completed";
-    } else if (
-      linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "self_reported_completed")
-    ) {
-      rollupExec = "self_reported_completed";
-    } else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "in_progress")) {
-      rollupExec = "in_progress";
-    }
+    if (waiverRefSet.has(objId)) rollupExec = "waived";
+    else if (linkedActs.length > 0 && linkedActs.every((aid) => executionStatusByActivityId.get(aid) === "completed")) rollupExec = "completed";
+    else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "self_reported_completed")) rollupExec = "self_reported_completed";
+    else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "in_progress")) rollupExec = "in_progress";
 
     const prereqBadges: PrerequisiteBadgeView[] = prereqIds.map((pId) => {
-      const pProf =
-        proficiencyBadgeByObjectiveId.get(pId) ?? resolveObjectiveProficiencyBadge(pId);
+      const pProf = proficiencyBadgeByObjectiveId.get(pId) ?? resolveObjectiveProficiencyBadge(pId);
       const satisfied = pProf.status === "demonstrated";
-      const pTitle = sanitizeString(rawObjectiveById.get(pId)?.["title"], pId);
+      const pTitle = sanitizeText(rawObjectiveById.get(pId)?.["title"], pId);
       return {
         edgeId: `${pId}->${objId}`,
         fromId: pId,
@@ -1533,32 +1035,29 @@ export function buildPlanMapAndOutlineModel(
       };
     });
 
-    const rawLevel = sanitizeString(rawObj["level"], "introductory");
+    const rawLevel = sanitizeText(rawObj["level"], "introductory");
     const level: "introductory" | "applied" | "advanced" =
       rawLevel === "applied" || rawLevel === "advanced" ? rawLevel : "introductory";
-    const reqLevel: "required" | "optional" =
-      rawObj["requirement_level"] === "optional" ? "optional" : "required";
+    const requirementLevel: "required" | "optional" = rawObj["requirement_level"] === "optional" ? "optional" : "required";
 
     return {
       objectiveId: objId,
-      objectiveVersionId: sanitizeString(rawObj["objective_version_id"], `${objId}-v1`),
-      topicId: sanitizeString(rawObj["topic_id"], "topic-general"),
+      objectiveVersionId: sanitizeText(rawObj["objective_version_id"], `${objId}-v1`),
+      topicId: sanitizeText(rawObj["topic_id"], "topic-general"),
       moduleId: moduleIdByObjectiveId.get(objId) ?? null,
-      title: sanitizeString(rawObj["title"], objId),
-      description: sanitizeString(rawObj["description"], ""),
-      successCriterion: sanitizeString(rawObj["success_criterion"], ""),
+      title: sanitizeText(rawObj["title"], objId),
+      description: sanitizeText(rawObj["description"], ""),
+      successCriterion: sanitizeText(rawObj["success_criterion"], ""),
       level,
-      requirementLevel: reqLevel,
-      required: reqLevel === "required",
+      requirementLevel,
+      required: requirementLevel === "required",
       topologicalIndex: layoutPos.topologicalIndex,
       layer: layoutPos.layer,
       column: layoutPos.column,
       prerequisiteObjectiveIds: prereqIds,
       dependentObjectiveIds: depIds,
       prerequisiteBadges: prereqBadges,
-      assessmentActivityIds: Array.isArray(rawObj["assessment_activity_ids"])
-        ? rawObj["assessment_activity_ids"].map((a) => sanitizeString(a)).filter(Boolean)
-        : [],
+      assessmentActivityIds: asStringArray(rawObj["assessment_activity_ids"]),
       activityIds: linkedActs,
       proficiencyStatus: profBadge.status,
       proficiencyBadge: profBadge,
@@ -1569,100 +1068,43 @@ export function buildPlanMapAndOutlineModel(
     };
   });
 
-  const objectiveTrackById = new Map<string, ObjectiveTrackView>();
-  for (const track of objectiveTracks) {
-    objectiveTrackById.set(track.objectiveId, track);
-  }
+  const objectiveTrackById = new Map(objectiveTracks.map((t) => [t.objectiveId, t]));
 
-  // Build OutlineModuleView list in topological order
+  const sumTriplets = (items: readonly OutlineActivityView[]) =>
+    makeDurationTriplet(
+      items.reduce((acc, a) => acc + a.durationTriplet.min, 0),
+      items.reduce((acc, a) => acc + a.durationTriplet.point, 0),
+      items.reduce((acc, a) => acc + a.durationTriplet.max, 0),
+      items.reduce((acc, a) => acc + a.durationTriplet.mediaMinutesAt1x, 0),
+      items.reduce((acc, a) => acc + a.durationTriplet.nonMediaMinutesAt1x, 0),
+      playbackSpeed,
+    );
+
   const outlineActivities: OutlineActivityView[] = [];
   const outlineModules: OutlineModuleView[] = sortedModuleIds.map((modId) => {
     const rawMod = rawModuleById.get(modId) ?? {};
-    const layoutPos = moduleLayout.get(modId) ?? {
-      id: modId,
-      layer: 0,
-      column: 0,
-      topologicalIndex: 0,
-    };
-    const objIds = Array.isArray(rawMod["objective_ids"])
-      ? rawMod["objective_ids"].map((id) => sanitizeString(id)).filter(Boolean)
-      : [];
-    const modObjectives = objIds
-      .map((id) => objectiveTrackById.get(id))
-      .filter((t): t is ObjectiveTrackView => Boolean(t));
-
-    const actIds = Array.isArray(rawMod["activity_ids"])
-      ? rawMod["activity_ids"].map((id) => sanitizeString(id)).filter(Boolean)
-      : [];
+    const layoutPos = moduleLayout.get(modId) ?? { id: modId, layer: 0, column: 0, topologicalIndex: 0 };
+    const objIds = asStringArray(rawMod["objective_ids"]);
+    const modObjectives = objIds.map((id) => objectiveTrackById.get(id)).filter((t): t is ObjectiveTrackView => Boolean(t));
+    const actIds = asStringArray(rawMod["activity_ids"]);
     const modActivities = actIds.map((aid) => buildOutlineActivity(aid, modId));
     outlineActivities.push(...modActivities);
 
-    const minSum = modActivities.reduce((acc, a) => acc + a.durationTriplet.min, 0);
-    const pointSum = modActivities.reduce((acc, a) => acc + a.durationTriplet.point, 0);
-    const maxSum = modActivities.reduce((acc, a) => acc + a.durationTriplet.max, 0);
-    const mediaAt1x = modActivities.reduce((acc, a) => acc + a.durationTriplet.mediaMinutesAt1x, 0);
-    const nonMediaAt1x = modActivities.reduce(
-      (acc, a) => acc + a.durationTriplet.nonMediaMinutesAt1x,
-      0
-    );
-
-    const modDurationTriplet: DurationTripletView = {
-      min: minSum,
-      point: pointSum,
-      max: maxSum,
-      minMinutes: minSum,
-      pointMinutes: pointSum,
-      maxMinutes: maxSum,
-      mediaMinutesAt1x: mediaAt1x,
-      nonMediaMinutesAt1x: nonMediaAt1x,
-      playbackSpeed,
-      rounding: "ceil_per_activity",
-      rangeInterpretation: "planning_bounds_not_confidence_interval",
-    };
-
-    const required =
-      modActivities.some((a) => a.required) || modObjectives.some((o) => o.required);
-    const requirementLevel: "required" | "optional" = required ? "required" : "optional";
-
+    const required = modActivities.some((a) => a.required) || modObjectives.some((o) => o.required);
     let modExecStatus: ActivityExecutionStatus = "not_started";
-    if (
-      modActivities.length > 0 &&
-      modActivities.every((a) => a.executionStatus === "waived")
-    ) {
-      modExecStatus = "waived";
-    } else if (
-      modActivities.length > 0 &&
-      modActivities.every(
-        (a) => a.executionStatus === "completed" || a.executionStatus === "waived"
-      )
-    ) {
-      modExecStatus = "completed";
-    } else if (modActivities.some((a) => a.executionStatus === "self_reported_completed")) {
-      modExecStatus = "self_reported_completed";
-    } else if (
-      modActivities.some(
-        (a) => a.executionStatus === "in_progress" || a.executionStatus === "completed"
-      )
-    ) {
-      modExecStatus = "in_progress";
-    }
+    if (modActivities.length > 0 && modActivities.every((a) => a.executionStatus === "waived")) modExecStatus = "waived";
+    else if (modActivities.length > 0 && modActivities.every((a) => a.executionStatus === "completed" || a.executionStatus === "waived")) modExecStatus = "completed";
+    else if (modActivities.some((a) => a.executionStatus === "self_reported_completed")) modExecStatus = "self_reported_completed";
+    else if (modActivities.some((a) => a.executionStatus === "in_progress" || a.executionStatus === "completed")) modExecStatus = "in_progress";
 
-    const primaryProfBadge =
-      modObjectives[0]?.proficiencyBadge ?? resolveObjectiveProficiencyBadge(modId);
-
+    const primaryProfBadge = modObjectives[0]?.proficiencyBadge ?? resolveObjectiveProficiencyBadge(modId);
     const prereqModIds = prereqModulesByMod.get(modId) ?? [];
     const depModIds = dependentModulesByMod.get(modId) ?? [];
 
     const prereqBadges: PrerequisiteBadgeView[] = prereqModIds.map((pModId) => {
-      const pTitle = sanitizeString(rawModuleById.get(pModId)?.["title"], pModId);
-      const pModObjIds = Array.isArray(rawModuleById.get(pModId)?.["objective_ids"])
-        ? (rawModuleById.get(pModId)!["objective_ids"] as unknown[]).map((x) => sanitizeString(x))
-        : [];
-      const satisfied =
-        pModObjIds.length > 0 &&
-        pModObjIds.every(
-          (oid) => proficiencyBadgeByObjectiveId.get(oid)?.status === "demonstrated"
-        );
+      const pTitle = sanitizeText(rawModuleById.get(pModId)?.["title"], pModId);
+      const pModObjIds = asStringArray(rawModuleById.get(pModId)?.["objective_ids"]);
+      const satisfied = pModObjIds.length > 0 && pModObjIds.every((oid) => proficiencyBadgeByObjectiveId.get(oid)?.status === "demonstrated");
       return {
         edgeId: `${pModId}->${modId}`,
         fromId: pModId,
@@ -1671,19 +1113,19 @@ export function buildPlanMapAndOutlineModel(
         relationshipLabel: `Requires module: ${pTitle}`,
         textMeaning: satisfied
           ? `Prerequisite module "${pTitle}" has demonstrated proficiency.`
-          : `Prerequisite module "${pTitle}" is a prerequisite before "${sanitizeString(rawMod["title"], modId)}".`,
+          : `Prerequisite module "${pTitle}" is a prerequisite before "${sanitizeText(rawMod["title"], modId)}".`,
         satisfied,
       };
     });
 
     return {
       moduleId: modId,
-      title: sanitizeString(rawMod["title"], modId),
-      summary: sanitizeString(rawMod["summary"], ""),
+      title: sanitizeText(rawMod["title"], modId),
+      summary: sanitizeText(rawMod["summary"], ""),
       topologicalIndex: layoutPos.topologicalIndex,
       layer: layoutPos.layer,
       column: layoutPos.column,
-      requirementLevel,
+      requirementLevel: required ? "required" : "optional",
       required,
       objectiveIds: objIds,
       objectives: modObjectives,
@@ -1692,7 +1134,7 @@ export function buildPlanMapAndOutlineModel(
       prerequisiteModuleIds: prereqModIds,
       dependentModuleIds: depModIds,
       prerequisiteBadges: prereqBadges,
-      durationTriplet: modDurationTriplet,
+      durationTriplet: sumTriplets(modActivities),
       executionStatus: modExecStatus,
       executionBadge: makeExecutionBadge(modExecStatus),
       proficiencyStatus: primaryProfBadge.status,
@@ -1702,39 +1144,11 @@ export function buildPlanMapAndOutlineModel(
     };
   });
 
-  // Total curriculum duration triplet (sum of activity ceiling triplets)
-  const totalMin = outlineActivities.reduce((acc, a) => acc + a.durationTriplet.min, 0);
-  const totalPoint = outlineActivities.reduce((acc, a) => acc + a.durationTriplet.point, 0);
-  const totalMax = outlineActivities.reduce((acc, a) => acc + a.durationTriplet.max, 0);
-  const totalMedia1x = outlineActivities.reduce(
-    (acc, a) => acc + a.durationTriplet.mediaMinutesAt1x,
-    0
-  );
-  const totalNonMedia1x = outlineActivities.reduce(
-    (acc, a) => acc + a.durationTriplet.nonMediaMinutesAt1x,
-    0
-  );
+  const totalDurationTriplet = sumTriplets(outlineActivities);
 
-  const totalDurationTriplet: DurationTripletView = {
-    min: totalMin,
-    point: totalPoint,
-    max: totalMax,
-    minMinutes: totalMin,
-    pointMinutes: totalPoint,
-    maxMinutes: totalMax,
-    mediaMinutesAt1x: totalMedia1x,
-    nonMediaMinutesAt1x: totalNonMedia1x,
-    playbackSpeed,
-    rounding: "ceil_per_activity",
-    rangeInterpretation: "planning_bounds_not_confidence_interval",
-  };
-
-  // Selection & focus resolution
   const defaultSelectedModuleId = outlineModules[0]?.moduleId ?? null;
-  const selectedModuleId =
-    options.selectedModuleId !== undefined ? options.selectedModuleId : defaultSelectedModuleId;
-  const selectedModule =
-    outlineModules.find((m) => m.moduleId === selectedModuleId) ?? outlineModules[0] ?? null;
+  const selectedModuleId = options.selectedModuleId !== undefined ? options.selectedModuleId : defaultSelectedModuleId;
+  const selectedModule = outlineModules.find((m) => m.moduleId === selectedModuleId) ?? outlineModules[0] ?? null;
   const selectedActivityId =
     options.selectedActivityId !== undefined
       ? options.selectedActivityId
@@ -1744,16 +1158,8 @@ export function buildPlanMapAndOutlineModel(
       ? options.focusedNodeId
       : (selectedModule?.moduleId ?? objectiveTracks[0]?.objectiveId ?? null);
 
-  // Mobile neighborhood computation (`< 768px`, UI-002, UI-003, @S75, @S76)
-  const viewportWidthPx =
-    typeof options.viewportWidthPx === "number" && options.viewportWidthPx > 0
-      ? options.viewportWidthPx
-      : 1280;
-  const isCompactMobile = viewportWidthPx < 768;
-
-  const immediatePrerequisiteModuleIds = selectedModule
-    ? selectedModule.prerequisiteModuleIds
-    : [];
+  const viewportWidthPx = typeof options.viewportWidthPx === "number" && options.viewportWidthPx > 0 ? options.viewportWidthPx : 1280;
+  const immediatePrerequisiteModuleIds = selectedModule ? selectedModule.prerequisiteModuleIds : [];
   const immediateDependentModuleIds = selectedModule ? selectedModule.dependentModuleIds : [];
   const neighborhoodSet = new Set<string>([
     ...immediatePrerequisiteModuleIds,
@@ -1762,14 +1168,12 @@ export function buildPlanMapAndOutlineModel(
   ]);
   const verticalTaskList = selectedModule ? selectedModule.activities : outlineActivities;
   const nextActionActivity =
-    verticalTaskList.find(
-      (a) => a.executionStatus === "not_started" || a.executionStatus === "in_progress"
-    ) ??
+    verticalTaskList.find((a) => a.executionStatus === "not_started" || a.executionStatus === "in_progress") ??
     verticalTaskList[0] ??
     null;
 
   const mobileNeighborhood: MobileNeighborhoodView = {
-    isCompactMobile,
+    isCompactMobile: viewportWidthPx < 768,
     viewportWidthPx,
     selectedModuleId: selectedModule?.moduleId ?? null,
     selectedModule,
@@ -1781,7 +1185,6 @@ export function buildPlanMapAndOutlineModel(
     shrinksDesktopGraph: false,
   };
 
-  // Deterministic DAG coordinates for `mapNodes` and `mapEdges`
   const NODE_WIDTH = 220;
   const NODE_HEIGHT = 88;
   const LAYER_GAP_X = 280;
@@ -1789,143 +1192,102 @@ export function buildPlanMapAndOutlineModel(
   const ORIGIN_X = 48;
   const ORIGIN_Y = 48;
 
-  const moduleMapNodes: MapNodeView[] = outlineModules.map((mod) => {
-    const x = ORIGIN_X + mod.layer * LAYER_GAP_X;
-    const y = ORIGIN_Y + mod.column * COLUMN_GAP_Y;
-    return {
-      nodeId: mod.moduleId,
-      id: mod.moduleId,
-      kind: "module",
-      title: mod.title,
-      layer: mod.layer,
-      column: mod.column,
-      x,
-      y,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      required: mod.required,
-      requirementLevel: mod.requirementLevel,
-      prerequisiteIds: mod.prerequisiteModuleIds,
-      dependentIds: mod.dependentModuleIds,
-      prerequisiteBadges: mod.prerequisiteBadges,
-      executionStatus: mod.executionStatus,
-      executionBadge: mod.executionBadge,
-      proficiencyStatus: mod.proficiencyStatus,
-      proficiencyBadge: mod.proficiencyBadge,
-      statusBadge: {
-        execution: mod.executionBadge,
-        proficiency: mod.proficiencyBadge,
-      },
-      durationTriplet: mod.durationTriplet,
-      selected: mod.moduleId === (selectedModule?.moduleId ?? null),
-      inFocusedNeighborhood: neighborhoodSet.has(mod.moduleId),
-      opaqueSurface: true,
-      availableActions: mod.availableActions,
-    };
-  });
+  const moduleMapNodes: MapNodeView[] = outlineModules.map((mod) => ({
+    nodeId: mod.moduleId,
+    id: mod.moduleId,
+    kind: "module",
+    title: mod.title,
+    layer: mod.layer,
+    column: mod.column,
+    x: ORIGIN_X + mod.layer * LAYER_GAP_X,
+    y: ORIGIN_Y + mod.column * COLUMN_GAP_Y,
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+    required: mod.required,
+    requirementLevel: mod.requirementLevel,
+    prerequisiteIds: mod.prerequisiteModuleIds,
+    dependentIds: mod.dependentModuleIds,
+    prerequisiteBadges: mod.prerequisiteBadges,
+    executionStatus: mod.executionStatus,
+    executionBadge: mod.executionBadge,
+    proficiencyStatus: mod.proficiencyStatus,
+    proficiencyBadge: mod.proficiencyBadge,
+    statusBadge: { execution: mod.executionBadge, proficiency: mod.proficiencyBadge },
+    durationTriplet: mod.durationTriplet,
+    selected: mod.moduleId === (selectedModule?.moduleId ?? null),
+    inFocusedNeighborhood: neighborhoodSet.has(mod.moduleId),
+    opaqueSurface: true,
+    availableActions: mod.availableActions,
+  }));
 
   const maxModuleColumn = moduleMapNodes.reduce((acc, n) => Math.max(acc, n.column), 0);
   const objectiveRowOffsetY = ORIGIN_Y + (maxModuleColumn + 1) * COLUMN_GAP_Y + 40;
 
-  const objectiveMapNodes: MapNodeView[] = objectiveTracks.map((obj) => {
-    const x = ORIGIN_X + obj.layer * LAYER_GAP_X;
-    const y = objectiveRowOffsetY + obj.column * COLUMN_GAP_Y;
-    return {
-      nodeId: obj.objectiveId,
-      id: obj.objectiveId,
-      kind: "objective",
-      title: obj.title,
-      layer: obj.layer,
-      column: obj.column,
-      x,
-      y,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-      required: obj.required,
-      requirementLevel: obj.requirementLevel,
-      prerequisiteIds: obj.prerequisiteObjectiveIds,
-      dependentIds: obj.dependentObjectiveIds,
-      prerequisiteBadges: obj.prerequisiteBadges,
-      executionStatus: obj.executionStatus,
-      executionBadge: obj.executionBadge,
-      proficiencyStatus: obj.proficiencyStatus,
-      proficiencyBadge: obj.proficiencyBadge,
-      statusBadge: {
-        execution: obj.executionBadge,
-        proficiency: obj.proficiencyBadge,
-      },
-      durationTriplet: null,
-      selected: obj.objectiveId === focusedNodeId,
-      inFocusedNeighborhood: obj.moduleId ? neighborhoodSet.has(obj.moduleId) : true,
-      opaqueSurface: true,
-      availableActions: obj.availableActions,
-    };
-  });
+  const objectiveMapNodes: MapNodeView[] = objectiveTracks.map((obj) => ({
+    nodeId: obj.objectiveId,
+    id: obj.objectiveId,
+    kind: "objective",
+    title: obj.title,
+    layer: obj.layer,
+    column: obj.column,
+    x: ORIGIN_X + obj.layer * LAYER_GAP_X,
+    y: objectiveRowOffsetY + obj.column * COLUMN_GAP_Y,
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+    required: obj.required,
+    requirementLevel: obj.requirementLevel,
+    prerequisiteIds: obj.prerequisiteObjectiveIds,
+    dependentIds: obj.dependentObjectiveIds,
+    prerequisiteBadges: obj.prerequisiteBadges,
+    executionStatus: obj.executionStatus,
+    executionBadge: obj.executionBadge,
+    proficiencyStatus: obj.proficiencyStatus,
+    proficiencyBadge: obj.proficiencyBadge,
+    statusBadge: { execution: obj.executionBadge, proficiency: obj.proficiencyBadge },
+    durationTriplet: null,
+    selected: obj.objectiveId === focusedNodeId,
+    inFocusedNeighborhood: obj.moduleId ? neighborhoodSet.has(obj.moduleId) : true,
+    opaqueSurface: true,
+    availableActions: obj.availableActions,
+  }));
 
   const mapNodes: MapNodeView[] = [...moduleMapNodes, ...objectiveMapNodes];
-  const mapNodeById = new Map<string, MapNodeView>();
-  for (const node of mapNodes) {
-    mapNodeById.set(node.nodeId, node);
-  }
+  const mapNodeById = new Map(mapNodes.map((n) => [n.nodeId, n]));
 
-  const mapEdges: MapEdgeView[] = [];
-  for (const mod of outlineModules) {
-    for (const badge of mod.prerequisiteBadges) {
+  const buildEdgesFromBadges = (
+    badges: readonly PrerequisiteBadgeView[],
+    kind: "module_prerequisite" | "objective_prerequisite",
+  ): MapEdgeView[] =>
+    badges.flatMap((badge) => {
       const fromNode = mapNodeById.get(badge.fromId);
       const toNode = mapNodeById.get(badge.toId);
-      if (fromNode && toNode) {
-        mapEdges.push({
-          edgeId: badge.edgeId,
-          from: badge.fromId,
-          to: badge.toId,
-          fromNodeId: badge.fromId,
-          toNodeId: badge.toId,
-          kind: "module_prerequisite",
-          relationshipLabel: badge.relationshipLabel,
-          arrowMeaning: "prerequisite_dependency",
-          textMeaning: badge.textMeaning,
-          satisfied: badge.satisfied,
-          points: {
-            fromX: fromNode.x + fromNode.width,
-            fromY: fromNode.y + Math.floor(fromNode.height / 2),
-            toX: toNode.x,
-            toY: toNode.y + Math.floor(toNode.height / 2),
-          },
-        });
-      }
-    }
-  }
+      if (!fromNode || !toNode) return [];
+      return [{
+        edgeId: badge.edgeId,
+        from: badge.fromId,
+        to: badge.toId,
+        fromNodeId: badge.fromId,
+        toNodeId: badge.toId,
+        kind,
+        relationshipLabel: badge.relationshipLabel,
+        arrowMeaning: "prerequisite_dependency",
+        textMeaning: badge.textMeaning,
+        satisfied: badge.satisfied,
+        points: {
+          fromX: fromNode.x + fromNode.width,
+          fromY: fromNode.y + Math.floor(fromNode.height / 2),
+          toX: toNode.x,
+          toY: toNode.y + Math.floor(toNode.height / 2),
+        },
+      }];
+    });
 
-  for (const obj of objectiveTracks) {
-    for (const badge of obj.prerequisiteBadges) {
-      const fromNode = mapNodeById.get(badge.fromId);
-      const toNode = mapNodeById.get(badge.toId);
-      if (fromNode && toNode) {
-        mapEdges.push({
-          edgeId: badge.edgeId,
-          from: badge.fromId,
-          to: badge.toId,
-          fromNodeId: badge.fromId,
-          toNodeId: badge.toId,
-          kind: "objective_prerequisite",
-          relationshipLabel: badge.relationshipLabel,
-          arrowMeaning: "prerequisite_dependency",
-          textMeaning: badge.textMeaning,
-          satisfied: badge.satisfied,
-          points: {
-            fromX: fromNode.x + fromNode.width,
-            fromY: fromNode.y + Math.floor(fromNode.height / 2),
-            toX: toNode.x,
-            toY: toNode.y + Math.floor(toNode.height / 2),
-          },
-        });
-      }
-    }
-  }
+  const mapEdges: MapEdgeView[] = [
+    ...outlineModules.flatMap((m) => buildEdgesFromBadges(m.prerequisiteBadges, "module_prerequisite")),
+    ...objectiveTracks.flatMap((o) => buildEdgesFromBadges(o.prerequisiteBadges, "objective_prerequisite")),
+  ];
 
-  // Deterministic keyboard navigation order (`layer` ASC, `column` ASC across modules then objectives)
   const keyboardOrder: readonly string[] = mapNodes.map((n) => n.nodeId);
-
   const maxX = mapNodes.reduce((acc, n) => Math.max(acc, n.x + n.width + ORIGIN_X), 640);
   const maxY = mapNodes.reduce((acc, n) => Math.max(acc, n.y + n.height + ORIGIN_Y), 360);
   const zoom =
@@ -1935,31 +1297,21 @@ export function buildPlanMapAndOutlineModel(
   const panX = typeof options.panX === "number" && Number.isFinite(options.panX) ? options.panX : 0;
   const panY = typeof options.panY === "number" && Number.isFinite(options.panY) ? options.panY : 0;
 
-  function rebuildWith(nextPatch: Partial<PlanMapAndOutlineBuildOptions>): PlanMapAndOutlineModel {
-    return buildPlanMapAndOutlineModel({
-      ...options,
-      curriculum,
-      ...nextPatch,
-    });
-  }
+  const rebuildWith = (nextPatch: Partial<PlanMapAndOutlineBuildOptions>): PlanMapAndOutlineModel =>
+    buildPlanMapAndOutlineModel({ ...options, curriculum, ...nextPatch });
 
   const controls = {
-    zoomIn(): PlanMapAndOutlineModel {
-      return rebuildWith({ zoom: Math.min(2.5, Number((zoom + 0.25).toFixed(2))) });
-    },
-    zoomOut(): PlanMapAndOutlineModel {
-      return rebuildWith({ zoom: Math.max(0.5, Number((zoom - 0.25).toFixed(2))) });
-    },
-    resetView(): PlanMapAndOutlineModel {
-      return rebuildWith({
+    zoomIn: () => rebuildWith({ zoom: Math.min(2.5, Number((zoom + 0.25).toFixed(2))) }),
+    zoomOut: () => rebuildWith({ zoom: Math.max(0.5, Number((zoom - 0.25).toFixed(2))) }),
+    resetView: () =>
+      rebuildWith({
         zoom: 1,
         panX: 0,
         panY: 0,
         selectedModuleId: defaultSelectedModuleId,
         focusedNodeId: defaultSelectedModuleId,
-      });
-    },
-    focusNeighborhood(moduleOrNodeId: string): PlanMapAndOutlineModel {
+      }),
+    focusNeighborhood: (moduleOrNodeId: string) => {
       const targetModId = rawModuleById.has(moduleOrNodeId)
         ? moduleOrNodeId
         : (moduleIdByObjectiveId.get(moduleOrNodeId) ??
@@ -1976,51 +1328,33 @@ export function buildPlanMapAndOutlineModel(
     },
   };
 
-  function navigateKeyboard(
-    key: MapKeyboardKey,
-    fromNodeId?: string
-  ): PlanMapAndOutlineModel {
-    if (keyboardOrder.length === 0) {
-      return rebuildWith({});
-    }
+  function navigateKeyboard(key: MapKeyboardKey, fromNodeId?: string): PlanMapAndOutlineModel {
+    if (keyboardOrder.length === 0) return rebuildWith({});
     const activeId = fromNodeId ?? focusedNodeId ?? keyboardOrder[0]!;
-    if (key === "Enter") {
-      return controls.focusNeighborhood(activeId);
-    }
+    if (key === "Enter") return controls.focusNeighborhood(activeId);
 
     const activeNode = mapNodeById.get(activeId);
-    const sameKindNodes = activeNode
-      ? mapNodes.filter((n) => n.kind === activeNode.kind)
-      : mapNodes;
-
+    const sameKindNodes = activeNode ? mapNodes.filter((n) => n.kind === activeNode.kind) : mapNodes;
     let nextNode: MapNodeView | undefined;
+
     if (activeNode && key === "ArrowRight") {
       nextNode =
         sameKindNodes.find((n) => n.layer > activeNode.layer && n.column === activeNode.column) ??
         sameKindNodes.find((n) => n.layer > activeNode.layer);
     } else if (activeNode && key === "ArrowLeft") {
-      const prevLayerNodes = sameKindNodes.filter((n) => n.layer < activeNode.layer);
-      nextNode =
-        prevLayerNodes
-          .reverse()
-          .find((n) => n.column === activeNode.column) ?? prevLayerNodes[0];
+      const prev = sameKindNodes.filter((n) => n.layer < activeNode.layer);
+      nextNode = [...prev].reverse().find((n) => n.column === activeNode.column) ?? prev[0];
     } else if (activeNode && key === "ArrowDown") {
-      nextNode = sameKindNodes.find(
-        (n) => n.layer === activeNode.layer && n.column > activeNode.column
-      );
+      nextNode = sameKindNodes.find((n) => n.layer === activeNode.layer && n.column > activeNode.column);
     } else if (activeNode && key === "ArrowUp") {
-      const prevColNodes = sameKindNodes.filter(
-        (n) => n.layer === activeNode.layer && n.column < activeNode.column
-      );
-      nextNode = prevColNodes[prevColNodes.length - 1];
+      const prev = sameKindNodes.filter((n) => n.layer === activeNode.layer && n.column < activeNode.column);
+      nextNode = prev[prev.length - 1];
     }
 
     if (!nextNode) {
       const idx = Math.max(0, keyboardOrder.indexOf(activeId));
       const delta = key === "ArrowRight" || key === "ArrowDown" ? 1 : -1;
-      const nextIdx = Math.min(keyboardOrder.length - 1, Math.max(0, idx + delta));
-      const fallbackId = keyboardOrder[nextIdx]!;
-      nextNode = mapNodeById.get(fallbackId);
+      nextNode = mapNodeById.get(keyboardOrder[Math.min(keyboardOrder.length - 1, Math.max(0, idx + delta))]!);
     }
 
     const targetId = nextNode?.nodeId ?? activeId;
@@ -2028,14 +1362,9 @@ export function buildPlanMapAndOutlineModel(
       nextNode?.kind === "module"
         ? nextNode.nodeId
         : (moduleIdByObjectiveId.get(targetId) ?? selectedModule?.moduleId ?? defaultSelectedModuleId);
-
-    return rebuildWith({
-      selectedModuleId: targetModId,
-      focusedNodeId: targetId,
-    });
+    return rebuildWith({ selectedModuleId: targetModId, focusedNodeId: targetId });
   }
 
-  // Verify 100% Map <-> Outline equivalence (`@S75`)
   const outlineNodeIdSet = new Set<string>([
     ...outlineModules.map((m) => m.moduleId),
     ...objectiveTracks.map((o) => o.objectiveId),
@@ -2048,38 +1377,13 @@ export function buildPlanMapAndOutlineModel(
   const everyMapNodeInOutline = mapNodes.every((n) => outlineNodeIdSet.has(n.nodeId));
   const everyPrerequisiteEdgeInOutline = mapEdges.every((e) => outlineEdgeIdSet.has(e.edgeId));
   const everyStatusBadgeEquivalent = mapNodes.every((n) => {
-    if (n.kind === "module") {
-      const m = outlineModules.find((mod) => mod.moduleId === n.nodeId);
-      return (
-        Boolean(m) &&
-        m!.executionStatus === n.executionStatus &&
-        m!.proficiencyStatus === n.proficiencyStatus
-      );
-    }
-    const o = objectiveTracks.find((obj) => obj.objectiveId === n.nodeId);
-    return (
-      Boolean(o) &&
-      o!.executionStatus === n.executionStatus &&
-      o!.proficiencyStatus === n.proficiencyStatus
-    );
+    const item =
+      n.kind === "module"
+        ? outlineModules.find((m) => m.moduleId === n.nodeId)
+        : objectiveTracks.find((o) => o.objectiveId === n.nodeId);
+    return Boolean(item) && item!.executionStatus === n.executionStatus && item!.proficiencyStatus === n.proficiencyStatus;
   });
-  const everyActionEquivalent = mapNodes.every(
-    (n) => n.availableActions.join(",") === SYNCHRONIZED_NODE_ACTIONS.join(",")
-  );
-
-  const svgViewport: SvgViewportModel = {
-    width: maxX,
-    height: maxY,
-    viewBox: `${panX} ${panY} ${Math.round(maxX / zoom)} ${Math.round(maxY / zoom)}`,
-    zoom,
-    panX,
-    panY,
-    focusedModuleId: selectedModule?.moduleId ?? null,
-    focusedNodeId,
-    opaqueSurface: true,
-    requiresPointerDragging: false,
-    controls,
-  };
+  const everyActionEquivalent = mapNodes.every((n) => n.availableActions.join(",") === SYNCHRONIZED_NODE_ACTIONS.join(","));
 
   return {
     curriculumId,
@@ -2095,7 +1399,19 @@ export function buildPlanMapAndOutlineModel(
     moduleMapNodes,
     objectiveMapNodes,
     mapEdges,
-    svgViewport,
+    svgViewport: {
+      width: maxX,
+      height: maxY,
+      viewBox: `${panX} ${panY} ${Math.round(maxX / zoom)} ${Math.round(maxY / zoom)}`,
+      zoom,
+      panX,
+      panY,
+      focusedModuleId: selectedModule?.moduleId ?? null,
+      focusedNodeId,
+      opaqueSurface: true,
+      requiresPointerDragging: false,
+      controls,
+    },
     keyboardOrder,
     selectedModuleId: selectedModule?.moduleId ?? null,
     selectedActivityId,
