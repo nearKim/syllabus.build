@@ -876,8 +876,13 @@ textarea {
 }
 
 /* Flow board: toolbar, notes, matrix, key */
+/* The Study flow is a white card. Its header bar holds the heading and the layout controls. */
 .flow-board {
-  margin: 0 0 var(--space-7);
+  margin: 0 0 var(--space-6);
+  padding: var(--space-5);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
   min-inline-size: 0;
 }
 
@@ -889,6 +894,8 @@ textarea {
   justify-content: space-between;
   gap: var(--space-3) var(--space-5);
   margin: 0 0 var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: var(--hairline);
 }
 
 .flow-toolbar {
@@ -1472,6 +1479,7 @@ textarea {
   gap: var(--space-4);
   margin: 0 0 var(--space-6);
   padding: var(--space-5);
+  border: var(--hairline);
   border-radius: var(--radius-surface);
   background-color: var(--color-surface);
 }
@@ -1622,18 +1630,138 @@ math {
   font-size: 16px;
 }
 
-.today-lists {
+/* Today's queue: one white card per active plan, with its next session and next activity */
+.today-curricula-grid {
   display: grid;
-  gap: var(--space-6);
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-6);
+}
+
+.curriculum-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
+
+.curriculum-card[aria-current="true"] {
+  border-color: var(--color-accent);
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.curriculum-card > p {
+  margin: 0;
+}
+
+.domain-pill,
+.track-badge,
+.count-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--tint-8);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.domain-pill {
+  justify-self: start;
+  padding: 2px 10px;
+  color: var(--color-text-secondary);
+}
+
+.curriculum-card-title {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.queue-progress,
+.queue-next-meta {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.queue-next {
+  display: grid;
+  gap: 2px;
+  margin-top: var(--space-1);
+}
+
+.queue-next p {
+  margin: 0;
+}
+
+.queue-next-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.queue-next-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.track-badge {
+  padding: 1px 8px;
+  color: var(--color-text-primary);
+}
+
+.queue-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Review queue and Completed work: one white card with two columns, and a quiet box when a list is empty */
+.today-bottom-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-5) var(--space-6);
   margin: 0 0 var(--space-5);
+  padding: var(--space-5);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
 }
 
-.today-lists h2 {
+.today-bottom-grid h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-1);
+  font-size: 18px;
 }
 
-.today-lists .today-activity-list {
+.count-badge {
+  min-width: 22px;
+  justify-content: center;
+  padding: 1px 7px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.today-bottom-grid .today-activity-list,
+.empty-state {
   margin-top: var(--space-3);
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+  font-size: 14px;
+  color: var(--color-text-secondary);
 }
 
 /* Plan */
@@ -2267,6 +2395,41 @@ dialog.inspector::backdrop {
   color: var(--color-text-secondary);
 }
 
+/* Self-check rubric: the synthesis prompt and the criteria a learner checks their own work against */
+.rubric-block {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.rubric-block > * {
+  margin: 0;
+}
+
+.rubric-mode {
+  justify-self: start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rubric-label {
+  margin-top: var(--space-1);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.rubric-prompt {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
 /* Coding lab: the brief, the specs, and a checklist of what the code must pass */
 .lab-brief p {
   margin: 0 0 var(--space-2);
@@ -2542,10 +2705,6 @@ dialog.inspector::backdrop {
 
   .surface-panel {
     padding: var(--space-5);
-  }
-
-  .today-lists {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .relationship-legend ul {

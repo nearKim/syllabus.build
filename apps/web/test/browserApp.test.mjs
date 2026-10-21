@@ -41,13 +41,15 @@ function drawerOf(html) {
   return html.slice(start, html.indexOf("</dialog>", start));
 }
 
-// A mounted app whose root records its listeners, so a test can click with a button's own data attributes.
+// A mounted app whose root records its listeners, so a test can click with a button's own data attributes
+// and change a select to a value.
 function mountWithClicks(initialState) {
   const listeners = {};
   const root = { innerHTML: "", addEventListener: (type, listener) => { listeners[type] = listener; } };
-  mountCurriculumWebApp(root, initialState);
+  const app = mountCurriculumWebApp(root, initialState);
   const click = (dataset) => listeners.click({ target: { closest: () => ({ dataset }) } });
-  return { root, click };
+  const change = (value) => listeners.change({ target: { closest: () => ({ value }) } });
+  return { app, root, click, change };
 }
 
 test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG DAG Map + Outline, MathML, opaque surfaces, and <dialog closedby='any'> modals", () => {
@@ -312,7 +314,7 @@ test("Deep Dive and Review switches collapse columns without hiding required wor
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
 });
 
-test("Today holds its title, plan controls, progress, and next activity in one card directly above the Study flow", () => {
+test("Today opens with one header card, then the plan queue, then the Study flow", () => {
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
@@ -321,12 +323,13 @@ test("Today holds its title, plan controls, progress, and next activity in one c
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
 
-  // The panel opens with the card, and the Study flow board follows it with nothing in between.
-  const card = today.match(/^id="panel-learn-today"[^>]*>\s*<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
-  assert.ok(card, "the header card must open Today and sit directly above the Study flow");
+  // The panel opens with the card. The plan queue follows it, and the Study flow board follows the queue.
+  const card = today.match(/^id="panel-learn-today"[^>]*>\s*<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="today-curricula-grid"/)?.[1];
+  assert.ok(card, "the header card must open Today, directly above the plan queue");
+  assert.match(today, /<section class="today-curricula-grid" aria-label="Active curricula">(?:(?!<section)[\s\S])*?<\/section>\s*<section class="flow-board"/);
   for (const part of [
     '<h1 class="page-title">Today</h1>',
-    '<select id="selected-plan" name="selected-plan">',
+    '<select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">',
     'data-dialog-id="dialog-new-curriculum">New Curriculum</button>',
     '<p class="next-up-progress">0/5 completed · 83m left</p>',
     '<span class="next-up-label">Next:</span><span class="next-up-title">Read Subword Tokenization &amp; Sequence Packing Notes</span><span class="next-up-time">· 15m</span>',
@@ -346,7 +349,8 @@ test("Today holds its title, plan controls, progress, and next activity in one c
   // With every scheduled activity closed, the card offers no Resume.
   const allDone = Object.fromEntries(["activity-theory", "activity-example", "activity-coding", "activity-quiz", "activity-review", "activity-reflection"].map((id) => [id, "completed"]));
   const finished = renderCurriculumWebAppHtml({ activityStates: allDone });
-  const finishedCard = finished.slice(finished.indexOf('<header class="today-unified-header"'), finished.indexOf('<section class="flow-board"'));
+  const finishedStart = finished.indexOf('<header class="today-unified-header"');
+  const finishedCard = finished.slice(finishedStart, finished.indexOf("</header>", finishedStart));
   assert.ok(finishedCard.includes('<p class="next-up-progress">5/5 completed</p>'));
   assert.ok(finishedCard.includes('<p class="next-up-text">Nothing is scheduled next.</p>'));
   assert.equal(finishedCard.includes(">Resume<"), false);
@@ -485,6 +489,105 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   assert.equal(rigor(overridden), "Formal");
 });
 
+test("Study flow, Review queue, and Completed work each sit in a white surface card", () => {
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  // Every declaration block whose selector list ends with this selector.
+  const rule = (selector) => [...css.matchAll(new RegExp(`\\n${selector.replace(/\./g, "\\.")} \\{([^}]*)\\}`, "g"))].map((match) => match[1]).join("");
+  for (const selector of [".flow-board", ".today-bottom-grid", ".curriculum-card"]) {
+    for (const declaration of ["padding: var(--space-5);", "border: var(--hairline);", "border-radius: var(--radius-surface);", "background: var(--color-surface);"]) {
+      assert.ok(rule(selector).includes(declaration), `${selector} is missing ${declaration}`);
+    }
+  }
+  for (const declaration of ["margin: 0 0 var(--space-4);", "padding-bottom: var(--space-4);", "border-bottom: var(--hairline);"]) {
+    assert.ok(rule(".flow-head").includes(declaration), `the Study flow header bar is missing ${declaration}`);
+  }
+  for (const declaration of ["padding: var(--space-4);", "border-radius: var(--radius-control);", "background: var(--color-surface-secondary);"]) {
+    assert.ok(rule(".empty-state").includes(declaration), `the empty state is missing ${declaration}`);
+  }
+
+  // Both lists share one card. Each heading carries a count, and an empty list shows a quiet box with an icon.
+  const html = renderCurriculumWebAppHtml();
+  const bottom = html.match(/<section class="today-bottom-grid"[^>]*>([\s\S]*)<\/section>\s*<div class="action-row">/)?.[1] ?? "";
+  assert.ok(bottom.includes('<h2 id="review-queue-title">Review queue <span class="count-badge">1</span></h2>'));
+  assert.ok(bottom.includes('<h2 id="completed-history-title">Completed work <span class="count-badge">0</span></h2>'));
+  assert.ok(bottom.includes('<li class="today-activity-item step-row" data-activity-id="activity-review"'));
+  assert.match(bottom, /<p class="empty-state"><svg class="sf-icon"[\s\S]*?<\/svg><span>No self-reported completions yet\.<\/span><\/p>/);
+  const done = renderCurriculumWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
+  assert.ok(done.includes('Completed work <span class="count-badge">1</span>'));
+  assert.equal(done.includes("No self-reported completions yet."), false);
+});
+
+test("Today queues every active plan, and the select, Resume, and Open Plan switch to one", () => {
+  const ids = ["curriculum-rag-python-001", "curriculum-linear-algebra-002", "curriculum-tolstoy-lit-003"];
+  const html = renderCurriculumWebAppHtml();
+  const select = html.match(/<select id="selected-plan-control"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), ids);
+  assert.ok(select.includes('<option value="curriculum-rag-python-001" selected>Build and Evaluate RAG Systems in Python</option>'));
+
+  const cardsOf = (page) => [...(page.match(/<section class="today-curricula-grid"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "").matchAll(/<article class="curriculum-card" data-curriculum-id="([^"]+)"[\s\S]*?<\/article>/g)];
+  const text = (card) => card.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const cards = cardsOf(html);
+  assert.deepEqual(cards.map((match) => match[1]), ids);
+  assert.deepEqual(cards.map(([card]) => card.match(/<p class="domain-pill">([^<]+)<\/p>/)?.[1]), ["Engineering · Reviewed Quiz", "Mathematics · Public Quiz Bank", "Literature · Self-Check Rubric"]);
+  assert.equal(text(cards[0][0]), "Engineering · Reviewed Quiz Build and Evaluate RAG Systems in Python Upcoming session: 0/3 completed · 65m left Read Subword Tokenization &amp; Sequence Packing Notes 15m Lecture Resume → Open Plan →");
+  assert.ok(cards[0][0].includes('aria-current="true"') && !cards[1][0].includes("aria-current"), "only the selected plan's card is marked");
+  assert.match(cards[0][0], /<span class="macro-bar" aria-hidden="true"><span style="width: 0%"><\/span><\/span>/);
+
+  // Each plan counts only its own progress.
+  const { app, root, click, change } = mountWithClicks();
+  assert.equal(app.getState().selectedCurriculumId, "curriculum-rag-python-001");
+  click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
+  assert.match(text(cardsOf(root.innerHTML)[0][0]), /1\/3 completed · 50m left Worked Example/);
+  assert.match(text(cardsOf(root.innerHTML)[1][0]), /0\/3 completed · 65m left/);
+
+  // The select switches Today's header and Study flow to that plan, and the other plan keeps its progress.
+  change("curriculum-linear-algebra-002");
+  assert.ok(root.innerHTML.includes('<option value="curriculum-linear-algebra-002" selected>Linear Algebra &amp; Spectral Methods</option>'));
+  assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Eigenvalues &amp; Orthogonal Projections</span>'));
+  assert.match(text(cardsOf(root.innerHTML)[0][0]), /1\/3 completed · 50m left/);
+  assert.ok(root.innerHTML.includes('data-study-minutes="15"'));
+
+  // Resume on a card selects that plan and opens its next activity in the drawer.
+  const resume = cardsOf(root.innerHTML)[2][0].match(/data-action="(resume-curriculum)" data-curriculum-id="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
+  click({ action: resume[1], curriculumId: resume[2], activityId: resume[3], moduleId: resume[4] });
+  assert.equal(app.getState().selectedCurriculumId, "curriculum-tolstoy-lit-003");
+  assert.ok(drawerOf(root.innerHTML).includes(">Read War and Peace: Book Three and the Opening of Book Nine</h2>"));
+  assert.ok(drawerOf(root.innerHTML).includes('data-open="true"'));
+
+  // Open Plan selects that plan and shows its Plan page. An unknown plan id is rejected.
+  click({ action: "open-curriculum-plan", curriculumId: "curriculum-linear-algebra-002" });
+  assert.ok(root.innerHTML.includes('data-current-learn-sub="Plan"') && root.innerHTML.includes('data-selected-module-id="la-module-spectral"'));
+  assert.match(root.innerHTML, /<select id="plan-curriculum-control"[^>]*>[\s\S]*?<option value="curriculum-linear-algebra-002" selected>/);
+  click({ action: "select-curriculum", curriculumId: "curriculum-unknown" });
+  assert.equal(app.getState().selectedCurriculumId, "curriculum-linear-algebra-002");
+});
+
+test("a plan with no public quiz bank gates on a self-check rubric in the drawer", () => {
+  const { root, click, change } = mountWithClicks();
+  change("curriculum-tolstoy-lit-003");
+  assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Review", "Gate"], "a reading plan has no empty Code column");
+  const gate = todayBoard(root.innerHTML).match(/class="gate-diamond" data-action="(select-outline-activity)" data-activity-id="(tl-gate-war-and-peace)" data-module-id="([^"]+)"/);
+  assert.ok(gate, "the War and Peace gate is on the Study flow");
+  click({ action: gate[1], activityId: gate[2], moduleId: gate[3] });
+
+  const rubricOf = (drawer) => drawer.match(/<section class="inspector-section rubric-block"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const rubric = rubricOf(drawerOf(root.innerHTML));
+  assert.ok(rubric.includes('<h3 id="learn-detail-inspector-rubric">Synthesis &amp; Self-Check Rubric</h3>'));
+  assert.ok(rubric.includes('<p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>'));
+  assert.match(rubric, /<p class="rubric-prompt">Compare Prince Andrei&#39;s disillusionment at Austerlitz[\s\S]*?hedgehog and fox framework applies\.<\/p>/);
+  assert.equal(rubric.match(/<li>/g)?.length, 3);
+  assert.ok(drawerOf(root.innerHTML).includes('<span class="proficiency-pill" data-proficiency-status="unassessed">'));
+
+  // The review revisits the same rubric. A gate backed by a quiz bank shows none.
+  const drawerFor = (selectedCurriculumId, selectedActivityId) => drawerOf(renderCurriculumWebAppHtml({ selectedCurriculumId, selectedActivityId, studyDetailOpen: true }));
+  assert.ok(rubricOf(drawerFor("curriculum-tolstoy-lit-003", "tl-review-war-and-peace")).includes("Book Nine"));
+  assert.ok(rubricOf(drawerFor("curriculum-tolstoy-lit-003", "tl-gate-anna-karenina")).includes("Part Seven"));
+  assert.equal(rubricOf(drawerFor("curriculum-linear-algebra-002", "la-gate-spectral")), "");
+  assert.equal(rubricOf(drawerFor("curriculum-rag-python-001", "activity-quiz")), "");
+  // An activity in a later unit opens without its module being named.
+  assert.ok(drawerFor("curriculum-rag-python-001", "activity-quiz").includes(">Formative Checkpoint: Tokenization &amp; Attention Shapes</h2>"));
+});
+
 test("the activity inspector is one modal drawer that never takes width from the matrix", () => {
   const html = renderCurriculumWebAppHtml();
   assert.equal(html.split('id="learn-detail-inspector"').length - 1, 1);
@@ -571,6 +674,18 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(statusJson.state.activityStates["activity-example"], "in_progress");
     assert.ok(statusJson.html.includes('data-activity-id="activity-example" data-execution-status="in_progress"'));
     assert.ok(clientJs.includes('&& !target.closest("dialog")) {\n      inspectorOpenerKey = keyFor(target);'));
+
+    // Plan switching travels the same route. The client sends a select's choice on change, never on click.
+    const planRes = await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "open-curriculum-plan", curriculumId: "curriculum-tolstoy-lit-003" }),
+    });
+    const planJson = await planRes.json();
+    assert.equal(planJson.state.selectedCurriculumId, "curriculum-tolstoy-lit-003");
+    assert.equal(planJson.state.learnSubDestination, "Plan");
+    assert.ok(clientJs.includes(`if (!target || target.localName === "select") return;`));
+    assert.ok(clientJs.includes(`closest('select[data-action="select-curriculum"]')`));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

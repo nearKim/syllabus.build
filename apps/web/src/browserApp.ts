@@ -28,7 +28,7 @@ import {
   type PublicCurriculumPayload, type PublicationPreviewPayload,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
-import { clamp, escapeHtml } from "./shared.ts";
+import { clamp, escapeHtml, normalizeStringList } from "./shared.ts";
 
 export interface CurriculumWebAppStateInput {
   readonly topLevel?: TopLevelDestination; readonly learnSubDestination?: LearnSubDestination;
@@ -56,6 +56,7 @@ export interface CurriculumWebAppStateInput {
   readonly rescheduleSessionId?: string | null; readonly rescheduleValue?: string | null;
   readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
   readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
+  readonly selectedCurriculumId?: string;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -72,15 +73,15 @@ const makeResAssign = (resource_version_id: string, role: string, segment_ids: s
 });
 
 const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-attention-synthetic",
+  schema_version: "0.2.0", curriculum_id: "curriculum-rag-python-001",
   revision_id: "revision-attention-v2", revision_number: 2, predecessor_revision_id: "revision-attention-v1",
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
   goal: {
-    title: "Transformer Tokenization & Scaled Dot-Product Attention",
-    summary: "Master subword tokenization tradeoffs and derive scaled dot-product attention with verified resources.",
+    title: "Build and Evaluate RAG Systems in Python",
+    summary: "Start a Python RAG system from its model foundations: subword tokenization and scaled dot-product attention, with verified resources.",
     included_topics: ["tokenization tradeoffs", "scaled dot-product attention", "matrix calculus"],
     excluded_topics: ["distributed cluster orchestration"],
-    scope_note: "Formal math depth preserved; self-reported activity completion never substitutes for demonstrated proficiency.",
+    scope_note: "This synthetic plan covers the tokenization and attention foundations only. Retrieval and evaluation units are not included yet. Self-reported activity completion never substitutes for demonstrated proficiency.",
   },
   language: "en", sequence_preference_applied: "theory_first",
   instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
@@ -192,6 +193,20 @@ const DEFAULT_SYNTHETIC_PROFICIENCY: ProficiencyProfileFixture = {
   ],
 };
 
+const makeCatalogEntry = (
+  resource_version_id: string, title: string, slug: string, provider: readonly [id: string, name: string], model: string,
+  segments: readonly (readonly [id: string, title: string])[] = [],
+): CatalogResourceMetadataInput => ({
+  resource_version_id, title, canonical_url: `https://example.invalid/catalog/${slug}`, captured_at: "2026-10-20T16:00:00Z",
+  provider: { provider_id: provider[0], display_name: provider[1] },
+  access: { model, certificate_included: false, access_verified_at: "2026-10-20T16:00:00Z" },
+  ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
+  segments: segments.map(([segment_id, segmentTitle]) => ({ segment_id, title: segmentTitle, verified: true })),
+});
+
+const OPEN_MATH_COMMONS = ["open-math-commons", "Open Math Commons (Curator Verified)"] as const;
+const PUBLIC_DOMAIN_CLASSICS = ["public-domain-classics", "Public Domain Classics Library (Curator Verified)"] as const;
+
 const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadataInput>> = {
   "synthetic-resource-tokenization-v1": {
     resource_version_id: "synthetic-resource-tokenization-v1", title: "Reviewed Open Monograph: Subword Tokenization & Sequence Packing",
@@ -209,10 +224,335 @@ const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadata
     ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
     segments: [],
   },
+  "synthetic-resource-la-notes-v1": makeCatalogEntry(
+    "synthetic-resource-la-notes-v1", "Open Linear Algebra Notes: Spectral Theory and Projections", "linear-algebra-notes", OPEN_MATH_COMMONS, "free",
+    [["seg-la-eigen", "Chapter 6: Eigenvalues and Eigenvectors"], ["seg-la-svd", "Chapter 7: The Singular Value Decomposition"]],
+  ),
+  "synthetic-resource-la-problem-sets-v1": makeCatalogEntry(
+    "synthetic-resource-la-problem-sets-v1", "Public Problem Sets with Worked Solutions: Linear Algebra", "linear-algebra-problem-sets",
+    ["open-course-problem-bank", "Open Course Problem Bank"], "free",
+    [["seg-la-ps1", "Problem Set 1: Eigenvalues and Projections"], ["seg-la-ps2", "Problem Set 2: The SVD and Low-Rank Approximation"]],
+  ),
+  "synthetic-resource-la-lab-v1": makeCatalogEntry(
+    "synthetic-resource-la-lab-v1", "Numerical Linear Algebra Lab: Iterative Eigensolvers", "eigensolver-lab", OPEN_MATH_COMMONS, "free",
+  ),
+  "synthetic-resource-war-and-peace-v1": makeCatalogEntry(
+    "synthetic-resource-war-and-peace-v1", "War and Peace (Louise and Aylmer Maude translation)", "war-and-peace-maude", PUBLIC_DOMAIN_CLASSICS, "free",
+    [["seg-wp-book-3", "Book Three: Austerlitz"], ["seg-wp-book-9", "Book Nine, Chapter 1: What causes a historical event"]],
+  ),
+  "synthetic-resource-anna-karenina-v1": makeCatalogEntry(
+    "synthetic-resource-anna-karenina-v1", "Anna Karenina (Constance Garnett translation)", "anna-karenina-garnett", PUBLIC_DOMAIN_CLASSICS, "free",
+    [["seg-ak-part-7", "Part Seven: Anna's final journey"], ["seg-ak-part-8", "Part Eight: Levin's resolution"]],
+  ),
+  "synthetic-resource-berlin-essay-v1": makeCatalogEntry(
+    "synthetic-resource-berlin-essay-v1", "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)", "hedgehog-and-the-fox",
+    ["university-press-catalog", "University Press Catalog"], "library_loan",
+  ),
+};
+
+const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
+  schema_version: "0.2.0", curriculum_id: "curriculum-linear-algebra-002",
+  revision_id: "revision-linear-algebra-v1", revision_number: 1, predecessor_revision_id: null,
+  account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
+  goal: {
+    title: "Linear Algebra & Spectral Methods",
+    summary: "Compute eigenvalues, orthogonal projections, and the singular value decomposition, then use the SVD for low-rank approximation.",
+    included_topics: ["eigenvalues", "orthogonal projections", "singular value decomposition"],
+    excluded_topics: ["numerical stability proofs"],
+    scope_note: "Each unit ends at a public problem set with published worked solutions.",
+  },
+  language: "en", sequence_preference_applied: "theory_first",
+  instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
+  objectives: [
+    {
+      objective_id: "objective-la-spectral", objective_version_id: "objective-la-spectral-v1", topic_id: "topic-eigenvalues",
+      title: "Compute eigenvalues and orthogonal projections, and explain their geometry",
+      description: "Relate eigenvectors to invariant directions and orthogonal projections to least-squares fits.",
+      success_criterion: "Diagonalize a symmetric 3×3 matrix and project a vector onto its column space, justifying each step.",
+      level: "applied", requirement_level: "required", assessment_activity_ids: ["la-gate-spectral"], prior_evidence_refs: [],
+    },
+    {
+      objective_id: "objective-la-svd", objective_version_id: "objective-la-svd-v1", topic_id: "topic-svd",
+      title: "Derive the singular value decomposition and use it for low-rank approximation",
+      description: "Connect singular values to the eigenvalues of AᵀA and to the best rank-k approximation.",
+      success_criterion: "Compute the SVD of a 2×2 matrix by hand and state the Eckart–Young error of its best rank-1 approximation.",
+      level: "applied", requirement_level: "required", assessment_activity_ids: ["la-gate-svd"], prior_evidence_refs: [],
+    },
+  ],
+  prerequisite_edges: [{ from_objective_id: "objective-la-spectral", to_objective_id: "objective-la-svd" }],
+  modules: [
+    {
+      module_id: "la-module-spectral", title: "Module 1: Eigenvalues & Orthogonal Projections",
+      summary: "Eigenpairs of symmetric matrices, diagonalization, and projection onto a column space.",
+      requirement_level: "required", prerequisite_module_ids: [], objective_ids: ["objective-la-spectral"],
+      activity_ids: ["la-read-eigen", "la-example-projection", "la-lab-power-iteration", "la-gate-spectral"],
+    },
+    {
+      module_id: "la-module-svd", title: "Module 2: Singular Value Decomposition",
+      summary: "The SVD, its link to AᵀA, and the Eckart–Young theorem.",
+      requirement_level: "required", prerequisite_module_ids: ["la-module-spectral"], objective_ids: ["objective-la-svd"],
+      activity_ids: ["la-read-svd", "la-example-svd", "la-gate-svd", "la-review-svd"],
+    },
+  ],
+  activities: [
+    {
+      activity_id: "la-read-eigen", type: "theory", title: "Read: Eigenvalues, Eigenvectors, and Diagonalization",
+      requirement_level: "required", objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: [],
+      resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-eigen"], "Open notes with a full treatment of the spectral theorem.")],
+      duration_estimate: makeDurationEstimate([0, 20, 0, 0, 0], [0, 15, 0, 0, 0], [0, 30, 0, 0, 0]),
+      content: { study_prompt: "Work out why a real symmetric matrix has orthogonal eigenvectors." },
+    },
+    {
+      activity_id: "la-example-projection", type: "worked_example", title: "Worked Example: Projecting onto a Column Space",
+      requirement_level: "required", objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: ["la-read-eigen"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-eigen"], "Derives the projection matrix from the normal equations.")],
+      duration_estimate: makeDurationEstimate([5, 10, 5, 0, 0], [4, 8, 4, 0, 0], [8, 14, 8, 0, 0]),
+      content: { example_prompt: "Follow the derivation of P = A(AᵀA)⁻¹Aᵀ from the normal equations.", guidance_level: "full" },
+    },
+    {
+      activity_id: "la-lab-power-iteration", type: "coding", title: "Implement Power Iteration and Check It Against NumPy",
+      requirement_level: "required", objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: ["la-example-projection"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-lab-v1", "supplemental", [], "External lab with a reference solution and tests.")],
+      duration_estimate: makeDurationEstimate([0, 5, 20, 0, 0], [0, 4, 15, 0, 0], [0, 8, 30, 0, 0]),
+      content: {
+        task_prompt: "Implement power iteration and compare its dominant eigenpair with numpy.linalg.eigh.",
+        deliverable_description: "A script that prints the dominant eigenvalue, its error against NumPy, and the iteration count.",
+        assessment_ref: null, execution_mode: "external",
+      },
+    },
+    {
+      activity_id: "la-gate-spectral", type: "quiz", title: "Problem Set 1: Eigenvalues & Projections",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: ["la-lab-power-iteration"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-problem-sets-v1", "primary", ["seg-la-ps1"], "Public problem set with published worked solutions.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 30, 0], [0, 0, 0, 20, 0], [0, 0, 0, 45, 0]),
+      content: { assessment_ref: "assessment-la-public-set-1", attempt_policy_ref: "attempt-policy-published-solutions" },
+    },
+    {
+      activity_id: "la-read-svd", type: "theory", title: "Read: The Singular Value Decomposition",
+      requirement_level: "required", objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-gate-spectral"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-svd"], "Builds the SVD from the spectral theorem.")],
+      duration_estimate: makeDurationEstimate([0, 20, 0, 0, 0], [0, 15, 0, 0, 0], [0, 30, 0, 0, 0]),
+      content: { study_prompt: "Connect the singular values of A to the eigenvalues of AᵀA." },
+    },
+    {
+      activity_id: "la-example-svd", type: "worked_example", title: "Worked Example: SVD of a 2×2 Matrix by Hand",
+      requirement_level: "required", objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-read-svd"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-svd"], "A fully worked 2×2 example.")],
+      duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
+      content: { example_prompt: "Compute U, Σ, and V for a 2×2 matrix and check that UΣVᵀ reproduces it.", guidance_level: "full" },
+    },
+    {
+      activity_id: "la-gate-svd", type: "quiz", title: "Problem Set 2: SVD & Low-Rank Approximation",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-example-svd"],
+      resource_assignments: [makeResAssign("synthetic-resource-la-problem-sets-v1", "primary", ["seg-la-ps2"], "Public problem set with published worked solutions.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 30, 0], [0, 0, 0, 20, 0], [0, 0, 0, 45, 0]),
+      content: { assessment_ref: "assessment-la-public-set-2", attempt_policy_ref: "attempt-policy-published-solutions" },
+    },
+    {
+      activity_id: "la-review-svd", type: "review", title: "Spaced Review: Eckart–Young and Projections",
+      requirement_level: "required", objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-gate-svd"],
+      resource_assignments: [],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
+      content: { recall_prompt: "Without notes, state the Eckart–Young theorem and explain why a projection minimizes error.", assessment_ref: null },
+    },
+  ],
+  certification_options: [],
+};
+
+const LINEAR_ALGEBRA_SCHEDULE: Record<string, unknown> = {
+  schedule_id: "schedule-linear-algebra-1", schedule_revision_id: "schedule-revision-linear-algebra-1",
+  version: 1, curriculum_revision_id: "revision-linear-algebra-v1", timezone: "America/New_York", weekly_minutes: 150,
+  sessions: [
+    { session_id: "la-session-1", start_at: "2026-10-27T18:00:00-04:00", duration_minutes: 65, activity_ids: ["la-read-eigen", "la-example-projection", "la-lab-power-iteration"], reminder_enabled: true },
+    { session_id: "la-session-2", start_at: "2026-10-29T18:00:00-04:00", duration_minutes: 30, activity_ids: ["la-gate-spectral"], reminder_enabled: true },
+    { session_id: "la-session-3", start_at: "2026-11-02T18:00:00-05:00", duration_minutes: 75, activity_ids: ["la-read-svd", "la-example-svd", "la-gate-svd"], reminder_enabled: true },
+    { session_id: "la-session-4", start_at: "2026-11-05T18:00:00-05:00", duration_minutes: 10, activity_ids: ["la-review-svd"], reminder_enabled: false },
+  ],
+  generated_at: "2026-10-20T16:00:00Z",
+};
+
+const TOLSTOY_CURRICULUM: Record<string, unknown> = {
+  schema_version: "0.2.0", curriculum_id: "curriculum-tolstoy-lit-003",
+  revision_id: "revision-tolstoy-v1", revision_number: 1, predecessor_revision_id: null,
+  account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
+  goal: {
+    title: "Tolstoy's Major Novels: War & Peace and Anna Karenina",
+    summary: "Read Tolstoy's two major novels for their argument about history and their method of moral interiority, and test each reading in a written synthesis.",
+    included_topics: ["historical determinism", "free indirect discourse", "literary realism"],
+    excluded_topics: ["Russian-language close reading"],
+    scope_note: "No public quiz bank covers this material. Each gate is a written synthesis that you check against a rubric.",
+  },
+  language: "en", sequence_preference_applied: "theory_first",
+  instruction_preferences_applied: { math_depth: "intuitive", topic_math_depth_overrides: [], known_material_review: "retain_full" },
+  objectives: [
+    {
+      objective_id: "objective-tl-agency", objective_version_id: "objective-tl-agency-v1", topic_id: "topic-war-and-peace",
+      title: "Analyze Tolstoy's account of historical determinism and individual agency in War and Peace",
+      description: "Weigh the novel's battle scenes against its essay chapters on what causes historical events.",
+      success_criterion: "Write a synthesis that links one battle scene to one essay chapter and evaluates Isaiah Berlin's reading.",
+      level: "advanced", requirement_level: "required", assessment_activity_ids: ["tl-gate-war-and-peace"], prior_evidence_refs: [],
+    },
+    {
+      objective_id: "objective-tl-interiority", objective_version_id: "objective-tl-interiority-v1", topic_id: "topic-anna-karenina",
+      title: "Explain how Anna Karenina renders moral interiority through narrative technique",
+      description: "Trace how free indirect discourse and the double plot shape the reader's moral judgment.",
+      success_criterion: "Show how one passage of free indirect discourse shapes the reader's judgment of Anna, and set it against Levin's ending.",
+      level: "advanced", requirement_level: "required", assessment_activity_ids: ["tl-gate-anna-karenina"], prior_evidence_refs: [],
+    },
+  ],
+  prerequisite_edges: [],
+  modules: [
+    {
+      module_id: "tl-module-war-and-peace", title: "Module 1: War and Peace: Historical Determinism & Agency",
+      summary: "Austerlitz, the essay chapters on historical causation, and Berlin's hedgehog and fox.",
+      requirement_level: "required", prerequisite_module_ids: [], objective_ids: ["objective-tl-agency"],
+      activity_ids: ["tl-read-war-and-peace", "tl-read-berlin", "tl-close-austerlitz", "tl-gate-war-and-peace", "tl-review-war-and-peace"],
+    },
+    {
+      module_id: "tl-module-anna-karenina", title: "Module 2: Anna Karenina: Realism & Moral Interiority",
+      summary: "Free indirect discourse in Anna's final journey, and the double plot that ends with Levin.",
+      requirement_level: "required", prerequisite_module_ids: [], objective_ids: ["objective-tl-interiority"],
+      activity_ids: ["tl-read-anna-karenina", "tl-close-obiralovka", "tl-gate-anna-karenina", "tl-review-anna-karenina"],
+    },
+  ],
+  activities: [
+    {
+      activity_id: "tl-read-war-and-peace", type: "theory", title: "Read War and Peace: Book Three and the Opening of Book Nine",
+      requirement_level: "required", objective_ids: ["objective-tl-agency"], prerequisite_activity_ids: [],
+      resource_assignments: [makeResAssign("synthetic-resource-war-and-peace-v1", "primary", ["seg-wp-book-3", "seg-wp-book-9"], "Public-domain translation of the full novel.")],
+      duration_estimate: makeDurationEstimate([0, 60, 0, 0, 0], [0, 45, 0, 0, 0], [0, 90, 0, 0, 0]),
+      content: { study_prompt: "Mark each moment where a character believes they control events, and each passage where the narrator says they do not." },
+    },
+    {
+      activity_id: "tl-read-berlin", type: "theory", title: "Read Isaiah Berlin: The Hedgehog and the Fox",
+      requirement_level: "required", objective_ids: ["objective-tl-agency"], prerequisite_activity_ids: ["tl-read-war-and-peace"],
+      resource_assignments: [makeResAssign("synthetic-resource-berlin-essay-v1", "primary", [], "The standard critical reading of Tolstoy's view of history.")],
+      duration_estimate: makeDurationEstimate([0, 40, 0, 0, 0], [0, 30, 0, 0, 0], [0, 60, 0, 0, 0]),
+      content: { study_prompt: "Find Berlin's claim that Tolstoy was a fox by nature who believed in being a hedgehog." },
+    },
+    {
+      activity_id: "tl-close-austerlitz", type: "worked_example", title: "Close Reading: Prince Andrei Under the Sky at Austerlitz",
+      requirement_level: "required", objective_ids: ["objective-tl-agency"], prerequisite_activity_ids: ["tl-read-war-and-peace"],
+      resource_assignments: [makeResAssign("synthetic-resource-war-and-peace-v1", "primary", ["seg-wp-book-3"], "The Austerlitz chapters.")],
+      duration_estimate: makeDurationEstimate([0, 15, 10, 0, 0], [0, 10, 8, 0, 0], [0, 20, 15, 0, 0]),
+      content: { example_prompt: "Follow a guided reading of the wounded Andrei watching the sky, and of how Napoleon shrinks in his eyes.", guidance_level: "full" },
+    },
+    {
+      activity_id: "tl-gate-war-and-peace", type: "quiz", title: "Synthesis Gate: Agency and Determinism in War and Peace",
+      requirement_level: "required", objective_ids: ["objective-tl-agency"], prerequisite_activity_ids: ["tl-read-berlin", "tl-close-austerlitz"],
+      resource_assignments: [makeResAssign("synthetic-resource-war-and-peace-v1", "primary", ["seg-wp-book-9"], "Cite the essay chapters directly.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 40, 0], [0, 0, 0, 30, 0], [0, 0, 0, 60, 0]),
+      content: { assessment_ref: "assessment-tolstoy-war-and-peace", attempt_policy_ref: "attempt-policy-self-check" },
+    },
+    {
+      activity_id: "tl-review-war-and-peace", type: "review", title: "Spaced Reflection: Free Will After Austerlitz",
+      requirement_level: "required", objective_ids: ["objective-tl-agency"], prerequisite_activity_ids: ["tl-gate-war-and-peace"],
+      resource_assignments: [],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
+      content: { recall_prompt: "Without reopening the novel, restate your synthesis in five sentences, then check it against the rubric again.", assessment_ref: "assessment-tolstoy-war-and-peace" },
+    },
+    {
+      activity_id: "tl-read-anna-karenina", type: "theory", title: "Read Anna Karenina: Parts Seven and Eight",
+      requirement_level: "required", objective_ids: ["objective-tl-interiority"], prerequisite_activity_ids: [],
+      resource_assignments: [makeResAssign("synthetic-resource-anna-karenina-v1", "primary", ["seg-ak-part-7", "seg-ak-part-8"], "Public-domain translation of the full novel.")],
+      duration_estimate: makeDurationEstimate([0, 60, 0, 0, 0], [0, 45, 0, 0, 0], [0, 90, 0, 0, 0]),
+      content: { study_prompt: "Mark where the narration moves inside Anna's or Levin's mind without quotation marks." },
+    },
+    {
+      activity_id: "tl-close-obiralovka", type: "worked_example", title: "Close Reading: Anna's Final Journey to Obiralovka",
+      requirement_level: "required", objective_ids: ["objective-tl-interiority"], prerequisite_activity_ids: ["tl-read-anna-karenina"],
+      resource_assignments: [makeResAssign("synthetic-resource-anna-karenina-v1", "primary", ["seg-ak-part-7"], "The carriage ride and the station.")],
+      duration_estimate: makeDurationEstimate([0, 15, 10, 0, 0], [0, 10, 8, 0, 0], [0, 20, 15, 0, 0]),
+      content: { example_prompt: "Follow a guided reading of the carriage ride as the narration takes on Anna's perception.", guidance_level: "full" },
+    },
+    {
+      activity_id: "tl-gate-anna-karenina", type: "quiz", title: "Synthesis Gate: Moral Interiority in Anna Karenina",
+      requirement_level: "required", objective_ids: ["objective-tl-interiority"], prerequisite_activity_ids: ["tl-close-obiralovka"],
+      resource_assignments: [makeResAssign("synthetic-resource-anna-karenina-v1", "primary", ["seg-ak-part-7", "seg-ak-part-8"], "Cite both parts directly.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 40, 0], [0, 0, 0, 30, 0], [0, 0, 0, 60, 0]),
+      content: { assessment_ref: "assessment-tolstoy-anna-karenina", attempt_policy_ref: "attempt-policy-self-check" },
+    },
+    {
+      activity_id: "tl-review-anna-karenina", type: "review", title: "Spaced Reflection: Levin and Anna as Counterpoints",
+      requirement_level: "required", objective_ids: ["objective-tl-interiority"], prerequisite_activity_ids: ["tl-gate-anna-karenina"],
+      resource_assignments: [],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
+      content: { recall_prompt: "Explain from memory why the novel ends with Levin and not with Anna, then check your answer against the rubric.", assessment_ref: "assessment-tolstoy-anna-karenina" },
+    },
+  ],
+  certification_options: [],
+};
+
+const TOLSTOY_SCHEDULE: Record<string, unknown> = {
+  schedule_id: "schedule-tolstoy-1", schedule_revision_id: "schedule-revision-tolstoy-1",
+  version: 1, curriculum_revision_id: "revision-tolstoy-v1", timezone: "America/New_York", weekly_minutes: 180,
+  sessions: [
+    { session_id: "tl-session-1", start_at: "2026-10-27T20:00:00-04:00", duration_minutes: 85, activity_ids: ["tl-read-war-and-peace", "tl-close-austerlitz"], reminder_enabled: true },
+    { session_id: "tl-session-2", start_at: "2026-10-30T20:00:00-04:00", duration_minutes: 80, activity_ids: ["tl-read-berlin", "tl-gate-war-and-peace"], reminder_enabled: true },
+    { session_id: "tl-session-3", start_at: "2026-11-03T20:00:00-05:00", duration_minutes: 95, activity_ids: ["tl-review-war-and-peace", "tl-read-anna-karenina", "tl-close-obiralovka"], reminder_enabled: true },
+    { session_id: "tl-session-4", start_at: "2026-11-06T20:00:00-05:00", duration_minutes: 40, activity_ids: ["tl-gate-anna-karenina"], reminder_enabled: true },
+    { session_id: "tl-session-5", start_at: "2026-11-10T20:00:00-05:00", duration_minutes: 10, activity_ids: ["tl-review-anna-karenina"], reminder_enabled: false },
+  ],
+  generated_at: "2026-10-20T16:00:00Z",
+};
+
+// An active plan: its curriculum and schedule, plus the domain and gate style that Today's queue card shows.
+// The catalog and the proficiency profile belong to the learner, so all plans share them.
+interface ActiveCurriculum {
+  readonly curriculumId: string;
+  readonly domain: string;
+  readonly assessmentMode: string;
+  readonly curriculum: Record<string, unknown>;
+  readonly schedule: Record<string, unknown>;
+}
+
+const RAG_PLAN: ActiveCurriculum = {
+  curriculumId: "curriculum-rag-python-001", domain: "Engineering", assessmentMode: "Reviewed Quiz",
+  curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
+};
+
+// The learner's active plans in queue order. The first one is selected by default.
+const ACTIVE_CURRICULA: readonly ActiveCurriculum[] = [
+  RAG_PLAN,
+  {
+    curriculumId: "curriculum-linear-algebra-002", domain: "Mathematics", assessmentMode: "Public Quiz Bank",
+    curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
+  },
+  {
+    curriculumId: "curriculum-tolstoy-lit-003", domain: "Literature", assessmentMode: "Self-Check Rubric",
+    curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
+  },
+];
+
+const activePlan = (curriculumId: unknown): ActiveCurriculum =>
+  ACTIVE_CURRICULA.find((plan) => plan.curriculumId === curriculumId) ?? RAG_PLAN;
+const isActiveCurriculum = (curriculumId: unknown): curriculumId is string =>
+  ACTIVE_CURRICULA.some((plan) => plan.curriculumId === curriculumId);
+
+interface SelfCheckRubric { readonly prompt: string; readonly criteria: readonly string[] }
+
+// A topic with no public quiz bank is checked against a rubric. A gate or review links one through content.assessment_ref.
+const SELF_CHECK_RUBRICS: Readonly<Record<string, SelfCheckRubric>> = {
+  "assessment-tolstoy-war-and-peace": {
+    prompt: "Compare Prince Andrei's disillusionment at Austerlitz (Book Three) with Tolstoy's thesis on historical determinism at the opening of Book Nine, and evaluate how Isaiah Berlin's hedgehog and fox framework applies.",
+    criteria: [
+      "Ties Andrei's view of the sky at Austerlitz to a specific claim about the limits of individual will.",
+      "Cites one passage from Book Nine on how countless small causes produce a historical event.",
+      "Takes a position on Berlin's claim that Tolstoy was a fox who believed in being a hedgehog, with evidence from both the battle scenes and the essay chapters.",
+    ],
+  },
+  "assessment-tolstoy-anna-karenina": {
+    prompt: "Trace how free indirect discourse in Anna's final journey (Part Seven) shapes the reader's moral judgment, and set it against Levin's resolution at the end of Part Eight.",
+    criteria: [
+      "Identifies two sentences where the narration takes on Anna's perception, and explains what that does to the reader's sympathy.",
+      "Explains how the novel pairs Anna's plot with Levin's, using one concrete parallel between their stories.",
+      "States whether the ending endorses Levin's resolution or leaves it open, and supports the claim with the final chapter of Part Eight.",
+    ],
+  },
 };
 
 const DEFAULT_DIAGNOSTIC_SESSION: DiagnosticSessionFixture = {
-  diagnostic_session_id: "diagnostic-synthetic-001", curriculum_id: "curriculum-attention-synthetic",
+  diagnostic_session_id: "diagnostic-synthetic-001", curriculum_id: "curriculum-rag-python-001",
   curriculum_revision_id: "revision-attention-v2", state: "active",
   target_objective_version_ids: ["objective-tokenization-v1", "objective-attention-v1"],
   assessed_objective_version_ids: ["objective-tokenization-v1"], unassessed_objective_version_ids: ["objective-attention-v1"],
@@ -220,7 +560,7 @@ const DEFAULT_DIAGNOSTIC_SESSION: DiagnosticSessionFixture = {
 };
 
 const DEFAULT_ADAPTATION_PROPOSAL: AdaptationProposalFixture = {
-  proposal_id: "adaptation-synthetic-001", curriculum_id: "curriculum-attention-synthetic",
+  proposal_id: "adaptation-synthetic-001", curriculum_id: "curriculum-rag-python-001",
   base_revision_id: "revision-attention-v2", candidate_revision_id: "revision-attention-v3-candidate",
   base_schedule_revision_id: "schedule-revision-attention-1", proficiency_snapshot_ref: "proficiency-snapshot-001",
   proposal_sha256: "938896be1292fd64cd5bf7f71c45068b10758ef3d3253833bd17b79a4e0d6dae", status: "pending",
@@ -266,7 +606,7 @@ const DEFAULT_PUBLIC_CURRICULUM: PublicCurriculumPayload = {
 };
 
 const DEFAULT_PUBLICATION_PREVIEW: PublicationPreviewPayload = {
-  preview_id: "preview-synthetic-001", source_plan_id: "curriculum-attention-synthetic",
+  preview_id: "preview-synthetic-001", source_plan_id: "curriculum-rag-python-001",
   source_plan_version_id: "revision-attention-v2", visibility: "public",
   content_sha256: "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
   preview_sha256: "e1b88a7d4a5d6033b819b2e5e2e4c7f1928374655647382910abcdef12345678",
@@ -279,7 +619,7 @@ const DEFAULT_PUBLICATION_PREVIEW: PublicationPreviewPayload = {
 };
 
 const DEFAULT_OWNED_PUBLICATIONS: readonly OwnedPublicationItem[] = [{
-  publication_id: "publication-synthetic-001", source_plan_id: "curriculum-attention-synthetic", visibility: "public", state: "active",
+  publication_id: "publication-synthetic-001", source_plan_id: "curriculum-rag-python-001", visibility: "public", state: "active",
   display_title: "Transformer Foundations & Attention Mechanics (Public Template)", published_revision_id: "public-revision-synthetic-001",
   current_revision_upvote_count: 14, created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z", management_version_id: '"management-etag-001"',
 }];
@@ -690,7 +1030,8 @@ function renderFlowBoard(
   idPrefix: string, modules: readonly StudyModule[], selectedModuleId: string | null, selectedActivityId: string | null, view: FlowView,
 ): string {
   const units = modules.map((mod) => placeUnit(mod, view));
-  const columns = flowColumns(view);
+  // A track no unit uses gets no column, so a reading plan shows no empty Code column.
+  const columns = flowColumns(view).filter((track) => track === "gate" || units.some((unit) => (unit.cells.get(track) ?? []).length > 0));
   // The order tabs only move columns, so they add no text. Turning Deep Dive off reports what it hides.
   const hidden = units.flatMap((unit) => unit.hidden);
   const hiddenMinutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
@@ -796,11 +1137,55 @@ function displayLocation(url: string): string {
   return hostname.endsWith(".invalid") ? path.replace(/^\/+/, "") || "catalog" : `${hostname.replace(/^www\./, "")}${path}`;
 }
 
-// The plan model keeps one prompt per activity, so a lab's deliverables come from the raw curriculum.
+const rawListOf = (record: Readonly<Record<string, unknown>>, key: string): readonly Readonly<Record<string, unknown>>[] => {
+  const list: unknown = record[key];
+  return (Array.isArray(list) ? list : []).map(asRecord);
+};
+
+// The plan model keeps one prompt per activity, so a lab's deliverables and a gate's assessment come from the raw curriculum.
+const rawContentOf = (curriculum: Record<string, unknown>, activityId: string): Readonly<Record<string, unknown>> =>
+  asRecord(rawListOf(curriculum, "activities").find((entry) => entry["activity_id"] === activityId)?.["content"]);
+
+const rubricOf = (curriculum: Record<string, unknown>, activityId: string): SelfCheckRubric | null => {
+  const ref = rawContentOf(curriculum, activityId)["assessment_ref"];
+  return typeof ref === "string" ? SELF_CHECK_RUBRICS[ref] ?? null : null;
+};
+
+const activityIdsOf = (curriculum: Record<string, unknown>): ReadonlySet<string> =>
+  new Set(rawListOf(curriculum, "activities").map((entry) => entry["activity_id"]).filter((id): id is string => typeof id === "string"));
+
+const goalTitleOf = (curriculum: Record<string, unknown>): string =>
+  renderUntrustedCatalogText(asRecord(curriculum["goal"])["title"], { maxLength: 200 }).text || "Untitled plan";
+
+// The module that holds the given activity, or else the plan's first module, and the activity to open there.
+function stepOf(curriculum: Record<string, unknown>, activityId?: string | null): { readonly moduleId: string; readonly activityId: string } {
+  const modules = rawListOf(curriculum, "modules").map((mod) => ({ id: mod["module_id"], activityIds: normalizeStringList(mod["activity_ids"]) }));
+  const holder = modules.find((mod) => activityId && mod.activityIds.includes(activityId)) ?? modules[0];
+  return {
+    moduleId: typeof holder?.id === "string" ? holder.id : "",
+    activityId: activityId && holder?.activityIds.includes(activityId) ? activityId : holder?.activityIds[0] ?? "",
+  };
+}
+
+interface TodayInput {
+  readonly curriculum: Record<string, unknown>;
+  readonly schedule: Record<string, unknown>;
+  readonly proficiency: ProficiencyProfileFixture;
+  readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
+  readonly activityStates: Readonly<Record<string, ActivityExecutionStatus>>;
+  readonly events: readonly ProgressEventInput[];
+}
+
+// One plan's Today view. All plans share one activity-state map, and each replays only its own progress events.
+function buildTodayFor({ curriculum, schedule, proficiency, catalogResources, activityStates, events }: TodayInput) {
+  const own = activityIdsOf(curriculum);
+  const today = createTodayViewController({ curriculum, schedule, proficiency, catalogResources, initialActivityStates: activityStates });
+  for (const ev of events) if (own.has(ev.activityId ?? ev.activity_id ?? "")) today.recordProgressEvent(ev);
+  return today;
+}
+
 function deliverablesOf(curriculum: Record<string, unknown>, activityId: string): readonly string[] {
-  const activities: unknown = curriculum["activities"];
-  const raw = (Array.isArray(activities) ? activities : []).map(asRecord).find((entry) => entry["activity_id"] === activityId);
-  const content = asRecord(raw?.["content"]);
+  const content = rawContentOf(curriculum, activityId);
   const listed: unknown = content["deliverables"];
   return [content["deliverable_description"], ...(Array.isArray(listed) ? listed : [])]
     .filter((item): item is string => typeof item === "string" && item.trim() !== "")
@@ -815,12 +1200,14 @@ interface InspectorInput {
   readonly rigor: string;
   readonly deliverables: readonly string[];
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
+  readonly rubric: SelfCheckRubric | null;
   readonly skipRecorded: boolean;
 }
 
 // Drawer: the status control, then any earlier step not yet done, the material, and what the step builds.
-// A coding lab adds its brief, specs, and checklist. The footer offers Done, or the next step once done.
-function renderInspector({ modules, mod, activity, open, rigor, deliverables, catalogResources, skipRecorded }: InspectorInput): string {
+// A coding lab adds its brief, specs, and checklist. A step checked by a self-check rubric shows the rubric first.
+// The footer offers Done, or the next step once done.
+function renderInspector({ modules, mod, activity, open, rigor, deliverables, catalogResources, rubric, skipRecorded }: InspectorInput): string {
   const id = escapeHtml(activity.activityId);
   const track = trackOf(activity);
   const isGate = track === "gate";
@@ -911,6 +1298,16 @@ function renderInspector({ modules, mod, activity, open, rigor, deliverables, ca
         <ul class="lab-checklist">${mine.filter((objective) => objective.successCriterion).map((objective) => `<li>${statusGlyph("module", "todo", 16)}<span>${escapeHtml(objective.successCriterion)}</span></li>`).join("") || "<li>No acceptance criteria are stated.</li>"}</ul>
       </section>`;
 
+  const rubricBlock = rubric ? `<section class="inspector-section rubric-block" aria-labelledby="${INSPECTOR_ID}-rubric">
+        <h3 id="${INSPECTOR_ID}-rubric">Synthesis &amp; Self-Check Rubric</h3>
+        <p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>
+        <p class="rubric-label">Guiding synthesis prompt</p>
+        <p class="rubric-prompt">${escapeHtml(rubric.prompt)}</p>
+        <p class="rubric-label">Check your synthesis against each criterion before you mark this Done</p>
+        <ul class="lab-checklist">${rubric.criteria.map((criterion) => `<li>${statusGlyph("module", "todo", 16)}<span>${escapeHtml(criterion)}</span></li>`).join("")}</ul>
+        <p class="meta-text">Your self-check does not change the objective's proficiency status.</p>
+      </section>` : "";
+
   const primary = status !== "completed"
     ? `<button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}">Mark as Done<span aria-hidden="true">✓</span></button>`
     : next ? `<button type="button" class="btn-primary next-step" ${target(next)}><span class="next-step-text">Go to next step: ${escapeHtml(next.title)}</span><span aria-hidden="true">→</span></button>` : "";
@@ -925,6 +1322,7 @@ function renderInspector({ modules, mod, activity, open, rigor, deliverables, ca
     <div class="inspector-scroll" data-scroll-region>
       ${stepNav}
       ${firstSteps}
+      ${rubricBlock}
       ${isLab ? lab : ""}
       ${activity.resourceProvenanceCards.map(sourceCard).join("")}
       ${focus}
@@ -1027,8 +1425,12 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
 }
 
 export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInput = {}): string {
-  const curriculum = inputState.curriculum ?? DEFAULT_SYNTHETIC_CURRICULUM;
-  const schedule = inputState.schedule ?? DEFAULT_SYNTHETIC_SCHEDULE;
+  // A curriculum or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
+  const registered = activePlan(inputState.selectedCurriculumId);
+  const selectedPlan: ActiveCurriculum = {
+    ...registered, curriculum: inputState.curriculum ?? registered.curriculum, schedule: inputState.schedule ?? registered.schedule,
+  };
+  const { curriculum, schedule } = selectedPlan;
   const proficiency = inputState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
   const catalogResources = inputState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
 
@@ -1047,18 +1449,19 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     { prefersReducedTransparency: solidSurfaces, prefersReducedMotion: reduceMotion },
   );
 
-  const todayController = createTodayViewController({
-    curriculum, schedule, proficiency, catalogResources,
-    ...(inputState.activityStates ? { initialActivityStates: inputState.activityStates } : {}),
-  });
-  for (const ev of inputState.recordedProgressEvents ?? []) todayController.recordProgressEvent(ev);
-  const todayState = todayController.getState();
+  const todayOf = (plan: ActiveCurriculum) => buildTodayFor({
+    curriculum: plan.curriculum, schedule: plan.schedule, proficiency, catalogResources,
+    activityStates: inputState.activityStates ?? {}, events: inputState.recordedProgressEvents ?? [],
+  }).getState();
+  const todayState = todayOf(selectedPlan);
+  const queue = ACTIVE_CURRICULA.map((plan) => (plan === registered ? { plan: selectedPlan, today: todayState } : { plan, today: todayOf(plan) }));
+  const openingStep = stepOf(curriculum, inputState.selectedActivityId);
 
   const basePlanModel = buildPlanMapAndOutlineModel({
     curriculum, proficiency, activityStates: todayState.activityExecutionStates, catalogResources, viewportWidthPx,
-    selectedModuleId: inputState.selectedModuleId ?? "module-foundations",
-    selectedActivityId: inputState.selectedActivityId ?? "activity-theory",
-    focusedNodeId: inputState.focusedNodeId ?? inputState.selectedModuleId ?? "module-foundations",
+    selectedModuleId: inputState.selectedModuleId ?? openingStep.moduleId,
+    selectedActivityId: inputState.selectedActivityId ?? openingStep.activityId,
+    focusedNodeId: inputState.focusedNodeId ?? inputState.selectedModuleId ?? openingStep.moduleId,
     zoom: inputState.zoom ?? 1,
   });
 
@@ -1196,13 +1599,40 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     return activity ? renderStepRow(activity, selectedActivityId, note, extraAttrs) : "";
   };
 
-  const reviewItemsHtml = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
+  const reviewRows = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
     stepRow(act.activityId, `Scheduled ${shortSessionLabel(card.startAt)}. ${card.reviewSeparation.separationSummary} ${act.scheduledReason}`, ` data-review-separation-valid="${card.reviewSeparation.valid}"`),
-  )).join("");
-  const completedItems = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)));
-  const completedHtml = completedItems.length === 0
-    ? `<p class="meta-text">No self-reported completions yet.</p>`
-    : `<ul class="today-activity-list step-list">${completedItems.map((act) => stepRow(act.activityId, "Self-reported completed. Objective proficiency is unchanged.")).join("")}</ul>`;
+  )).filter(Boolean);
+  const completedRows = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)))
+    .map((act) => stepRow(act.activityId, "Self-reported completed. Objective proficiency is unchanged.")).filter(Boolean);
+  const listOrEmpty = (rows: readonly string[], icon: SfIconName, empty: string): string => rows.length > 0
+    ? `<ul class="today-activity-list step-list">${rows.join("")}</ul>`
+    : `<p class="empty-state">${sfIcon(icon)}<span>${empty}</span></p>`;
+
+  // Today's queue: one card per active plan, showing that plan's next session and its next open activity.
+  const queueCardsHtml = queue.map(({ plan, today }) => {
+    const id = escapeHtml(plan.curriculumId);
+    const session = today.nextSession?.activityBreakdown ?? [];
+    const open = session.filter((act) => !isClosed(act.executionStatus));
+    const next = open[0];
+    const done = session.length - open.length;
+    const minutesLeft = open.reduce((sum, act) => sum + act.durationTriplet.point, 0);
+    const percent = session.length === 0 ? 0 : Math.round((done / session.length) * 100);
+    return `<article class="curriculum-card" data-curriculum-id="${id}" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+            <p class="domain-pill">${escapeHtml(`${plan.domain} · ${plan.assessmentMode}`)}</p>
+            <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
+            <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
+            <span class="macro-bar" aria-hidden="true"><span style="width: ${percent}%"></span></span>
+            ${next ? `<div class="queue-next"><p class="queue-next-title">${escapeHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
+            <div class="queue-actions">
+              ${next ? `<button type="button" class="btn-primary" data-action="resume-curriculum" data-curriculum-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}
+              <button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${id}">Open Plan<span aria-hidden="true">→</span></button>
+            </div>
+          </article>`;
+  }).join("");
+  const planOptionsHtml = queue.map(({ plan }) =>
+    `<option value="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}</option>`).join("");
+  const studyMinutes = queue.reduce((sum, { today }) => sum + today.totalStudyMinutes, 0);
+  const selfReportedCount = queue.reduce((sum, { today }) => sum + today.selfReportedCompletedCount, 0);
 
   const requiredActivities = basePlanModel.outlineActivities.filter((act) => act.required);
   const requiredCompleted = requiredActivities.filter((act) => isExecutionDone(act.executionStatus)).length;
@@ -1233,6 +1663,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       modules, mod: selectedModule, activity: selectedActivity, open: studyDetailOpen && isLearn,
       rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
       deliverables: deliverablesOf(curriculum, selectedActivity.activityId), catalogResources,
+      rubric: rubricOf(curriculum, selectedActivity.activityId),
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
     })
     : "";
@@ -1355,8 +1786,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <div class="brand-cluster"><span class="brand-title">Curriculum.io</span></div>
     <nav class="top-level-nav" aria-label="Primary navigation">${topNavHtml}</nav>
     <div class="header-status">
-      <span class="duration-pill" data-study-minutes="${todayState.totalStudyMinutes}">Study minutes ${todayState.totalStudyMinutes}</span>
-      <span class="duration-pill" data-self-reported-count="${todayState.selfReportedCompletedCount}">Self-reported ${todayState.selfReportedCompletedCount}</span>
+      <span class="duration-pill" data-study-minutes="${studyMinutes}">Study minutes ${studyMinutes}</span>
+      <span class="duration-pill" data-self-reported-count="${selfReportedCount}">Self-reported ${selfReportedCount}</span>
     </div>
   </header>
   <div class="app-body-grid">
@@ -1371,8 +1802,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <div class="section-header">
               <h1 class="page-title">Today</h1>
               <div class="plan-toolbar">
-                <label class="field field-inline" for="selected-plan"><span>Selected plan</span>
-                  <select id="selected-plan" name="selected-plan"><option selected>${escapeHtml(basePlanModel.goal.title)}</option></select>
+                <label class="field field-inline" for="selected-plan-control"><span>Selected plan</span>
+                  <select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">${planOptionsHtml}</select>
                 </label>
                 <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
               </div>
@@ -1380,6 +1811,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             ${recoveryBanner}
             ${nextUpRowHtml}
           </header>
+          <section class="today-curricula-grid" aria-label="Active curricula">
+          ${queueCardsHtml}
+          </section>
           ${todayBoardHtml}
           <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
             <h2>Study</h2>
@@ -1404,17 +1838,17 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
             </div>
           </section>
-          <div class="today-lists">
-            <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}">
-              <h2>Review queue</h2>
+          <section class="today-bottom-grid" aria-label="Reviews and completed work" data-opaque-surface="true">
+            <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}" aria-labelledby="review-queue-title">
+              <h2 id="review-queue-title">Review queue <span class="count-badge">${reviewRows.length}</span></h2>
               <p class="meta-text">Due and scheduled spaced review stays in a separate session.</p>
-              ${reviewItemsHtml ? `<ul class="today-activity-list step-list">${reviewItemsHtml}</ul>` : `<p class="meta-text">No reviews are due.</p>`}
+              ${listOrEmpty(reviewRows, "today", "No reviews are due.")}
             </section>
-            <section class="completed-history">
-              <h2>Completed work</h2>
-              ${completedHtml}
+            <section class="completed-history" aria-labelledby="completed-history-title">
+              <h2 id="completed-history-title">Completed work <span class="count-badge">${completedRows.length}</span></h2>
+              ${listOrEmpty(completedRows, "check", "No self-reported completions yet.")}
             </section>
-          </div>
+          </section>
           <div class="action-row">
             <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Plan</button>
             <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Settings">Schedule</button>
@@ -1425,6 +1859,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <div class="section-header">
             <h1 class="page-title">Plan</h1>
             <div class="plan-toolbar">
+              <label class="field field-inline" for="plan-curriculum-control"><span>Curriculum</span>
+                <select id="plan-curriculum-control" name="plan-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
+              </label>
               <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
                 ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
               </div>
@@ -1750,8 +2187,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let topLevel: TopLevelDestination = initialState.topLevel ?? "Learn";
   let learnSubDestination: LearnSubDestination = initialState.learnSubDestination ?? "Today";
   let planView: PlanSynchronizedView = initialState.planView ?? "Map";
-  let selectedModuleId: string | null = initialState.selectedModuleId ?? "module-foundations";
-  let selectedActivityId: string | null = initialState.selectedActivityId ?? "activity-theory";
+  // Input overrides replace the selected plan's curriculum and schedule, the same rule the render applies.
+  let selectedCurriculumId = activePlan(initialState.selectedCurriculumId).curriculumId;
+  const planData = (): ActiveCurriculum => {
+    const plan = activePlan(selectedCurriculumId);
+    return { ...plan, curriculum: initialState.curriculum ?? plan.curriculum, schedule: initialState.schedule ?? plan.schedule };
+  };
+  const openingStep = stepOf(planData().curriculum, initialState.selectedActivityId);
+  let selectedModuleId: string | null = initialState.selectedModuleId ?? openingStep.moduleId;
+  let selectedActivityId: string | null = initialState.selectedActivityId ?? openingStep.activityId;
   let focusedNodeId: string | null = initialState.focusedNodeId ?? selectedModuleId;
   let zoom = initialState.zoom ?? 1;
   const viewportWidthPx = initialState.viewportWidthPx ?? 1280;
@@ -1781,11 +2225,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let upvotedRevisionIds: string[] = [...(initialState.upvotedRevisionIds ?? [])];
   let openDialogId: string | null = initialState.openDialogId ?? null;
 
-  const curriculum = initialState.curriculum ?? DEFAULT_SYNTHETIC_CURRICULUM;
-  const schedule = initialState.schedule ?? DEFAULT_SYNTHETIC_SCHEDULE;
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
   const catalogResources = initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
-  let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(curriculum);
+  let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(planData().curriculum);
   let deepDive: DeepDiveMode = initialState.deepDive ?? "included";
   let spacedReview: SpacedReviewMode = initialState.spacedReview ?? "included";
 
@@ -1795,11 +2237,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let recordedProgressEvents: ProgressEventInput[] = [...(initialState.recordedProgressEvents ?? [])];
   const activityStatesInput = (): Readonly<Record<string, ActivityExecutionStatus>> =>
     ({ ...(initialState.activityStates ?? {}), ...Object.fromEntries(statusOverrides) });
-  const buildToday = () => {
-    const controller = createTodayViewController({ curriculum, schedule, proficiency, catalogResources, initialActivityStates: activityStatesInput() });
-    for (const ev of recordedProgressEvents) controller.recordProgressEvent(ev);
-    return controller;
-  };
+  const todayFor = (plan: ActiveCurriculum) => buildTodayFor({
+    curriculum: plan.curriculum, schedule: plan.schedule, proficiency, catalogResources,
+    activityStates: activityStatesInput(), events: recordedProgressEvents,
+  });
+  const buildToday = () => todayFor(planData());
   let todayController = buildToday();
 
   function recordCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt {
@@ -1826,20 +2268,46 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
 
   const buildCurrentPlanModel = (): PlanMapAndOutlineModel =>
     buildPlanMapAndOutlineModel({
-      curriculum, proficiency, activityStates: todayController.getState().activityExecutionStates,
+      curriculum: planData().curriculum, proficiency, activityStates: todayController.getState().activityExecutionStates,
       catalogResources, viewportWidthPx, selectedModuleId, selectedActivityId, focusedNodeId, zoom,
     });
 
+  function selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
+    selectedActivityId = activityId;
+    studyDetailOpen = true;
+    const targetModId =
+      explicitModuleId ?? buildCurrentPlanModel().outlineModules.find((m) => m.activityIds.includes(activityId))?.moduleId;
+    if (targetModId) {
+      selectedModuleId = targetModId;
+      focusedNodeId = targetModId;
+    }
+    return getState();
+  }
+
+  // Another plan opens on its own first step, with the drawer closed.
+  function selectCurriculum(curriculumId: string): void {
+    if (curriculumId === selectedCurriculumId) return;
+    selectedCurriculumId = curriculumId;
+    const first = stepOf(planData().curriculum);
+    selectedModuleId = first.moduleId;
+    selectedActivityId = first.activityId;
+    focusedNodeId = first.moduleId;
+    studyDetailOpen = false;
+    todayController = buildToday();
+  }
+
   const getState = () => {
     const tState = todayController.getState();
+    // Study minutes and completions count across every active plan, as the app header shows them.
+    const allToday = ACTIVE_CURRICULA.map((plan) => (plan.curriculumId === selectedCurriculumId ? tState : todayFor(plan).getState()));
     return {
-      topLevel, learnSubDestination, planView, selectedModuleId, selectedActivityId, focusedNodeId,
+      topLevel, learnSubDestination, planView, selectedCurriculumId, selectedModuleId, selectedActivityId, focusedNodeId,
       zoom, viewportWidthPx, textScalePercent, themePreference, solidSurfaces, reduceMotion,
       activityStates: tState.activityExecutionStates,
       recordedProgressEvents: [...recordedProgressEvents] as readonly ProgressEventInput[],
       recordedReceipts: tState.recordedEvents,
-      totalStudyMinutes: tState.totalStudyMinutes,
-      selfReportedCompletedCount: tState.selfReportedCompletedCount,
+      totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
+      selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
       adoptedSelectedModuleIds: [...adoptedSelectedModuleIds] as readonly string[],
       upvotedRevisionIds: [...upvotedRevisionIds] as readonly string[],
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
@@ -1884,17 +2352,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       }
       return getState();
     },
-    selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
-      selectedActivityId = activityId;
-      studyDetailOpen = true;
-      const targetModId =
-        explicitModuleId ?? buildCurrentPlanModel().outlineModules.find((m) => m.activityIds.includes(activityId))?.moduleId;
-      if (targetModId) {
-        selectedModuleId = targetModId;
-        focusedNodeId = targetModId;
-      }
-      return getState();
-    },
+    selectPlanActivity,
     applyMapControl(control: MapNonDraggingControl) {
       zoom =
         control === "zoom_in" ? clamp(Number((zoom + 0.25).toFixed(2)), 0.5, 2)
@@ -1932,7 +2390,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       let handled = true;
       const value = (key: string) => data[key];
       if (action === "close-study-detail") studyDetailOpen = false;
-      else if (action === "set-flow-order" && isOneOf(FLOW_ORDERS, value("flowOrder"))) flowOrder = value("flowOrder") as FlowOrder;
+      else if (action === "select-curriculum" && isActiveCurriculum(data["curriculumId"])) selectCurriculum(data["curriculumId"]);
+      else if (action === "open-curriculum-plan" && isActiveCurriculum(data["curriculumId"])) {
+        selectCurriculum(data["curriculumId"]);
+        topLevel = "Learn";
+        learnSubDestination = "Plan";
+      } else if (action === "resume-curriculum" && isActiveCurriculum(data["curriculumId"]) && data["activityId"]) {
+        selectCurriculum(data["curriculumId"]);
+        selectPlanActivity(data["activityId"], data["moduleId"]);
+      } else if (action === "set-flow-order" && isOneOf(FLOW_ORDERS, value("flowOrder"))) flowOrder = value("flowOrder") as FlowOrder;
       else if (action === "set-deep-dive" && isOneOf(DEEP_DIVE_MODES, value("deepDive"))) deepDive = value("deepDive") as DeepDiveMode;
       else if (action === "set-spaced-review" && isOneOf(SPACED_REVIEW_MODES, value("spacedReview"))) spacedReview = value("spacedReview") as SpacedReviewMode;
       else if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
@@ -2081,6 +2547,13 @@ export function mountCurriculumWebApp(
       controller.navigateMapKeyboard(ev.key as MapKeyboardKey);
       syncDom();
     }
+  });
+
+  // A select reports its choice on change. A click on it only opens the list.
+  rootElement.addEventListener?.("change", (rawEvent: unknown) => {
+    const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string } | null } | null };
+    const select = ev.target?.closest?.('select[data-action="select-curriculum"]');
+    if (select?.value && controller.applyUiAction("select-curriculum", { curriculumId: select.value }).handled) syncDom();
   });
 
   const withSync =

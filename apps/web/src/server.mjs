@@ -132,7 +132,8 @@ ${fallbackScript}
 
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
-    if (!target) return;
+    // A click on a select only opens its list. The change handler below sends the choice.
+    if (!target || target.localName === "select") return;
     const action = target.dataset.action;
 
     if (action === "open-dialog" && target.dataset.dialogId) {
@@ -152,7 +153,8 @@ ${fallbackScript}
 
     // Only a control outside the drawer opens it. A step button inside the drawer must not replace
     // that control, or closing the drawer would have nowhere to return focus.
-    if ((action === "select-map-node" || action === "select-outline-module" || action === "select-outline-activity") && !target.closest("dialog")) {
+    const opensDrawer = action === "select-map-node" || action === "select-outline-module" || action === "select-outline-activity" || action === "resume-curriculum";
+    if (opensDrawer && !target.closest("dialog")) {
       inspectorOpenerKey = keyFor(target);
     }
 
@@ -199,6 +201,11 @@ ${fallbackScript}
       }
       dispatchServerRender(patch);
     }
+  });
+
+  root.addEventListener("change", (event) => {
+    const select = event.target && event.target.closest ? event.target.closest('select[data-action="select-curriculum"]') : null;
+    if (select) dispatchServerRender({ action: "select-curriculum", curriculumId: select.value });
   });
 
   root.addEventListener("keydown", (event) => {
