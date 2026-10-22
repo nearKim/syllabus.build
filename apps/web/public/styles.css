@@ -289,58 +289,78 @@ section[id] {
   -webkit-backdrop-filter: none;
 }
 
-/* Header */
+/* Header: clean, de facto standard top navigation bar */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 20;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: safe center;
-  gap: var(--space-4);
-  min-height: 64px;
-  padding: var(--space-2) var(--layout-gutter-wide);
+  align-items: center;
+  gap: var(--space-5);
+  min-height: 60px;
+  padding: 0 var(--layout-gutter-wide);
   border-bottom: var(--hairline);
 }
 
 .brand-cluster {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: 10px;
   min-inline-size: 0;
 }
 
+.brand-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 7px;
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
+}
+
 .brand-title {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   letter-spacing: -0.02em;
+  color: var(--color-text-primary);
   white-space: nowrap;
 }
 
 .header-status {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
+  flex-wrap: nowrap;
   justify-self: end;
   justify-content: flex-end;
-  align-items: safe center;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 6px;
   min-inline-size: 0;
 }
 
-/* Account: the header pill and its buttons, the expired-session banner, and the sign-in dialog */
+/* Account: clean inline identity and low-profile standard navbar actions */
 .account-pill {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 32px;
-  padding: 0 4px 0 12px;
-  border-radius: 999px;
-  background: var(--tint-8);
-  font-size: 13px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 6px 0 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.account-email {
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
 .account-pill[data-auth-status] {
-  padding-right: 12px;
+  padding: 0 8px;
 }
 
 .account-pill[data-auth-status="session_expired"] {
@@ -349,13 +369,45 @@ section[id] {
 }
 
 .role-pill {
-  background: var(--color-surface);
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 .header-btn {
-  min-height: 36px;
-  padding: 4px 12px;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 8px;
   font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.header-btn.btn-secondary {
+  border-color: var(--color-border-subtle);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.header-btn[data-action="sign-out"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+  padding: 0 10px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .header-btn.btn-secondary:hover {
+    border-color: var(--color-border-control);
+    background: var(--tint-4);
+  }
+
+  .header-btn[data-action="sign-out"]:hover {
+    border-color: transparent;
+    background: var(--tint-8);
+    color: var(--color-text-primary);
+  }
 }
 
 .session-banner {
@@ -496,8 +548,7 @@ section[id] {
 }
 
 /* Segmented pill switches: Map/Outline, theme, and the flowchart toolbar */
-.segmented,
-.top-level-nav {
+.segmented {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: safe center;
@@ -509,8 +560,7 @@ section[id] {
   min-inline-size: 0;
 }
 
-.seg-btn,
-.nav-top-btn {
+.seg-btn {
   min-width: 0;
   min-height: var(--layout-touch-target-min);
   padding: 6px 16px;
@@ -529,22 +579,51 @@ section[id] {
   font-weight: 600;
 }
 
+/* Top-level navigation: clean horizontal text links without pill container or icon clutter */
+.top-level-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-self: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  min-inline-size: 0;
+}
+
+.nav-top-btn {
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.nav-top-btn .sf-icon {
+  display: none;
+}
+
 .nav-top-btn.is-active {
-  background: var(--color-surface);
-  box-shadow: 0 1px 2px rgb(23 25 28 / 0.08);
+  background: var(--tint-8);
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .seg-btn:not([aria-pressed="true"]):hover,
-  .nav-top-btn:not(.is-active):hover,
   .flow-switch:hover {
     background: var(--tint-8);
   }
-}
 
-.top-level-nav {
-  justify-self: center;
+  .nav-top-btn:not(.is-active):hover {
+    background: var(--tint-4);
+    color: var(--color-text-primary);
+  }
 }
 
 /* Sidebar navigation */
@@ -2994,16 +3073,8 @@ dialog.inspector::backdrop {
 /* 2. Medium (768px to 1199px): navigation rail plus one main column */
 @media (min-width: 768px) and (max-width: 1199.98px) {
   .app-header {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
     padding-inline: var(--layout-gutter-medium);
-  }
-
-  .top-level-nav {
-    order: 3;
-    width: 100%;
-    justify-content: center;
+    gap: var(--space-3);
   }
 
   .app-body-grid {

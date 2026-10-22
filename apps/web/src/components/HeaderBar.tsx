@@ -81,6 +81,22 @@ export function HeaderBar({
   return (
     <header class="app-header nav-chrome-glass" role="banner">
       <div class="brand-cluster">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 20 20" width="15" height="15" fill="none">
+            <path
+              d="M5 6.5L10 3.75L15 6.5V13.5L10 16.25L5 13.5V6.5Z"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M10 9.5L15 6.5M10 9.5L5 6.5M10 9.5V16.25"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </span>
         <span class="brand-title">Curriculum.io</span>
       </div>
       <nav class="top-level-nav" aria-label="Primary navigation">
@@ -91,10 +107,10 @@ export function HeaderBar({
       <div class="header-status">
         {signedOut ? null : (
           <>
-            <span class="duration-pill" data-study-minutes={studyMinutes}>
+            <span class="duration-pill st-sr" data-study-minutes={studyMinutes}>
               Study minutes {studyMinutes}
             </span>
-            <span class="duration-pill" data-self-reported-count={selfReportedCount}>
+            <span class="duration-pill st-sr" data-self-reported-count={selfReportedCount}>
               Self-reported {selfReportedCount}
             </span>
           </>
