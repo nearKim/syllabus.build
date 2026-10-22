@@ -962,7 +962,7 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   assert.equal(rail.scrollLeft, 240);
 });
 
-test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders 4 educational-science sections without duplicating Study Flow", () => {
+test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders 4 human-readable syllabus & pacing sections without duplicating Study Flow", () => {
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
@@ -972,7 +972,7 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   assert.ok(today.includes('<details class="today-curriculum-overview">'));
   assert.ok(today.includes("Unit Map &amp; Syllabus Overview"));
 
-  // 2. Plan does not repeat Today's Study Flow table; it renders the 4 educational-science sections
+  // 2. Plan does not repeat Today's Study Flow table; it renders the 4 human-readable sections
   assert.equal(plan.includes('id="flow-plan-title"'), false, "Plan must not duplicate Today's Study Flow execution matrix");
   for (const sectionId of [
     'id="plan-outcomes-prerequisites"',
@@ -982,6 +982,23 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   ]) {
     assert.ok(plan.includes(sectionId), `Plan is missing section ${sectionId}`);
   }
+
+  // 3. Visual In-Scope / Out-of-Scope topic chips and plain-English syllabus adjustments without fixture/protocol jargon
+  assert.ok(plan.includes('class="plan-scope-grid"'));
+  assert.ok(plan.includes("In scope (Covered)"));
+  assert.ok(plan.includes("Out of scope (Not covered)"));
+  assert.ok(plan.includes('<li class="scope-chip scope-chip-included"><span aria-hidden="true">✓</span> tokenization tradeoffs</li>'));
+  assert.ok(plan.includes('<li class="scope-chip scope-chip-excluded"><span aria-hidden="true">✕</span> distributed cluster orchestration</li>'));
+  assert.ok(plan.includes("What you'll learn &amp; unit order"));
+  assert.ok(plan.includes("Weekly pace &amp; upcoming sessions"));
+  assert.ok(plan.includes("Tailor how this curriculum is taught"));
+  assert.ok(plan.includes("Activate or share your syllabus"));
+  assert.ok(plan.includes("Read Subword Tokenization &amp; Sequence Packing Notes"));
+  assert.ok(plan.includes("Targeted Bridge: Matrix Calculus &amp; Softmax Jacobians"));
+  for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal"]) {
+    assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);
+  }
+
   assert.ok(plan.includes('class="plan-architecture-outline"'));
   assert.ok(plan.includes("Check prerequisites · about 5 min"));
   assert.ok(plan.includes("Declared effort bounds (Min / Point / Max)"));

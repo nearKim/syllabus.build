@@ -139,7 +139,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     summary: "Start a Python RAG system from its model foundations: subword tokenization and scaled dot-product attention, with verified resources.",
     included_topics: ["tokenization tradeoffs", "scaled dot-product attention", "matrix calculus"],
     excluded_topics: ["distributed cluster orchestration"],
-    scope_note: "This synthetic plan covers the tokenization and attention foundations only. Retrieval and evaluation units are not included yet. Self-reported activity completion never substitutes for demonstrated proficiency.",
+    scope_note: "Focuses on foundational subword tokenization and attention mechanics before adding retrieval indexing and end-to-end RAG evaluation.",
   },
   language: "en", sequence_preference_applied: "theory_first",
   instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
@@ -1394,16 +1394,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       const reqCount = mod.activities.filter((act) => act.required).length;
       const optCount = mod.activities.length - reqCount;
       const unitObjectives = mod.objectiveIds.map((id) => objectiveById.get(id)).filter((obj): obj is NonNullable<typeof obj> => Boolean(obj));
-      const objectivesListHtml = unitObjectives.map((obj) => `<li class="plan-objective-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
+      const objectivesListHtml = unitObjectives.map((obj) => {
+        const statusLabel = obj.proficiencyStatus === "demonstrated"
+          ? "Demonstrated"
+          : obj.proficiencyStatus === "in_progress"
+            ? "In progress"
+            : obj.proficiencyStatus === "needs_review"
+              ? "Needs review"
+              : "Not yet checked";
+        const evidenceLabel = obj.proficiencyBadge.evidenceSupport === "corroborated"
+          ? "Verified by checkpoint"
+          : "Checkpoint pending";
+        return `<li class="plan-objective-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
         <div class="plan-objective-main">
           <strong>${escapeHtml(obj.title)}</strong>
-          <span class="meta-text">Acceptable evidence: ${escapeHtml(humanize(obj.proficiencyBadge.evidenceSupport))} · Status: <code>${escapeHtml(obj.proficiencyStatus)}</code> (${prog.done}/${prog.total} required activities completed)</span>
+          <span class="meta-text">${escapeHtml(statusLabel)} · ${escapeHtml(evidenceLabel)} · ${prog.done}/${prog.total} required activities completed</span>
         </div>
         <div class="plan-objective-actions">
           <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button>
           <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Progress">Check prerequisites · about 5 min</button>
         </div>
-      </li>`).join("\n");
+      </li>`;
+      }).join("\n");
       return `<article class="study-card outline-module-card${isSelected ? " is-selected" : ""}" role="listitem" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelected}">
         <div class="plan-outline-unit-head">
           <div>
@@ -1516,22 +1528,34 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <ul class="bucket-lines">${bucket.lineItems.map((li) => `<li data-line-id="${escapeHtml(li.id)}" data-unknown-price="${li.isUnknownPrice}">${escapeHtml(li.label)}: <strong>${escapeHtml(li.formattedAmount)}</strong></li>`).join("")}</ul>
   </div>`).join("\n");
 
+  const adaptationNodeTitle = (nodeId: string): string => {
+    const fromOutline = outlineById.get(nodeId)?.title;
+    if (fromOutline) return fromOutline;
+    if (nodeId === "activity-matrix-calculus-bridge") {
+      return "Targeted Bridge: Matrix Calculus & Softmax Jacobians";
+    }
+    return humanize(nodeId);
+  };
   const adaptationChoiceCopy = adaptationChoice === "accept_reviewed"
     ? "Accept revision was reviewed on this screen. No live adaptation route accepted it, so the current plan stays in place."
     : adaptationChoice === "keep_current"
       ? "Current plan kept. The proposal was not accepted."
-      : "Recommended describes this product suggestion. It is not a scientific certainty. The proposal is not accepted automatically.";
-  const adaptationBody = `<p>Preserved math depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code>. Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256)}</code>.</p>
-    <p>Before: ${adaptationDiff.impact.before_minutes} min. After: ${adaptationDiff.impact.after_minutes} min (${adaptationDiff.impact.delta_minutes >= 0 ? "+" : ""}${adaptationDiff.impact.delta_minutes} min).</p>
-    <p class="prose">${escapeHtml(adaptationDiff.impact.schedule_impact_summary ?? "")}</p>
-    <p class="prose">${escapeHtml(adaptationDiff.impact.inference_charge_summary ?? "")}</p>
+      : "Review these suggested changes before applying them to your syllabus.";
+  const adaptationBody = `<p class="prose"><strong>Time impact:</strong> ${adaptationDiff.impact.before_minutes} min → ${adaptationDiff.impact.after_minutes} min (${adaptationDiff.impact.delta_minutes >= 0 ? "+" : ""}${adaptationDiff.impact.delta_minutes} min) · <strong>Math depth preserved:</strong> ${escapeHtml(humanize(adaptationDiff.preserved_math_depth ?? "formal"))}</p>
+    <p class="prose meta-text">${escapeHtml(adaptationDiff.impact.schedule_impact_summary ?? "")} ${escapeHtml(adaptationDiff.impact.inference_charge_summary ?? "")}</p>
     ${(adaptationDiff.impact.warnings ?? []).map((warning) => `<p class="warning-copy">${escapeHtml(warning)}</p>`).join("")}
-    <h3>Waived instruction</h3>
-    <ul>${adaptationDiff.waivers.map((waiver) => `<li><code>${escapeHtml(waiver.node_id)}</code>. Evidence: <code>${escapeHtml(waiver.qualifying_evidence_refs.join(", "))}</code>. ${escapeHtml(waiver.rationale)} <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-ref="${escapeHtml(waiver.qualifying_evidence_refs[0] ?? "")}">View evidence</button></li>`).join("")}</ul>
-    <h3>New bridges</h3>
-    <ul>${adaptationDiff.buckets.added.map((added) => `<li><code>${escapeHtml(added.node_id ?? "")}</code>. ${escapeHtml(added.rationale ?? "")}</li>`).join("")}</ul>
+    <h3>Skipped lessons (backed by your checkpoint evidence)</h3>
+    <ul>${adaptationDiff.waivers.map((waiver) => `<li><strong>${escapeHtml(adaptationNodeTitle(waiver.node_id))}</strong> — ${escapeHtml(waiver.rationale)} <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-ref="${escapeHtml(waiver.qualifying_evidence_refs[0] ?? "")}">View evidence</button></li>`).join("")}</ul>
+    <h3>Added bridge lessons</h3>
+    <ul>${adaptationDiff.buckets.added.map((added) => `<li><strong>${escapeHtml(adaptationNodeTitle(added.node_id ?? ""))}</strong> — ${escapeHtml(added.rationale ?? "")}</li>`).join("")}</ul>
+    <details class="today-curriculum-overview evidence-technical-details">
+      <summary class="today-overview-summary"><span>Technical revision metadata</span></summary>
+      <div class="today-overview-body">
+        <p class="meta-text">Preserved math depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code> · Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256)}</code> · Waived IDs: <code>${escapeHtml(adaptationDiff.waivers.map((w) => w.node_id).join(", "))}</code> · Evidence refs: <code>${escapeHtml(adaptationDiff.waivers.flatMap((w) => w.qualifying_evidence_refs).join(", "))}</code></p>
+      </div>
+    </details>
     <div class="action-row"><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button></div>
-    <p class="prose">${adaptationChoiceCopy}</p>`;
+    <p class="prose meta-text">${adaptationChoiceCopy}</p>`;
 
   const scheduleSessions = (Array.isArray(schedule["sessions"]) ? schedule["sessions"] : [])
     .filter((session): session is Record<string, unknown> => Boolean(session && typeof session === "object"));
@@ -1659,7 +1683,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"}>
           <div class="section-header">
-            <h1 class="page-title">Plan</h1>
+            <div>
+              <span class="today-selected-eyebrow">Syllabus &amp; Pacing Blueprint</span>
+              <h1 class="page-title">Plan</h1>
+              <p class="prose meta-text">Inspect what this curriculum covers, adjust your weekly schedule, or tailor how units are taught.</p>
+            </div>
             <div class="plan-toolbar">
               <label class="field field-inline" for="plan-curriculum-control"><span>Curriculum</span>
                 <select id="plan-curriculum-control" name="plan-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
@@ -1676,13 +1704,31 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="surface-panel plan-science-section" id="plan-outcomes-prerequisites" aria-labelledby="plan-outcomes-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">1 · Backward Design &amp; Prerequisite Space</span>
-                  <h2 id="plan-outcomes-heading">Outcomes &amp; prerequisites</h2>
+                  <span class="today-selected-eyebrow">1 · Scope &amp; Syllabus Roadmap</span>
+                  <h2 id="plan-outcomes-heading">What you'll learn &amp; unit order</h2>
                 </div>
                 <p class="meta-text">${requiredSummary} · ${evidenceSummary} · ${reviewSummary}</p>
               </div>
               <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
-              <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
+              <div class="plan-scope-grid" aria-label="Curriculum scope">
+                <div class="plan-scope-group">
+                  <span class="plan-scope-label">In scope (Covered)</span>
+                  <ul class="scope-chip-list">
+                    ${basePlanModel.goal.includedTopics.length > 0
+                      ? basePlanModel.goal.includedTopics.map((topic) => `<li class="scope-chip scope-chip-included"><span aria-hidden="true">✓</span> ${escapeHtml(topic)}</li>`).join("")
+                      : `<li class="scope-chip">None specified</li>`}
+                  </ul>
+                </div>
+                <div class="plan-scope-group">
+                  <span class="plan-scope-label">Out of scope (Not covered)</span>
+                  <ul class="scope-chip-list">
+                    ${basePlanModel.goal.excludedTopics.length > 0
+                      ? basePlanModel.goal.excludedTopics.map((topic) => `<li class="scope-chip scope-chip-excluded"><span aria-hidden="true">✕</span> ${escapeHtml(topic)}</li>`).join("")
+                      : `<li class="scope-chip">None excluded</li>`}
+                  </ul>
+                </div>
+                ${basePlanModel.goal.scopeNote ? `<p class="prose meta-text plan-scope-note"><strong>Scope note:</strong> ${escapeHtml(basePlanModel.goal.scopeNote)}</p>` : ""}
+              </div>
               <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
                 <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
                   ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
@@ -1700,26 +1746,26 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="surface-panel plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">2 · Workload Bounds &amp; Distributed Practice</span>
-                  <h2 id="plan-pacing-heading">Pacing &amp; review</h2>
+                  <span class="today-selected-eyebrow">2 · Pacing &amp; Session Calendar</span>
+                  <h2 id="plan-pacing-heading">Weekly pace &amp; upcoming sessions</h2>
                 </div>
-                <span class="badge">Review policy v1 · heuristic spacing</span>
+                <span class="badge">Spaced review · separate session</span>
               </div>
               <div class="plan-pacing-metrics">
                 <div class="plan-metric-box">
                   <span class="meta-text">Declared effort bounds (Min / Point / Max)</span>
-                  <strong>${totalEffort.min}m / ${totalEffort.point}m / ${totalEffort.max}m</strong>
+                  <strong>${totalEffort.point} min typical · ${totalEffort.min}–${totalEffort.max} min range</strong>
                 </div>
                 <div class="plan-metric-box">
-                  <span class="meta-text">Weekly capacity &amp; upper-bound horizon</span>
-                  <strong>120 min/wk · ${Math.max(1, Math.ceil(totalEffort.max / 120))} wk upper bound</strong>
+                  <span class="meta-text">Weekly target &amp; estimated timeline</span>
+                  <strong>120 min/wk · ~${Math.max(1, Math.ceil(totalEffort.max / 120))} wk completion</strong>
                 </div>
                 <div class="plan-metric-box">
-                  <span class="meta-text">Spaced review separation</span>
-                  <strong>${reviewsDue} due · separate session enforced</strong>
+                  <span class="meta-text">Spaced review schedule</span>
+                  <strong>${reviewsDue} due · scheduled after initial checkpoint</strong>
                 </div>
               </div>
-              <p class="prose meta-text">Declared effort bounds are planning estimates, not completion guarantees. Media playback speed scales playable-media minutes only; reading, coding, assessment, and spaced review retain their own bounds. Fixed deadlines require upper-bound feasibility without silently dropping review or lowering rigor.</p>
+              <p class="prose meta-text">Time ranges reflect fastest to most thorough completion. Changing video playback speed adjusts video minutes only—reading, coding labs, and checkpoints keep their full time.</p>
               <h3>Preview rebalanced schedule</h3>
               <ul class="schedule-list">${scheduleRowsHtml}</ul>
             </section>
@@ -1727,16 +1773,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="surface-panel plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">3 · Cognitive Load &amp; Expertise Reversal</span>
-                  <h2 id="plan-approach-heading">Learning approach</h2>
+                  <span class="today-selected-eyebrow">3 · Personalization &amp; Rigor</span>
+                  <h2 id="plan-approach-heading">Tailor how this curriculum is taught</h2>
                 </div>
                 <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Preview changes</button>
               </div>
               <div class="plan-approach-grid">
                 <div class="plan-metric-box">
-                  <span class="meta-text">Prior-knowledge claims &amp; evidence</span>
+                  <span class="meta-text">Prior knowledge &amp; checkpoints</span>
                   <strong>${evidenceSummary}</strong>
-                  <span class="meta-text">Self-reports never alter assessed proficiency.</span>
+                  <span class="meta-text">Diagnostic checks verify what can be skipped safely.</span>
                 </div>
                 <div class="plan-metric-box">
                   <span class="meta-text">Mathematical depth</span>
@@ -1750,13 +1796,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   </div>
                 </div>
                 <div class="plan-metric-box">
-                  <span class="meta-text">Familiar-material treatment</span>
+                  <span class="meta-text">Familiar-material policy</span>
                   <strong>Skip only when demonstrated</strong>
-                  <span class="meta-text">Waives introductory instruction only with qualifying evidence.</span>
+                  <span class="meta-text">Skips introductory lessons only after a passed checkpoint.</span>
                 </div>
               </div>
               <div class="plan-adaptation-box">
-                <h3>Adaptation diff &amp; evidence-backed waivers</h3>
+                <h3>Recommended syllabus adjustments</h3>
                 ${adaptationBody}
               </div>
             </section>
@@ -1764,12 +1810,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="surface-panel plan-science-section" id="plan-status-sharing" aria-labelledby="plan-status-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">4 · Governance &amp; Reproducibility</span>
-                  <h2 id="plan-status-heading">Plan status &amp; sharing</h2>
+                  <span class="today-selected-eyebrow">4 · Plan Status &amp; Sharing</span>
+                  <h2 id="plan-status-heading">Activate or share your syllabus</h2>
                 </div>
-                <span class="badge">${selectedPlan.draft ? "Private Draft" : "Active Plan"} · <code>${escapeHtml(revisionActivationReq.revisionId)}</code></span>
+                <span class="badge">${selectedPlan.draft ? "Private Draft" : "Active Plan"} · Revision ${escapeHtml(String(curriculum["revision_number"] ?? 1))}</span>
               </div>
-              <p class="prose meta-text">Activating a draft requires explicit confirmation and <code>If-Match</code> concurrency validation. Sharing previews a sanitized public snapshot that strips private account IDs, schedules, and proficiency evidence.</p>
+              <p class="prose meta-text">Activating a draft makes it your live study plan in Today. Sharing publishes a clean syllabus template to the Marketplace without your personal progress, schedule dates, or API keys.</p>
               <div class="action-row">
                 <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
                 <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
