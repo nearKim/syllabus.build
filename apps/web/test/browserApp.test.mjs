@@ -326,7 +326,7 @@ test("Deep Dive and Review switches collapse columns without hiding required wor
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
 });
 
-test("Today opens with one header card, then the plan queue, then the Study flow", () => {
+test("Today opens with the active curricula queue, then the focused curriculum header attached directly to its Study flow", () => {
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
@@ -335,14 +335,16 @@ test("Today opens with one header card, then the plan queue, then the Study flow
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
 
-  // The panel opens with the card. The plan queue follows it, and the Study flow board follows the queue.
-  const card = today.match(/^id="panel-learn-today"[^>]*>\s*<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="today-curricula-grid"/)?.[1];
-  assert.ok(card, "the header card must open Today, directly above the plan queue");
-  assert.match(today, /<section class="today-curricula-grid" aria-label="Active curricula">(?:(?!<section)[\s\S])*?<\/section>\s*<section class="flow-board"/);
+  // Today opens with the page header and active curricula cards, then the focused curriculum header directly above its Study flow board.
+  assert.match(
+    today,
+    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<section class="today-curricula-grid" aria-label="Active curricula">/,
+  );
+  const card = today.match(/<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
+  assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
   for (const part of [
-    '<h1 class="page-title">Today</h1>',
+    '<h2 class="today-selected-title">Build and Evaluate RAG Systems in Python</h2>',
     '<select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">',
-    'data-dialog-id="dialog-new-curriculum">New Curriculum</button>',
     '<p class="next-up-progress">0/5 completed · 83m left</p>',
     '<span class="next-up-label">Next:</span><span class="next-up-title">Read Subword Tokenization &amp; Sequence Packing Notes</span><span class="next-up-time">· 15m</span>',
   ]) {
@@ -672,7 +674,10 @@ test("Preview & Adopt closes prerequisites, then adds a private draft that activ
   assert.ok(root.innerHTML.includes("This plan is your private draft of @ferris_ops's template."));
   assert.ok(root.innerHTML.includes('<option value="adopted-publication-rust-async-001" selected>Rust Async Runtime Internals · Draft</option>'));
   assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Futures, Wakers, and the Poll Model</span>'));
-  const queue = () => root.innerHTML.slice(root.innerHTML.indexOf('<section class="today-curricula-grid"'), root.innerHTML.indexOf('<section class="flow-board"'));
+  const queue = () => {
+    const start = root.innerHTML.indexOf('<section class="today-curricula-grid"');
+    return root.innerHTML.slice(start, root.innerHTML.indexOf("</section>", start));
+  };
   assert.equal(queue().includes("adopted-publication-rust-async-001"), false, "a draft stays out of Today's queue");
 
   // Activation is the separate, explicit step. Then the plan joins Today, and the listing counts the adoption.

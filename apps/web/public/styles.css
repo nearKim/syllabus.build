@@ -1572,17 +1572,51 @@ textarea {
   }
 }
 
-/* Today: one header card. The first row holds the title and plan controls. The second row holds
-   progress, the next activity, and Resume. On a narrow screen the next activity wraps to its own
-   line and its title truncates. */
+/* Today: multi-curriculum switcher cards sit at the top under the Today page header,
+   followed by the focused curriculum workspace (selected plan header + Study flow). */
+.today-page-header {
+  margin-bottom: var(--space-4);
+}
+
+.today-active-workspace {
+  display: grid;
+  gap: 0;
+  margin: 0 0 var(--space-6);
+}
+
 .today-unified-header {
   display: grid;
   gap: var(--space-4);
-  margin: 0 0 var(--space-6);
+  margin: 0;
   padding: var(--space-5);
   border: var(--hairline);
-  border-radius: var(--radius-surface);
+  border-bottom: 0;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
   background-color: var(--color-surface);
+}
+
+.today-active-workspace > .flow-board {
+  margin: 0;
+  border-radius: 0 0 var(--radius-surface) var(--radius-surface);
+}
+
+.today-selected-heading {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.today-selected-eyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.today-selected-title {
+  font-size: 20px;
+  line-height: 1.25;
 }
 
 .today-unified-header > .section-header,

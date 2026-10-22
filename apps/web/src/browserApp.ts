@@ -1483,23 +1483,33 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
-          <header class="today-unified-header" data-opaque-surface="true">
-            <div class="section-header">
-              <h1 class="page-title">Today</h1>
-              <div class="plan-toolbar">
-                <label class="field field-inline" for="selected-plan-control"><span>Selected plan</span>
-                  <select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">${planOptionsHtml}</select>
-                </label>
-                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
-              </div>
+          <div class="section-header today-page-header">
+            <h1 class="page-title">Today</h1>
+            <div class="plan-toolbar">
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
-            ${recoveryBanner}
-            ${nextUpRowHtml}
-          </header>
+          </div>
           <section class="today-curricula-grid" aria-label="Active curricula">
           ${queueCardsHtml}
           </section>
-          ${todayBoardHtml}
+          <div class="today-active-workspace">
+            <header class="today-unified-header" data-opaque-surface="true">
+              <div class="section-header">
+                <div class="today-selected-heading">
+                  <span class="today-selected-eyebrow">Focused curriculum</span>
+                  <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
+                </div>
+                <div class="plan-toolbar">
+                  <label class="field field-inline" for="selected-plan-control"><span>Selected plan</span>
+                    <select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">${planOptionsHtml}</select>
+                  </label>
+                </div>
+              </div>
+              ${recoveryBanner}
+              ${nextUpRowHtml}
+            </header>
+            ${todayBoardHtml}
+          </div>
           <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
             <h2>Study</h2>
             <p class="prose">One task: ${escapeHtml(nextUp?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextUp?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
