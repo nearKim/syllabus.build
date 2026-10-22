@@ -670,7 +670,7 @@ test("Explore lists the community Marketplace with concise tags, tag filters, so
   assert.match(facetRowOf(physics, "subject"), /data-facet="subject" data-value="All" data-subject="Physics" aria-pressed="true"><svg class="sf-icon"[\s\S]*?<\/svg>Physics<svg class="sf-icon"/);
   assert.ok(cardOf(physics, "publication-statmech-001").includes('data-facet="subject" data-value="All" aria-pressed="true" aria-label="Filter by Physics">Physics</button>'));
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { category: "Humanities", subject: "Literature" } })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { rigor: "Applied" } })), ["Rust Async Runtime Internals"]);
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { difficulty: "Applied" } })), ["Rust Async Runtime Internals"]);
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
 
@@ -694,22 +694,21 @@ test("Explore lists the community Marketplace with concise tags, tag filters, so
   assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="false" aria-label="Upvote (48)"'));
 });
 
-test("Explore filters drill from Category to Subject to Topic, cross the tiers with Rigor and Format, and reset from the trail", () => {
+test("Explore filters drill from Category to Subject to Topic, cross the tiers with Difficulty and Format, and reset from the trail", () => {
   // With no filter, the panel shows every tier in taxonomy order with live counts, and there is no trail.
   const html = renderCurriculumWebAppHtml({ topLevel: "Explore" });
   assert.deepEqual([...html.matchAll(/<div class="facet-row"(?: data-tier="(\d)")? role="group" aria-labelledby="facet-([a-z]+)-label"><span class="facet-label" id="facet-\2-label">([^<]+)</g)].map((match) => `${match[3]}:${match[1] ?? "-"}`),
-    ["Category:1", "Subject:2", "Topic:3", "Rigor:-", "Format:-"]);
+    ["Category:1", "Subject:2", "Topic:3", "Difficulty:-", "Format:-"]);
   assert.deepEqual(optionsOf(html, "category"), ["[All 5]", "Computer Science 2", "Math & Sciences 2", "Humanities 1"]);
-  // With every category shown, the subjects are grouped under their category names.
+  // The subjects form one flat row of tags in taxonomy order. The Category row above already names their categories.
   const subjectRow = facetRowOf(html, "subject");
-  assert.deepEqual([...subjectRow.matchAll(/aria-label="([^"]+) subjects"><span class="facet-cluster-label" aria-hidden="true">([^<]+)</g)].map((match) => decode(match[1]) === decode(match[2]) && decode(match[1])),
-    ["Computer Science", "Math & Sciences", "Humanities"]);
+  assert.match(subjectRow, /<div class="facet-options">(?:<button type="button" class="tag"[^>]*>[\s\S]*?<\/button>){5}<\/div>/);
   assert.deepEqual(optionsOf(html, "subject"), ["Engineering 1", "Systems 1", "Math 1", "Physics 1", "Literature 1"]);
+  // A long topic list shows its first six topics by result count, then a finder and a toggle reach the rest.
   assert.deepEqual(optionsOf(html, "topic"), [
-    "Async 1", "Attention 1", "Concurrency 1", "Eigenvalues 1", "Ensembles 1", "Linear Algebra 2", "Narrative 1", "Phase Transitions 1",
-    "Python 1", "RAG 1", "Realism 1", "Rust 1", "SVD 1", "Thermodynamics 1", "Tolstoy 1",
+    "Linear Algebra 2", "Async 1", "Attention 1", "Concurrency 1", "Eigenvalues 1", "Ensembles 1", "Show 9 more",
   ]);
-  assert.deepEqual(optionsOf(html, "rigor"), ["Formal 3", "Applied 1", "Intuitive 1"]);
+  assert.deepEqual(optionsOf(html, "difficulty"), ["Formal 3", "Applied 1", "Intuitive 1"]);
   assert.deepEqual(optionsOf(html, "format"), ["Quiz 2", "Code Lab 1", "Problem Set 1", "Rubric 1"]);
   assert.ok(html.includes('<p class="marketplace-count" role="status">5 curricula</p>'));
   assert.equal(trailOf(html), "");
@@ -731,7 +730,6 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   pressInRow("category", "Computer Science");
   assert.deepEqual(titlesOf(root.innerHTML), ["Rust Async Runtime Internals", "Build and Evaluate RAG Systems in Python"]);
   assert.deepEqual(optionsOf(root.innerHTML, "subject"), ["Engineering 1", "Systems 1"]);
-  assert.equal(facetRowOf(root.innerHTML, "subject").includes("facet-cluster-label"), false, "one category needs no group label");
   assert.deepEqual(optionsOf(root.innerHTML, "topic"), ["Async 1", "Attention 1", "Concurrency 1", "Linear Algebra 1", "Python 1", "RAG 1", "Rust 1"]);
   assert.equal(trailOf(root.innerHTML), "Computer Science");
   assert.ok(root.innerHTML.includes('<p class="marketplace-count" role="status">2 of 5 curricula</p>'));
@@ -742,7 +740,7 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   assert.deepEqual(optionsOf(root.innerHTML, "topic"), ["Async 1", "Concurrency 1", "Rust 1"]);
   // A topic tag on a card narrows the same way as the panel, and the trail shows the full path.
   pressOnCard("publication-rust-async-001", "Async");
-  assert.deepEqual(filters(), { category: "Computer Science", subject: "Systems", topic: "Async", rigor: "All", format: "All", query: "" });
+  assert.deepEqual(filters(), { category: "Computer Science", subject: "Systems", topic: "Async", difficulty: "All", format: "All", query: "" });
   assert.equal(trailOf(root.innerHTML), "Computer Science › Systems › Async");
   assert.match(cardOf(root.innerHTML, "publication-rust-async-001"), /data-facet="topic" data-value="All" aria-pressed="true" aria-label="Filter by Async">Async<\/button>/);
   // A pressed tag clears only its own tier.
@@ -754,7 +752,7 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   // A subject sets its own category. A topic that no listing in the new branch carries is dropped.
   pressInRow("topic", "Rust");
   click({ action: "set-marketplace-filter", facet: "subject", value: "Physics" });
-  assert.deepEqual(filters(), { category: "Math & Sciences", subject: "Physics", topic: "All", rigor: "All", format: "All", query: "" });
+  assert.deepEqual(filters(), { category: "Math & Sciences", subject: "Physics", topic: "All", difficulty: "All", format: "All", query: "" });
   assert.deepEqual(titlesOf(root.innerHTML), ["Statistical Mechanics &amp; Thermodynamics"]);
   // A category drops a subject that lies outside it.
   pressInRow("category", "Humanities");
@@ -777,9 +775,9 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   assert.equal(trailOf(root.innerHTML), "Linear Algebra");
   assert.equal(titlesOf(root.innerHTML).length, 2);
 
-  // Rigor and Format cut across every tier. An option with no results is disabled, and the trail lists each facet.
+  // Difficulty and Format cut across every tier. An option with no results is disabled, and the trail lists each facet.
   click({ action: "clear-marketplace-filters" });
-  pressInRow("rigor", "Formal");
+  pressInRow("difficulty", "Formal");
   assert.deepEqual(titlesOf(root.innerHTML), [
     "Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics", "Build and Evaluate RAG Systems in Python",
   ]);
@@ -787,10 +785,10 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   pressInRow("format", "Quiz");
   assert.deepEqual(titlesOf(root.innerHTML), ["Linear Algebra &amp; Spectral Methods", "Build and Evaluate RAG Systems in Python"]);
   assert.deepEqual(optionsOf(root.innerHTML, "category"), ["[All 2]", "Computer Science 1", "Math & Sciences 1", "(Humanities 0)"]);
-  assert.deepEqual(optionsOf(root.innerHTML, "rigor"), ["[Formal]", "(Applied 0)", "(Intuitive 0)"]);
+  assert.deepEqual(optionsOf(root.innerHTML, "difficulty"), ["[Formal]", "(Applied 0)", "(Intuitive 0)"]);
   assert.equal(trailOf(root.innerHTML), "Formal + Quiz");
   pressInTrail("Formal");
-  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", rigor: "All", format: "Quiz", query: "" });
+  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", difficulty: "All", format: "Quiz", query: "" });
 
   // Every tier and both facets combine into one result.
   pressInRow("subject", "Engineering");
@@ -810,24 +808,67 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   pressInRow("subject", "Systems");
   submit("set-marketplace-query", { "#marketplace-search": { value: "async" } });
   click({ action: "clear-marketplace-filters" });
-  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", rigor: "All", format: "All", query: "" });
+  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", difficulty: "All", format: "All", query: "" });
   assert.equal(app.getState().marketplaceSort, "newest");
   assert.equal(titlesOf(root.innerHTML).length, 5);
 
   // Unknown facets, values, and topic tags change nothing.
-  for (const data of [{ facet: "category", value: "Astrology" }, { facet: "topic", value: "Haskell" }, { facet: "rigor", value: "Strict" }, { facet: "access", value: "All" }]) {
+  for (const data of [{ facet: "category", value: "Astrology" }, { facet: "topic", value: "Haskell" }, { facet: "difficulty", value: "Strict" }, { facet: "rigor", value: "Formal" }, { facet: "access", value: "All" }]) {
     click({ action: "set-marketplace-filter", ...data });
   }
-  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", rigor: "All", format: "All", query: "" });
+  assert.deepEqual(filters(), { category: "All", subject: "All", topic: "All", difficulty: "All", format: "All", query: "" });
 
   // With no match, the empty state offers the same reset.
-  const none = mountWithClicks({ topLevel: "Explore", marketplaceFilters: { category: "Computer Science", subject: "Systems", rigor: "Formal" } });
+  const none = mountWithClicks({ topLevel: "Explore", marketplaceFilters: { category: "Computer Science", subject: "Systems", difficulty: "Formal" } });
   assert.ok(none.root.innerHTML.includes("<span>No curricula match these filters.</span>") && titlesOf(none.root.innerHTML).length === 0);
   assert.match(none.root.innerHTML, /<div class="empty-state marketplace-empty">[\s\S]*?<button type="button" class="clear-filters" data-action="clear-marketplace-filters">Clear filters<\/button><\/div>/);
   press(none.root.innerHTML.match(/<div class="empty-state marketplace-empty">[\s\S]*?<\/div>/)[0], "Clear filters");
   assert.equal(titlesOf(none.root.innerHTML).length, 0, "the first mount is unchanged");
   none.click({ action: "clear-marketplace-filters" });
   assert.equal(titlesOf(none.root.innerHTML).length, 5);
+});
+
+test("Explore keeps a long topic list short: six topics by count, a toggle for the rest, and a finder for any topic", () => {
+  const { app, root, click, submit } = mountWithClicks({ topLevel: "Explore" });
+  const topicRow = () => facetRowOf(root.innerHTML, "topic");
+  const toggle = () => topicRow().match(/<button type="button" class="facet-more"[^>]*>[^<]+<\/button>/)?.[0];
+  const allTopics = [
+    "Linear Algebra", "Async", "Attention", "Concurrency", "Eigenvalues", "Ensembles", "Narrative", "Phase Transitions",
+    "Python", "RAG", "Realism", "Rust", "SVD", "Thermodynamics", "Tolstoy",
+  ];
+
+  // Collapsed, the toggle names how many topics it hides, and the finder's list holds every topic in scope.
+  assert.equal(toggle(), '<button type="button" class="facet-more" data-action="toggle-marketplace-topics" aria-expanded="false">Show 9 more</button>');
+  assert.ok(topicRow().includes('<input id="marketplace-topic" type="search" name="value" list="marketplace-topic-list" placeholder="Find a topic" autocomplete="off"/>'));
+  assert.deepEqual([...topicRow().matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), allTopics);
+
+  // The toggle shows every topic in the same order, and pressing it again collapses the list.
+  click({ action: "toggle-marketplace-topics" });
+  assert.equal(app.getState().marketplaceTopicsExpanded, true);
+  assert.deepEqual(buttonsIn(topicRow()).map((button) => button.label), [...allTopics, "Show fewer"]);
+  assert.ok(toggle().includes('aria-expanded="true"'));
+  click({ action: "toggle-marketplace-topics" });
+  assert.equal(optionsOf(root.innerHTML, "topic").length, 7);
+
+  // The chosen topic stays in view while the list is collapsed, even when it ranks below the first six.
+  click({ action: "set-marketplace-filter", facet: "topic", value: "Tolstoy" });
+  assert.deepEqual(optionsOf(root.innerHTML, "topic"), [
+    "Linear Algebra 2", "Async 1", "Attention 1", "Concurrency 1", "Eigenvalues 1", "Ensembles 1", "[Tolstoy]", "Show 8 more",
+  ]);
+
+  // The finder sets a topic typed in any letter case. Text that names no topic changes nothing.
+  submit("set-marketplace-filter", { "#marketplace-topic": { value: "  phase transitions " } });
+  assert.equal(app.getState().marketplaceFilters.topic, "Phase Transitions");
+  assert.equal(trailOf(root.innerHTML), "Phase Transitions");
+  submit("set-marketplace-filter", { "#marketplace-topic": { value: "Haskell" } });
+  assert.equal(app.getState().marketplaceFilters.topic, "Phase Transitions");
+
+  // A scope with seven topics or fewer shows them all, with no finder and no toggle.
+  click({ action: "clear-marketplace-filters" });
+  click({ action: "set-marketplace-filter", facet: "category", value: "Computer Science" });
+  assert.equal(toggle(), undefined);
+  assert.equal(topicRow().includes("topic-finder"), false);
+  assert.equal(optionsOf(root.innerHTML, "topic").length, 7);
 });
 
 test("Details closes prerequisites, then adds a private draft that activates on the Plan page", () => {
@@ -1069,7 +1110,11 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const planJson = await planRes.json();
     assert.equal(planJson.state.selectedCurriculumId, "curriculum-tolstoy-lit-003");
     assert.equal(planJson.state.learnSubDestination, "Plan");
-    assert.ok(clientJs.includes(`if (!target || target.localName === "select") return;`));
+    // A click inside a form only focuses a field. Before the fix, a click in the search box sent an empty query.
+    assert.ok(clientJs.includes(`if (!target || target.localName === "select" || target.localName === "form") return;`));
+    // The topic finder sends a pick from its list at once, and refuses text that names no topic.
+    assert.ok(clientJs.includes(`if (!event.inputType || event.inputType === "insertReplacementText") event.target.form.requestSubmit();`));
+    assert.ok(clientJs.includes(`if (!finder.reportValidity()) return;`));
     assert.ok(clientJs.includes(`closest('select[data-action="select-curriculum"]')`));
 
     // Signing out goes through the same route. A guest's request for Learn opens sign-in instead.

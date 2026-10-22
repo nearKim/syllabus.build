@@ -163,8 +163,9 @@ ${fallbackScript}
 
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
-    // A click on a select only opens its list. The change handler below sends the choice.
-    if (!target || target.localName === "select") return;
+    // A click on a select only opens its list, and a click inside a form only focuses a field.
+    // The change and submit handlers below send the choice.
+    if (!target || target.localName === "select" || target.localName === "form") return;
     const action = target.dataset.action;
 
     if (action === "open-dialog" && target.dataset.dialogId) {
@@ -237,16 +238,34 @@ ${fallbackScript}
     }
   });
 
-  // The sign-in form and the Marketplace search send their fields under the form's own data-action.
+  // The sign-in form, the Marketplace search, and the topic finder send their fields under the form's own data-action.
   root.addEventListener("submit", (event) => {
     const form = event.target && event.target.closest ? event.target.closest("form[data-action]") : null;
     if (!form) return;
     event.preventDefault();
+    // The finder sends only a topic that its list holds. Other text gets the browser's own error message,
+    // and an empty field sends nothing.
+    const finder = form.querySelector("#marketplace-topic");
+    if (finder) {
+      const typed = finder.value.trim().toLowerCase();
+      if (!typed) return;
+      const known = Array.from(finder.list.options).some((option) => option.value.toLowerCase() === typed);
+      finder.setCustomValidity(known ? "" : "No topic is named \u201c" + finder.value.trim() + "\u201d. Choose one from the list.");
+      if (!finder.reportValidity()) return;
+    }
     const patch = { action: form.dataset.action };
     new FormData(form).forEach((value, key) => {
       if (typeof value === "string") patch[key] = value;
     });
     dispatchServerRender(patch);
+  });
+
+  // A topic picked from the finder's list applies at once. A pick fires an input event with no inputType or with
+  // insertReplacementText. Typed text fires insertText and waits for Enter.
+  root.addEventListener("input", (event) => {
+    if (event.target.id !== "marketplace-topic") return;
+    event.target.setCustomValidity("");
+    if (!event.inputType || event.inputType === "insertReplacementText") event.target.form.requestSubmit();
   });
 
   root.addEventListener("change", (event) => {

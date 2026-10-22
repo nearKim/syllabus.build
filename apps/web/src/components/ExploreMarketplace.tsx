@@ -13,7 +13,7 @@ import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
 import { displayUnitTitle, effortWords, humanize, isOneOf } from "./StudyFlowBoard.tsx";
 
 // The taxonomy has three tiers. A category holds subjects, a listing's subject decides its category,
-// and each listing carries its own topic tags. Rigor and format are facets that cut across all tiers.
+// and each listing carries its own topic tags. Difficulty and format are facets that cut across all tiers.
 const SUBJECTS_BY_CATEGORY = {
   "Computer Science": ["Engineering", "Systems"],
   "Math & Sciences": ["Mathematics", "Physics"],
@@ -22,15 +22,17 @@ const SUBJECTS_BY_CATEGORY = {
 type CategoryTag = keyof typeof SUBJECTS_BY_CATEGORY;
 const CATEGORY_TAGS = Object.keys(SUBJECTS_BY_CATEGORY) as CategoryTag[];
 const SUBJECT_TAGS = CATEGORY_TAGS.flatMap((category) => SUBJECTS_BY_CATEGORY[category]);
-const RIGOR_TAGS = ["Formal", "Applied", "Intuitive"] as const;
+const DIFFICULTY_TAGS = ["Formal", "Applied", "Intuitive"] as const;
 const FORMAT_TAGS = ["Quiz", "Code Lab", "Problem Set", "Rubric"] as const;
+// The Topic row shows this many topics until the learner asks for all of them.
+const TOPIC_PREVIEW = 6;
 
 // "All" means that no value is chosen for that filter.
 export const MARKETPLACE_CATEGORIES = ["All", ...CATEGORY_TAGS] as const;
 export const MARKETPLACE_SUBJECTS = ["All", ...SUBJECT_TAGS] as const;
-export const MARKETPLACE_RIGORS = ["All", ...RIGOR_TAGS] as const;
+export const MARKETPLACE_DIFFICULTIES = ["All", ...DIFFICULTY_TAGS] as const;
 export const MARKETPLACE_FORMATS = ["All", ...FORMAT_TAGS] as const;
-export const MARKETPLACE_FACETS = ["category", "subject", "topic", "rigor", "format"] as const;
+export const MARKETPLACE_FACETS = ["category", "subject", "topic", "difficulty", "format"] as const;
 export const MARKETPLACE_SORTS = ["top_upvoted", "most_adopted", "newest"] as const;
 export type MarketplaceFacet = (typeof MARKETPLACE_FACETS)[number];
 export type MarketplaceSort = (typeof MARKETPLACE_SORTS)[number];
@@ -39,13 +41,13 @@ export interface MarketplaceFilters {
   readonly category: (typeof MARKETPLACE_CATEGORIES)[number];
   readonly subject: (typeof MARKETPLACE_SUBJECTS)[number];
   readonly topic: string;
-  readonly rigor: (typeof MARKETPLACE_RIGORS)[number];
+  readonly difficulty: (typeof MARKETPLACE_DIFFICULTIES)[number];
   readonly format: (typeof MARKETPLACE_FORMATS)[number];
   readonly query: string;
 }
 
 export const NO_MARKETPLACE_FILTERS: MarketplaceFilters = {
-  category: "All", subject: "All", topic: "All", rigor: "All", format: "All", query: "",
+  category: "All", subject: "All", topic: "All", difficulty: "All", format: "All", query: "",
 };
 
 export const SORT_LABELS: Readonly<Record<MarketplaceSort, string>> = {
@@ -66,7 +68,7 @@ const FACET_LABELS: Readonly<Record<MarketplaceFacet, string>> = {
   category: "Category",
   subject: "Subject",
   topic: "Topic",
-  rigor: "Rigor",
+  difficulty: "Difficulty",
   format: "Format",
 };
 
@@ -245,9 +247,10 @@ export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): 
   };
 }
 
-const rigorTagOf = (listing: MarketplaceListing): (typeof RIGOR_TAGS)[number] | null => {
-  const rigor = mathDepthFor(listing.curriculum, []);
-  return isOneOf(RIGOR_TAGS, rigor) ? rigor : null;
+// The difficulty is the plan's math depth.
+const difficultyTagOf = (listing: MarketplaceListing): (typeof DIFFICULTY_TAGS)[number] | null => {
+  const depth = mathDepthFor(listing.curriculum, []);
+  return isOneOf(DIFFICULTY_TAGS, depth) ? depth : null;
 };
 
 // The format is the assessment a listing gates on, named in one or two words.
@@ -261,7 +264,7 @@ const inTiers = (listing: MarketplaceListing, filters: MarketplaceFilters): bool
 const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean =>
   inTiers(listing, filters) &&
   (filters.topic === "All" || listing.topicTags.includes(filters.topic)) &&
-  (filters.rigor === "All" || rigorTagOf(listing) === filters.rigor) &&
+  (filters.difficulty === "All" || difficultyTagOf(listing) === filters.difficulty) &&
   (filters.format === "All" || formatTagOf(listing) === filters.format) &&
   (!filters.query ||
     [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject,
@@ -274,7 +277,7 @@ const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters
 export const facetValuesOf = (facet: MarketplaceFacet, listings: readonly MarketplaceListing[]): readonly string[] =>
   facet === "category" ? MARKETPLACE_CATEGORIES
     : facet === "subject" ? MARKETPLACE_SUBJECTS
-      : facet === "rigor" ? MARKETPLACE_RIGORS
+      : facet === "difficulty" ? MARKETPLACE_DIFFICULTIES
         : facet === "format" ? MARKETPLACE_FORMATS
           : ["All", ...listings.flatMap((listing) => listing.topicTags)];
 
@@ -353,6 +356,7 @@ export interface ExploreMarketplaceProps {
   readonly adoptions: readonly Adoption[];
   readonly marketplaceFilters: MarketplaceFilters;
   readonly marketplaceSort: MarketplaceSort;
+  readonly topicsExpanded: boolean;
   readonly loadMoreNote: string | null;
 }
 
@@ -366,6 +370,7 @@ export function ExploreMarketplace({
   adoptions,
   marketplaceFilters: filters,
   marketplaceSort,
+  topicsExpanded,
   loadMoreNote,
 }: ExploreMarketplaceProps): VNode {
   const upvotesOf = (listing: MarketplaceListing): number =>
@@ -387,12 +392,21 @@ export function ExploreMarketplace({
     return listings.filter((listing) => matchesFilters(listing, next)).length;
   };
   const shownCategories = filters.category === "All" ? CATEGORY_TAGS : [filters.category];
-  const scopedTopics = [
+  // Topics rank by result count, then by name. A long list shows only its first topics until the learner asks
+  // for all of them, and the chosen topic always stays in view. A "1 more" button would only replace one tag.
+  const topics = [
     ...new Set(listings.filter((listing) => inTiers(listing, filters)).flatMap((listing) => listing.topicTags)),
-  ].sort((a, b) => a.localeCompare(b));
+  ]
+    .map((topic) => ({ topic, count: countIf("topic", topic) }))
+    .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
+  const topicsOverflow = topics.length > TOPIC_PREVIEW + 1;
+  const shownTopics =
+    topicsOverflow && !topicsExpanded
+      ? topics.filter(({ topic }, index) => index < TOPIC_PREVIEW || topic === filters.topic)
+      : topics;
   // The trail lists the chosen tiers in taxonomy order, then the chosen facets.
   const chosenTiers = (["category", "subject", "topic"] as const).filter((facet) => filters[facet] !== "All");
-  const chosenFacets = (["rigor", "format"] as const).filter((facet) => filters[facet] !== "All");
+  const chosenFacets = (["difficulty", "format"] as const).filter((facet) => filters[facet] !== "All");
   const filtered = chosenTiers.length + chosenFacets.length > 0 || filters.query !== "";
   const clearButton = (
     <button type="button" class="clear-filters" data-action="clear-marketplace-filters">
@@ -476,28 +490,51 @@ export function ExploreMarketplace({
           })}
         </FacetRow>
         <FacetRow facet="subject" tier={2}>
-          {shownCategories.map((category) => (
-            <span key={category} class="facet-cluster" role="group" aria-label={`${category} subjects`}>
-              {filters.category === "All" ? (
-                <span class="facet-cluster-label" aria-hidden="true">
-                  {category}
-                </span>
-              ) : null}
-              {SUBJECTS_BY_CATEGORY[category].map((subject) => (
-                <FilterTag key={subject} facet="subject" value={subject} filters={filters} count={countIf("subject", subject)} />
-              ))}
-            </span>
+          {shownCategories.flatMap((category) => SUBJECTS_BY_CATEGORY[category]).map((subject) => (
+            <FilterTag key={subject} facet="subject" value={subject} filters={filters} count={countIf("subject", subject)} />
           ))}
         </FacetRow>
         <FacetRow facet="topic" tier={3}>
-          {scopedTopics.map((topic) => (
-            <FilterTag key={topic} facet="topic" value={topic} filters={filters} count={countIf("topic", topic)} />
+          {topicsOverflow ? (
+            <form class="topic-finder" data-action="set-marketplace-filter">
+              <label class="st-sr" for="marketplace-topic">
+                Find a topic
+              </label>
+              <input type="hidden" name="facet" value="topic" />
+              <input
+                id="marketplace-topic"
+                type="search"
+                name="value"
+                list="marketplace-topic-list"
+                placeholder="Find a topic"
+                autocomplete="off"
+              />
+              <datalist id="marketplace-topic-list">
+                {topics.map(({ topic }) => (
+                  <option key={topic} value={topic} />
+                ))}
+              </datalist>
+            </form>
+          ) : null}
+          {shownTopics.map(({ topic, count }) => (
+            <FilterTag key={topic} facet="topic" value={topic} filters={filters} count={count} />
           ))}
+          {topicsOverflow ? (
+            <button type="button" class="facet-more" data-action="toggle-marketplace-topics" aria-expanded={topicsExpanded}>
+              {topicsExpanded ? "Show fewer" : `Show ${topics.length - shownTopics.length} more`}
+            </button>
+          ) : null}
         </FacetRow>
         <div class="facet-pair">
-          <FacetRow facet="rigor">
-            {RIGOR_TAGS.map((rigor) => (
-              <FilterTag key={rigor} facet="rigor" value={rigor} filters={filters} count={countIf("rigor", rigor)} />
+          <FacetRow facet="difficulty">
+            {DIFFICULTY_TAGS.map((difficulty) => (
+              <FilterTag
+                key={difficulty}
+                facet="difficulty"
+                value={difficulty}
+                filters={filters}
+                count={countIf("difficulty", difficulty)}
+              />
             ))}
           </FacetRow>
           <FacetRow facet="format">
@@ -572,7 +609,7 @@ export function ExploreMarketplace({
               !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
             const units = projection.modules.length;
             const upvotes = upvotesOf(listing);
-            const rigor = rigorTagOf(listing);
+            const difficulty = difficultyTagOf(listing);
             const format = formatTagOf(listing);
             return (
               <article
@@ -591,7 +628,7 @@ export function ExploreMarketplace({
                   {isOneOf(SUBJECT_TAGS, listing.subject) ? (
                     <FilterTag facet="subject" value={listing.subject} filters={filters} />
                   ) : null}
-                  {rigor ? <FilterTag facet="rigor" value={rigor} filters={filters} /> : null}
+                  {difficulty ? <FilterTag facet="difficulty" value={difficulty} filters={filters} /> : null}
                   {format ? <FilterTag facet="format" value={format} filters={filters} /> : null}
                 </div>
                 <div class="marketplace-card-body">
@@ -757,7 +794,7 @@ export function AdoptCurriculumDialog({
               total.point += mod.durationTriplet.point;
               total.max += mod.durationTriplet.max;
             }
-            const rigor = rigorTagOf(adoptListing);
+            const difficulty = difficultyTagOf(adoptListing);
             const format = formatTagOf(adoptListing);
             return (
               <>
@@ -766,7 +803,7 @@ export function AdoptCurriculumDialog({
                     <SfIcon name={SUBJECT_ICONS[adoptListing.subject] ?? "course"} />
                   </span>
                   <span class="tag">{tagLabelOf(adoptListing.subject)}</span>
-                  {rigor ? <span class="tag">{rigor}</span> : null}
+                  {difficulty ? <span class="tag">{difficulty}</span> : null}
                   {format ? <span class="tag">{format}</span> : null}
                 </p>
                 <h3 class="adopt-title">{projection.title}</h3>

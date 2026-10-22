@@ -109,6 +109,7 @@ export interface CurriculumWebAppStateInput {
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
   readonly authNotice?: string | null;
   readonly marketplaceFilters?: Partial<MarketplaceFilters>; readonly marketplaceSort?: MarketplaceSort;
+  readonly marketplaceTopicsExpanded?: boolean;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
   readonly publishedListings?: readonly MarketplaceListing[];
   readonly adoptPublicationId?: string | null; readonly adoptScope?: "full" | "units"; readonly adoptModuleIds?: readonly string[];
@@ -876,7 +877,8 @@ const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
 // Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
 const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
-  "set-marketplace-filter", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query", "load-more",
+  "set-marketplace-filter", "toggle-marketplace-topics", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query",
+  "load-more",
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
   "view-evidence", "check-prerequisites", "set-resource-scope", "set-resource-category",
 ]);
@@ -2054,6 +2056,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         myPlans,
         marketplaceFilters,
         marketplaceSort,
+        topicsExpanded: inputState.marketplaceTopicsExpanded ?? false,
         loadMoreNote,
       }))}
 
@@ -2286,6 +2289,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let authNotice: string | null = initialState.authNotice ?? null;
   let marketplaceFilters: MarketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...initialState.marketplaceFilters };
   let marketplaceSort: MarketplaceSort = initialState.marketplaceSort ?? "top_upvoted";
+  let marketplaceTopicsExpanded = initialState.marketplaceTopicsExpanded ?? false;
   let votes: Vote[] = [...(initialState.votes ?? [])];
   let adoptions: Adoption[] = [...(initialState.adoptions ?? [])];
   let publishedListings: MarketplaceListing[] = [...(initialState.publishedListings ?? [])];
@@ -2573,7 +2577,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      authStatus, account, returnTo, authNotice, marketplaceFilters, marketplaceSort,
+      authStatus, account, returnTo, authNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptScope, adoptModuleIds: [...adoptModuleIds] as readonly string[],
@@ -2689,10 +2693,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         else signIn(PERSONAS[data["persona"]]);
       } else if (action === "simulate-session-expired" && signedIn()) expireSession();
       else if (action === "sign-out" && authStatus !== "guest") signOut();
-      else if (
-        action === "set-marketplace-filter" && isOneOf(MARKETPLACE_FACETS, data["facet"]) &&
-        facetValuesOf(data["facet"], listings()).includes(data["value"] ?? "")
-      ) marketplaceFilters = withMarketplaceFilter(marketplaceFilters, data["facet"], data["value"] ?? "", listings());
+      else if (action === "set-marketplace-filter" && isOneOf(MARKETPLACE_FACETS, data["facet"])) {
+        // A typed topic matches its tag in any letter case. An unknown value changes nothing.
+        const typed = (value("value") ?? "").trim().toLowerCase();
+        const chosen = facetValuesOf(data["facet"], listings()).find((option) => option.toLowerCase() === typed);
+        if (chosen) marketplaceFilters = withMarketplaceFilter(marketplaceFilters, data["facet"], chosen, listings());
+        else handled = false;
+      } else if (action === "toggle-marketplace-topics") marketplaceTopicsExpanded = !marketplaceTopicsExpanded;
       else if (action === "clear-marketplace-filters") marketplaceFilters = NO_MARKETPLACE_FILTERS;
       else if (action === "set-marketplace-sort" && isOneOf(MARKETPLACE_SORTS, data["sort"])) marketplaceSort = data["sort"];
       else if (action === "set-marketplace-query") marketplaceFilters = { ...marketplaceFilters, query: (value("query") ?? "").trim().slice(0, 100) };
@@ -2891,7 +2898,7 @@ export function mountCurriculumWebApp(
     if (select?.value && controller.applyUiAction("select-curriculum", { curriculumId: select.value }).handled) syncDom();
   });
 
-  // The sign-in form and the Marketplace search submit through their own data-action, with the field they carry.
+  // The sign-in form, the Marketplace search, and the topic finder submit through their own data-action, with the field they carry.
   rootElement.addEventListener?.("submit", (rawEvent: unknown) => {
     const ev = rawEvent as {
       target?: { closest?: (s: string) => { dataset?: Record<string, string | undefined> } | null } | null;
@@ -2901,7 +2908,10 @@ export function mountCurriculumWebApp(
     if (!action) return;
     ev.preventDefault?.();
     const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
-    const data = action === "submit-sign-in" ? { email: valueOf("#auth-email-input") } : { query: valueOf("#marketplace-search") };
+    const data =
+      action === "submit-sign-in" ? { email: valueOf("#auth-email-input") }
+      : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
+      : { query: valueOf("#marketplace-search") };
     if (controller.applyUiAction(action, data).handled) syncDom();
   });
 
