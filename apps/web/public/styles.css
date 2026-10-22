@@ -2040,97 +2040,232 @@ math {
   font-size: 14px;
 }
 
-.plan-sections-stack {
+/* Plan header: curriculum switcher cards, curriculum title as H1, emphasized Goal, and plain bullet list */
+.plan-hero {
   display: grid;
   gap: var(--space-5);
+  margin-bottom: var(--space-7);
+}
+
+.plan-switcher {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-1);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+
+.plan-switch {
+  flex: 0 0 15rem;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-height: var(--layout-touch-target-min);
+  padding: var(--space-3) var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  scroll-snap-align: start;
+  transition: border-color 160ms var(--ease-out), background-color 160ms var(--ease-out), transform 120ms var(--ease-out);
+}
+
+@media (hover: hover) {
+  .plan-switch:hover {
+    border-color: var(--color-border-control);
+  }
+}
+
+.plan-switch:active {
+  transform: scale(0.98);
+}
+
+.plan-switch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.plan-switch[aria-current="true"] {
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
+}
+
+.plan-switch-domain,
+.plan-switch-meta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.plan-switch[aria-current="true"] :is(.plan-switch-domain, .plan-switch-meta) {
+  color: color-mix(in srgb, var(--color-action-text) 72%, transparent);
+}
+
+.plan-switch-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: clip;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plan-switch {
+    transition: none;
+  }
+
+  .plan-switch:active {
+    transform: none;
+  }
+}
+
+.plan-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-5);
+}
+
+.plan-title {
+  max-inline-size: 24ch;
+  font-size: clamp(30px, 1.6vw + 22px, 40px);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.plan-brief {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-5) var(--space-7);
+}
+
+.plan-brief-goal {
+  flex: 3 1 28rem;
+  min-inline-size: 0;
+}
+
+.plan-brief-covers {
+  flex: 2 1 16rem;
+  min-inline-size: 0;
+}
+
+.plan-brief-label {
+  margin: 0 0 var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--color-text-secondary);
+}
+
+.plan-goal {
+  max-inline-size: 52ch;
+  margin: 0;
+  font-size: 21px;
+  font-weight: 500;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  text-wrap: pretty;
+}
+
+.plan-scope-list {
+  margin: 0;
+  padding-inline-start: 1.1em;
+  line-height: 1.45;
+}
+
+.plan-scope-list li + li {
+  margin-top: var(--space-1);
+}
+
+.plan-scope-list li::marker {
+  color: var(--color-text-secondary);
+}
+
+.plan-scope-list li::first-letter {
+  text-transform: uppercase;
+}
+
+.plan-sections-stack {
+  display: grid;
+  gap: 0;
 }
 
 .plan-science-section {
   display: grid;
   gap: var(--space-4);
-}
-
-.plan-goal {
-  font-size: 17px;
-  margin: 0;
-}
-
-.plan-scope-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-  gap: var(--space-3) var(--space-4);
-  padding: var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
-}
-
-.plan-scope-group {
-  display: grid;
-  align-content: start;
-  gap: var(--space-2);
-}
-
-.plan-scope-label {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--color-text-secondary);
-}
-
-.scope-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.scope-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--color-surface);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.scope-chip-included {
-  background: var(--color-success-surface);
-  color: var(--color-success-text);
-}
-
-.scope-chip-excluded {
-  background: var(--tint-8);
-  color: var(--color-text-secondary);
-}
-
-.plan-scope-note {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding-top: var(--space-2);
+  padding-block: var(--space-6) var(--space-7);
   border-top: var(--hairline);
+}
+
+.plan-science-section > .section-header {
+  margin-bottom: 0;
+}
+
+.plan-facts {
+  margin: 0;
+  max-inline-size: var(--layout-reading-max);
+}
+
+.plan-facts > div {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-5);
+  padding-block: var(--space-3);
+  border-top: var(--hairline);
+}
+
+.plan-facts > div:last-child {
+  border-bottom: var(--hairline);
+}
+
+.plan-facts dt {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.plan-facts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 767.98px) {
+  .plan-facts > div {
+    grid-template-columns: 1fr;
+  }
 }
 
 .plan-architecture-outline {
   display: grid;
-  gap: var(--space-4);
+  gap: 0;
 }
 
-.plan-Architecture-outline .outline-module-card,
 .plan-architecture-outline .outline-module-card {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px solid transparent;
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
+  border: 0;
+  border-top: var(--hairline);
+  border-radius: 0;
+  background: none;
 }
 
 .plan-architecture-outline .outline-module-card.is-selected {
-  border-color: var(--color-accent);
+  border-top-color: transparent;
+  border-radius: var(--radius-control);
+  background: var(--selected-row);
 }
 
 .plan-outline-unit-head {
@@ -2160,9 +2295,9 @@ math {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  padding: var(--space-2) 0;
+  border-radius: 0;
+  background: none;
 }
 
 .plan-objective-main {
@@ -2177,28 +2312,9 @@ math {
   gap: var(--space-2);
 }
 
-.plan-pacing-metrics,
-.plan-approach-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
-  gap: var(--space-3);
-}
-
-.plan-metric-box {
-  display: grid;
-  align-content: start;
-  gap: 4px;
-  padding: var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
-}
-
 .plan-adaptation-box {
   display: grid;
   gap: var(--space-2);
-  padding: var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
 }
 
 .plan-map-container,

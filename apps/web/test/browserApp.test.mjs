@@ -570,7 +570,8 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   // Open Plan selects that plan and shows its Plan page. An unknown plan id is rejected.
   click({ action: "open-curriculum-plan", curriculumId: "curriculum-linear-algebra-002" });
   assert.ok(root.innerHTML.includes('data-current-learn-sub="Plan"') && root.innerHTML.includes('data-selected-module-id="la-module-spectral"'));
-  assert.match(root.innerHTML, /<select id="plan-curriculum-control"[^>]*>[\s\S]*?<option value="curriculum-linear-algebra-002" selected>/);
+  assert.match(root.innerHTML, /class="plan-switch" data-action="select-curriculum" data-curriculum-id="curriculum-linear-algebra-002" aria-current="true"/);
+  assert.ok(root.innerHTML.includes('<h1 class="page-title plan-title">Linear Algebra &amp; Spectral Methods</h1>'));
   click({ action: "select-curriculum", curriculumId: "curriculum-unknown" });
   assert.equal(app.getState().selectedCurriculumId, "curriculum-linear-algebra-002");
 });
@@ -962,7 +963,7 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   assert.equal(rail.scrollLeft, 240);
 });
 
-test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders 4 human-readable syllabus & pacing sections without duplicating Study Flow", () => {
+test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders curriculum title H1, switcher cards, emphasized Goal, plain text bullets, and 4 editorial sections", () => {
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
@@ -972,7 +973,20 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   assert.ok(today.includes('<details class="today-curriculum-overview">'));
   assert.ok(today.includes("Unit Map &amp; Syllabus Overview"));
 
-  // 2. Plan does not repeat Today's Study Flow table; it renders the 4 human-readable sections
+  // 2. Plan opens with curriculum switcher cards, the curriculum title as H1, emphasized Goal, and plain text bullets
+  assert.ok(plan.includes('<nav class="plan-switcher" aria-label="Your curricula">'));
+  assert.ok(plan.includes('class="plan-switch" data-action="select-curriculum" data-curriculum-id="curriculum-rag-python-001" aria-current="true"'));
+  assert.ok(plan.includes('<h1 class="page-title plan-title">Build and Evaluate RAG Systems in Python</h1>'));
+  assert.equal(plan.includes('id="plan-curriculum-control"'), false, "Plan replaces the native <select> dropdown with curriculum switcher cards");
+  assert.ok(plan.includes('<h2 id="plan-goal-label" class="plan-brief-label">Goal</h2>'));
+  assert.ok(plan.includes('<p class="plan-goal">Start a Python RAG system from its model foundations: subword tokenization and scaled dot-product attention, with verified resources.</p>'));
+  assert.ok(plan.includes('<h2 id="plan-covers-label" class="plan-brief-label">Covers</h2>'));
+  assert.ok(plan.includes('<ul class="plan-scope-list"><li>tokenization tradeoffs</li><li>scaled dot-product attention</li><li>matrix calculus</li></ul>'));
+  for (const removed of ['class="plan-scope-grid"', 'class="scope-chip"', "Out of scope", 'class="plan-metric-box"']) {
+    assert.equal(plan.includes(removed), false, `Plan must not render shaded box clutter: ${removed}`);
+  }
+
+  // 3. Plan does not repeat Today's Study Flow table; it renders the 4 editorial sections with <dl class="plan-facts">
   assert.equal(plan.includes('id="flow-plan-title"'), false, "Plan must not duplicate Today's Study Flow execution matrix");
   for (const sectionId of [
     'id="plan-outcomes-prerequisites"',
@@ -982,28 +996,20 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   ]) {
     assert.ok(plan.includes(sectionId), `Plan is missing section ${sectionId}`);
   }
-
-  // 3. Visual In-Scope / Out-of-Scope topic chips and plain-English syllabus adjustments without fixture/protocol jargon
-  assert.ok(plan.includes('class="plan-scope-grid"'));
-  assert.ok(plan.includes("In scope (Covered)"));
-  assert.ok(plan.includes("Out of scope (Not covered)"));
-  assert.ok(plan.includes('<li class="scope-chip scope-chip-included"><span aria-hidden="true">✓</span> tokenization tradeoffs</li>'));
-  assert.ok(plan.includes('<li class="scope-chip scope-chip-excluded"><span aria-hidden="true">✕</span> distributed cluster orchestration</li>'));
   assert.ok(plan.includes("What you'll learn &amp; unit order"));
   assert.ok(plan.includes("Weekly pace &amp; upcoming sessions"));
   assert.ok(plan.includes("Tailor how this curriculum is taught"));
   assert.ok(plan.includes("Activate or share your syllabus"));
   assert.ok(plan.includes("Read Subword Tokenization &amp; Sequence Packing Notes"));
   assert.ok(plan.includes("Targeted Bridge: Matrix Calculus &amp; Softmax Jacobians"));
-  for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal"]) {
+  assert.ok(plan.includes('<dl class="plan-facts">'));
+  assert.ok(plan.includes("<dt>Total time</dt>"));
+  assert.ok(plan.includes("Preview rebalanced schedule"));
+  assert.ok(plan.includes('class="plan-architecture-outline"'));
+  assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
+  for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds"]) {
     assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);
   }
-
-  assert.ok(plan.includes('class="plan-architecture-outline"'));
-  assert.ok(plan.includes("Check prerequisites · about 5 min"));
-  assert.ok(plan.includes("Declared effort bounds (Min / Point / Max)"));
-  assert.ok(plan.includes("Preview rebalanced schedule"));
-  assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
 });
 
 test("Progress renders the Competency & Evidence Portfolio without duplicating Today's counters/Unit strip or Plan's adaptation editor", () => {

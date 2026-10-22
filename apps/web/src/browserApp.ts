@@ -1412,7 +1412,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         </div>
         <div class="plan-objective-actions">
           <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button>
-          <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Progress">Check prerequisites · about 5 min</button>
         </div>
       </li>`;
       }).join("\n");
@@ -1681,55 +1680,44 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           </div>
         </section>
 
-        <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"}>
-          <div class="section-header">
-            <div>
-              <span class="today-selected-eyebrow">Syllabus &amp; Pacing Blueprint</span>
-              <h1 class="page-title">Plan</h1>
-              <p class="prose meta-text">Inspect what this curriculum covers, adjust your weekly schedule, or tailor how units are taught.</p>
-            </div>
-            <div class="plan-toolbar">
-              <label class="field field-inline" for="plan-curriculum-control"><span>Curriculum</span>
-                <select id="plan-curriculum-control" name="plan-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
-              </label>
-              <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
-                ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
-              </div>
+        <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"} data-opaque-surface="true">
+          <header class="plan-hero">
+            ${planToday.length < 2 ? "" : `<nav class="plan-switcher" aria-label="Your curricula">
+              ${planToday.map(({ plan }) => `<button type="button" class="plan-switch" data-action="select-curriculum" data-curriculum-id="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+                <span class="plan-switch-domain">${escapeHtml(plan.domain)}</span>
+                <span class="plan-switch-title">${escapeHtml(goalTitleOf(plan.curriculum))}</span>
+                <span class="plan-switch-meta">${rawListOf(plan.curriculum, "modules").length} units${plan.draft ? " · Draft" : ""}</span>
+              </button>`).join("")}
+            </nav>`}
+            <div class="plan-title-row">
+              <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(curriculum))}</h1>
               <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
             </div>
-          </div>
-          ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
+            ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
+            <div class="plan-brief">
+              <section class="plan-brief-goal" aria-labelledby="plan-goal-label">
+                <h2 id="plan-goal-label" class="plan-brief-label">Goal</h2>
+                <p class="plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
+              </section>
+              ${basePlanModel.goal.includedTopics.length > 0 ? `<section class="plan-brief-covers" aria-labelledby="plan-covers-label">
+                <h2 id="plan-covers-label" class="plan-brief-label">Covers</h2>
+                <ul class="plan-scope-list">${basePlanModel.goal.includedTopics.map((topic) => `<li>${escapeHtml(topic)}</li>`).join("")}</ul>
+              </section>` : ""}
+            </div>
+          </header>
 
           <div class="plan-sections-stack">
-            <section class="surface-panel plan-science-section" id="plan-outcomes-prerequisites" aria-labelledby="plan-outcomes-heading" data-opaque-surface="true">
+            <section class="plan-science-section" id="plan-outcomes-prerequisites" aria-labelledby="plan-outcomes-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">1 · Scope &amp; Syllabus Roadmap</span>
                   <h2 id="plan-outcomes-heading">What you'll learn &amp; unit order</h2>
+                  <p class="meta-text">${requiredSummary} · ${evidenceSummary} · ${reviewSummary}</p>
                 </div>
-                <p class="meta-text">${requiredSummary} · ${evidenceSummary} · ${reviewSummary}</p>
+                <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
+                  ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
+                </div>
               </div>
-              <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
-              <div class="plan-scope-grid" aria-label="Curriculum scope">
-                <div class="plan-scope-group">
-                  <span class="plan-scope-label">In scope (Covered)</span>
-                  <ul class="scope-chip-list">
-                    ${basePlanModel.goal.includedTopics.length > 0
-                      ? basePlanModel.goal.includedTopics.map((topic) => `<li class="scope-chip scope-chip-included"><span aria-hidden="true">✓</span> ${escapeHtml(topic)}</li>`).join("")
-                      : `<li class="scope-chip">None specified</li>`}
-                  </ul>
-                </div>
-                <div class="plan-scope-group">
-                  <span class="plan-scope-label">Out of scope (Not covered)</span>
-                  <ul class="scope-chip-list">
-                    ${basePlanModel.goal.excludedTopics.length > 0
-                      ? basePlanModel.goal.excludedTopics.map((topic) => `<li class="scope-chip scope-chip-excluded"><span aria-hidden="true">✕</span> ${escapeHtml(topic)}</li>`).join("")
-                      : `<li class="scope-chip">None excluded</li>`}
-                  </ul>
-                </div>
-                ${basePlanModel.goal.scopeNote ? `<p class="prose meta-text plan-scope-note"><strong>Scope note:</strong> ${escapeHtml(basePlanModel.goal.scopeNote)}</p>` : ""}
-              </div>
-              <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
+              <div class="surface-panel plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
                 <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
                   ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
                   ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
@@ -1743,77 +1731,72 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               ${relationshipLegend}
             </section>
 
-            <section class="surface-panel plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
+            <section class="plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">2 · Pacing &amp; Session Calendar</span>
                   <h2 id="plan-pacing-heading">Weekly pace &amp; upcoming sessions</h2>
-                </div>
-                <span class="badge">Spaced review · separate session</span>
-              </div>
-              <div class="plan-pacing-metrics">
-                <div class="plan-metric-box">
-                  <span class="meta-text">Declared effort bounds (Min / Point / Max)</span>
-                  <strong>${totalEffort.point} min typical · ${totalEffort.min}–${totalEffort.max} min range</strong>
-                </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Weekly target &amp; estimated timeline</span>
-                  <strong>120 min/wk · ~${Math.max(1, Math.ceil(totalEffort.max / 120))} wk completion</strong>
-                </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Spaced review schedule</span>
-                  <strong>${reviewsDue} due · scheduled after initial checkpoint</strong>
+                  <p class="meta-text">Spaced review stays in a separate session after your initial checkpoint.</p>
                 </div>
               </div>
+              <dl class="plan-facts">
+                <div>
+                  <dt>Total time</dt>
+                  <dd>${totalEffort.point} min typical (${totalEffort.min}–${totalEffort.max} min range)</dd>
+                </div>
+                <div>
+                  <dt>Weekly pace</dt>
+                  <dd>120 min/wk · ~${Math.max(1, Math.ceil(totalEffort.max / 120))} wk completion</dd>
+                </div>
+                <div>
+                  <dt>Spaced review</dt>
+                  <dd>${reviewsDue} due · scheduled after initial checkpoint</dd>
+                </div>
+              </dl>
               <p class="prose meta-text">Time ranges reflect fastest to most thorough completion. Changing video playback speed adjusts video minutes only—reading, coding labs, and checkpoints keep their full time.</p>
               <h3>Preview rebalanced schedule</h3>
               <ul class="schedule-list">${scheduleRowsHtml}</ul>
             </section>
 
-            <section class="surface-panel plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
+            <section class="plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">3 · Personalization &amp; Rigor</span>
                   <h2 id="plan-approach-heading">Tailor how this curriculum is taught</h2>
                 </div>
-                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Preview changes</button>
               </div>
-              <div class="plan-approach-grid">
-                <div class="plan-metric-box">
-                  <span class="meta-text">Prior knowledge &amp; checkpoints</span>
-                  <strong>${evidenceSummary}</strong>
-                  <span class="meta-text">Diagnostic checks verify what can be skipped safely.</span>
+              <dl class="plan-facts">
+                <div>
+                  <dt>Prior knowledge &amp; checkpoints</dt>
+                  <dd>${evidenceSummary}. Diagnostic checks verify what can be skipped safely.</dd>
                 </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Mathematical depth</span>
-                  <strong>${escapeHtml(humanize(mathDepthFor(curriculum, [])))}</strong>
-                  <span class="meta-text">${depthOverrideReset ? "Topic overrides reset to global default." : "Override: Matrix calculus · Formal."}</span>
+                <div>
+                  <dt>Mathematical depth</dt>
+                  <dd>${escapeHtml(humanize(mathDepthFor(curriculum, [])))} (${depthOverrideReset ? "Topic overrides reset to global default" : "Override: Matrix calculus · Formal"})</dd>
                 </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Instructional order</span>
-                  <div class="segmented" role="group" aria-label="Instructional order">
-                    ${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${flowView.order === order}">${order === "theory_first" ? "Theory" : order === "application_first" ? "Code first" : "Balanced"}</button>`).join("")}
-                  </div>
+                <div>
+                  <dt>Instructional order</dt>
+                  <dd>
+                    <div class="segmented" role="group" aria-label="Instructional order">
+                      ${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${flowView.order === order}">${order === "theory_first" ? "Theory" : order === "application_first" ? "Code first" : "Balanced"}</button>`).join("")}
+                    </div>
+                  </dd>
                 </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Familiar-material policy</span>
-                  <strong>Skip only when demonstrated</strong>
-                  <span class="meta-text">Skips introductory lessons only after a passed checkpoint.</span>
+                <div>
+                  <dt>Familiar material</dt>
+                  <dd>Skip only when demonstrated (after a passed checkpoint)</dd>
                 </div>
-              </div>
+              </dl>
               <div class="plan-adaptation-box">
                 <h3>Recommended syllabus adjustments</h3>
                 ${adaptationBody}
               </div>
             </section>
 
-            <section class="surface-panel plan-science-section" id="plan-status-sharing" aria-labelledby="plan-status-heading" data-opaque-surface="true">
+            <section class="plan-science-section" id="plan-status-sharing" aria-labelledby="plan-status-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <span class="today-selected-eyebrow">4 · Plan Status &amp; Sharing</span>
                   <h2 id="plan-status-heading">Activate or share your syllabus</h2>
+                  <p class="meta-text">${selectedPlan.draft ? "Private draft" : "Active plan"}, revision ${escapeHtml(String(curriculum["revision_number"] ?? 1))}</p>
                 </div>
-                <span class="badge">${selectedPlan.draft ? "Private Draft" : "Active Plan"} · Revision ${escapeHtml(String(curriculum["revision_number"] ?? 1))}</span>
               </div>
               <p class="prose meta-text">Activating a draft makes it your live study plan in Today. Sharing publishes a clean syllabus template to the Marketplace without your personal progress, schedule dates, or API keys.</p>
               <div class="action-row">
