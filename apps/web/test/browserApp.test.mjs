@@ -512,9 +512,8 @@ test("Study flow, Review queue, and Completed work each sit in a white surface c
       assert.ok(rule(selector).includes(declaration), `${selector} is missing ${declaration}`);
     }
   }
-  for (const declaration of ["margin: 0 0 var(--space-4);", "padding-bottom: var(--space-4);", "border-bottom: var(--hairline);"]) {
-    assert.ok(rule(".flow-head").includes(declaration), `the Study flow header bar is missing ${declaration}`);
-  }
+  assert.ok(rule(".flow-head").includes("margin: 0 0 var(--space-4);"), "the Study flow header bar is missing margin: 0 0 var(--space-4);");
+  assert.equal(rule(".flow-head").includes("border-bottom"), false, "the Study flow header bar must not duplicate the column header underline");
   for (const declaration of ["padding: var(--space-4);", "border-radius: var(--radius-control);", "background: var(--color-surface-secondary);"]) {
     assert.ok(rule(".empty-state").includes(declaration), `the empty state is missing ${declaration}`);
   }
@@ -545,7 +544,7 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   assert.deepEqual(cards.map(([card]) => card.match(/<p class="domain-pill">([^<]+)<\/p>/)?.[1]), ["Engineering · Reviewed Quiz", "Mathematics · Public Quiz Bank", "Literature · Self-Check Rubric"]);
   assert.equal(text(cards[0][0]), "Engineering · Reviewed Quiz Build and Evaluate RAG Systems in Python Upcoming session: 0/3 completed · 65m left Read Subword Tokenization &amp; Sequence Packing Notes 15m Lecture Resume → Open Plan →");
   assert.ok(cards[0][0].includes('aria-current="true"') && !cards[1][0].includes("aria-current"), "only the selected plan's card is marked");
-  assert.match(cards[0][0], /<span class="macro-bar" aria-hidden="true"><span style="width: 0%"><\/span><\/span>/);
+  assert.equal(cards[0][0].includes('class="macro-bar"'), false, "curriculum cards omit the redundant progress bar rule");
 
   // Each plan counts only its own progress.
   const { app, root, click, change } = mountWithClicks();

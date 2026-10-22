@@ -1304,12 +1304,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     const next = open[0];
     const done = session.length - open.length;
     const minutesLeft = open.reduce((sum, act) => sum + act.durationTriplet.point, 0);
-    const percent = session.length === 0 ? 0 : Math.round((done / session.length) * 100);
     return `<article class="curriculum-card" data-curriculum-id="${id}" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
             <p class="domain-pill">${escapeHtml(`${plan.domain} · ${plan.assessmentMode}`)}</p>
             <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
             <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
-            <span class="macro-bar" aria-hidden="true"><span style="width: ${percent}%"></span></span>
             ${next ? `<div class="queue-next"><p class="queue-next-title">${escapeHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
             <div class="queue-actions">
               ${next ? `<button type="button" class="btn-primary" data-action="resume-curriculum" data-curriculum-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}

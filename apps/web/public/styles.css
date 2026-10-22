@@ -417,7 +417,6 @@ section[id] {
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) var(--layout-gutter-wide);
-  border-bottom: var(--hairline);
   background: var(--color-warning-surface);
   color: var(--color-warning-text);
 }
@@ -554,7 +553,6 @@ section[id] {
   align-items: safe center;
   gap: 2px;
   padding: 3px;
-  border: var(--hairline);
   border-radius: 25px;
   background: var(--color-surface-secondary);
   min-inline-size: 0;
@@ -1062,8 +1060,6 @@ textarea {
   justify-content: space-between;
   gap: var(--space-3) var(--space-5);
   margin: 0 0 var(--space-4);
-  padding-bottom: var(--space-4);
-  border-bottom: var(--hairline);
 }
 
 .flow-toolbar {
@@ -1199,14 +1195,6 @@ textarea {
   font-weight: inherit;
   text-align: left;
   vertical-align: top;
-}
-
-.matrix-table tbody tr.study-card > * {
-  border-top: var(--hairline);
-}
-
-.matrix-table tbody tr.study-card:first-child > * {
-  border-top: 0;
 }
 
 .flow-cell[data-crossed="true"] {
@@ -1371,9 +1359,9 @@ textarea {
 .node-card {
   position: relative;
   min-height: var(--node-min, 96px);
-  border: var(--hairline);
+  border: 1px solid transparent;
   border-radius: var(--radius-control);
-  background: var(--color-surface);
+  background: var(--color-surface-secondary);
 }
 
 .node-card + .node-card {
@@ -1383,6 +1371,7 @@ textarea {
 .node-card[data-required="false"] {
   border-style: dashed;
   border-color: var(--color-border-control);
+  background: var(--color-surface);
 }
 
 .node-card[data-open="true"] {
@@ -1438,9 +1427,9 @@ textarea {
 }
 
 .node-optional {
-  padding: 0 6px;
-  border: 1px dashed var(--color-border-control);
+  padding: 0 7px;
   border-radius: 999px;
+  background: var(--tint-8);
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
@@ -1590,10 +1579,6 @@ textarea {
     background-repeat: no-repeat;
   }
 
-  .matrix-table tbody tr.study-card + tr.study-card {
-    border-top: var(--hairline);
-  }
-
   .matrix-table tbody tr.study-card > *,
   .matrix-table tr.is-selected > * {
     border-top: 0;
@@ -1676,7 +1661,12 @@ textarea {
 
 .today-active-workspace > .flow-board {
   margin: 0;
+  border-top: 0;
   border-radius: 0 0 var(--radius-surface) var(--radius-surface);
+}
+
+.today-active-workspace .flow-head h2 {
+  font-size: 18px;
 }
 
 .today-selected-heading {
@@ -1686,11 +1676,9 @@ textarea {
 }
 
 .today-selected-eyebrow {
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .today-selected-title {
@@ -1709,8 +1697,6 @@ textarea {
   align-items: safe center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-5);
-  padding-top: var(--space-4);
-  border-top: var(--hairline);
 }
 
 .today-next p {
@@ -1811,6 +1797,10 @@ textarea {
   }
 }
 
+.study-workspace {
+  border: var(--hairline);
+}
+
 .study-workspace .choice-group {
   margin-top: var(--space-5);
 }
@@ -1835,8 +1825,6 @@ math {
 .honest-two-layer-summary {
   max-width: 70ch;
   margin-top: var(--space-6);
-  padding-top: var(--space-5);
-  border-top: var(--hairline);
 }
 
 .honest-two-layer-summary h3 {
@@ -2250,7 +2238,6 @@ math {
 }
 
 .flow-preview {
-  border-top: var(--hairline);
   padding-top: var(--space-2);
   font-size: 14px;
 }
