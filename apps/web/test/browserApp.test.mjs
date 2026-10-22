@@ -919,3 +919,45 @@ test("createCurriculumSignalStore provides fine-grained @preact/signals reactivi
   assert.equal(store.authStatus.value, "guest");
   assert.equal(store.selfReportedCompletedCount.value, 0);
 });
+
+test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to a scroll-snap carousel for >3 curricula", () => {
+  const stylesPath = path.join(PUBLIC_DIR, "styles.css");
+  const css = fs.readFileSync(stylesPath, "utf8");
+
+  // 1. Subgrid CTA alignment across sibling cards regardless of title/meta wrap height
+  assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-template-rows:\s*repeat\(5,\s*auto\);/s);
+  assert.match(css, /\.curriculum-card\s*\{[^}]*grid-row:\s*span 5;[^}]*grid-template-rows:\s*auto auto auto 1fr auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
+  assert.match(css, /\.marketplace-card\s*\{[^}]*grid-row:\s*span 6;[^}]*grid-template-rows:\s*auto auto 1fr auto auto auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
+
+  // 2. Scroll-snap carousel for >3 curricula
+  assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-auto-flow:\s*column;[^}]*overflow-x:\s*auto;[^}]*overscroll-behavior-x:\s*contain;[^}]*scroll-snap-type:\s*x mandatory;/s);
+  assert.match(css, /\.today-curricula-grid:has\(>\s*\.curriculum-card:nth-child\(4\)\)\s*\{[^}]*grid-auto-columns:\s*max\(16rem,\s*calc\(\(100% - 3 \* var\(--space-4\)\) \/ 3\.25\)\);/s);
+  assert.match(css, /\.curriculum-card\s*\{[^}]*scroll-snap-align:\s*start;/s);
+
+  // 3. Adopting a 4th curriculum renders 4 cards in Today and preserves rail scrollLeft across DOM updates
+  const rail = { scrollLeft: 0 };
+  const fakeRoot = {
+    innerHTML: "",
+    querySelector(selector) {
+      if (selector === ".today-curricula-grid") return rail;
+      return null;
+    },
+    querySelectorAll() {
+      return [];
+    },
+    addEventListener() {},
+  };
+
+  const mounted = mountCurriculumWebApp(fakeRoot);
+  mounted.applyUiAction("confirm-adopt-curriculum", {
+    publicationId: "publication-rust-async-001",
+  });
+  mounted.applyUiAction("activate-revision");
+  mounted.navigateTopLevel("Learn");
+  mounted.navigateLearnSubDestination("Today");
+  assert.equal(fakeRoot.innerHTML.match(/class="curriculum-card"/g)?.length, 4);
+
+  rail.scrollLeft = 240;
+  mounted.applyUiAction("resume-curriculum", { curriculumId: "curriculum-tolstoy-lit-003" });
+  assert.equal(rail.scrollLeft, 240);
+});

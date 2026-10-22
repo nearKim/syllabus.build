@@ -2380,8 +2380,14 @@ export function mountCurriculumWebApp(
     }
   }
 
+  type ScrollableRail = { scrollLeft: number } | null | undefined;
+  const getRail = (): ScrollableRail => rootElement.querySelector?.(".today-curricula-grid") as ScrollableRail;
+
   function syncDom(): void {
+    const railLeft = getRail()?.scrollLeft ?? 0;
     rootElement.innerHTML = controller.renderHtml();
+    const nextRail = getRail();
+    if (nextRail) nextRail.scrollLeft = railLeft;
     bindDialogs();
     const marked = rootElement.querySelector?.('dialog[data-open="true"]') as MountedDialog | null | undefined;
     if (marked && typeof marked.showModal === "function" && !marked.open) marked.showModal();

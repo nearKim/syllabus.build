@@ -116,7 +116,11 @@ ${fallbackScript}
     if (!payload || typeof payload.html !== "string") return false;
     const focusedKey = keyFor(document.activeElement);
     const previous = openDialogScroll();
+    const rail = root.querySelector(".today-curricula-grid");
+    const railLeft = rail ? rail.scrollLeft : 0;
     root.innerHTML = payload.html;
+    const nextRail = root.querySelector(".today-curricula-grid");
+    if (nextRail) nextRail.scrollLeft = railLeft;
     if (payload.state && payload.state.themePreference) {
       const resolved = payload.state.themePreference === "dark" ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", resolved);
