@@ -318,14 +318,14 @@ export function UnitRow({
 }): VNode | null {
   const unit = units[index];
   if (!unit) return null;
-  const { mod, cells, postGate } = unit;
+  const { mod, cells } = unit;
   const selected = mod.moduleId === selectedModuleId;
   const progress = unitProgress(mod.activities);
   const tone = unitTone(progress);
   const previous = units[index - 1];
   const spineIn = previous ? (unitTone(unitProgress(previous.mod.activities)) === "done" ? "done" : "todo") : "none";
   const spineOut = index < units.length - 1 ? (tone === "done" ? "done" : "todo") : "none";
-  const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review" && !postGate.has(activity.activityId);
+  const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review";
 
   const chain = columns.flatMap((track, column) =>
     track === "gate" || (cells.get(track) ?? []).some(onChain) ? [column] : [],
@@ -361,8 +361,8 @@ export function UnitRow({
     >
       <th class="flow-rail" scope="row" data-spine-in={spineIn} data-spine-out={spineOut}>
         {index > 0 ? (
-          <svg class="spine-head" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
-            <path d="M1 1 5 5 9 1" />
+          <svg class="spine-head" viewBox="0 0 10 8" width="10" height="8" aria-hidden="true">
+            <path class="arrow-head" d="M1 0 L9 0 L5 7.5 Z" />
           </svg>
         ) : null}
         <button

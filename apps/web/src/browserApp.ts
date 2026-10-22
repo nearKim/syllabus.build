@@ -1357,7 +1357,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     : "";
 
   const legendArrow = (tone: "control" | "accent", style: SegmentStyle) =>
-    `<svg class="legend-swatch" viewBox="0 0 64 20" width="64" height="20" aria-hidden="true" data-tone="${tone}" data-style="${style}"><line x1="2" y1="10" x2="58" y2="10" /><path d="M52 5 58 10 52 15" /></svg>`;
+    `<svg class="legend-swatch" viewBox="0 0 64 20" width="64" height="20" aria-hidden="true" data-tone="${tone}" data-style="${style}"><line x1="2" y1="10" x2="50" y2="10" /><path class="arrow-head" d="M49 5 L59 10 L49 15 Z" /></svg>`;
   const relationshipLegend = `<figure class="relationship-legend">
     <figcaption>Relationship legend</figcaption>
     <ul>

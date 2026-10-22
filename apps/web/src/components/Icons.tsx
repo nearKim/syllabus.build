@@ -223,8 +223,8 @@ export interface ArrowSvgProps {
 export function ArrowSvg({ className, style = "solid" }: ArrowSvgProps): VNode {
   return (
     <svg class={className} viewBox="0 0 28 12" width="28" height="12" aria-hidden="true" data-style={style}>
-      <line x1="1" y1="6" x2="26" y2="6" />
-      <path d="M20.5 2 26 6 20.5 10" />
+      <line x1="1" y1="6" x2="20" y2="6" />
+      <path class="arrow-head" d="M19 2 L27 6 L19 10 Z" />
     </svg>
   );
 }
@@ -240,7 +240,7 @@ export function ConnectorSvg({ kind, style }: ConnectorSvgProps): VNode {
       <line x1="0" y1="6" x2="100%" y2="6" />
       {kind === "in" ? (
         <svg x="100%" overflow="visible">
-          <path d="M-7.5 2 -1.5 6 -7.5 10" />
+          <path class="arrow-head" d="M-8 2 L0 6 L-8 10 Z" />
         </svg>
       ) : null}
     </svg>

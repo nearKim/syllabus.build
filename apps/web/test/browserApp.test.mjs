@@ -281,10 +281,11 @@ test("Study flow matrix follows the chosen flow order: theory_first vs applicati
   const order = ["activity-theory", "activity-example", "activity-coding"].map((id) => unitOne.indexOf(`data-activity-id="${id}"`));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 
-  // Unit 2 ends at its quiz gate; work that depends on the quiz stays off the arrow chain.
+  // Unit 2 connects its optional deep dive to its quiz gate with a dashed arrow and filled arrowhead.
   const unitTwo = unitRow(theoryFirst, "module-attention");
   assert.ok(unitTwo.includes('class="gate-diamond" data-action="select-outline-activity" data-activity-id="activity-quiz"'));
-  assert.equal(unitTwo.includes('data-seg="in"'), false);
+  assert.ok(unitTwo.includes('data-seg="in" data-style="dashed"'));
+  assert.ok(unitTwo.includes('class="arrow-head"'));
 
   const codeFirst = renderCurriculumWebAppHtml({ flowOrder: "application_first" });
   assert.deepEqual(columnTitles(codeFirst), ["Unit", "Code", "Lecture", "Deep Dive", "Review", "Gate"]);

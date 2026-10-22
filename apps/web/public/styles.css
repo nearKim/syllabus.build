@@ -1070,8 +1070,8 @@ textarea {
 
 /* Fixed layout gives every track column and the gate column the same width. */
 .matrix-table {
-  --rail-w: 144px;
-  --track-min: 144px;
+  --rail-w: 204px;
+  --track-min: 148px;
   --pad-x: 10px;
   --pad-y: 16px;
   --node-min: 96px;
@@ -1103,6 +1103,9 @@ textarea {
   display: block;
   font-size: 14px;
   font-weight: 600;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 .colhead-meta {
@@ -1175,19 +1178,20 @@ textarea {
 }
 
 .matrix-svg line,
-.matrix-svg path,
 .key-line line,
-.key-line path,
 .macro-link line,
-.macro-link path,
-.legend-swatch line,
-.legend-swatch path,
-.spine-head path {
+.legend-swatch line {
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+
+.arrow-head,
+.spine-head path {
+  fill: currentColor;
+  stroke: none;
 }
 
 .matrix-svg[data-style="dashed"] line,
@@ -1217,11 +1221,11 @@ textarea {
 
 .flow-rail::before {
   top: 0;
-  height: var(--link-y);
+  height: calc(var(--link-y) - 18px);
 }
 
 .flow-rail::after {
-  top: var(--link-y);
+  top: calc(var(--link-y) + 12px);
   bottom: 0;
 }
 
@@ -1238,7 +1242,7 @@ textarea {
 .spine-head {
   position: absolute;
   z-index: 1;
-  top: calc(var(--link-y) - 22px);
+  top: calc(var(--link-y) - 19px);
   left: calc(var(--spine-x) - 4px);
   color: var(--color-border-control);
 }
@@ -1254,7 +1258,7 @@ textarea {
   gap: 4px;
   width: 100%;
   min-width: 0;
-  padding: 0 0 0 30px;
+  padding: 0 0 0 32px;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -1271,7 +1275,11 @@ textarea {
 .unit-title {
   font-size: 14px;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.35;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  text-wrap: balance;
 }
 
 .unit-hit[aria-pressed="true"] .unit-title {
@@ -1450,6 +1458,10 @@ textarea {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.3;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+  text-wrap: balance;
 }
 
 .gate-criteria {
