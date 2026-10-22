@@ -326,6 +326,95 @@ section[id] {
   min-inline-size: 0;
 }
 
+/* Account: the header pill and its buttons, the expired-session banner, and the sign-in dialog */
+.account-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 4px 0 12px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.account-pill[data-auth-status] {
+  padding-right: 12px;
+}
+
+.account-pill[data-auth-status="session_expired"] {
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
+}
+
+.role-pill {
+  background: var(--color-surface);
+}
+
+.header-btn {
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.session-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--layout-gutter-wide);
+  border-bottom: var(--hairline);
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
+}
+
+.session-banner p {
+  margin: 0;
+}
+
+.auth-surface {
+  max-width: 28rem;
+}
+
+.auth-return {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-surface);
+  font-size: 14px;
+}
+
+.field-error {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-danger-text);
+}
+
+.persona-switcher {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: var(--hairline);
+}
+
+.persona-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.persona-btn {
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.persona-btn[aria-pressed="true"] {
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
+}
+
 /* Controls. :where() keeps the base at zero specificity so every variant class wins. */
 :where(button, .btn-primary, .btn-secondary, .btn-danger) {
   display: inline-flex;
@@ -1937,34 +2026,237 @@ math {
   margin: 0;
 }
 
-/* Explore */
-.discovery-filters {
+/* Explore: the community Marketplace. Search, three filter groups, then a grid of white listing cards. */
+.marketplace-search {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-4);
+}
+
+.marketplace-search input {
+  flex: 1 1 auto;
+  max-width: none;
+}
+
+.marketplace-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.marketplace-controls .seg-btn {
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.marketplace-count {
+  margin: 0 0 var(--space-4);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.marketplace-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: var(--space-4);
   margin: 0 0 var(--space-5);
 }
 
-.filter-fields {
+.marketplace-card {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
-  gap: var(--space-2) var(--space-4);
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
 }
 
-.filter-fields .field {
+.marketplace-card > p,
+.dialog-surface .marketplace-pills {
   margin: 0;
 }
 
-.filter-choices {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: 0 var(--space-6);
-  margin-top: var(--space-5);
+.marketplace-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.filter-choices .choice-group {
+.rigor-badge,
+.price-badge,
+.owned-badge,
+.auto-badge,
+.role-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.rigor-badge {
+  background: var(--color-accent-surface);
+  color: var(--color-text-primary);
+}
+
+.price-badge,
+.owned-badge {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
+.marketplace-title {
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.marketplace-summary {
+  font-size: 14px;
+}
+
+.marketplace-meta {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.flow-preview {
+  border-top: var(--hairline);
+  padding-top: var(--space-2);
+  font-size: 14px;
+}
+
+.flow-preview summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.flow-preview ol {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.flow-preview li {
+  display: grid;
+}
+
+.flow-preview .meta-text {
   margin: 0;
+}
+
+.marketplace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.publication-list {
+  display: grid;
+  margin: var(--space-3) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.publication-list li {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-3) 0;
+}
+
+.publication-list li + li {
+  border-top: var(--hairline);
 }
 
 .load-more-row {
   margin: 0 0 var(--space-6);
+}
+
+/* Adoption preview: one row per unit, checked when it is part of the adoption */
+.adopt-title {
+  margin: var(--space-2) 0 0;
+}
+
+.adopt-scope {
+  margin: var(--space-3) 0;
+}
+
+.adopt-units {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adopt-unit {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  text-align: left;
+}
+
+.adopt-unit .st-glyph {
+  margin-top: 2px;
+}
+
+.adopt-unit-text {
+  display: grid;
+  gap: 2px;
+}
+
+.adopt-unit-title {
+  font-weight: 600;
+}
+
+.adopt-unit-meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.auto-badge {
+  justify-self: start;
+  background: var(--color-warning-surface);
+  color: var(--color-warning-text);
+}
+
+.adopt-total {
+  margin: var(--space-3) 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.publish-preview {
+  padding: var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+}
+
+.publish-units {
+  margin: var(--space-2) 0 0;
+  padding-left: 1.2em;
+}
+
+.draft-notice {
+  max-width: 70ch;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-surface);
+  font-size: 14px;
 }
 
 /* Settings */
@@ -2757,6 +3049,9 @@ dialog.inspector::backdrop {
   .badge,
   .proficiency-pill,
   .first-steps,
+  .account-pill,
+  .draft-notice,
+  .auth-return,
   .seg-btn[aria-pressed="true"],
   .switch-track {
     border: 1px solid CanvasText;

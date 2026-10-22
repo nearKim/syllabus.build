@@ -22,10 +22,8 @@ import {
   type InferenceMode, type MaskedCredentialRecord,
 } from "./byokAndReminders.ts";
 import {
-  buildFourBucketCostBreakdown, createHostedBillingController, createPublicAdoptionController,
-  createPublicationLifecycleController, formatMinorCurrency,
-  type HostedCreditWalletSnapshot, type OwnedPublicationItem, type OwnedPublicationRevisionItem,
-  type PublicCurriculumPayload, type PublicationPreviewPayload,
+  buildFourBucketCostBreakdown, createHostedBillingController, formatMinorCurrency, resolveTransitiveAdoptionScope,
+  type HostedCreditWalletSnapshot, type PublicCurriculumContentBlock,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
 import { clamp, escapeHtml, normalizeStringList } from "./shared.ts";
@@ -43,8 +41,7 @@ export interface CurriculumWebAppStateInput {
   readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly diagnosticSession?: DiagnosticSessionFixture; readonly adaptationProposal?: AdaptationProposalFixture;
   readonly byokMode?: InferenceMode; readonly byokCredentials?: readonly MaskedCredentialRecord[];
-  readonly wallet?: HostedCreditWalletSnapshot; readonly adoptedSelectedModuleIds?: readonly string[];
-  readonly upvotedRevisionIds?: readonly string[]; readonly openDialogId?: string | null;
+  readonly wallet?: HostedCreditWalletSnapshot; readonly openDialogId?: string | null;
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
   readonly skippedActivityIds?: readonly string[];
@@ -57,6 +54,13 @@ export interface CurriculumWebAppStateInput {
   readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
   readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
   readonly selectedCurriculumId?: string;
+  readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
+  readonly authNotice?: string | null;
+  readonly marketplaceDomain?: MarketplaceDomain; readonly marketplaceRigor?: MarketplaceRigor;
+  readonly marketplaceSort?: MarketplaceSort; readonly marketplaceQuery?: string;
+  readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
+  readonly publishedListings?: readonly MarketplaceListing[];
+  readonly adoptPublicationId?: string | null; readonly adoptScope?: "full" | "units"; readonly adoptModuleIds?: readonly string[];
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -206,6 +210,7 @@ const makeCatalogEntry = (
 
 const OPEN_MATH_COMMONS = ["open-math-commons", "Open Math Commons (Curator Verified)"] as const;
 const PUBLIC_DOMAIN_CLASSICS = ["public-domain-classics", "Public Domain Classics Library (Curator Verified)"] as const;
+const OPEN_SYSTEMS_PRESS = ["open-systems-press", "Open Systems Press (Curator Verified)"] as const;
 
 const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadataInput>> = {
   "synthetic-resource-tokenization-v1": {
@@ -247,6 +252,24 @@ const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadata
   "synthetic-resource-berlin-essay-v1": makeCatalogEntry(
     "synthetic-resource-berlin-essay-v1", "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)", "hedgehog-and-the-fox",
     ["university-press-catalog", "University Press Catalog"], "library_loan",
+  ),
+  "synthetic-resource-rust-async-book-v1": makeCatalogEntry(
+    "synthetic-resource-rust-async-book-v1", "Asynchronous Rust Under the Hood: Futures, Wakers, and Executors", "async-rust-under-the-hood",
+    OPEN_SYSTEMS_PRESS, "free", [["seg-rs-futures", "Chapters 2–3: Futures, Pin, and Wakers"], ["seg-rs-reactor", "Chapter 5: Reactors and I/O Readiness"]],
+  ),
+  "synthetic-resource-rust-lab-v1": makeCatalogEntry(
+    "synthetic-resource-rust-lab-v1", "Executor Lab: Test Harness and Reference Solutions", "executor-lab",
+    OPEN_SYSTEMS_PRESS, "free", [["seg-rs-lab-executor", "Lab 1: A single-threaded executor"], ["seg-rs-lab-timer", "Lab 2: A timer wheel"]],
+  ),
+  "synthetic-resource-statmech-notes-v1": makeCatalogEntry(
+    "synthetic-resource-statmech-notes-v1", "Open Lecture Notes: Statistical Physics", "statistical-physics-notes",
+    ["open-physics-commons", "Open Physics Commons (Curator Verified)"], "free",
+    [["seg-sm-ensembles", "Chapter 2: Ensembles and the Partition Function"], ["seg-sm-ising", "Chapter 5: The Ising Model"]],
+  ),
+  "synthetic-resource-statmech-problems-v1": makeCatalogEntry(
+    "synthetic-resource-statmech-problems-v1", "Public Problem Sets with Worked Solutions: Statistical Physics", "statistical-physics-problem-sets",
+    ["open-course-problem-bank", "Open Course Problem Bank"], "free",
+    [["seg-sm-ps1", "Problem Set 1: Partition Functions"], ["seg-sm-ps2", "Problem Set 2: Phase Transitions"]],
   ),
 };
 
@@ -496,38 +519,368 @@ const TOLSTOY_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-20T16:00:00Z",
 };
 
-// An active plan: its curriculum and schedule, plus the domain and gate style that Today's queue card shows.
-// The catalog and the proficiency profile belong to the learner, so all plans share them.
+// A learner plan: its curriculum and schedule, the domain and gate style its cards show, the Marketplace listing it
+// came from or was published as, and whether it is still a draft. Catalog and proficiency data are shared by all plans.
 interface ActiveCurriculum {
   readonly curriculumId: string;
   readonly domain: string;
   readonly assessmentMode: string;
   readonly curriculum: Record<string, unknown>;
   readonly schedule: Record<string, unknown>;
+  readonly publicationId: string | null;
+  readonly draft: boolean;
 }
 
 const RAG_PLAN: ActiveCurriculum = {
   curriculumId: "curriculum-rag-python-001", domain: "Engineering", assessmentMode: "Reviewed Quiz",
-  curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
+  curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE, publicationId: "publication-synthetic-001", draft: false,
 };
 
-// The learner's active plans in queue order. The first one is selected by default.
+// The base plans in queue order. The first one is selected by default.
 const ACTIVE_CURRICULA: readonly ActiveCurriculum[] = [
   RAG_PLAN,
   {
     curriculumId: "curriculum-linear-algebra-002", domain: "Mathematics", assessmentMode: "Public Quiz Bank",
-    curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
+    curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE, publicationId: "publication-linear-algebra-001", draft: false,
   },
   {
     curriculumId: "curriculum-tolstoy-lit-003", domain: "Literature", assessmentMode: "Self-Check Rubric",
-    curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
+    curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE, publicationId: "publication-tolstoy-001", draft: false,
   },
 ];
 
-const activePlan = (curriculumId: unknown): ActiveCurriculum =>
-  ACTIVE_CURRICULA.find((plan) => plan.curriculumId === curriculumId) ?? RAG_PLAN;
-const isActiveCurriculum = (curriculumId: unknown): curriculumId is string =>
-  ACTIVE_CURRICULA.some((plan) => plan.curriculumId === curriculumId);
+const planIn = (plans: readonly ActiveCurriculum[], curriculumId: unknown): ActiveCurriculum =>
+  plans.find((plan) => plan.curriculumId === curriculumId) ?? RAG_PLAN;
+
+const RUST_ASYNC_CURRICULUM: Record<string, unknown> = {
+  schema_version: "0.2.0", curriculum_id: "curriculum-rust-async-004",
+  revision_id: "revision-rust-async-v1", revision_number: 1, predecessor_revision_id: null,
+  account_id: "curator-ferris", created_at: "2026-10-18T12:00:00Z", revision_reason: "initial_generation",
+  goal: {
+    title: "Rust Async Runtime Internals",
+    summary: "Build a small async executor from the Future trait up, then add a reactor, a timer wheel, and work stealing.",
+    included_topics: ["futures and polling", "wakers", "reactors", "work stealing"],
+    excluded_topics: ["production tuning of tokio"],
+    scope_note: "Each unit ends at a code lab whose test suite is the gate.",
+  },
+  language: "en", sequence_preference_applied: "theory_first",
+  instruction_preferences_applied: { math_depth: "applied", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
+  objectives: [
+    {
+      objective_id: "objective-rs-poll", objective_version_id: "objective-rs-poll-v1", topic_id: "topic-async-futures",
+      title: "Explain how futures are polled, woken, and pinned",
+      description: "Trace one future from creation through Poll::Pending and a wakeup to Poll::Ready.",
+      success_criterion: "A single-threaded executor runs three dependent futures to completion and passes the lab's wakeup tests.",
+      level: "applied", requirement_level: "required", assessment_activity_ids: ["rs-gate-executor"], prior_evidence_refs: [],
+    },
+    {
+      objective_id: "objective-rs-scheduling", objective_version_id: "objective-rs-scheduling-v1", topic_id: "topic-async-scheduling",
+      title: "Schedule I/O readiness, timers, and stolen tasks in a runtime",
+      description: "Connect epoll readiness and a timer wheel to the executor's task queue.",
+      success_criterion: "The executor wakes a sleeping task within 5 ms of its deadline and passes the lab's timer tests under load.",
+      level: "advanced", requirement_level: "required", assessment_activity_ids: ["rs-gate-timer"], prior_evidence_refs: [],
+    },
+  ],
+  prerequisite_edges: [{ from_objective_id: "objective-rs-poll", to_objective_id: "objective-rs-scheduling" }],
+  modules: [
+    {
+      module_id: "rs-module-futures", title: "Module 1: Futures, Wakers, and the Poll Model",
+      summary: "The Future trait, Pin, Waker, and a minimal executor.",
+      requirement_level: "required", prerequisite_module_ids: [], objective_ids: ["objective-rs-poll"],
+      activity_ids: ["rs-read-futures", "rs-example-waker", "rs-gate-executor"],
+    },
+    {
+      module_id: "rs-module-scheduling", title: "Module 2: Reactors, Timers, and Work Stealing",
+      summary: "I/O readiness with epoll, a timer wheel, and work-stealing queues.",
+      requirement_level: "required", prerequisite_module_ids: ["rs-module-futures"], objective_ids: ["objective-rs-scheduling"],
+      activity_ids: ["rs-read-reactor", "rs-example-stealing", "rs-gate-timer", "rs-review-pinning"],
+    },
+  ],
+  activities: [
+    {
+      activity_id: "rs-read-futures", type: "theory", title: "Read: The Future Trait and Poll-Based Execution",
+      requirement_level: "required", objective_ids: ["objective-rs-poll"], prerequisite_activity_ids: [],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-async-book-v1", "primary", ["seg-rs-futures"], "Covers Future, Poll, and Pin from first principles.")],
+      duration_estimate: makeDurationEstimate([0, 25, 0, 0, 0], [0, 20, 0, 0, 0], [0, 35, 0, 0, 0]),
+      content: { study_prompt: "Explain why a future must be pinned before it is polled." },
+    },
+    {
+      activity_id: "rs-example-waker", type: "worked_example", title: "Worked Example: Hand-Rolling a Waker",
+      requirement_level: "required", objective_ids: ["objective-rs-poll"], prerequisite_activity_ids: ["rs-read-futures"],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-async-book-v1", "primary", ["seg-rs-futures"], "Builds a RawWaker vtable step by step.")],
+      duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
+      content: { example_prompt: "Follow how a RawWakerVTable wakes a task that returned Poll::Pending.", guidance_level: "full" },
+    },
+    {
+      activity_id: "rs-gate-executor", type: "coding", title: "Gate Lab: Build a Single-Threaded Executor",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-rs-poll"], prerequisite_activity_ids: ["rs-example-waker"],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-lab-v1", "primary", ["seg-rs-lab-executor"], "Lab repository with the executor test suite.")],
+      duration_estimate: makeDurationEstimate([0, 5, 40, 0, 0], [0, 4, 30, 0, 0], [0, 8, 60, 0, 0]),
+      content: {
+        task_prompt: "Implement block_on and a task queue that runs spawned futures until each one is ready.",
+        deliverable_description: "An executor crate that passes the lab's wakeup and ordering tests.",
+        assessment_ref: "assessment-rs-executor-tests", execution_mode: "external",
+      },
+    },
+    {
+      activity_id: "rs-read-reactor", type: "theory", title: "Read: Reactors and I/O Readiness with epoll",
+      requirement_level: "required", objective_ids: ["objective-rs-scheduling"], prerequisite_activity_ids: ["rs-gate-executor"],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-async-book-v1", "primary", ["seg-rs-reactor"], "Connects OS readiness events to wakers.")],
+      duration_estimate: makeDurationEstimate([0, 25, 0, 0, 0], [0, 20, 0, 0, 0], [0, 35, 0, 0, 0]),
+      content: { study_prompt: "Trace how an epoll readiness event becomes a call to Waker::wake." },
+    },
+    {
+      activity_id: "rs-example-stealing", type: "worked_example", title: "Worked Example: Work-Stealing Task Queues",
+      requirement_level: "optional", objective_ids: ["objective-rs-scheduling"], prerequisite_activity_ids: ["rs-read-reactor"],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-async-book-v1", "supplemental", ["seg-rs-reactor"], "Optional deep dive on multi-threaded schedulers.")],
+      duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
+      content: { example_prompt: "Follow how an idle worker steals half of a busy worker's queue.", guidance_level: "faded" },
+    },
+    {
+      activity_id: "rs-gate-timer", type: "coding", title: "Gate Lab: Add a Timer Wheel to the Executor",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-rs-scheduling"], prerequisite_activity_ids: ["rs-read-reactor"],
+      resource_assignments: [makeResAssign("synthetic-resource-rust-lab-v1", "primary", ["seg-rs-lab-timer"], "Lab repository with the timer test suite.")],
+      duration_estimate: makeDurationEstimate([0, 5, 45, 0, 0], [0, 4, 35, 0, 0], [0, 8, 70, 0, 0]),
+      content: {
+        task_prompt: "Add a hashed timer wheel and wake each sleeping task when its deadline passes.",
+        deliverable_description: "An executor that passes the lab's timer accuracy and load tests.",
+        assessment_ref: "assessment-rs-timer-tests", execution_mode: "external",
+      },
+    },
+    {
+      activity_id: "rs-review-pinning", type: "review", title: "Spaced Review: Pinning and Wakeups",
+      requirement_level: "required", objective_ids: ["objective-rs-poll"], prerequisite_activity_ids: ["rs-gate-timer"],
+      resource_assignments: [],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
+      content: { recall_prompt: "Without notes, explain why moving a pinned future would be unsound.", assessment_ref: null },
+    },
+  ],
+  certification_options: [],
+};
+
+const RUST_ASYNC_SCHEDULE: Record<string, unknown> = {
+  schedule_id: "schedule-rust-async-1", schedule_revision_id: "schedule-revision-rust-async-1",
+  version: 1, curriculum_revision_id: "revision-rust-async-v1", timezone: "America/New_York", weekly_minutes: 180,
+  sessions: [
+    { session_id: "rs-session-1", start_at: "2026-10-28T19:00:00-04:00", duration_minutes: 50, activity_ids: ["rs-read-futures", "rs-example-waker"], reminder_enabled: true },
+    { session_id: "rs-session-2", start_at: "2026-10-31T10:00:00-04:00", duration_minutes: 45, activity_ids: ["rs-gate-executor"], reminder_enabled: true },
+    { session_id: "rs-session-3", start_at: "2026-11-04T19:00:00-05:00", duration_minutes: 100, activity_ids: ["rs-read-reactor", "rs-example-stealing", "rs-gate-timer"], reminder_enabled: true },
+    { session_id: "rs-session-4", start_at: "2026-11-07T10:00:00-05:00", duration_minutes: 10, activity_ids: ["rs-review-pinning"], reminder_enabled: false },
+  ],
+  generated_at: "2026-10-18T12:00:00Z",
+};
+
+const STAT_MECH_CURRICULUM: Record<string, unknown> = {
+  schema_version: "0.2.0", curriculum_id: "curriculum-statmech-005",
+  revision_id: "revision-statmech-v1", revision_number: 1, predecessor_revision_id: null,
+  account_id: "curator-ada", created_at: "2026-10-08T10:00:00Z", revision_reason: "initial_generation",
+  goal: {
+    title: "Statistical Mechanics & Thermodynamics",
+    summary: "Derive thermodynamics from ensembles and the partition function, then use free energy to explain phase transitions.",
+    included_topics: ["ensembles", "partition functions", "phase transitions"],
+    excluded_topics: ["quantum field theory methods"],
+    scope_note: "Each unit ends at a public problem set with published worked solutions.",
+  },
+  language: "en", sequence_preference_applied: "theory_first",
+  instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [], known_material_review: "skip_if_demonstrated" },
+  objectives: [
+    {
+      objective_id: "objective-sm-ensembles", objective_version_id: "objective-sm-ensembles-v1", topic_id: "topic-ensembles",
+      title: "Derive thermodynamic quantities from a partition function",
+      description: "Connect the canonical ensemble to mean energy, entropy, and heat capacity.",
+      success_criterion: "Compute the mean energy and heat capacity of a two-level system from its partition function.",
+      level: "applied", requirement_level: "required", assessment_activity_ids: ["sm-gate-ensembles"], prior_evidence_refs: [],
+    },
+    {
+      objective_id: "objective-sm-phase", objective_version_id: "objective-sm-phase-v1", topic_id: "topic-phase-transitions",
+      title: "Explain phase transitions with free energy and the Ising model",
+      description: "Use free-energy minimization and mean-field theory to locate a critical point.",
+      success_criterion: "Derive the mean-field critical temperature of the Ising model and sketch the magnetization below it.",
+      level: "advanced", requirement_level: "required", assessment_activity_ids: ["sm-gate-phase"], prior_evidence_refs: [],
+    },
+  ],
+  prerequisite_edges: [{ from_objective_id: "objective-sm-ensembles", to_objective_id: "objective-sm-phase" }],
+  modules: [
+    {
+      module_id: "sm-module-ensembles", title: "Module 1: Ensembles and the Partition Function",
+      summary: "Microcanonical and canonical ensembles, and the quantities a partition function yields.",
+      requirement_level: "required", prerequisite_module_ids: [], objective_ids: ["objective-sm-ensembles"],
+      activity_ids: ["sm-read-ensembles", "sm-example-two-level", "sm-gate-ensembles"],
+    },
+    {
+      module_id: "sm-module-phase", title: "Module 2: Free Energy and Phase Transitions",
+      summary: "Free energy, the Ising model, and mean-field theory.",
+      requirement_level: "required", prerequisite_module_ids: ["sm-module-ensembles"], objective_ids: ["objective-sm-phase"],
+      activity_ids: ["sm-read-free-energy", "sm-example-mean-field", "sm-gate-phase", "sm-review-fluctuations"],
+    },
+  ],
+  activities: [
+    {
+      activity_id: "sm-read-ensembles", type: "theory", title: "Read: Microcanonical and Canonical Ensembles",
+      requirement_level: "required", objective_ids: ["objective-sm-ensembles"], prerequisite_activity_ids: [],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ensembles"], "Open lecture notes with full derivations.")],
+      duration_estimate: makeDurationEstimate([0, 30, 0, 0, 0], [0, 25, 0, 0, 0], [0, 45, 0, 0, 0]),
+      content: { study_prompt: "Derive the Boltzmann factor from the microcanonical ensemble of a large reservoir." },
+    },
+    {
+      activity_id: "sm-example-two-level", type: "worked_example", title: "Worked Example: The Two-Level System",
+      requirement_level: "required", objective_ids: ["objective-sm-ensembles"], prerequisite_activity_ids: ["sm-read-ensembles"],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ensembles"], "A complete worked example of the Schottky anomaly.")],
+      duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
+      content: { example_prompt: "Follow the heat capacity of a two-level system to its Schottky peak.", guidance_level: "full" },
+    },
+    {
+      activity_id: "sm-gate-ensembles", type: "quiz", title: "Problem Set 1: Partition Functions",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-sm-ensembles"], prerequisite_activity_ids: ["sm-example-two-level"],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-problems-v1", "primary", ["seg-sm-ps1"], "Public problem set with published worked solutions.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 35, 0], [0, 0, 0, 25, 0], [0, 0, 0, 50, 0]),
+      content: { assessment_ref: "assessment-sm-public-set-1", attempt_policy_ref: "attempt-policy-published-solutions" },
+    },
+    {
+      activity_id: "sm-read-free-energy", type: "theory", title: "Read: Free Energy, Entropy, and the Ising Model",
+      requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-gate-ensembles"],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ising"], "The Ising model and its mean-field treatment.")],
+      duration_estimate: makeDurationEstimate([0, 30, 0, 0, 0], [0, 25, 0, 0, 0], [0, 45, 0, 0, 0]),
+      content: { study_prompt: "Explain why minimizing free energy, and not energy alone, decides the stable phase." },
+    },
+    {
+      activity_id: "sm-example-mean-field", type: "worked_example", title: "Worked Example: Mean-Field Magnetization",
+      requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-read-free-energy"],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ising"], "Solves the self-consistency equation graphically.")],
+      duration_estimate: makeDurationEstimate([5, 10, 15, 0, 0], [4, 8, 10, 0, 0], [8, 14, 20, 0, 0]),
+      content: { example_prompt: "Solve m = tanh(βJzm) graphically and find where nonzero solutions appear.", guidance_level: "full" },
+    },
+    {
+      activity_id: "sm-gate-phase", type: "quiz", title: "Problem Set 2: Phase Transitions",
+      requirement_level: "required", mastery_gated: true, objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-example-mean-field"],
+      resource_assignments: [makeResAssign("synthetic-resource-statmech-problems-v1", "primary", ["seg-sm-ps2"], "Public problem set with published worked solutions.")],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 35, 0], [0, 0, 0, 25, 0], [0, 0, 0, 50, 0]),
+      content: { assessment_ref: "assessment-sm-public-set-2", attempt_policy_ref: "attempt-policy-published-solutions" },
+    },
+    {
+      activity_id: "sm-review-fluctuations", type: "review", title: "Spaced Review: Fluctuations and Response",
+      requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-gate-phase"],
+      resource_assignments: [],
+      duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
+      content: { recall_prompt: "Without notes, relate the heat capacity to energy fluctuations in the canonical ensemble.", assessment_ref: null },
+    },
+  ],
+  certification_options: [],
+};
+
+const STAT_MECH_SCHEDULE: Record<string, unknown> = {
+  schedule_id: "schedule-statmech-1", schedule_revision_id: "schedule-revision-statmech-1",
+  version: 1, curriculum_revision_id: "revision-statmech-v1", timezone: "America/New_York", weekly_minutes: 150,
+  sessions: [
+    { session_id: "sm-session-1", start_at: "2026-10-29T18:00:00-04:00", duration_minutes: 55, activity_ids: ["sm-read-ensembles", "sm-example-two-level"], reminder_enabled: true },
+    { session_id: "sm-session-2", start_at: "2026-11-01T10:00:00-05:00", duration_minutes: 35, activity_ids: ["sm-gate-ensembles"], reminder_enabled: true },
+    { session_id: "sm-session-3", start_at: "2026-11-05T18:00:00-05:00", duration_minutes: 60, activity_ids: ["sm-read-free-energy", "sm-example-mean-field"], reminder_enabled: true },
+    { session_id: "sm-session-4", start_at: "2026-11-08T10:00:00-05:00", duration_minutes: 35, activity_ids: ["sm-gate-phase"], reminder_enabled: true },
+    { session_id: "sm-session-5", start_at: "2026-11-12T18:00:00-05:00", duration_minutes: 10, activity_ids: ["sm-review-fluctuations"], reminder_enabled: false },
+  ],
+  generated_at: "2026-10-08T10:00:00Z",
+};
+
+const MARKETPLACE_DOMAINS = ["All", "Engineering", "Mathematics", "Humanities", "Systems"] as const;
+const MARKETPLACE_RIGORS = ["All", "Formal", "Applied", "Intuitive"] as const;
+const MARKETPLACE_SORTS = ["top_upvoted", "most_adopted", "newest"] as const;
+type MarketplaceDomain = (typeof MARKETPLACE_DOMAINS)[number];
+type MarketplaceRigor = (typeof MARKETPLACE_RIGORS)[number];
+type MarketplaceSort = (typeof MARKETPLACE_SORTS)[number];
+const SORT_LABELS: Readonly<Record<MarketplaceSort, string>> = { top_upvoted: "Top Upvoted", most_adopted: "Most Adopted", newest: "Newest" };
+// A plan's subject maps to one Marketplace filter. Literature files under Humanities and Physics under Mathematics.
+const FILTER_DOMAIN_OF: Readonly<Record<string, Exclude<MarketplaceDomain, "All">>> = {
+  Engineering: "Engineering", Mathematics: "Mathematics", Literature: "Humanities", Systems: "Systems", Physics: "Mathematics",
+};
+
+// A public revision in the Marketplace. It carries the plan an adopter copies, and its owner's account when one is known.
+interface MarketplaceListing {
+  readonly publicationId: string;
+  readonly revisionId: string;
+  readonly subject: string;
+  readonly gateStyle: string;
+  readonly handle: string;
+  readonly upvotes: number;
+  readonly adoptions: number;
+  readonly publishedAt: string;
+  readonly ownerAccountId: string | null;
+  readonly sourceCurriculumId: string | null;
+  readonly basedOn: string | null;
+  readonly curriculum: Record<string, unknown>;
+  readonly schedule: Record<string, unknown>;
+}
+
+const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
+  {
+    publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001", subject: "Engineering", gateStyle: "Reviewed Quiz",
+    handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
+    ownerAccountId: "learner-default", sourceCurriculumId: "curriculum-rag-python-001", basedOn: null,
+    curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
+  },
+  {
+    publicationId: "publication-linear-algebra-001", revisionId: "public-revision-linear-algebra-001", subject: "Mathematics", gateStyle: "Public Quiz Bank",
+    handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
+    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
+  },
+  {
+    publicationId: "publication-tolstoy-001", revisionId: "public-revision-tolstoy-001", subject: "Literature", gateStyle: "Self-Check Rubric",
+    handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
+    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
+  },
+  {
+    publicationId: "publication-rust-async-001", revisionId: "public-revision-rust-async-001", subject: "Systems", gateStyle: "Code Lab Gate",
+    handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
+    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: RUST_ASYNC_CURRICULUM, schedule: RUST_ASYNC_SCHEDULE,
+  },
+  {
+    publicationId: "publication-statmech-001", revisionId: "public-revision-statmech-001", subject: "Physics", gateStyle: "Problem Set Gate",
+    handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
+    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: STAT_MECH_CURRICULUM, schedule: STAT_MECH_SCHEDULE,
+  },
+];
+
+// Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
+const OPEN_ACTIONS: ReadonlySet<string> = new Set([
+  "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
+  "set-marketplace-domain", "set-marketplace-rigor", "set-marketplace-sort", "set-marketplace-query", "load-more",
+  "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
+  "view-evidence", "check-prerequisites",
+]);
+
+// Signed-in identity. The demo personas stand in for real accounts, because no account provider is connected.
+const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
+type AuthStatus = (typeof AUTH_STATUSES)[number];
+interface Account { readonly accountId: string; readonly email: string; readonly role: "Learner" | "Curator" | "Moderator" }
+const PERSONAS = {
+  learner: { accountId: "learner-default", email: "alex@curriculum.io", role: "Learner" },
+  curator: { accountId: "curator-ada", email: "ada@curriculum.io", role: "Curator" },
+  moderator: { accountId: "moderator-mo", email: "mo@curriculum.io", role: "Moderator" },
+} as const satisfies Readonly<Record<string, Account>>;
+const PERSONA_CHOICES = ["learner", "curator", "moderator", "guest"] as const;
+const handleOf = (account: Account): string => `@${account.email.split("@")[0] ?? "learner"}`;
+
+// What publishing leaves out. The public projection carries none of it (@S57).
+const PRIVATE_FIELDS_REMOVED = [
+  "Your progress and completion records",
+  "Proficiency, evidence, and diagnostic answers",
+  "Notes, attempts, and practice drafts",
+  "BYOK keys and provider connections",
+  "Billing, budgets, and wallet state",
+  "Your session dates and reminder settings",
+] as const;
+
+// Where sign-in returns the learner. It restores a place and an open dialog, never the action itself (UI-009).
+interface ReturnDestination {
+  readonly label: string;
+  readonly topLevel: TopLevelDestination;
+  readonly learnSubDestination: LearnSubDestination;
+  readonly openDialogId: string | null;
+  readonly adoptPublicationId: string | null;
+}
+
+// Account-owned records. Votes and adoptions belong to one account, so signing out never changes a public count.
+interface Adoption { readonly accountId: string; readonly publicationId: string; readonly moduleIds: readonly string[]; readonly active: boolean }
+interface Vote { readonly accountId: string; readonly revisionId: string }
 
 interface SelfCheckRubric { readonly prompt: string; readonly criteria: readonly string[] }
 
@@ -578,58 +931,6 @@ const DEFAULT_ADAPTATION_PROPOSAL: AdaptationProposalFixture = {
   },
   unassessed_objective_version_ids: ["objective-attention-v1"],
 };
-
-const DEFAULT_PUBLIC_CURRICULUM: PublicCurriculumPayload = {
-  schema_version: "0.2.0", publication_id: "publication-synthetic-001",
-  publication_revision_id: "public-revision-synthetic-001", revision_number: 1,
-  supersedes_publication_revision_id: null, visibility: "public", published_at: "2026-10-20T16:00:00Z",
-  content_sha256: "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
-  upvote_count: 14, viewer_has_upvoted: false,
-  publisher: { public_author_id: "public-author-synthetic-001", display_name: "Dr. Elena Vance (Verified Community Author)" },
-  publication_terms: {
-    policy_id: "publication-terms-v1", content_license_id: "CC-BY-4.0", rights_scope: "structure_and_author_prompts_only",
-    attribution: "Dr. Elena Vance — Transformer Foundations Template", third_party_materials_excluded: true,
-  },
-  content: {
-    title: "Transformer Foundations & Attention Mechanics (Public Template)",
-    summary: "Reusable two-module public curriculum template with transitive prerequisite resolution.",
-    objectives: [
-      { objective_id: "objective-tokenization", title: "Analyze BPE and Unigram tokenization sequence lengths", prerequisite_objective_ids: [] },
-      { objective_id: "objective-attention", title: "Derive scaled dot-product attention gradients", prerequisite_objective_ids: ["objective-tokenization"] },
-    ],
-    prerequisite_edges: [{ from_objective_id: "objective-tokenization", to_objective_id: "objective-attention" }],
-    modules: [
-      { module_id: "public-module-tokenization", title: "Module 1: Tokenization Foundations", summary: "Prerequisite subword representations and sequence packing.", objective_ids: ["objective-tokenization"], activity_ids: ["public-activity-theory", "public-activity-coding"], prerequisite_module_ids: [] },
-      { module_id: "public-module-attention", title: "Module 2: Scaled Dot-Product Attention", summary: "Depends on Module 1 tokenization representations.", objective_ids: ["objective-attention"], activity_ids: ["public-activity-attention-quiz"], prerequisite_module_ids: ["public-module-tokenization"] },
-    ],
-  },
-};
-
-const DEFAULT_PUBLICATION_PREVIEW: PublicationPreviewPayload = {
-  preview_id: "preview-synthetic-001", source_plan_id: "curriculum-rag-python-001",
-  source_plan_version_id: "revision-attention-v2", visibility: "public",
-  content_sha256: "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
-  preview_sha256: "e1b88a7d4a5d6033b819b2e5e2e4c7f1928374655647382910abcdef12345678",
-  expires_at: "2026-10-25T17:00:00Z", publication_terms_policy_id: "publication-terms-v1",
-  excluded_private_fields: ["learner_notes", "attempt_history", "diagnostic_transcripts", "byok_credentials", "billing_ledger"],
-  warnings: ["Third-party catalog excerpts are excluded; only resource links, metadata, and your structural plan are shared."],
-  public_content: DEFAULT_PUBLIC_CURRICULUM.content,
-  publisher: DEFAULT_PUBLIC_CURRICULUM.publisher,
-  publication_terms: DEFAULT_PUBLIC_CURRICULUM.publication_terms,
-};
-
-const DEFAULT_OWNED_PUBLICATIONS: readonly OwnedPublicationItem[] = [{
-  publication_id: "publication-synthetic-001", source_plan_id: "curriculum-rag-python-001", visibility: "public", state: "active",
-  display_title: "Transformer Foundations & Attention Mechanics (Public Template)", published_revision_id: "public-revision-synthetic-001",
-  current_revision_upvote_count: 14, created_at: "2026-10-20T12:00:00Z", updated_at: "2026-10-20T12:00:00Z", management_version_id: '"management-etag-001"',
-}];
-
-const DEFAULT_OWNED_REVISIONS: readonly OwnedPublicationRevisionItem[] = [{
-  publication_id: "publication-synthetic-001", publication_revision_id: "public-revision-synthetic-001", revision_number: 1,
-  source_plan_version_id: "revision-attention-v2", visibility: "public", state: "active", public_readable: true,
-  upvote_count: 14, published_at: "2026-10-20T16:00:00Z",
-  content_sha256: "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
-}];
 
 const makeDefaultCred = (
   credential_ref: string, provider_id: string, label: string, masked_suffix: string, updated_at: string,
@@ -1192,6 +1493,77 @@ function deliverablesOf(curriculum: Record<string, unknown>, activityId: string)
     .map((item) => renderUntrustedCatalogText(item, { maxLength: 2000 }).text);
 }
 
+const textOf = (value: unknown): string => (typeof value === "string" ? value : "");
+
+// The public projection of a plan: goal title and summary, objectives, prerequisite edges, and units.
+// It carries no progress, evidence, account, schedule, or billing data (@S57).
+function publicProjectionOf(curriculum: Record<string, unknown>): PublicCurriculumContentBlock {
+  const edges = rawListOf(curriculum, "prerequisite_edges")
+    .map((edge) => ({ from_objective_id: textOf(edge["from_objective_id"]), to_objective_id: textOf(edge["to_objective_id"]) }));
+  return {
+    title: goalTitleOf(curriculum),
+    summary: renderUntrustedCatalogText(asRecord(curriculum["goal"])["summary"], { maxLength: 600 }).text,
+    objectives: rawListOf(curriculum, "objectives").map((objective) => ({
+      objective_id: textOf(objective["objective_id"]), title: textOf(objective["title"]),
+      prerequisite_objective_ids: edges.filter((edge) => edge.to_objective_id === objective["objective_id"]).map((edge) => edge.from_objective_id),
+    })),
+    prerequisite_edges: edges,
+    modules: rawListOf(curriculum, "modules").map((mod) => ({
+      module_id: textOf(mod["module_id"]), title: textOf(mod["title"]), summary: textOf(mod["summary"]),
+      objective_ids: normalizeStringList(mod["objective_ids"]), activity_ids: normalizeStringList(mod["activity_ids"]),
+      prerequisite_module_ids: normalizeStringList(mod["prerequisite_module_ids"]),
+    })),
+  };
+}
+
+// The units an adoption takes: the requested ones plus every unit they need, directly or transitively.
+// An empty request means the full curriculum.
+const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly string[]) => resolveTransitiveAdoptionScope({
+  schema_version: "0.2.0", publication_id: listing.publicationId, publication_revision_id: listing.revisionId, revision_number: 1,
+  published_at: listing.publishedAt, content_sha256: "", content: publicProjectionOf(listing.curriculum),
+  publisher: { public_author_id: listing.handle, display_name: listing.handle },
+  publication_terms: {
+    policy_id: "publication-terms-v1", content_license_id: "CC-BY-4.0", rights_scope: "structure_and_author_prompts_only",
+    attribution: listing.handle, third_party_materials_excluded: true,
+  },
+}, requested);
+
+// The adopter's private copy of a listing's plan, cut to the adopted units. It stays a draft until the adopter activates it.
+function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): ActiveCurriculum {
+  const curriculumId = `adopted-${listing.publicationId}`;
+  const modules = rawListOf(listing.curriculum, "modules").filter((mod) => adoption.moduleIds.includes(textOf(mod["module_id"])));
+  const activityIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["activity_ids"])));
+  const objectiveIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["objective_ids"])));
+  const revisionId = `${curriculumId}-draft-1`;
+  const sessions = rawListOf(listing.schedule, "sessions")
+    .map((session) => ({ ...session, activity_ids: normalizeStringList(session["activity_ids"]).filter((id) => activityIds.has(id)) }))
+    .filter((session) => session.activity_ids.length > 0);
+  return {
+    curriculumId, domain: listing.subject, assessmentMode: listing.gateStyle, publicationId: listing.publicationId, draft: !adoption.active,
+    curriculum: {
+      ...listing.curriculum, curriculum_id: curriculumId, revision_id: revisionId, revision_number: 1, account_id: adoption.accountId,
+      predecessor_revision_id: null, revision_reason: "adoption", modules,
+      activities: rawListOf(listing.curriculum, "activities").filter((act) => activityIds.has(textOf(act["activity_id"]))),
+      // The author's evidence never travels with a copy (@S59).
+      objectives: rawListOf(listing.curriculum, "objectives").filter((objective) => objectiveIds.has(textOf(objective["objective_id"])))
+        .map((objective) => ({ ...objective, prior_evidence_refs: [] })),
+      prerequisite_edges: rawListOf(listing.curriculum, "prerequisite_edges")
+        .filter((edge) => objectiveIds.has(textOf(edge["from_objective_id"])) && objectiveIds.has(textOf(edge["to_objective_id"]))),
+    },
+    schedule: { ...listing.schedule, curriculum_revision_id: revisionId, sessions },
+  };
+}
+
+// An account's plans: the base plans, then its own adopted copies.
+// ponytail: every demo persona loads the same base plans. Per-account plans need a real account store.
+const plansFor = (accountId: string, adoptions: readonly Adoption[], listings: readonly MarketplaceListing[]): readonly ActiveCurriculum[] => [
+  ...ACTIVE_CURRICULA,
+  ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
+    const listing = listings.find((entry) => entry.publicationId === adoption.publicationId);
+    return listing ? [adoptedPlanOf(listing, adoption)] : [];
+  }),
+];
+
 interface InspectorInput {
   readonly modules: readonly StudyModule[];
   readonly mod: StudyModule;
@@ -1425,8 +1797,16 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
 }
 
 export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInput = {}): string {
+  // A guest sees only public pages. Private panels, the drawer, and private dialogs are not rendered at all (UI-023).
+  const authStatus: AuthStatus = inputState.authStatus ?? "authenticated";
+  const account: Account = inputState.account ?? PERSONAS.learner;
+  const signedOut = authStatus === "guest";
+  const listings = [...MARKETPLACE_LISTINGS, ...(inputState.publishedListings ?? [])];
+  const votes = inputState.votes ?? [];
+  const adoptions = inputState.adoptions ?? [];
+  const plans = plansFor(account.accountId, adoptions, listings);
   // A curriculum or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
-  const registered = activePlan(inputState.selectedCurriculumId);
+  const registered = planIn(plans, inputState.selectedCurriculumId);
   const selectedPlan: ActiveCurriculum = {
     ...registered, curriculum: inputState.curriculum ?? registered.curriculum, schedule: inputState.schedule ?? registered.schedule,
   };
@@ -1454,7 +1834,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     activityStates: inputState.activityStates ?? {}, events: inputState.recordedProgressEvents ?? [],
   }).getState();
   const todayState = todayOf(selectedPlan);
-  const queue = ACTIVE_CURRICULA.map((plan) => (plan === registered ? { plan: selectedPlan, today: todayState } : { plan, today: todayOf(plan) }));
+  const planToday = plans.map((plan) => (plan === registered ? { plan: selectedPlan, today: todayState } : { plan, today: todayOf(plan) }));
+  // Today queues active plans only. A draft waits on the Plan page until the learner activates it.
+  const queue = planToday.filter(({ plan }) => !plan.draft);
   const openingStep = stepOf(curriculum, inputState.selectedActivityId);
 
   const basePlanModel = buildPlanMapAndOutlineModel({
@@ -1473,7 +1855,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     })),
   });
 
-  const activeTopLevel: TopLevelDestination = inputState.topLevel ?? "Learn";
+  const activeTopLevel: TopLevelDestination = signedOut ? "Explore" : inputState.topLevel ?? "Learn";
   const activeLearnSub: LearnSubDestination = inputState.learnSubDestination ?? "Today";
   const activePlanView: PlanSynchronizedView = inputState.planView ?? "Map";
 
@@ -1495,22 +1877,116 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     inputState.adaptationProposal ?? DEFAULT_ADAPTATION_PROPOSAL, resolvedThemeMode,
   ).getDiffModel();
 
-  const partialAdoptionScope = createPublicAdoptionController(DEFAULT_PUBLIC_CURRICULUM).resolveScope(
-    inputState.adoptedSelectedModuleIds ?? ["public-module-attention"],
-  );
+  // Marketplace: public listings filtered and sorted for this viewer. Counts are public totals across accounts.
+  const marketplaceDomain = inputState.marketplaceDomain ?? "All";
+  const marketplaceRigor = inputState.marketplaceRigor ?? "All";
+  const marketplaceSort = inputState.marketplaceSort ?? "top_upvoted";
+  const marketplaceQuery = inputState.marketplaceQuery ?? "";
+  const myPlans = signedOut ? [] : plans;
+  const upvotesOf = (listing: MarketplaceListing): number => listing.upvotes + votes.filter((vote) => vote.revisionId === listing.revisionId).length;
+  const adoptionsOf = (listing: MarketplaceListing): number =>
+    listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
+  const rigorOf = (listing: MarketplaceListing): string => mathDepthFor(listing.curriculum, []);
+  const rank = (listing: MarketplaceListing): number => (marketplaceSort === "top_upvoted" ? upvotesOf(listing)
+    : marketplaceSort === "most_adopted" ? adoptionsOf(listing) : Date.parse(listing.publishedAt));
+  const queryText = marketplaceQuery.toLowerCase();
+  const shownListings = listings
+    .filter((listing) => marketplaceDomain === "All" || FILTER_DOMAIN_OF[listing.subject] === marketplaceDomain)
+    .filter((listing) => marketplaceRigor === "All" || rigorOf(listing) === marketplaceRigor)
+    .filter((listing) => !queryText || [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject]
+      .join(" ").toLowerCase().includes(queryText))
+    .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.curriculum).localeCompare(goalTitleOf(b.curriculum)));
+  const pills = (listing: MarketplaceListing): string =>
+    `<p class="marketplace-pills"><span class="domain-pill">${escapeHtml(`${listing.subject} · ${listing.gateStyle}`)}</span><span class="rigor-badge">${escapeHtml(rigorOf(listing))}</span><span class="price-badge">Free · $0.00 adopt</span></p>`;
+  const outlineOf = (listing: MarketplaceListing) =>
+    buildPlanMapAndOutlineModel({ curriculum: listing.curriculum, proficiency, activityStates: {}, catalogResources }).outlineModules;
 
-  const publicationController = createPublicationLifecycleController({
-    preview: DEFAULT_PUBLICATION_PREVIEW, ownedPublications: DEFAULT_OWNED_PUBLICATIONS,
-    ownedRevisions: DEFAULT_OWNED_REVISIONS, theme: resolvedThemeMode,
-  });
-  const isUpvoted = (inputState.upvotedRevisionIds ?? []).includes(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id);
-  publicationController.registerPublicRevisionVoteState({
-    publicationId: DEFAULT_PUBLIC_CURRICULUM.publication_id,
-    publicationRevisionId: DEFAULT_PUBLIC_CURRICULUM.publication_revision_id,
-    upvoteCount: (DEFAULT_PUBLIC_CURRICULUM.upvote_count ?? 14) + (isUpvoted ? 1 : 0),
-    viewerHasUpvoted: isUpvoted,
-  });
-  const publicationState = publicationController.getState();
+  const listingCard = (listing: MarketplaceListing): string => {
+    const id = escapeHtml(listing.publicationId);
+    const projection = publicProjectionOf(listing.curriculum);
+    const yours = !signedOut && listing.ownerAccountId === account.accountId;
+    const myPlan = myPlans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
+    const voted = !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
+    const units = projection.modules.length;
+    return `<article class="marketplace-card public-template-card" data-publication-id="${id}" data-revision-id="${escapeHtml(listing.revisionId)}" aria-labelledby="listing-${id}-title" data-opaque-surface="true">
+            ${pills(listing)}
+            <h2 id="listing-${id}-title" class="marketplace-title">${escapeHtml(projection.title)}</h2>
+            <p class="marketplace-summary">${escapeHtml(projection.summary)}</p>
+            <p class="marketplace-meta">${escapeHtml(listing.handle)}${listing.basedOn ? ` · based on ${escapeHtml(listing.basedOn)}` : ""} · ${units} unit${units === 1 ? "" : "s"} · ${adoptionsOf(listing)} adopted</p>
+            <details class="flow-preview"><summary>Inspect Study Flow</summary><ol>${outlineOf(listing).map((mod, index) =>
+              `<li><span class="flow-preview-unit">U${index + 1} · ${escapeHtml(displayUnitTitle(mod.title))}</span><span class="meta-text">${mod.activities.length} activities · ${effortWords(mod.durationTriplet)}</span></li>`).join("")}</ol></details>
+            <div class="marketplace-actions">
+              <button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${id}" data-revision-id="${escapeHtml(listing.revisionId)}" aria-pressed="${voted}">▲ Upvote Revision (${upvotesOf(listing)})</button>
+              ${yours || myPlan
+                ? `<span class="owned-badge">${yours ? "Yours" : "In your plans"}</span>${myPlan ? `<button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open Plan<span aria-hidden="true">→</span></button>` : ""}`
+                : `<button type="button" class="btn-primary" data-action="open-adopt-dialog" data-publication-id="${id}">Preview &amp; Adopt<span aria-hidden="true">→</span></button>`}
+            </div>
+          </article>`;
+  };
+  const filterGroup = (label: string, action: string, key: string, options: readonly (readonly [string, string])[], current: string): string =>
+    `<div class="segmented" role="group" aria-label="${label}">${options.map(([value, text]) => `<button type="button" class="seg-btn" data-action="${action}" data-${key}="${escapeHtml(value)}" aria-pressed="${value === current}">${escapeHtml(text)}</button>`).join("")}</div>`;
+  const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
+  const myPublicationsHtml = signedOut ? "" : `<section class="surface-panel my-publications" data-opaque-surface="true">
+          <h2>My Publications</h2>
+          <p class="meta-text">Owner records load fresh on every visit and are never cached.</p>
+          ${ownedListings.length > 0 ? `<ul class="publication-list">${ownedListings.map((listing) => `<li data-publication-id="${escapeHtml(listing.publicationId)}"><strong>${escapeHtml(goalTitleOf(listing.curriculum))}</strong><span class="meta-text">Public · Revision 1 · ${upvotesOf(listing)} upvotes · ${adoptionsOf(listing)} adopted</span></li>`).join("")}</ul>
+          <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
+          <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-unpublish">Unpublish</button>`
+            : `<p class="empty-state">${sfIcon("resources")}<span>You have not published a curriculum yet.</span></p>`}
+        </section>`;
+
+  // Adoption preview: the chosen units, the units they need, and the effort each one takes.
+  const adoptListing = listings.find((listing) => listing.publicationId === inputState.adoptPublicationId) ?? null;
+  const adoptScope = inputState.adoptScope ?? "full";
+  const adoptBody = (() => {
+    if (!adoptListing) return `<p class="meta-text">Choose a curriculum in Explore to preview it.</p>`;
+    const projection = publicProjectionOf(adoptListing.curriculum);
+    const requested = adoptScope === "full" ? [] : inputState.adoptModuleIds ?? [];
+    const scope = adoptScope === "units" && requested.length === 0 ? null : adoptionScopeOf(adoptListing, requested);
+    const included = new Set(scope?.resolvedModuleIds ?? []);
+    const autoIncluded = new Set(scope?.autoIncludedPrerequisiteModuleIds ?? []);
+    const outline = outlineOf(adoptListing);
+    const unitNumber = new Map(projection.modules.map((mod, index) => [mod.module_id, index + 1]));
+    const rows = projection.modules.map((mod, index) => {
+      const unit = outline.find((entry) => entry.moduleId === mod.module_id);
+      const needs = (mod.prerequisite_module_ids ?? []).map((moduleId) => `U${unitNumber.get(moduleId) ?? "?"}`).join(", ");
+      const body = `${statusGlyph("module", included.has(mod.module_id) ? "done" : "todo", 16)}<span class="adopt-unit-text"><span class="adopt-unit-title">U${index + 1} · ${escapeHtml(displayUnitTitle(mod.title))}</span><span class="adopt-unit-meta">${unit ? `${unit.activities.length} activities · ${effortWords(unit.durationTriplet)}` : ""}${needs ? ` · Requires ${needs}` : ""}</span>${autoIncluded.has(mod.module_id) ? `<span class="auto-badge">Auto-included prerequisite</span>` : ""}</span>`;
+      return adoptScope === "units"
+        ? `<li><button type="button" class="adopt-unit" role="checkbox" aria-checked="${included.has(mod.module_id)}" data-action="toggle-adopt-module" data-module-id="${escapeHtml(mod.module_id)}">${body}</button></li>`
+        : `<li><div class="adopt-unit">${body}</div></li>`;
+    }).join("");
+    const chosen = outline.filter((mod) => included.has(mod.moduleId));
+    const total = { min: 0, point: 0, max: 0 };
+    for (const mod of chosen) {
+      total.min += mod.durationTriplet.min;
+      total.point += mod.durationTriplet.point;
+      total.max += mod.durationTriplet.max;
+    }
+    return `${pills(adoptListing)}
+      <h3 class="adopt-title">${escapeHtml(projection.title)}</h3>
+      <p class="meta-text">${escapeHtml(adoptListing.handle)} · ${projection.modules.length} units · ${adoptionsOf(adoptListing)} adopted · CC BY 4.0</p>
+      <div class="segmented adopt-scope" role="group" aria-label="What to adopt">
+        <button type="button" class="seg-btn" data-action="set-adopt-scope" data-scope="full" aria-pressed="${adoptScope === "full"}">Full curriculum</button>
+        <button type="button" class="seg-btn" data-action="set-adopt-scope" data-scope="units" aria-pressed="${adoptScope === "units"}">Select units</button>
+      </div>
+      <ul class="adopt-units">${rows}</ul>
+      <p class="adopt-total">${scope ? `${included.size} of ${projection.modules.length} units · ${effortWords(total)}` : "Select at least one unit."}</p>
+      <p class="prose meta-text">Adoption creates your private draft. It copies none of the author's progress, evidence, votes, keys, or spending authority, and it costs $0.00. You review the draft on the Plan page and activate it there.</p>
+      <div class="action-row"><button type="button" class="btn-primary" data-action="confirm-adopt-curriculum" data-publication-id="${escapeHtml(adoptListing.publicationId)}"${scope ? "" : " disabled"}>Adopt into My Plans<span aria-hidden="true">→</span></button></div>`;
+  })();
+
+  // Publication preview: exactly the public projection of the selected plan, and what publishing removes (@S56, @S57).
+  const publishedFromHere = listings.some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedPlan.curriculumId);
+  const originListing = listings.find((listing) => listing.publicationId === selectedPlan.publicationId && listing.ownerAccountId !== account.accountId);
+  const publicProjection = publicProjectionOf(curriculum);
+  const returnTo = inputState.returnTo ?? null;
+  const authNotice = inputState.authNotice ?? null;
+  const accountClusterHtml = authStatus === "authenticated"
+    ? `<span class="account-pill"><span class="account-email">${escapeHtml(account.email)}</span><span class="role-pill">${account.role}</span></span>
+      <button type="button" class="btn-secondary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Account / Switch</button>
+      <button type="button" class="btn-secondary header-btn" data-action="sign-out">Sign out</button>`
+    : `<span class="account-pill" data-auth-status="${authStatus}">${signedOut ? "Guest · Exploring" : "Session expired"}</span>
+      <button type="button" class="btn-primary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in</button>`;
 
   const byokState = createByokCustodyController({
     initialMode: inputState.byokMode ?? "byok",
@@ -1629,10 +2105,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
           </article>`;
   }).join("");
-  const planOptionsHtml = queue.map(({ plan }) =>
-    `<option value="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}</option>`).join("");
-  const studyMinutes = queue.reduce((sum, { today }) => sum + today.totalStudyMinutes, 0);
-  const selfReportedCount = queue.reduce((sum, { today }) => sum + today.selfReportedCompletedCount, 0);
+  const planOptionsHtml = planToday.map(({ plan }) =>
+    `<option value="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`).join("");
+  const studyMinutes = planToday.reduce((sum, { today }) => sum + today.totalStudyMinutes, 0);
+  const selfReportedCount = planToday.reduce((sum, { today }) => sum + today.selfReportedCompletedCount, 0);
 
   const requiredActivities = basePlanModel.outlineActivities.filter((act) => act.required);
   const requiredCompleted = requiredActivities.filter((act) => isExecutionDone(act.executionStatus)).length;
@@ -1722,13 +2198,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <ul class="bucket-lines">${bucket.lineItems.map((li) => `<li data-line-id="${escapeHtml(li.id)}" data-unknown-price="${li.isUnknownPrice}">${escapeHtml(li.label)}: <strong>${escapeHtml(li.formattedAmount)}</strong></li>`).join("")}</ul>
   </div>`).join("\n");
 
-  const upvoteInfo = publicationState.revisionVotes[0] ?? {
-    publicationId: DEFAULT_PUBLIC_CURRICULUM.publication_id,
-    publicationRevisionId: DEFAULT_PUBLIC_CURRICULUM.publication_revision_id,
-    upvoteCount: 14, viewerHasUpvoted: false,
-  };
-  const ownedCard = publicationState.ownedPublicationCards[0];
-  const revisionHistoryHtml = publicationState.ownedRevisions.map((rev) => `<li>Revision ${rev.revision_number} <code>${escapeHtml(rev.publication_revision_id)}</code>. State: ${escapeHtml(rev.state)}. Visibility: ${escapeHtml(rev.visibility)}. Upvotes: ${rev.upvote_count ?? "withheld"}. Published <time datetime="${escapeHtml(rev.published_at)}">${escapeHtml(formatDate(rev.published_at))}</time>.</li>`).join("");
   const adaptationChoiceCopy = adaptationChoice === "accept_reviewed"
     ? "Accept revision was reviewed on this screen. No live adaptation route accepted it, so the current plan stays in place."
     : adaptationChoice === "keep_current"
@@ -1780,23 +2249,25 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const dialogOpen = (id: string) => ` data-open="${openDialogId === id}"`;
   const totalEffort = basePlanModel.totalDurationTriplet;
 
-  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
+  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   <header class="app-header nav-chrome-glass" role="banner">
     <div class="brand-cluster"><span class="brand-title">Curriculum.io</span></div>
     <nav class="top-level-nav" aria-label="Primary navigation">${topNavHtml}</nav>
     <div class="header-status">
-      <span class="duration-pill" data-study-minutes="${studyMinutes}">Study minutes ${studyMinutes}</span>
-      <span class="duration-pill" data-self-reported-count="${selfReportedCount}">Self-reported ${selfReportedCount}</span>
+      ${signedOut ? "" : `<span class="duration-pill" data-study-minutes="${studyMinutes}">Study minutes ${studyMinutes}</span>
+      <span class="duration-pill" data-self-reported-count="${selfReportedCount}">Self-reported ${selfReportedCount}</span>`}
+      ${accountClusterHtml}
     </div>
   </header>
+  ${authStatus === "session_expired" ? `<div class="session-banner" role="status"><p><strong>Session expired.</strong> Sign in to resume where you left off.</p><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in</button></div>` : ""}
   <div class="app-body-grid">
     <aside class="app-sidebar" aria-label="Learn sections">
-      <div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
-      <div class="sidebar-section sidebar-goal"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">About ${totalEffort.point} min planned (${totalEffort.min}–${totalEffort.max})</p></div>
+      ${signedOut ? `<div class="sidebar-section"><p class="meta-text">Sign in to see your plans.</p></div>` : `<div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
+      <div class="sidebar-section sidebar-goal"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">About ${totalEffort.point} min planned (${totalEffort.min}–${totalEffort.max})</p></div>`}
     </aside>
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
-      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
+      ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
           <header class="today-unified-header" data-opaque-surface="true">
             <div class="section-header">
@@ -1866,8 +2337,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
               </div>
               <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
             </div>
           </div>
+          ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
           <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
           <p class="meta-text">${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
           <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
@@ -1921,56 +2394,34 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <h1 class="page-title">Resources</h1>
           <div class="resources-grid">${resourcesHtml}</div>
         </section>
-      </section>
+      </section>`}
 
       <section class="top-level-panel" id="panel-explore" data-top-panel="Explore" data-active="${activeTopLevel === "Explore"}"${activeTopLevel === "Explore" ? "" : " hidden"}>
-        <h1 class="page-title">Explore</h1>
-        <form class="discovery-filters" role="search" aria-label="Discovery filters">
-          <div class="filter-fields">
-            <label class="field" for="discovery-query">Search query <input id="discovery-query" type="search" name="query"></label>
-            <label class="field" for="discovery-topic">Topic <input id="discovery-topic" type="text" name="topic"></label>
-            <label class="field" for="discovery-depth">Mathematical depth
-              <select id="discovery-depth" name="math_depth"><option>Intuitive</option><option>Applied</option><option selected>Formal</option></select>
-            </label>
-          </div>
-          <div class="filter-choices">
-            <fieldset class="choice-group"><legend>Access</legend>
-              ${choiceRadio("access", "free_only", "Free-only", "Hide revisions that allow paid materials.", false)}
-              ${choiceRadio("access", "paid_allowed", "Paid allowed", "Include revisions that allow paid materials.", true)}
-            </fieldset>
-            <fieldset class="choice-group"><legend>Ordering</legend>
-              ${choiceRadio("ordering", "newest", "Newest", "Default order is the newest public revision.", true)}
-              ${choiceRadio("ordering", "upvotes", "Popular upvotes", "Popular means upvotes for the displayed revision.", false)}
-            </fieldset>
-          </div>
+        <div class="section-header">
+          <h1 class="page-title">Explore</h1>
+          <div class="plan-toolbar"><button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button></div>
+        </div>
+        <form class="marketplace-search" role="search" data-action="set-marketplace-query">
+          <label class="st-sr" for="marketplace-search">Search the Marketplace</label>
+          <input id="marketplace-search" type="search" name="query" value="${escapeHtml(marketplaceQuery)}" placeholder="Search titles, curators, and subjects" autocomplete="off">
+          <button type="submit" class="btn-secondary">Search</button>
         </form>
-        <article class="surface-panel public-template-card" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" data-opaque-surface="true">
-          <p class="warning-copy">Community publication. It has not automatically passed educational review.</p>
-          <h2>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.title)}</h2>
-          <p class="prose">${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.content.summary)}</p>
-          <p class="prose">Intended audience: learners studying transformer foundations. Mathematical depth: Formal. Prerequisites: tokenization before attention. Access: free learning materials, with inference priced separately. Revision ${DEFAULT_PUBLIC_CURRICULUM.revision_number}.</p>
-          <p>Author: ${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publisher.display_name)}. License: <code>${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_terms.content_license_id)}</code>.</p>
-          <p class="meta-text">Selecting <code>public-module-attention</code> includes prerequisite <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", "))}</code>.</p>
-          <div class="action-row">
-            <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-partial-adoption">Use this curriculum</button>
-            <button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_id)}" data-revision-id="${escapeHtml(DEFAULT_PUBLIC_CURRICULUM.publication_revision_id)}" aria-pressed="${upvoteInfo.viewerHasUpvoted}">▲ Upvote Revision (${upvoteInfo.upvoteCount ?? 0})</button>
-            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Publication preview</button>
-          </div>
-        </article>
+        <div class="marketplace-controls">
+          ${filterGroup("Domain", "set-marketplace-domain", "domain", MARKETPLACE_DOMAINS.map((domain) => [domain, domain] as const), marketplaceDomain)}
+          ${filterGroup("Rigor", "set-marketplace-rigor", "rigor", MARKETPLACE_RIGORS.map((rigor) => [rigor, rigor === "All" ? "Any rigor" : rigor] as const), marketplaceRigor)}
+          ${filterGroup("Sort", "set-marketplace-sort", "sort", MARKETPLACE_SORTS.map((sort) => [sort, SORT_LABELS[sort]] as const), marketplaceSort)}
+        </div>
+        <p class="marketplace-count" role="status">${shownListings.length} curricul${shownListings.length === 1 ? "um" : "a"}. Community publications have not automatically passed educational review.</p>
+        ${shownListings.length > 0
+          ? `<div class="marketplace-grid">${shownListings.map(listingCard).join("")}</div>`
+          : `<p class="empty-state">${sfIcon("explore")}<span>No curricula match these filters.</span></p>`}
         <div class="action-row load-more-row"><button type="button" class="btn-secondary" data-action="load-more">Load more</button></div>
         ${loadMoreNote ? `<p class="prose" role="status">${escapeHtml(loadMoreNote)}</p>` : ""}
-        <section class="surface-panel my-publications" data-opaque-surface="true">
-          <h2>My Publications</h2>
-          <p class="meta-text">Owner records load fresh on every visit and are never cached.</p>
-          ${ownedCard ? `<p><strong>${escapeHtml(ownedCard.displayTitleText)}</strong>. State: ${escapeHtml(ownedCard.state)}. Visibility: ${escapeHtml(ownedCard.visibility)}. ${escapeHtml(ownedCard.upvoteDisplayText)}.</p>` : ""}
-          <h3>Revision history</h3>
-          <ol>${revisionHistoryHtml}</ol>
-          <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
-          <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-unpublish">Unpublish</button>
-        </section>
+        ${myPublicationsHtml}
+      </section>
       </section>
 
-      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
+      ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
         <h1 class="page-title">Settings</h1>
         <div class="settings-stack">
           <section class="surface-panel settings-group" data-opaque-surface="true">
@@ -2050,13 +2501,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <p class="prose">This software is source-available. An individual may self-host it for personal use. Organizational deployment is not permitted. This screen does not offer an organization switcher, classroom dashboard, or enterprise plan.</p>
           </section>
         </div>
-      </section>
+      </section>`}
     </main>
   </div>
-  ${inspectorHtml}
+  ${signedOut ? "" : inspectorHtml}
   <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">${bottomNavHtml}</nav>
 
-  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
+  ${signedOut ? "" : `  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
       <p class="prose meta-text">Goal and scope → Background and approach → Time and access → Review and generate</p>
@@ -2141,21 +2592,30 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title"${dialogOpen("dialog-partial-adoption")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-partial-adoption-title">Partial Curriculum Adoption &amp; Prerequisite Closure</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p>Requested Module: <code>${escapeHtml(partialAdoptionScope.requestedModuleIds.join(", "))}</code></p>
-      <p>Auto-Included Prerequisite Modules: <code>${escapeHtml(partialAdoptionScope.autoIncludedPrerequisiteModuleIds.join(", ") || "none")}</code></p>
-      <p>Resolved Module Scope: <code>${escapeHtml(partialAdoptionScope.resolvedModuleIds.join(" → "))}</code></p>
-      <p class="prose">Use this curriculum personalizes a private draft. It copies no author evidence, progress, votes, key, or spending authority. Deterministic adoption is $0.00 AI inference and does not activate the plan.</p>
+      <header class="dialog-header"><h2 id="dialog-partial-adoption-title">Preview &amp; Adopt</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      ${adoptBody}
     </form>
   </dialog>
 
   <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title"${dialogOpen("dialog-publication-preview")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-publication-preview-title">Publication Preview &amp; Private Field Redaction</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p>Preview ID: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.preview_id)}</code>.</p>
-      <p class="prose">Visibility: Public — appears in discovery and can be read by others. Unlisted — anyone with the link can read it; excluded from app-controlled discovery. Unlisted does not mean confidential.</p>
-      <p>Excluded Private Fields (Never Published): <code>${escapeHtml(publicationState.excludedPrivateFields.join(", "))}</code></p>
-      <p>Terms Policy: <code>${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms_policy_id)}</code> (${escapeHtml(DEFAULT_PUBLICATION_PREVIEW.publication_terms.content_license_id)})</p>
+      <header class="dialog-header"><h2 id="dialog-publication-preview-title">Share to Marketplace</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <p class="meta-text">This preview is exactly what becomes public.</p>
+      <section class="publish-preview" aria-labelledby="publish-preview-title">
+        <h3 id="publish-preview-title">${escapeHtml(publicProjection.title)}</h3>
+        <p class="prose">${escapeHtml(publicProjection.summary)}</p>
+        <p class="meta-text">${escapeHtml(handleOf(account))} · ${publicProjection.modules.length} units · ${escapeHtml(`${selectedPlan.domain} · ${selectedPlan.assessmentMode}`)} · CC BY 4.0</p>
+        <ol class="publish-units">${publicProjection.modules.map((mod) => `<li>${escapeHtml(displayUnitTitle(mod.title))}</li>`).join("")}</ol>
+      </section>
+      <section aria-labelledby="publish-private-title">
+        <h3 id="publish-private-title">Removed before publishing</h3>
+        <ul class="lab-checklist privacy-checklist">${PRIVATE_FIELDS_REMOVED.map((item) => `<li>${statusGlyph("module", "done", 16)}<span>${item}</span></li>`).join("")}</ul>
+      </section>
+      <p class="prose meta-text">Visibility: Public. The listing appears in Explore, and anyone can read it. Linked materials stay links, and their content is not relicensed.</p>
+      ${originListing ? `<p class="prose meta-text">Based on ${escapeHtml(originListing.handle)}'s template. Their attribution stays on your listing.</p>` : ""}
+      ${publishedFromHere
+        ? `<p class="prose" role="status">This plan is already in the Marketplace as revision 1.</p>`
+        : `<div class="action-row"><button type="button" class="btn-primary" data-action="confirm-publish-curriculum">Publish to Marketplace<span aria-hidden="true">→</span></button></div>`}
     </form>
   </dialog>
 
@@ -2176,6 +2636,34 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Deletion does not promise immediate removal from every backup.</p>
     </form>
+  </dialog>`}
+
+  <dialog id="dialog-auth" closedby="any" aria-labelledby="dialog-auth-title"${dialogOpen("dialog-auth")} data-opaque-surface="true">
+    <form method="dialog" class="dialog-surface auth-surface" data-action="submit-sign-in">
+      <header class="dialog-header"><h2 id="dialog-auth-title">${authStatus === "authenticated" ? "Account" : "Sign in"}</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      ${returnTo ? `<p class="auth-return" role="status">After you sign in, you return to <strong>${escapeHtml(returnTo.label)}</strong>. Nothing is voted, published, adopted, or bought on your behalf.</p>` : ""}
+      ${authStatus === "session_expired" ? `<p class="prose">Sign in as ${escapeHtml(account.email)} to keep your work. Signing in as another account starts with a clean session.</p>` : ""}
+      ${authStatus === "authenticated" ? `<p class="prose">Signed in as <strong>${escapeHtml(account.email)}</strong> · ${account.role}.</p>` : ""}
+      <label class="field" for="auth-email-input">Email
+        <input id="auth-email-input" type="email" name="email" autocomplete="username webauthn" spellcheck="false" value="${escapeHtml(account.email)}" required>
+      </label>
+      ${authNotice ? `<p class="field-error" role="alert">${escapeHtml(authNotice)}</p>` : ""}
+      <div class="action-row">
+        <button type="submit" class="btn-primary">Sign in</button>
+        <button type="button" class="btn-secondary" data-action="sign-in-passkey">Sign in with passkey</button>
+      </div>
+      <p class="meta-text">Local demo: no account provider is connected in this build, so sign-in checks no password.</p>
+      <section class="persona-switcher" aria-labelledby="persona-switcher-title">
+        <h3 id="persona-switcher-title">Demo personas</h3>
+        <div class="persona-grid">
+          ${PERSONA_CHOICES.map((persona) => {
+            const current = persona === "guest" ? signedOut : !signedOut && account.accountId === PERSONAS[persona].accountId;
+            return `<button type="button" class="btn-secondary persona-btn" data-action="switch-persona" data-persona="${persona}" aria-pressed="${current}">${persona === "guest" ? "Guest" : PERSONAS[persona].role}</button>`;
+          }).join("")}
+          <button type="button" class="btn-secondary persona-btn" data-action="simulate-session-expired"${authStatus === "authenticated" ? "" : " disabled"}>Expire session</button>
+        </div>
+      </section>
+    </form>
   </dialog>
 
   <script data-dialog-light-dismiss-fallback="true">
@@ -2187,10 +2675,27 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let topLevel: TopLevelDestination = initialState.topLevel ?? "Learn";
   let learnSubDestination: LearnSubDestination = initialState.learnSubDestination ?? "Today";
   let planView: PlanSynchronizedView = initialState.planView ?? "Map";
+  let authStatus: AuthStatus = initialState.authStatus ?? "authenticated";
+  let account: Account = initialState.account ?? PERSONAS.learner;
+  let returnTo: ReturnDestination | null = initialState.returnTo ?? null;
+  let authNotice: string | null = initialState.authNotice ?? null;
+  let marketplaceDomain: MarketplaceDomain = initialState.marketplaceDomain ?? "All";
+  let marketplaceRigor: MarketplaceRigor = initialState.marketplaceRigor ?? "All";
+  let marketplaceSort: MarketplaceSort = initialState.marketplaceSort ?? "top_upvoted";
+  let marketplaceQuery = initialState.marketplaceQuery ?? "";
+  let votes: Vote[] = [...(initialState.votes ?? [])];
+  let adoptions: Adoption[] = [...(initialState.adoptions ?? [])];
+  let publishedListings: MarketplaceListing[] = [...(initialState.publishedListings ?? [])];
+  let adoptPublicationId: string | null = initialState.adoptPublicationId ?? null;
+  let adoptScope: "full" | "units" = initialState.adoptScope ?? "full";
+  let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? [])];
+  const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
+  const currentPlans = () => plansFor(account.accountId, adoptions, listings());
+  const isMyPlan = (curriculumId: unknown): curriculumId is string => currentPlans().some((plan) => plan.curriculumId === curriculumId);
   // Input overrides replace the selected plan's curriculum and schedule, the same rule the render applies.
-  let selectedCurriculumId = activePlan(initialState.selectedCurriculumId).curriculumId;
+  let selectedCurriculumId = planIn(currentPlans(), initialState.selectedCurriculumId).curriculumId;
   const planData = (): ActiveCurriculum => {
-    const plan = activePlan(selectedCurriculumId);
+    const plan = planIn(currentPlans(), selectedCurriculumId);
     return { ...plan, curriculum: initialState.curriculum ?? plan.curriculum, schedule: initialState.schedule ?? plan.schedule };
   };
   const openingStep = stepOf(planData().curriculum, initialState.selectedActivityId);
@@ -2207,7 +2712,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let workedSolutionRevealed = initialState.workedSolutionRevealed ?? false;
   let practiceSubmitted = initialState.practiceSubmitted ?? false;
   let practiceChoice: string | null = initialState.practiceChoice ?? null;
-  const skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
+  let skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
   let keyVisible = initialState.keyVisible ?? false;
@@ -2221,8 +2726,6 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let rescheduleValue: string | null = initialState.rescheduleValue ?? null;
   let depthOverrideReset = initialState.depthOverrideReset ?? false;
   let studyDetailOpen = initialState.studyDetailOpen ?? false;
-  const adoptedSelectedModuleIds: string[] = [...(initialState.adoptedSelectedModuleIds ?? ["public-module-attention"])];
-  let upvotedRevisionIds: string[] = [...(initialState.upvotedRevisionIds ?? [])];
   let openDialogId: string | null = initialState.openDialogId ?? null;
 
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
@@ -2256,6 +2759,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   // Done records a self-reported completion. Not started and In progress also drop that activity's
   // completion events, so a corrected mistake no longer counts toward completions or study minutes.
   function setActivityStatus(activityId: string, status: SettableStatus) {
+    if (!signedIn()) return requireSignIn(placeOf(topLevel, learnSubDestination));
     if (status === "completed") {
       if (!isClosed(todayController.getState().activityExecutionStates[activityId] ?? "not_started")) recordCompletion(activityId);
       return getState();
@@ -2296,10 +2800,164 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     todayController = buildToday();
   }
 
+  const signedIn = (): boolean => authStatus === "authenticated";
+  const placeOf = (
+    place: TopLevelDestination, sub: LearnSubDestination, dialogId: string | null = null, publicationId: string | null = null, label?: string,
+  ): ReturnDestination => ({
+    label: label ?? (place === "Learn" ? `Learn › ${sub}` : place), topLevel: place, learnSubDestination: sub,
+    openDialogId: dialogId, adoptPublicationId: publicationId,
+  });
+
+  // Ask for sign-in and remember where to return. The action that asked does not run (UI-009).
+  function requireSignIn(destination: ReturnDestination) {
+    returnTo = destination;
+    authNotice = null;
+    openDialogId = "dialog-auth";
+    return getState();
+  }
+
+  // Clears this browser's private session state: progress, statuses, practice, notes, selection, and open dialogs (@S87).
+  // Account-owned records (votes, adoptions, and publications) stay with their account.
+  function purgeSessionState(): void {
+    recordedProgressEvents = [];
+    statusOverrides.clear();
+    skippedActivityIds = [];
+    hintRequested = false;
+    workedSolutionRevealed = false;
+    practiceSubmitted = false;
+    practiceChoice = null;
+    keyVisible = false;
+    loadMoreNote = null;
+    intakeNote = null;
+    keyActionNote = null;
+    snoozeNote = null;
+    rescheduleSessionId = null;
+    rescheduleValue = null;
+    depthOverrideReset = false;
+    diagnosticControl = "active";
+    adaptationChoice = "pending";
+    adoptPublicationId = null;
+    adoptScope = "full";
+    adoptModuleIds = [];
+    studyDetailOpen = false;
+    openDialogId = null;
+    selectedCurriculumId = RAG_PLAN.curriculumId;
+    const first = stepOf(planData().curriculum);
+    selectedModuleId = first.moduleId;
+    selectedActivityId = first.activityId;
+    focusedNodeId = first.moduleId;
+    todayController = buildToday();
+  }
+
+  // Signing in restores the place the learner asked for, never the action. Another account starts clean (@S87).
+  function signIn(next: Account): void {
+    if (next.accountId !== account.accountId) purgeSessionState();
+    account = next;
+    authStatus = "authenticated";
+    authNotice = null;
+    openDialogId = null;
+    const destination = returnTo;
+    returnTo = null;
+    if (!destination) return;
+    topLevel = destination.topLevel;
+    learnSubDestination = destination.learnSubDestination;
+    openDialogId = destination.openDialogId;
+    if (destination.adoptPublicationId) {
+      adoptPublicationId = destination.adoptPublicationId;
+      adoptScope = "full";
+      adoptModuleIds = [];
+    }
+  }
+
+  function signInWithEmail(email: string): void {
+    const address = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      authNotice = "Enter a valid email address.";
+      openDialogId = "dialog-auth";
+      return;
+    }
+    signIn(Object.values(PERSONAS).find((persona) => persona.email === address) ?? { accountId: `account-${address}`, email: address, role: "Learner" });
+  }
+
+  // A guest browses public curricula, so signing out lands on Explore.
+  function signOut(): void {
+    purgeSessionState();
+    authStatus = "guest";
+    returnTo = null;
+    authNotice = null;
+    topLevel = "Explore";
+  }
+
+  function expireSession(): void {
+    authStatus = "session_expired";
+    returnTo = placeOf(topLevel, learnSubDestination);
+    openDialogId = null;
+  }
+
+  // A listing this account can adopt: it exists, the account does not own it, and no plan already came from it.
+  const adoptableListing = (publicationId: unknown): MarketplaceListing | undefined => {
+    const listing = listings().find((entry) => entry.publicationId === publicationId);
+    const taken = currentPlans().some((plan) => plan.publicationId === publicationId);
+    return listing && listing.ownerAccountId !== account.accountId && !taken ? listing : undefined;
+  };
+  const adoptUnitIds = (): readonly string[] => {
+    const listing = listings().find((entry) => entry.publicationId === adoptPublicationId);
+    return listing ? publicProjectionOf(listing.curriculum).modules.map((mod) => mod.module_id) : [];
+  };
+
+  // Adoption makes a private draft and opens it on the Plan page. Activation stays a separate, explicit step (@S59).
+  function adopt(listing: MarketplaceListing): void {
+    const requested = adoptScope === "units" ? adoptModuleIds : [];
+    if (adoptScope === "units" && requested.length === 0) return;
+    const moduleIds = adoptionScopeOf(listing, requested).resolvedModuleIds;
+    adoptions = [...adoptions, { accountId: account.accountId, publicationId: listing.publicationId, moduleIds, active: false }];
+    adoptPublicationId = null;
+    adoptScope = "full";
+    adoptModuleIds = [];
+    openDialogId = null;
+    selectCurriculum(`adopted-${listing.publicationId}`);
+    topLevel = "Learn";
+    learnSubDestination = "Plan";
+  }
+
+  function activateSelectedDraft(): void {
+    adoptions = adoptions.map((adoption) => (adoption.accountId === account.accountId && `adopted-${adoption.publicationId}` === selectedCurriculumId
+      ? { ...adoption, active: true } : adoption));
+  }
+
+  const publishedFromSelected = (): boolean =>
+    listings().some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedCurriculumId);
+
+  // Publishing adds an immutable public revision of the selected plan to Explore and My Publications (@S56).
+  // The listing keeps the plan's structure and drops account, evidence, date, and reminder data (@S57).
+  function publishSelectedPlan(): void {
+    const plan = planData();
+    const key = `${plan.curriculumId}-${account.accountId}`;
+    const origin = listings().find((listing) => listing.publicationId === plan.publicationId && listing.ownerAccountId !== account.accountId);
+    publishedListings = [...publishedListings, {
+      publicationId: `publication-${key}`, revisionId: `public-revision-${key}-1`,
+      subject: plan.domain, gateStyle: plan.assessmentMode, handle: handleOf(account),
+      upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
+      ownerAccountId: account.accountId, sourceCurriculumId: plan.curriculumId, basedOn: origin?.handle ?? null,
+      curriculum: {
+        ...plan.curriculum, account_id: "public-template",
+        objectives: rawListOf(plan.curriculum, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
+      },
+      schedule: {
+        ...plan.schedule,
+        sessions: rawListOf(plan.schedule, "sessions").map((session) => ({
+          session_id: session["session_id"], duration_minutes: session["duration_minutes"], activity_ids: session["activity_ids"],
+        })),
+      },
+    }];
+    openDialogId = null;
+    topLevel = "Explore";
+  }
+
   const getState = () => {
     const tState = todayController.getState();
     // Study minutes and completions count across every active plan, as the app header shows them.
-    const allToday = ACTIVE_CURRICULA.map((plan) => (plan.curriculumId === selectedCurriculumId ? tState : todayFor(plan).getState()));
+    const allToday = currentPlans().map((plan) => (plan.curriculumId === selectedCurriculumId ? tState : todayFor(plan).getState()));
     return {
       topLevel, learnSubDestination, planView, selectedCurriculumId, selectedModuleId, selectedActivityId, focusedNodeId,
       zoom, viewportWidthPx, textScalePercent, themePreference, solidSurfaces, reduceMotion,
@@ -2308,8 +2966,10 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      adoptedSelectedModuleIds: [...adoptedSelectedModuleIds] as readonly string[],
-      upvotedRevisionIds: [...upvotedRevisionIds] as readonly string[],
+      authStatus, account, returnTo, authNotice, marketplaceDomain, marketplaceRigor, marketplaceSort, marketplaceQuery,
+      votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
+      publishedListings: [...publishedListings] as readonly MarketplaceListing[],
+      adoptPublicationId, adoptScope, adoptModuleIds: [...adoptModuleIds] as readonly string[],
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
@@ -2325,11 +2985,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       return renderCurriculumWebAppHtml({ ...initialState, ...restState, activityStates: activityStatesInput() });
     },
     navigateTopLevel(destination: TopLevelDestination) {
+      if (destination !== "Explore" && !signedIn()) return requireSignIn(placeOf(destination, learnSubDestination));
       topLevel = destination;
       studyDetailOpen = false;
       return getState();
     },
     navigateLearnSubDestination(subDestination: LearnSubDestination) {
+      if (!signedIn()) return requireSignIn(placeOf("Learn", subDestination));
       topLevel = "Learn";
       learnSubDestination = subDestination;
       studyDetailOpen = false;
@@ -2366,36 +3028,85 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       if (nextModel.selectedActivityId) selectedActivityId = nextModel.selectedActivityId;
       return getState();
     },
-    recordTodayActivityCompletion: recordCompletion,
+    recordTodayActivityCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt | null {
+      if (!signedIn()) {
+        requireSignIn(placeOf(topLevel, learnSubDestination));
+        return null;
+      }
+      return recordCompletion(activityId, explicitEventId);
+    },
     setActivityStatus,
     setThemePreference(theme: ThemePreference) {
       themePreference = theme;
       return getState();
     },
-    toggleUpvote(publicationRevisionId = DEFAULT_PUBLIC_CURRICULUM.publication_revision_id) {
-      upvotedRevisionIds = upvotedRevisionIds.includes(publicationRevisionId)
-        ? upvotedRevisionIds.filter((id) => id !== publicationRevisionId)
-        : [...upvotedRevisionIds, publicationRevisionId];
+    // A vote belongs to the signed-in account and to one revision. A guest is asked to sign in, and no vote is cast.
+    toggleUpvote(publicationRevisionId = MARKETPLACE_LISTINGS[0]?.revisionId ?? "") {
+      if (!signedIn()) return requireSignIn(placeOf("Explore", learnSubDestination));
+      if (!listings().some((listing) => listing.revisionId === publicationRevisionId)) return getState();
+      const mine = (vote: Vote) => vote.accountId === account.accountId && vote.revisionId === publicationRevisionId;
+      votes = votes.some(mine) ? votes.filter((vote) => !mine(vote)) : [...votes, { accountId: account.accountId, revisionId: publicationRevisionId }];
       return getState();
     },
     openDialog(dialogId: string) {
+      if (dialogId !== "dialog-auth" && !signedIn()) {
+        const label = dialogId === "dialog-publication-preview" ? "Share to Marketplace" : undefined;
+        return requireSignIn(placeOf(topLevel, learnSubDestination, dialogId, null, label));
+      }
       openDialogId = dialogId;
       return getState();
     },
     closeDialog() {
+      // A guest who closes the sign-in dialog has dropped that return. An expired session keeps it for the banner.
+      if (openDialogId === "dialog-auth" && authStatus === "guest") returnTo = null;
       openDialogId = null;
       return getState();
     },
     applyUiAction(action: string, data: Readonly<Record<string, string | undefined>> = {}, submittedChoice: string | null = null) {
-      let handled = true;
       const value = (key: string) => data[key];
+      // Without a valid session only reading, filtering, appearance, and signing in run. Anything else asks for sign-in.
+      if (!signedIn() && !OPEN_ACTIONS.has(action)) {
+        const listing = action === "open-adopt-dialog" ? listings().find((entry) => entry.publicationId === value("publicationId")) : undefined;
+        requireSignIn(listing
+          ? placeOf("Explore", learnSubDestination, "dialog-partial-adoption", listing.publicationId, `Explore › Preview & Adopt: ${goalTitleOf(listing.curriculum)}`)
+          : placeOf(topLevel, learnSubDestination));
+        return { handled: true, state: getState() };
+      }
+      let handled = true;
       if (action === "close-study-detail") studyDetailOpen = false;
-      else if (action === "select-curriculum" && isActiveCurriculum(data["curriculumId"])) selectCurriculum(data["curriculumId"]);
-      else if (action === "open-curriculum-plan" && isActiveCurriculum(data["curriculumId"])) {
+      else if (action === "submit-sign-in") signInWithEmail(value("email") ?? "");
+      else if (action === "sign-in-passkey") signIn(account);
+      else if (action === "switch-persona" && isOneOf(PERSONA_CHOICES, data["persona"])) {
+        if (data["persona"] === "guest") signOut();
+        else signIn(PERSONAS[data["persona"]]);
+      } else if (action === "simulate-session-expired" && signedIn()) expireSession();
+      else if (action === "sign-out" && authStatus !== "guest") signOut();
+      else if (action === "set-marketplace-domain" && isOneOf(MARKETPLACE_DOMAINS, data["domain"])) marketplaceDomain = data["domain"];
+      else if (action === "set-marketplace-rigor" && isOneOf(MARKETPLACE_RIGORS, data["rigor"])) marketplaceRigor = data["rigor"];
+      else if (action === "set-marketplace-sort" && isOneOf(MARKETPLACE_SORTS, data["sort"])) marketplaceSort = data["sort"];
+      else if (action === "set-marketplace-query") marketplaceQuery = (value("query") ?? "").trim().slice(0, 100);
+      else if (action === "open-adopt-dialog" && adoptableListing(data["publicationId"])) {
+        adoptPublicationId = data["publicationId"] ?? null;
+        adoptScope = "full";
+        adoptModuleIds = [];
+        openDialogId = "dialog-partial-adoption";
+      } else if (action === "set-adopt-scope" && (data["scope"] === "full" || data["scope"] === "units")) {
+        adoptScope = data["scope"];
+        adoptModuleIds = [];
+      } else if (action === "toggle-adopt-module" && adoptScope === "units" && adoptUnitIds().includes(data["moduleId"] ?? "")) {
+        const moduleId = data["moduleId"] ?? "";
+        adoptModuleIds = adoptModuleIds.includes(moduleId) ? adoptModuleIds.filter((id) => id !== moduleId) : [...adoptModuleIds, moduleId];
+      } else if (action === "confirm-adopt-curriculum") {
+        const listing = adoptableListing(data["publicationId"]);
+        if (listing) adopt(listing);
+      } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
+      else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
+      else if (action === "select-curriculum" && isMyPlan(data["curriculumId"])) selectCurriculum(data["curriculumId"]);
+      else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
         selectCurriculum(data["curriculumId"]);
         topLevel = "Learn";
         learnSubDestination = "Plan";
-      } else if (action === "resume-curriculum" && isActiveCurriculum(data["curriculumId"]) && data["activityId"]) {
+      } else if (action === "resume-curriculum" && isMyPlan(data["curriculumId"]) && data["activityId"]) {
         selectCurriculum(data["curriculumId"]);
         selectPlanActivity(data["activityId"], data["moduleId"]);
       } else if (action === "set-flow-order" && isOneOf(FLOW_ORDERS, value("flowOrder"))) flowOrder = value("flowOrder") as FlowOrder;
@@ -2554,6 +3265,20 @@ export function mountCurriculumWebApp(
     const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string } | null } | null };
     const select = ev.target?.closest?.('select[data-action="select-curriculum"]');
     if (select?.value && controller.applyUiAction("select-curriculum", { curriculumId: select.value }).handled) syncDom();
+  });
+
+  // The sign-in form and the Marketplace search submit through their own data-action, with the field they carry.
+  rootElement.addEventListener?.("submit", (rawEvent: unknown) => {
+    const ev = rawEvent as {
+      target?: { closest?: (s: string) => { dataset?: Record<string, string | undefined> } | null } | null;
+      preventDefault?: () => void;
+    };
+    const action = ev.target?.closest?.("form[data-action]")?.dataset?.["action"];
+    if (!action) return;
+    ev.preventDefault?.();
+    const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
+    const data = action === "submit-sign-in" ? { email: valueOf("#auth-email-input") } : { query: valueOf("#marketplace-search") };
+    if (controller.applyUiAction(action, data).handled) syncDom();
   });
 
   const withSync =

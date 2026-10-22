@@ -137,8 +137,10 @@ ${fallbackScript}
     const action = target.dataset.action;
 
     if (action === "open-dialog" && target.dataset.dialogId) {
+      // Without a session the server answers with the sign-in dialog instead, so only open other dialogs when signed in.
+      const signedIn = Boolean(root.querySelector('.curriculum-app-shell[data-auth-status="authenticated"]'));
       const dialog = document.getElementById(target.dataset.dialogId);
-      if (dialog && !dialog.open) dialog.showModal();
+      if (dialog && !dialog.open && (signedIn || dialog.id === "dialog-auth")) dialog.showModal();
       dispatchServerRender({ action: "open-dialog", dialogId: target.dataset.dialogId });
       return;
     }
@@ -201,6 +203,18 @@ ${fallbackScript}
       }
       dispatchServerRender(patch);
     }
+  });
+
+  // The sign-in form and the Marketplace search send their fields under the form's own data-action.
+  root.addEventListener("submit", (event) => {
+    const form = event.target && event.target.closest ? event.target.closest("form[data-action]") : null;
+    if (!form) return;
+    event.preventDefault();
+    const patch = { action: form.dataset.action };
+    new FormData(form).forEach((value, key) => {
+      if (typeof value === "string") patch[key] = value;
+    });
+    dispatchServerRender(patch);
   });
 
   root.addEventListener("change", (event) => {

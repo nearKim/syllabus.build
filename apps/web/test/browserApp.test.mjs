@@ -45,11 +45,21 @@ function drawerOf(html) {
 // and change a select to a value.
 function mountWithClicks(initialState) {
   const listeners = {};
-  const root = { innerHTML: "", addEventListener: (type, listener) => { listeners[type] = listener; } };
+  const fields = {};
+  const root = {
+    innerHTML: "",
+    addEventListener: (type, listener) => { listeners[type] = listener; },
+    querySelector: (selector) => fields[selector] ?? null,
+  };
   const app = mountCurriculumWebApp(root, initialState);
   const click = (dataset) => listeners.click({ target: { closest: () => ({ dataset }) } });
   const change = (value) => listeners.change({ target: { closest: () => ({ value }) } });
-  return { app, root, click, change };
+  // Submits a form by its data-action, with field values keyed by the selector the app reads them from.
+  const submit = (action, values) => {
+    Object.assign(fields, values);
+    listeners.submit({ target: { closest: () => ({ dataset: { action } }) }, preventDefault: () => {} });
+  };
+  return { app, root, click, change, submit };
 }
 
 test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG DAG Map + Outline, MathML, opaque surfaces, and <dialog closedby='any'> modals", () => {
@@ -588,6 +598,184 @@ test("a plan with no public quiz bank gates on a self-check rubric in the drawer
   assert.ok(drawerFor("curriculum-rag-python-001", "activity-quiz").includes(">Formative Checkpoint: Tokenization &amp; Attention Shapes</h2>"));
 });
 
+test("Explore lists the community Marketplace with pills, counts, filters, sorting, and per-account votes", () => {
+  const titlesOf = (html) => [...html.matchAll(/class="marketplace-title">([^<]+)</g)].map((match) => match[1]);
+  const cardOf = (html, id) => html.match(new RegExp(`<article class="marketplace-card public-template-card" data-publication-id="${id}"[\\s\\S]*?</article>`))?.[0] ?? "";
+  const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const html = renderCurriculumWebAppHtml({ topLevel: "Explore" });
+  assert.deepEqual(titlesOf(html), [
+    "Rust Async Runtime Internals", "Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics",
+    "Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina", "Build and Evaluate RAG Systems in Python",
+  ], "Top Upvoted is the default order");
+
+  const rust = cardOf(html, "publication-rust-async-001");
+  assert.match(text(rust), /^Systems · Code Lab Gate Applied Free · \$0\.00 adopt Rust Async Runtime Internals .+ @ferris_ops · 2 units · 64 adopted Inspect Study Flow U1 · Futures, Wakers, and the Poll Model 3 activities · 95 min/);
+  assert.ok(rust.includes('data-action="toggle-upvote" data-publication-id="publication-rust-async-001" data-revision-id="public-revision-rust-async-001" aria-pressed="false">▲ Upvote Revision (48)</button>'));
+  assert.ok(rust.includes('data-action="open-adopt-dialog" data-publication-id="publication-rust-async-001">Preview &amp; Adopt'));
+  assert.match(cardOf(html, "publication-tolstoy-001"), /<span class="domain-pill">Literature · Self-Check Rubric<\/span><span class="rigor-badge">Intuitive<\/span>/);
+  // The learner's own listing and the plans they already have offer Open Plan instead of adoption.
+  assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">/);
+  assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span>/);
+
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Humanities" })), ["Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina"]);
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceRigor: "Applied" })), ["Rust Async Runtime Internals"]);
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
+  const none = renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Systems", marketplaceRigor: "Formal" });
+  assert.ok(none.includes("<span>No curricula match these filters.</span>") && titlesOf(none).length === 0);
+
+  // The controls drive the mounted app. Search runs on submit, and unknown filter values are rejected.
+  const { app, root, click, submit } = mountWithClicks({ topLevel: "Explore" });
+  click({ action: "set-marketplace-domain", domain: "Mathematics" });
+  assert.deepEqual(titlesOf(root.innerHTML), ["Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics"]);
+  click({ action: "set-marketplace-domain", domain: "Astrology" });
+  assert.equal(app.getState().marketplaceDomain, "Mathematics");
+  click({ action: "set-marketplace-domain", domain: "All" });
+  submit("set-marketplace-query", { "#marketplace-search": { value: "  ferris " } });
+  assert.deepEqual(titlesOf(root.innerHTML), ["Rust Async Runtime Internals"]);
+  assert.ok(root.innerHTML.includes('<input id="marketplace-search" type="search" name="query" value="ferris"'));
+
+  // A vote is one per account and revision.
+  click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
+  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="true">▲ Upvote Revision (49)</button>'));
+  click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
+  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="false">▲ Upvote Revision (48)</button>'));
+});
+
+test("Preview & Adopt closes prerequisites, then adds a private draft that activates on the Plan page", () => {
+  const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
+  const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"')));
+  click({ action: "open-adopt-dialog", publicationId: "publication-rust-async-001" });
+  assert.ok(dialog().includes('aria-labelledby="dialog-partial-adoption-title" data-open="true"'));
+  assert.match(dialog(), /U2 · Reactors, Timers, and Work Stealing<\/span><span class="adopt-unit-meta">4 activities · 110 min \(87–164 min\) · Requires U1</);
+  assert.ok(dialog().includes('<p class="adopt-total">2 of 2 units · 205 min (161–303 min)</p>'));
+
+  // Choosing units: nothing is chosen at first, and adopting needs at least one unit.
+  click({ action: "set-adopt-scope", scope: "units" });
+  assert.ok(dialog().includes("Select at least one unit.") && /data-action="confirm-adopt-curriculum"[^>]*disabled/.test(dialog()));
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
+  assert.ok(dialog().includes('<p class="adopt-total">1 of 2 units · 95 min (74–139 min)</p>'));
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
+  // Unit 2 needs unit 1, so unit 1 is checked and marked as an automatic prerequisite.
+  assert.match(dialog(), /role="checkbox" aria-checked="true" data-action="toggle-adopt-module" data-module-id="rs-module-futures">[\s\S]*?<span class="auto-badge">Auto-included prerequisite<\/span>/);
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-unknown" });
+  assert.deepEqual(app.getState().adoptModuleIds, ["rs-module-scheduling"]);
+
+  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  const state = app.getState();
+  assert.equal(state.selectedCurriculumId, "adopted-publication-rust-async-001");
+  assert.deepEqual([state.topLevel, state.learnSubDestination, state.openDialogId], ["Learn", "Plan", null]);
+  assert.deepEqual(state.adoptions, [{ accountId: "learner-default", publicationId: "publication-rust-async-001", moduleIds: ["rs-module-futures", "rs-module-scheduling"], active: false }]);
+  assert.ok(root.innerHTML.includes("This plan is your private draft of @ferris_ops's template."));
+  assert.ok(root.innerHTML.includes('<option value="adopted-publication-rust-async-001" selected>Rust Async Runtime Internals · Draft</option>'));
+  assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Futures, Wakers, and the Poll Model</span>'));
+  const queue = () => root.innerHTML.slice(root.innerHTML.indexOf('<section class="today-curricula-grid"'), root.innerHTML.indexOf('<section class="flow-board"'));
+  assert.equal(queue().includes("adopted-publication-rust-async-001"), false, "a draft stays out of Today's queue");
+
+  // Activation is the separate, explicit step. Then the plan joins Today, and the listing counts the adoption.
+  click({ action: "activate-revision" });
+  assert.ok(queue().includes('data-curriculum-id="adopted-publication-rust-async-001"'));
+  assert.equal(root.innerHTML.includes("This plan is your private draft"), false);
+  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  assert.equal(app.getState().adoptions.length, 1, "a listing is adopted once per account");
+  app.navigateTopLevel("Explore");
+  assert.match(root.innerHTML, /data-publication-id="publication-rust-async-001"[\s\S]*?· 65 adopted[\s\S]*?<span class="owned-badge">In your plans<\/span>/);
+});
+
+test("Share to Marketplace previews the public projection, then publishes it to Explore and My Publications", () => {
+  const { app, root, click } = mountWithClicks();
+  const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-publication-preview"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-publication-preview"')));
+  // The default plan is already the learner's listing, so it cannot be published twice.
+  app.openDialog("dialog-publication-preview");
+  assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1.") && !dialog().includes("confirm-publish-curriculum"));
+
+  click({ action: "select-curriculum", curriculumId: "curriculum-tolstoy-lit-003" });
+  app.openDialog("dialog-publication-preview");
+  assert.ok(dialog().includes('<h3 id="publish-preview-title">Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina</h3>'));
+  assert.deepEqual([...dialog().matchAll(/<li><svg[\s\S]*?<\/svg><span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), [
+    "Your progress and completion records", "Proficiency, evidence, and diagnostic answers", "Notes, attempts, and practice drafts",
+    "BYOK keys and provider connections", "Billing, budgets, and wallet state", "Your session dates and reminder settings",
+  ]);
+  assert.ok(dialog().includes("Based on @tolstoy_seminar's template."));
+
+  click({ action: "confirm-publish-curriculum" });
+  const published = app.getState().publishedListings;
+  assert.equal(published.length, 1);
+  assert.deepEqual([published[0].handle, published[0].basedOn, published[0].ownerAccountId], ["@alex", "@tolstoy_seminar", "learner-default"]);
+  assert.equal(JSON.stringify(published[0].schedule).includes("start_at"), false, "session dates stay private");
+  assert.equal(JSON.stringify(published[0].curriculum).includes("learner-default"), false, "the account id stays private");
+  assert.equal(app.getState().topLevel, "Explore");
+  const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
+  assert.match(card, /@alex · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?▲ Upvote Revision \(0\)[\s\S]*?<span class="owned-badge">Yours<\/span>/);
+  const mine = root.innerHTML.slice(root.innerHTML.indexOf('<section class="surface-panel my-publications"'));
+  assert.ok(mine.includes('<li data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"><strong>Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina</strong>'));
+  app.openDialog("dialog-publication-preview");
+  assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1."));
+});
+
+test("the header shows the account, signing out purges private state, and guests sign in to return where they were", () => {
+  const { app, root, click, submit } = mountWithClicks();
+  const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));
+  assert.match(header(), /<span class="account-pill"><span class="account-email">alex@curriculum\.io<\/span><span class="role-pill">Learner<\/span><\/span>/);
+  assert.ok(header().includes('data-dialog-id="dialog-auth">Account / Switch</button>') && header().includes('data-action="sign-out">Sign out</button>'));
+
+  click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
+  assert.ok(root.innerHTML.includes('data-self-reported-count="1"'));
+  click({ action: "sign-out" });
+  const guest = app.getState();
+  assert.deepEqual([guest.authStatus, guest.topLevel, guest.recordedProgressEvents.length], ["guest", "Explore", 0]);
+  assert.match(header(), /<span class="account-pill" data-auth-status="guest">Guest · Exploring<\/span>\s*<button type="button" class="btn-primary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in<\/button>/);
+  // No private content reaches a guest's page, not even hidden.
+  for (const hidden of ['id="panel-learn"', 'id="panel-settings"', 'id="learn-detail-inspector"', 'id="dialog-new-curriculum"', "data-self-reported-count", "My Publications"]) {
+    assert.equal(root.innerHTML.includes(hidden), false, `a guest page still contains ${hidden}`);
+  }
+
+  // A protected action records where to return and asks for sign-in. Nothing is voted or opened.
+  click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
+  assert.deepEqual([app.getState().openDialogId, app.getState().votes.length], ["dialog-auth", 0]);
+  click({ action: "open-adopt-dialog", publicationId: "publication-statmech-001" });
+  assert.equal(app.getState().returnTo.label, "Explore › Preview & Adopt: Statistical Mechanics & Thermodynamics");
+  assert.ok(root.innerHTML.includes("After you sign in, you return to <strong>Explore › Preview &amp; Adopt: Statistical Mechanics &amp; Thermodynamics</strong>. Nothing is voted, published, adopted, or bought on your behalf."));
+  submit("submit-sign-in", { "#auth-email-input": { value: "not-an-email" } });
+  assert.ok(root.innerHTML.includes('<p class="field-error" role="alert">Enter a valid email address.</p>'));
+  assert.equal(app.getState().authStatus, "guest");
+
+  // Signing in restores the place and its dialog, never the action.
+  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Curriculum.io" } });
+  const back = app.getState();
+  assert.deepEqual([back.authStatus, back.topLevel, back.openDialogId, back.adoptPublicationId, back.adoptions.length, back.votes.length],
+    ["authenticated", "Explore", "dialog-partial-adoption", "publication-statmech-001", 0, 0]);
+  assert.ok(root.innerHTML.includes('data-self-reported-count="0"'), "the purged completion stays gone");
+
+  // A guest who asks for Learn returns there after sign-in.
+  click({ action: "switch-persona", persona: "guest" });
+  app.navigateTopLevel("Learn");
+  assert.equal(app.getState().returnTo.label, "Learn › Today");
+  click({ action: "sign-in-passkey" });
+  assert.deepEqual([app.getState().topLevel, app.getState().learnSubDestination], ["Learn", "Today"]);
+});
+
+test("an expired session keeps the view for the same account and starts clean for another one", () => {
+  const { app, root, click } = mountWithClicks();
+  click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
+  click({ action: "simulate-session-expired" });
+  assert.equal(app.getState().authStatus, "session_expired");
+  assert.ok(root.innerHTML.includes('<div class="session-banner" role="status"><p><strong>Session expired.</strong> Sign in to resume where you left off.</p>'));
+  assert.ok(root.innerHTML.includes('id="panel-learn"'), "the expired view stays for its own account");
+  click({ action: "set-activity-status", activityId: "activity-example", status: "in_progress" });
+  assert.equal(app.getState().openDialogId, "dialog-auth", "a consequential action waits for sign-in");
+  assert.notEqual(app.getState().activityStates["activity-example"], "in_progress");
+
+  // The same account resumes with its work. Another account starts with a clean session.
+  click({ action: "sign-in-passkey" });
+  assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
+  click({ action: "simulate-session-expired" });
+  click({ action: "switch-persona", persona: "curator" });
+  assert.ok(root.innerHTML.includes('<span class="account-email">ada@curriculum.io</span><span class="role-pill">Curator</span>'));
+  assert.ok(root.innerHTML.includes('data-self-reported-count="0"'));
+});
+
 test("the activity inspector is one modal drawer that never takes width from the matrix", () => {
   const html = renderCurriculumWebAppHtml();
   assert.equal(html.split('id="learn-detail-inspector"').length - 1, 1);
@@ -686,6 +874,20 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(planJson.state.learnSubDestination, "Plan");
     assert.ok(clientJs.includes(`if (!target || target.localName === "select") return;`));
     assert.ok(clientJs.includes(`closest('select[data-action="select-curriculum"]')`));
+
+    // Signing out goes through the same route. A guest's request for Learn opens sign-in instead.
+    const post = async (body) => (await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    })).json();
+    const signedOut = await post({ action: "sign-out" });
+    assert.deepEqual([signedOut.state.authStatus, signedOut.state.topLevel], ["guest", "Explore"]);
+    assert.equal(signedOut.html.includes('id="panel-learn"'), false);
+    const learn = await post({ action: "navigate-top", destination: "Learn" });
+    assert.deepEqual([learn.state.openDialogId, learn.state.returnTo.label], ["dialog-auth", "Learn › Plan"]);
+    const signedIn = await post({ action: "submit-sign-in", email: "alex@curriculum.io" });
+    assert.deepEqual([signedIn.state.authStatus, signedIn.state.topLevel], ["authenticated", "Learn"]);
+    assert.ok(clientJs.includes('root.querySelector(\'.curriculum-app-shell[data-auth-status="authenticated"]\')'));
+    assert.ok(clientJs.includes("new FormData(form).forEach"));
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
