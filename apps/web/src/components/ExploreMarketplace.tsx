@@ -9,29 +9,34 @@ import { resolveTransitiveAdoptionScope, type PublicCurriculumContentBlock } fro
 import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
-import { SfIcon, StatusGlyph } from "./Icons.tsx";
-import { displayUnitTitle, effortWords, humanize, isOneOf, type StudyModule } from "./StudyFlowBoard.tsx";
+import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
+import { displayUnitTitle, effortWords, humanize, isOneOf } from "./StudyFlowBoard.tsx";
 
-export const MARKETPLACE_DOMAINS = ["All", "Engineering", "Mathematics", "Humanities", "Systems"] as const;
-export const MARKETPLACE_RIGORS = ["All", "Formal", "Applied", "Intuitive"] as const;
+// The subject and rigor tags on each card are the filter vocabulary. "All" means no tag is chosen.
+const SUBJECT_TAGS = ["Engineering", "Mathematics", "Physics", "Literature", "Systems"] as const;
+const RIGOR_TAGS = ["Formal", "Applied", "Intuitive"] as const;
+export const MARKETPLACE_DOMAINS = ["All", ...SUBJECT_TAGS] as const;
+export const MARKETPLACE_RIGORS = ["All", ...RIGOR_TAGS] as const;
 export const MARKETPLACE_SORTS = ["top_upvoted", "most_adopted", "newest"] as const;
 export type MarketplaceDomain = (typeof MARKETPLACE_DOMAINS)[number];
 export type MarketplaceRigor = (typeof MARKETPLACE_RIGORS)[number];
 export type MarketplaceSort = (typeof MARKETPLACE_SORTS)[number];
 
 export const SORT_LABELS: Readonly<Record<MarketplaceSort, string>> = {
-  top_upvoted: "Top Upvoted",
-  most_adopted: "Most Adopted",
+  top_upvoted: "Top",
+  most_adopted: "Most adopted",
   newest: "Newest",
 };
 
-export const FILTER_DOMAIN_OF: Readonly<Record<string, Exclude<MarketplaceDomain, "All">>> = {
-  Engineering: "Engineering",
-  Mathematics: "Mathematics",
-  Literature: "Humanities",
-  Systems: "Systems",
-  Physics: "Mathematics",
+const SUBJECT_ICONS: Readonly<Record<string, SfIconName>> = {
+  Engineering: "engineering",
+  Mathematics: "math",
+  Physics: "physics",
+  Literature: "literature",
+  Systems: "systems",
 };
+
+const tagLabelOf = (value: string): string => (value === "Mathematics" ? "Math" : value);
 
 export const PRIVATE_FIELDS_REMOVED = [
   "Your progress and completion records",
@@ -202,13 +207,36 @@ export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): 
   };
 }
 
-function MarketplacePills({ listing, rigor }: { readonly listing: MarketplaceListing; readonly rigor: string }): VNode {
+const rigorTagOf = (listing: MarketplaceListing): (typeof RIGOR_TAGS)[number] | null => {
+  const rigor = mathDepthFor(listing.curriculum, []);
+  return isOneOf(RIGOR_TAGS, rigor) ? rigor : null;
+};
+
+interface FilterTagProps {
+  readonly kind: "domain" | "rigor";
+  readonly value: string;
+  readonly active: string;
+  readonly onCard?: boolean;
+}
+
+// A tag sets its filter. Pressing the tag that is already active clears that filter.
+function FilterTag({ kind, value, active, onCard = false }: FilterTagProps): VNode {
+  const pressed = value === active;
+  const next = pressed ? "All" : value;
+  const label = tagLabelOf(value);
   return (
-    <p class="marketplace-pills">
-      <span class="domain-pill">{`${listing.subject} · ${listing.gateStyle}`}</span>
-      <span class="rigor-badge">{rigor}</span>
-      <span class="price-badge">Free · $0.00 adopt</span>
-    </p>
+    <button
+      type="button"
+      class="tag"
+      data-action={`set-marketplace-${kind}`}
+      data-domain={kind === "domain" ? next : undefined}
+      data-rigor={kind === "rigor" ? next : undefined}
+      aria-pressed={pressed}
+      aria-label={onCard ? `Filter by ${label}` : undefined}
+    >
+      {label}
+      {pressed && !onCard ? <SfIcon name="close" size={15} /> : null}
+    </button>
   );
 }
 
@@ -225,8 +253,6 @@ export interface ExploreMarketplaceProps {
   readonly marketplaceSort: MarketplaceSort;
   readonly marketplaceQuery: string;
   readonly loadMoreNote: string | null;
-  readonly proficiency: ProficiencyProfileFixture;
-  readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
 }
 
 export function ExploreMarketplace({
@@ -242,14 +268,11 @@ export function ExploreMarketplace({
   marketplaceSort,
   marketplaceQuery,
   loadMoreNote,
-  proficiency,
-  catalogResources,
 }: ExploreMarketplaceProps): VNode {
   const upvotesOf = (listing: MarketplaceListing): number =>
     listing.upvotes + votes.filter((vote) => vote.revisionId === listing.revisionId).length;
   const adoptionsOf = (listing: MarketplaceListing): number =>
     listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
-  const rigorOf = (listing: MarketplaceListing): string => mathDepthFor(listing.curriculum, []);
   const rank = (listing: MarketplaceListing): number =>
     marketplaceSort === "top_upvoted"
       ? upvotesOf(listing)
@@ -258,8 +281,8 @@ export function ExploreMarketplace({
         : Date.parse(listing.publishedAt);
   const queryText = marketplaceQuery.toLowerCase();
   const shownListings = listings
-    .filter((listing) => marketplaceDomain === "All" || FILTER_DOMAIN_OF[listing.subject] === marketplaceDomain)
-    .filter((listing) => marketplaceRigor === "All" || rigorOf(listing) === marketplaceRigor)
+    .filter((listing) => marketplaceDomain === "All" || listing.subject === marketplaceDomain)
+    .filter((listing) => marketplaceRigor === "All" || rigorTagOf(listing) === marketplaceRigor)
     .filter(
       (listing) =>
         !queryText ||
@@ -269,10 +292,6 @@ export function ExploreMarketplace({
           .includes(queryText),
     )
     .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.curriculum).localeCompare(goalTitleOf(b.curriculum)));
-
-  const outlineOf = (listing: MarketplaceListing): readonly StudyModule[] =>
-    buildPlanMapAndOutlineModel({ curriculum: listing.curriculum, proficiency, activityStates: {}, catalogResources })
-      .outlineModules;
 
   const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
 
@@ -314,40 +333,27 @@ export function ExploreMarketplace({
         </button>
       </form>
       <div class="marketplace-controls">
-        <div class="segmented" role="group" aria-label="Domain">
-          {MARKETPLACE_DOMAINS.map((domain) => (
-            <button
-              key={domain}
-              type="button"
-              class="seg-btn"
-              data-action="set-marketplace-domain"
-              data-domain={domain}
-              aria-pressed={domain === marketplaceDomain}
-            >
-              {domain}
-            </button>
+        <div class="tag-group" role="group" aria-label="Subject">
+          {SUBJECT_TAGS.map((subject) => (
+            <FilterTag key={subject} kind="domain" value={subject} active={marketplaceDomain} />
           ))}
         </div>
-        <div class="segmented" role="group" aria-label="Rigor">
-          {MARKETPLACE_RIGORS.map((rigor) => (
-            <button
-              key={rigor}
-              type="button"
-              class="seg-btn"
-              data-action="set-marketplace-rigor"
-              data-rigor={rigor}
-              aria-pressed={rigor === marketplaceRigor}
-            >
-              {rigor === "All" ? "Any rigor" : rigor}
-            </button>
+        <div class="tag-group" role="group" aria-label="Rigor">
+          {RIGOR_TAGS.map((rigor) => (
+            <FilterTag key={rigor} kind="rigor" value={rigor} active={marketplaceRigor} />
           ))}
         </div>
-        <div class="segmented" role="group" aria-label="Sort">
+      </div>
+      <div class="marketplace-results-bar">
+        <p class="marketplace-count" role="status">
+          {shownListings.length} curricul{shownListings.length === 1 ? "um" : "a"}. Community publications have not automatically passed educational review.
+        </p>
+        <div class="marketplace-sort" role="group" aria-label="Sort">
           {MARKETPLACE_SORTS.map((sort) => (
             <button
               key={sort}
               type="button"
-              class="seg-btn"
+              class="sort-btn"
               data-action="set-marketplace-sort"
               data-sort={sort}
               aria-pressed={sort === marketplaceSort}
@@ -357,9 +363,6 @@ export function ExploreMarketplace({
           ))}
         </div>
       </div>
-      <p class="marketplace-count" role="status">
-        {shownListings.length} curricul{shownListings.length === 1 ? "um" : "a"}. Community publications have not automatically passed educational review.
-      </p>
       {shownListings.length > 0 ? (
         <div class="marketplace-grid">
           {shownListings.map((listing) => {
@@ -372,69 +375,61 @@ export function ExploreMarketplace({
             const voted =
               !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
             const units = projection.modules.length;
+            const upvotes = upvotesOf(listing);
+            const rigor = rigorTagOf(listing);
             return (
               <article
                 key={id}
                 class="marketplace-card public-template-card"
                 data-publication-id={id}
                 data-revision-id={listing.revisionId}
+                data-subject={listing.subject}
                 aria-labelledby={`listing-${id}-title`}
                 data-opaque-surface="true"
               >
-                <MarketplacePills listing={listing} rigor={rigorOf(listing)} />
-                <h2 id={`listing-${id}-title`} class="marketplace-title">
-                  {projection.title}
-                </h2>
-                <p class="marketplace-summary">{projection.summary}</p>
+                <div class="marketplace-card-head">
+                  <span class="marketplace-card-icon" aria-hidden="true">
+                    <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
+                  </span>
+                  <FilterTag kind="domain" value={listing.subject} active={marketplaceDomain} onCard />
+                  {rigor ? <FilterTag kind="rigor" value={rigor} active={marketplaceRigor} onCard /> : null}
+                </div>
+                <div class="marketplace-card-body">
+                  <h2 id={`listing-${id}-title`} class="marketplace-title">
+                    {projection.title}
+                  </h2>
+                  <p class="marketplace-summary">{projection.summary}</p>
+                </div>
                 <p class="marketplace-meta">
-                  {listing.handle}
+                  <span class="marketplace-handle">{listing.handle}</span>
                   {listing.basedOn ? ` · based on ${listing.basedOn}` : ""} · {units} unit{units === 1 ? "" : "s"} · {adoptionsOf(listing)} adopted
                 </p>
-                <details class="flow-preview">
-                  <summary>Inspect Study Flow</summary>
-                  <ol>
-                    {outlineOf(listing).map((mod, index) => (
-                      <li key={mod.moduleId}>
-                        <span class="flow-preview-unit">
-                          U{index + 1} · {displayUnitTitle(mod.title)}
-                        </span>
-                        <span class="meta-text">
-                          {mod.activities.length} activities · {effortWords(mod.durationTriplet)}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-                <div class="marketplace-actions">
+                <div class="marketplace-card-foot">
                   <button
                     type="button"
-                    class="btn-secondary upvote-btn"
+                    class="upvote-btn"
                     data-action="toggle-upvote"
                     data-publication-id={id}
                     data-revision-id={listing.revisionId}
                     aria-pressed={voted}
+                    aria-label={`Upvote (${upvotes})`}
                   >
-                    ▲ Upvote Revision ({upvotesOf(listing)})
+                    <SfIcon name="upvote" />
+                    <span class="upvote-count">{upvotes}</span>
                   </button>
-                  {yours || myPlan ? (
-                    <>
-                      <span class="owned-badge">{yours ? "Yours" : "In your plans"}</span>
-                      {myPlan ? (
-                        <button
-                          type="button"
-                          class="btn-secondary"
-                          data-action="open-curriculum-plan"
-                          data-curriculum-id={myPlan.curriculumId}
-                        >
-                          Open Plan
-                          <span aria-hidden="true">→</span>
-                        </button>
-                      ) : null}
-                    </>
-                  ) : (
+                  {yours || myPlan ? <span class="owned-badge">{yours ? "Yours" : "In your plans"}</span> : null}
+                  {myPlan ? (
+                    <button
+                      type="button"
+                      class="btn-secondary"
+                      data-action="open-curriculum-plan"
+                      data-curriculum-id={myPlan.curriculumId}
+                    >
+                      Open
+                    </button>
+                  ) : yours ? null : (
                     <button type="button" class="btn-primary" data-action="open-adopt-dialog" data-publication-id={id}>
-                      Preview &amp; Adopt
-                      <span aria-hidden="true">→</span>
+                      Details
                     </button>
                   )}
                 </div>
@@ -525,7 +520,7 @@ export function AdoptCurriculumDialog({
     >
       <form method="dialog" class="dialog-surface">
         <header class="dialog-header">
-          <h2 id="dialog-partial-adoption-title">Preview &amp; Adopt</h2>
+          <h2 id="dialog-partial-adoption-title">Details</h2>
           <button type="submit" class="btn-secondary" data-action="close-dialog">
             Close
           </button>
@@ -553,9 +548,16 @@ export function AdoptCurriculumDialog({
               total.point += mod.durationTriplet.point;
               total.max += mod.durationTriplet.max;
             }
+            const rigor = rigorTagOf(adoptListing);
             return (
               <>
-                <MarketplacePills listing={adoptListing} rigor={mathDepthFor(adoptListing.curriculum, [])} />
+                <p class="marketplace-card-head">
+                  <span class="marketplace-card-icon" data-subject={adoptListing.subject} aria-hidden="true">
+                    <SfIcon name={SUBJECT_ICONS[adoptListing.subject] ?? "course"} />
+                  </span>
+                  <span class="tag">{tagLabelOf(adoptListing.subject)}</span>
+                  {rigor ? <span class="tag">{rigor}</span> : null}
+                </p>
                 <h3 class="adopt-title">{projection.title}</h3>
                 <p class="meta-text">
                   {adoptListing.handle} · {projection.modules.length} units · {adoptionsOf(adoptListing)} adopted · CC BY 4.0

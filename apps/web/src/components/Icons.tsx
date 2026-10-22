@@ -19,7 +19,13 @@ export type SfIconName =
   | "pin"
   | "code"
   | "video"
-  | "course";
+  | "course"
+  | "upvote"
+  | "engineering"
+  | "math"
+  | "physics"
+  | "literature"
+  | "systems";
 
 export type GlyphTone = "todo" | "doing" | "done";
 export type GlyphKind = "module" | "gate";
@@ -144,6 +150,45 @@ function renderSfIconNodes(name: SfIconName): VNode {
         <>
           <path d="M8 3 1.75 6 8 9l6.25-3L8 3z" />
           <path d="M4.25 7.5v3.25c0 .9 1.65 1.75 3.75 1.75s3.75-.85 3.75-1.75V7.5" />
+        </>
+      );
+    case "upvote":
+      return (
+        <>
+          <path
+            class="upvote-thumb"
+            d="M9.8 4.33 9.2 6.8h3.5a1.2 1.2 0 0 1 1.15 1.54l-1.4 4.8a1.2 1.2 0 0 1-1.15.86H3.2A1.2 1.2 0 0 1 2 12.8V8a1.2 1.2 0 0 1 1.2-1.2h1.66a1.2 1.2 0 0 0 1.07-.67L8 2a1.88 1.88 0 0 1 1.8 2.33z"
+          />
+          <path class="upvote-cuff" d="M5 7.6v5.6" />
+        </>
+      );
+    case "engineering":
+      return (
+        <path d="M9.62 4.58a.6.6 0 0 0 0 .84l.96.96a.6.6 0 0 0 .84 0l2.26-2.26a3.6 3.6 0 0 1-4.76 4.76l-4.15 4.15a1.27 1.27 0 0 1-1.8-1.8l4.15-4.15a3.6 3.6 0 0 1 4.76-4.76z" />
+      );
+    case "math":
+      return <path d="M11.75 3.25H4.25L8.5 8l-4.25 4.75h7.5" />;
+    case "physics":
+      return (
+        <>
+          <ellipse cx="8" cy="8" rx="6" ry="2.4" />
+          <ellipse cx="8" cy="8" rx="6" ry="2.4" transform="rotate(60 8 8)" />
+          <ellipse cx="8" cy="8" rx="6" ry="2.4" transform="rotate(-60 8 8)" />
+          <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+        </>
+      );
+    case "literature":
+      return (
+        <>
+          <path d="M8 4.5C6.75 3.6 5 3.25 2.25 3.25v9c2.75 0 4.5.35 5.75 1.25 1.25-.9 3-1.25 5.75-1.25v-9C11 3.25 9.25 3.6 8 4.5z" />
+          <path d="M8 4.5v9" />
+        </>
+      );
+    case "systems":
+      return (
+        <>
+          <rect x="4.25" y="4.25" width="7.5" height="7.5" rx="1.25" />
+          <path d="M6.5 2v2.25M9.5 2v2.25M6.5 11.75V14M9.5 11.75V14M2 6.5h2.25M2 9.5h2.25M11.75 6.5H14M11.75 9.5H14" />
         </>
       );
   }

@@ -250,7 +250,7 @@ test("mountCurriculumWebApp and createCurriculumWebAppController deterministical
   app.toggleUpvote();
   const exploreHtml = app.renderHtml();
   assert.ok(exploreHtml.includes('data-current-top-level="Explore"'));
-  assert.ok(exploreHtml.includes("▲ Upvote Revision (15)"));
+  assert.ok(exploreHtml.includes('aria-pressed="true" aria-label="Upvote (15)"'));
 
   app.navigateTopLevel("Settings");
   app.setThemePreference("dark");
@@ -602,7 +602,7 @@ test("a plan with no public quiz bank gates on a self-check rubric in the drawer
   assert.ok(drawerFor("curriculum-rag-python-001", "activity-quiz").includes(">Formative Checkpoint: Tokenization &amp; Attention Shapes</h2>"));
 });
 
-test("Explore lists the community Marketplace with pills, counts, filters, sorting, and per-account votes", () => {
+test("Explore lists the community Marketplace with concise tags, tag filters, sorting, and per-account votes", () => {
   const titlesOf = (html) => [...html.matchAll(/class="marketplace-title">([^<]+)</g)].map((match) => match[1]);
   const cardOf = (html, id) => html.match(new RegExp(`<article class="marketplace-card public-template-card" data-publication-id="${id}"[\\s\\S]*?</article>`))?.[0] ?? "";
   const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -612,16 +612,30 @@ test("Explore lists the community Marketplace with pills, counts, filters, sorti
     "Tolstoy's Major Novels: War &amp; Peace and Anna Karenina", "Build and Evaluate RAG Systems in Python",
   ], "Top Upvoted is the default order");
 
+  // A card face is a subject icon, one-word tags, title, summary, one meta line, then the vote and one action.
   const rust = cardOf(html, "publication-rust-async-001");
-  assert.match(text(rust), /^Systems · Code Lab Gate Applied Free · \$0\.00 adopt Rust Async Runtime Internals .+ @ferris_ops · 2 units · 64 adopted Inspect Study Flow U1 · Futures, Wakers, and the Poll Model 3 activities · 95 min/);
-  assert.ok(rust.includes('data-action="toggle-upvote" data-publication-id="publication-rust-async-001" data-revision-id="public-revision-rust-async-001" aria-pressed="false">▲ Upvote Revision (48)</button>'));
-  assert.ok(rust.includes('data-action="open-adopt-dialog" data-publication-id="publication-rust-async-001">Preview &amp; Adopt'));
-  assert.match(cardOf(html, "publication-tolstoy-001"), /<span class="domain-pill">Literature · Self-Check Rubric<\/span><span class="rigor-badge">Intuitive<\/span>/);
-  // The learner's own listing and the plans they already have offer Open Plan instead of adoption.
-  assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">/);
-  assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span>/);
+  assert.match(text(rust), /^Systems Applied Rust Async Runtime Internals .+ @ferris_ops · 2 units · 64 adopted 48 Details$/);
+  assert.ok(rust.includes('<span class="marketplace-card-icon" aria-hidden="true"><svg class="sf-icon"'));
+  assert.ok(rust.includes('data-action="toggle-upvote" data-publication-id="publication-rust-async-001" data-revision-id="public-revision-rust-async-001" aria-pressed="false" aria-label="Upvote (48)"><svg class="sf-icon"'));
+  assert.ok(rust.includes('<span class="upvote-count">48</span>'));
+  assert.ok(rust.includes('data-action="open-adopt-dialog" data-publication-id="publication-rust-async-001">Details</button>'));
+  const tagsOf = (card) => [...card.matchAll(/class="tag"[^>]*>([^<]+)</g)].map((match) => match[1]);
+  assert.deepEqual(titlesOf(html).map((_, index) => tagsOf([...html.matchAll(/<article class="marketplace-card[\s\S]*?<\/article>/g)][index][0])), [
+    ["Systems", "Applied"], ["Math", "Formal"], ["Physics", "Formal"], ["Literature", "Intuitive"], ["Engineering", "Formal"],
+  ]);
+  for (const clutter of ["flow-preview", "Inspect Study Flow", "Gate", "$0.00 adopt", "Upvote Revision", "Preview &amp; Adopt</button>"]) {
+    assert.equal(html.slice(html.indexOf('<div class="marketplace-grid">'), html.indexOf("load-more-row")).includes(clutter), false, `a card still shows ${clutter}`);
+  }
+  // The learner's own listing and the plans they already have offer Open instead of Details.
+  assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">Open<\/button>/);
+  assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan"/);
 
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Humanities" })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
+  // The bar and the cards share one tag vocabulary. The active tag is pressed in both places and clears its filter.
+  const physics = renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Physics" });
+  assert.deepEqual(titlesOf(physics), ["Statistical Mechanics &amp; Thermodynamics"]);
+  assert.ok(physics.includes('<button type="button" class="tag" data-action="set-marketplace-domain" data-domain="All" aria-pressed="true">Physics<svg class="sf-icon"'));
+  assert.ok(cardOf(physics, "publication-statmech-001").includes('data-domain="All" aria-pressed="true" aria-label="Filter by Physics">Physics</button>'));
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Literature" })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceRigor: "Applied" })), ["Rust Async Runtime Internals"]);
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
@@ -631,7 +645,7 @@ test("Explore lists the community Marketplace with pills, counts, filters, sorti
   // The controls drive the mounted app. Search runs on submit, and unknown filter values are rejected.
   const { app, root, click, submit } = mountWithClicks({ topLevel: "Explore" });
   click({ action: "set-marketplace-domain", domain: "Mathematics" });
-  assert.deepEqual(titlesOf(root.innerHTML), ["Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics"]);
+  assert.deepEqual(titlesOf(root.innerHTML), ["Linear Algebra &amp; Spectral Methods"]);
   click({ action: "set-marketplace-domain", domain: "Astrology" });
   assert.equal(app.getState().marketplaceDomain, "Mathematics");
   click({ action: "set-marketplace-domain", domain: "All" });
@@ -641,12 +655,13 @@ test("Explore lists the community Marketplace with pills, counts, filters, sorti
 
   // A vote is one per account and revision.
   click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
-  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="true">▲ Upvote Revision (49)</button>'));
+  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="true" aria-label="Upvote (49)"'));
+  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('<span class="upvote-count">49</span>'));
   click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
-  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="false">▲ Upvote Revision (48)</button>'));
+  assert.ok(cardOf(root.innerHTML, "publication-rust-async-001").includes('aria-pressed="false" aria-label="Upvote (48)"'));
 });
 
-test("Preview & Adopt closes prerequisites, then adds a private draft that activates on the Plan page", () => {
+test("Details closes prerequisites, then adds a private draft that activates on the Plan page", () => {
   const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"')));
   click({ action: "open-adopt-dialog", publicationId: "publication-rust-async-001" });
@@ -714,7 +729,7 @@ test("Share to Marketplace previews the public projection, then publishes it to 
   assert.equal(JSON.stringify(published[0].curriculum).includes("learner-default"), false, "the account id stays private");
   assert.equal(app.getState().topLevel, "Explore");
   const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
-  assert.match(card, /@alex · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?▲ Upvote Revision \(0\)[\s\S]*?<span class="owned-badge">Yours<\/span>/);
+  assert.match(card, /@alex<\/span> · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?aria-label="Upvote \(0\)"[\s\S]*?<span class="owned-badge">Yours<\/span>/);
   const mine = root.innerHTML.slice(root.innerHTML.indexOf('<section class="surface-panel my-publications"'));
   assert.ok(mine.includes("<li data-publication-id=\"publication-curriculum-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
   app.openDialog("dialog-publication-preview");
@@ -742,8 +757,8 @@ test("the header shows the account, signing out purges private state, and guests
   click({ action: "toggle-upvote", revisionId: "public-revision-rust-async-001" });
   assert.deepEqual([app.getState().openDialogId, app.getState().votes.length], ["dialog-auth", 0]);
   click({ action: "open-adopt-dialog", publicationId: "publication-statmech-001" });
-  assert.equal(app.getState().returnTo.label, "Explore › Preview & Adopt: Statistical Mechanics & Thermodynamics");
-  assert.ok(root.innerHTML.includes("After you sign in, you return to <strong>Explore › Preview &amp; Adopt: Statistical Mechanics &amp; Thermodynamics</strong>. Nothing is voted, published, adopted, or bought on your behalf."));
+  assert.equal(app.getState().returnTo.label, "Explore › Details: Statistical Mechanics & Thermodynamics");
+  assert.ok(root.innerHTML.includes("After you sign in, you return to <strong>Explore › Details: Statistical Mechanics &amp; Thermodynamics</strong>. Nothing is voted, published, adopted, or bought on your behalf."));
   submit("submit-sign-in", { "#auth-email-input": { value: "not-an-email" } });
   assert.ok(root.innerHTML.includes('<p class="field-error" role="alert">Enter a valid email address.</p>'));
   assert.equal(app.getState().authStatus, "guest");
@@ -933,7 +948,7 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   // 1. Subgrid CTA alignment across sibling cards regardless of title/meta wrap height
   assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-template-rows:\s*repeat\(5,\s*auto\);/s);
   assert.match(css, /\.curriculum-card\s*\{[^}]*grid-row:\s*span 5;[^}]*grid-template-rows:\s*auto auto auto 1fr auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
-  assert.match(css, /\.marketplace-card\s*\{[^}]*grid-row:\s*span 6;[^}]*grid-template-rows:\s*auto auto 1fr auto auto auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
+  assert.match(css, /\.marketplace-card\s*\{[^}]*grid-row:\s*span 4;[^}]*grid-template-rows:\s*auto 1fr auto auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
 
   // 2. Scroll-snap carousel for >3 curricula
   assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-auto-flow:\s*column;[^}]*overflow-x:\s*auto;[^}]*overscroll-behavior-x:\s*contain;[^}]*scroll-snap-type:\s*x mandatory;/s);

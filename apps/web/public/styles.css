@@ -50,6 +50,11 @@
   --selected-row: color-mix(in srgb, var(--color-accent) 5%, transparent);
   --scrim: rgb(16 18 22 / 0.28);
   --shadow-sheet: 0 1px 2px rgb(23 25 28 / 0.06), 0 18px 48px -12px rgb(23 25 28 / 0.22);
+  --subject-engineering: #2259D4;
+  --subject-mathematics: #0F766E;
+  --subject-physics: #B45309;
+  --subject-literature: #BE185D;
+  --subject-systems: #4D7C0F;
 }
 
 [data-theme="dark"] {
@@ -73,6 +78,11 @@
   --selected-row: color-mix(in srgb, var(--color-accent) 8%, transparent);
   --scrim: rgb(0 0 0 / 0.5);
   --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.5), 0 18px 48px -12px rgb(0 0 0 / 0.7);
+  --subject-engineering: #9DBAFF;
+  --subject-mathematics: #5EEAD4;
+  --subject-physics: #FBBF24;
+  --subject-literature: #F9A8D4;
+  --subject-systems: #A3E635;
 }
 
 /* Base */
@@ -2754,7 +2764,7 @@ button[interestfor="plan-relationship-legend"] {
   }
 }
 
-/* Explore: the community Marketplace. Search, three filter groups, then a grid of white listing cards. */
+/* Explore: the community Marketplace. Search, tag filters, a results bar, then a grid of listing cards. */
 .marketplace-search {
   display: flex;
   gap: var(--space-2);
@@ -2766,23 +2776,87 @@ button[interestfor="plan-relationship-legend"] {
   max-width: none;
 }
 
+/* Tags: the same pill filters the grid from the bar and from a card. */
 .marketplace-controls {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+.tag-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tag[aria-pressed="true"] {
+  padding-inline-end: 10px;
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
+  font-weight: 600;
+}
+
+.tag .sf-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.marketplace-results-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
   margin: 0 0 var(--space-3);
 }
 
-.marketplace-controls .seg-btn {
-  min-height: 36px;
-  padding: 4px 12px;
-  font-size: 13px;
-}
-
 .marketplace-count {
-  margin: 0 0 var(--space-4);
+  margin: 0;
   font-size: 13px;
   color: var(--color-text-secondary);
+}
+
+.marketplace-sort {
+  display: flex;
+  gap: 2px;
+}
+
+.sort-btn {
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.sort-btn[aria-pressed="true"] {
+  background: var(--tint-8);
+  color: var(--color-text-primary);
+  font-weight: 600;
 }
 
 .marketplace-grid {
@@ -2792,32 +2866,190 @@ button[interestfor="plan-relationship-legend"] {
   margin: 0 0 var(--space-5);
 }
 
+/* Each card spans four shared rows, so tags, meta lines, and footers line up across a row of cards. */
 .marketplace-card {
   display: grid;
-  grid-row: span 6;
-  grid-template-rows: auto auto 1fr auto auto auto;
+  grid-row: span 4;
+  grid-template-rows: auto 1fr auto auto;
   grid-template-rows: subgrid;
   align-items: start;
-  gap: var(--space-2);
+  row-gap: var(--space-2);
   padding: var(--space-5);
   border: var(--hairline);
   border-radius: var(--radius-surface);
   background: var(--color-surface);
 }
 
-.marketplace-card > p,
-.dialog-surface .marketplace-pills {
+.marketplace-card p {
   margin: 0;
 }
 
-.marketplace-pills {
-  display: flex;
-  flex-wrap: wrap;
+.marketplace-card-body {
+  display: grid;
   gap: 6px;
 }
 
-.rigor-badge,
-.price-badge,
+.marketplace-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--space-2);
+}
+
+[data-subject="Engineering"] {
+  --subject: var(--subject-engineering);
+}
+
+[data-subject="Mathematics"] {
+  --subject: var(--subject-mathematics);
+}
+
+[data-subject="Physics"] {
+  --subject: var(--subject-physics);
+}
+
+[data-subject="Literature"] {
+  --subject: var(--subject-literature);
+}
+
+[data-subject="Systems"] {
+  --subject: var(--subject-systems);
+}
+
+.marketplace-card-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin-inline-end: 6px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--subject, var(--color-text-secondary)) 13%, var(--color-surface));
+  color: var(--subject, var(--color-text-secondary));
+}
+
+.marketplace-card-icon .sf-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.marketplace-card-head .tag {
+  min-height: 28px;
+  padding: 2px 10px;
+  border-color: transparent;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.marketplace-card-head .tag[aria-pressed="true"] {
+  background: var(--color-accent-surface);
+  color: var(--color-text-primary);
+}
+
+.marketplace-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: clip;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.marketplace-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: clip;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.marketplace-meta {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.marketplace-handle {
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.marketplace-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: var(--hairline);
+}
+
+.marketplace-card-foot :is(.btn-primary, .btn-secondary) {
+  min-height: 36px;
+  padding: 6px 18px;
+  font-size: 14px;
+}
+
+/* The vote follows the social-feed pattern: an icon and a count in one pill that fills when pressed. */
+.upvote-btn {
+  gap: 6px;
+  min-width: 0;
+  min-height: 36px;
+  margin-inline-end: auto;
+  padding: 6px 14px 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.upvote-btn .sf-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.upvote-btn[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--color-accent-surface);
+  color: var(--color-accent);
+}
+
+.upvote-btn[aria-pressed="true"] .upvote-thumb {
+  fill: currentColor;
+}
+
+.upvote-btn[aria-pressed="true"] .upvote-cuff {
+  stroke: var(--color-accent-surface);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .tag:not([aria-pressed="true"]):hover,
+  .upvote-btn:not([aria-pressed="true"]):hover {
+    border-color: var(--color-border-control);
+    background: var(--tint-4);
+  }
+
+  .marketplace-card-head .tag:not([aria-pressed="true"]):hover {
+    border-color: transparent;
+    background: var(--tint-12);
+    color: var(--color-text-primary);
+  }
+
+  .sort-btn:not([aria-pressed="true"]):hover {
+    background: var(--tint-4);
+    color: var(--color-text-primary);
+  }
+}
+
 .owned-badge,
 .auto-badge,
 .role-pill {
@@ -2829,64 +3061,9 @@ button[interestfor="plan-relationship-legend"] {
   font-weight: 600;
 }
 
-.rigor-badge {
-  background: var(--color-accent-surface);
-  color: var(--color-text-primary);
-}
-
-.price-badge,
 .owned-badge {
   background: var(--color-success-surface);
   color: var(--color-success-text);
-}
-
-.marketplace-title {
-  font-size: 18px;
-  line-height: 1.3;
-}
-
-.marketplace-summary {
-  font-size: 14px;
-}
-
-.marketplace-meta {
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-secondary);
-}
-
-.flow-preview {
-  padding-top: var(--space-2);
-  font-size: 14px;
-}
-
-.flow-preview summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.flow-preview ol {
-  display: grid;
-  gap: var(--space-1);
-  margin: var(--space-2) 0 0;
-  padding-left: 0;
-  list-style: none;
-}
-
-.flow-preview li {
-  display: grid;
-}
-
-.flow-preview .meta-text {
-  margin: 0;
-}
-
-.marketplace-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
 }
 
 .publication-list {
@@ -3890,6 +4067,7 @@ dialog.inspector::backdrop {
   .draft-notice,
   .auth-return,
   .seg-btn[aria-pressed="true"],
+  .sort-btn[aria-pressed="true"],
   .switch-track {
     border: 1px solid CanvasText;
   }

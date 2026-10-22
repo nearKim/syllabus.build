@@ -2056,8 +2056,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         votes,
         adoptions,
         myPlans,
-        proficiency,
-        catalogResources,
         marketplaceDomain,
         marketplaceRigor,
         marketplaceSort,
@@ -2686,7 +2684,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       if (!signedIn() && !OPEN_ACTIONS.has(action)) {
         const listing = action === "open-adopt-dialog" ? listings().find((entry) => entry.publicationId === value("publicationId")) : undefined;
         requireSignIn(listing
-          ? placeOf("Explore", learnSubDestination, "dialog-partial-adoption", listing.publicationId, `Explore › Preview & Adopt: ${goalTitleOf(listing.curriculum)}`)
+          ? placeOf("Explore", learnSubDestination, "dialog-partial-adoption", listing.publicationId, `Explore › Details: ${goalTitleOf(listing.curriculum)}`)
           : placeOf(topLevel, learnSubDestination));
         return { handled: true, state: getState() };
       }
