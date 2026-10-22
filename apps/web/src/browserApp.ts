@@ -2250,7 +2250,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies.</p>
+      <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
       <p class="prose">This screen does not call a live unpublish route and does not report success.</p>
     </form>
   </dialog>

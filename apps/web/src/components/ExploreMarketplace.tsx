@@ -1,6 +1,7 @@
 import type { ComponentChildren, VNode } from "preact";
 import {
   buildPlanMapAndOutlineModel,
+  computeActivityDurationTriplet,
   renderUntrustedCatalogText,
   type CatalogResourceMetadataInput,
 } from "../../../../packages/ui/src/index.ts";
@@ -73,6 +74,13 @@ const FACET_LABELS: Readonly<Record<MarketplaceFacet, string>> = {
 };
 
 const tagLabelOf = (value: string): string => (value === "Mathematics" ? "Math" : value);
+
+// A count and its noun, such as "1 learner" or "142 learners". The number is bold.
+const countWithNoun = (count: number, noun: string): VNode => (
+  <span>
+    <b>{count}</b> {count === 1 ? noun : `${noun}s`}
+  </span>
+);
 
 const categoryOf = (subject: string): CategoryTag | undefined =>
   CATEGORY_TAGS.find((category) => (SUBJECTS_BY_CATEGORY[category] as readonly string[]).includes(subject));
@@ -152,6 +160,13 @@ export function mathDepthFor(curriculum: Record<string, unknown>, topicIds: read
   );
   return [...depths].map(humanize).join(", ") || "Not stated";
 }
+
+// A plan's estimated study time at 1x speed, in minutes.
+const studyMinutesOf = (curriculum: Record<string, unknown>): number =>
+  rawListOf(curriculum, "activities").reduce(
+    (sum, activity) => sum + computeActivityDurationTriplet(activity["duration_estimate"], 1).point,
+    0,
+  );
 
 export const goalTitleOf = (curriculum: Record<string, unknown>): string =>
   renderUntrustedCatalogText(asRecord(curriculum["goal"])["title"], { maxLength: 200 }).text || "Untitled plan";
@@ -377,6 +392,11 @@ export function ExploreMarketplace({
     listing.upvotes + votes.filter((vote) => vote.revisionId === listing.revisionId).length;
   const adoptionsOf = (listing: MarketplaceListing): number =>
     listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
+  // Study hours count a plan's estimated study time once for each learner who adopted it.
+  const studyHoursOf = (listing: MarketplaceListing): number =>
+    Math.round((studyMinutesOf(listing.curriculum) * adoptionsOf(listing)) / 60);
+  const planOf = (listing: MarketplaceListing): ActiveCurriculum | undefined =>
+    myPlans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
   const rank = (listing: MarketplaceListing): number =>
     marketplaceSort === "top_upvoted"
       ? upvotesOf(listing)
@@ -430,6 +450,19 @@ export function ExploreMarketplace({
   );
 
   const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
+  const published = ownedListings.length > 0;
+  const ownedTotal = (countOf: (listing: MarketplaceListing) => number): number =>
+    ownedListings.reduce((sum, listing) => sum + countOf(listing), 0);
+  const impact: readonly (readonly [SfIconName, string, number])[] = [
+    ["course", "Learners reached", ownedTotal(adoptionsOf)],
+    ["clock", "Study hours gifted", ownedTotal(studyHoursOf)],
+    ["upvote", "Community upvotes", ownedTotal(upvotesOf)],
+  ];
+  const shareButton = (label: string, kind: "btn-primary" | "btn-secondary"): VNode => (
+    <button type="button" class={kind} data-action="open-dialog" data-dialog-id="dialog-publication-preview">
+      {label}
+    </button>
+  );
 
   return (
     <section
@@ -602,9 +635,7 @@ export function ExploreMarketplace({
             const id = listing.publicationId;
             const projection = publicProjectionOf(listing.curriculum);
             const yours = !signedOut && listing.ownerAccountId === account.accountId;
-            const myPlan = myPlans.find(
-              (plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId,
-            );
+            const myPlan = planOf(listing);
             const voted =
               !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
             const units = projection.modules.length;
@@ -700,33 +731,109 @@ export function ExploreMarketplace({
         </p>
       ) : null}
       {signedOut ? null : (
-        <section class="surface-panel my-publications" data-opaque-surface="true">
-          <h2>My Publications</h2>
-          <p class="meta-text">Owner records load fresh on every visit and are never cached.</p>
-          {ownedListings.length > 0 ? (
+        <section class="surface-panel my-publications" aria-labelledby="my-publications-title" data-opaque-surface="true">
+          <div class="my-publications-head">
+            <div>
+              <h2 id="my-publications-title">My Publications</h2>
+              {published ? (
+                <p class="meta-text">
+                  Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free.
+                </p>
+              ) : null}
+            </div>
+            {published ? shareButton("Share another curriculum", "btn-secondary") : null}
+          </div>
+          {published ? (
             <>
-              <ul class="publication-list">
-                {ownedListings.map((listing) => (
-                  <li key={listing.publicationId} data-publication-id={listing.publicationId}>
-                    <strong>{goalTitleOf(listing.curriculum)}</strong>
-                    <span class="meta-text">
-                      Public · Revision 1 · {upvotesOf(listing)} upvotes · {adoptionsOf(listing)} adopted
-                    </span>
-                  </li>
+              <dl class="philanthropy-impact">
+                {impact.map(([icon, label, value]) => (
+                  <div key={label}>
+                    <dt>
+                      <SfIcon name={icon} />
+                      {label}
+                    </dt>
+                    <dd>{value}</dd>
+                  </div>
                 ))}
+                <div class="impact-license">
+                  <dt>
+                    <SfIcon name="globe" />
+                    Free for every learner
+                  </dt>
+                  <dd>CC BY 4.0</dd>
+                </div>
+              </dl>
+              <p class="meta-text impact-note">Study hours multiply each plan's estimated study time by its adoptions.</p>
+              <ul class="publication-list">
+                {ownedListings.map((listing) => {
+                  const title = goalTitleOf(listing.curriculum);
+                  const myPlan = planOf(listing);
+                  return (
+                    <li key={listing.publicationId} data-publication-id={listing.publicationId}>
+                      <strong>{title}</strong>
+                      <span class="marketplace-card-icon" data-subject={listing.subject} aria-hidden="true">
+                        <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
+                      </span>
+                      {listing.topicTags.length > 0 ? (
+                        <span class="publication-topics">
+                          {listing.topicTags.map((topic) => (
+                            <span key={topic} class="tag">
+                              {topic}
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                      <p class="publication-impact">
+                        {adoptionsOf(listing) > 0 ? (
+                          <>
+                            {countWithNoun(adoptionsOf(listing), "learner")}
+                            {countWithNoun(studyHoursOf(listing), "study hour")}
+                            {countWithNoun(upvotesOf(listing), "upvote")}
+                          </>
+                        ) : (
+                          <span>Live in Explore and ready for its first learner</span>
+                        )}
+                        <span>Public · Revision 1</span>
+                      </p>
+                      <span class="publication-actions">
+                        {myPlan ? (
+                          <button
+                            type="button"
+                            class="btn-secondary"
+                            data-action="open-curriculum-plan"
+                            data-curriculum-id={myPlan.curriculumId}
+                          >
+                            Open
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          class="unpublish-btn"
+                          data-action="open-dialog"
+                          data-dialog-id="dialog-unpublish"
+                          aria-label={`Unpublish ${title}`}
+                        >
+                          Unpublish
+                        </button>
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
-              <p class="prose warning-copy">
-                Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.
-              </p>
-              <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-unpublish">
-                Unpublish
-              </button>
             </>
           ) : (
-            <p class="empty-state">
-              <SfIcon name="resources" />
-              <span>You have not published a curriculum yet.</span>
-            </p>
+            <div class="publish-invite">
+              <span class="publish-invite-icon" aria-hidden="true">
+                <SfIcon name="globe" />
+              </span>
+              <div>
+                <h3>Help the next learner start where you did</h3>
+                <p class="prose meta-text">
+                  Publishing shares your plan's structure under CC BY 4.0, so any self-learner can adopt it for free. Your progress, notes, evidence, keys, billing, and session dates stay private.
+                </p>
+                {shareButton("Share your first curriculum", "btn-primary")}
+              </div>
+            </div>
           )}
         </section>
       )}

@@ -15,6 +15,7 @@ export type SfIconName =
   | "check"
   | "close"
   | "clock"
+  | "globe"
   | "rigor"
   | "pin"
   | "code"
@@ -120,6 +121,14 @@ function renderSfIconNodes(name: SfIconName): VNode {
         <>
           <circle cx="8" cy="8" r="5.25" />
           <path d="M8 5.25V8l1.9 1.25" />
+        </>
+      );
+    case "globe":
+      return (
+        <>
+          <circle cx="8" cy="8" r="5.25" />
+          <path d="M2.75 8h10.5" />
+          <path d="M8 2.75c1.45 1.4 2.2 3.15 2.2 5.25S9.45 11.85 8 13.25C6.55 11.85 5.8 10.1 5.8 8S6.55 4.15 8 2.75z" />
         </>
       );
     case "rigor":

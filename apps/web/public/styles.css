@@ -3242,7 +3242,8 @@ button[interestfor="plan-relationship-legend"] {
   border-top: var(--hairline);
 }
 
-.marketplace-card-foot :is(.btn-primary, .btn-secondary) {
+.marketplace-card-foot :is(.btn-primary, .btn-secondary),
+.publication-actions .btn-secondary {
   min-height: 36px;
   padding: 6px 18px;
   font-size: 14px;
@@ -3330,21 +3331,248 @@ button[interestfor="plan-relationship-legend"] {
   color: var(--color-success-text);
 }
 
+/* My Publications thanks the author, totals what their shared plans gave learners, then lists each publication. */
+.my-publications {
+  container-type: inline-size;
+}
+
+.my-publications-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.my-publications-head .meta-text {
+  max-width: 60ch;
+}
+
+/* The impact strip is one tinted band. The 1px gap shows the band's darker base as the dividers. */
+.philanthropy-impact {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  overflow: clip;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-success-text) 16%, var(--color-success-surface));
+}
+
+.philanthropy-impact > div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: var(--space-4);
+  background: var(--color-success-surface);
+}
+
+.philanthropy-impact dt {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--color-success-text);
+}
+
+.philanthropy-impact dt .sf-icon {
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+}
+
+.philanthropy-impact dd {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+/* The license reads as a badge, sized to the numbers beside it. */
+.philanthropy-impact .impact-license dd {
+  align-self: flex-start;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-success-text) 32%, transparent);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--color-success-text);
+}
+
+.impact-note {
+  margin: var(--space-2) 0 0;
+  font-size: 13px;
+}
+
 .publication-list {
   display: grid;
-  margin: var(--space-3) 0;
+  margin: var(--space-4) 0 0;
   padding: 0;
   list-style: none;
 }
 
+/* The title comes first in the markup. The grid places the subject icon before it. */
 .publication-list li {
   display: grid;
-  gap: 2px;
-  padding: var(--space-3) 0;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "icon title actions"
+    "icon topics actions"
+    "icon impact actions";
+  align-items: center;
+  gap: 6px var(--space-3);
+  padding: var(--space-4) 0;
 }
 
 .publication-list li + li {
   border-top: var(--hairline);
+}
+
+.publication-list strong {
+  grid-area: title;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.publication-list .marketplace-card-icon {
+  grid-area: icon;
+  align-self: start;
+  margin: 0;
+  transition: background-color 240ms var(--ease-out), scale 240ms var(--ease-out);
+}
+
+.publication-topics {
+  grid-area: topics;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.publication-topics .tag {
+  min-height: 24px;
+  padding: 1px 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.publication-impact {
+  grid-area: impact;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+/* The separator trails each group, so a wrapped line never starts with a dot. */
+.publication-impact span:not(:last-child)::after {
+  content: "·";
+  content: "·" / "";
+  margin-inline-start: 8px;
+}
+
+.publication-impact b {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.publication-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Unpublish stays quiet in the list. Its dialog carries the full consequences. */
+.unpublish-btn {
+  min-width: 0;
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .unpublish-btn:hover {
+    background: var(--color-danger-surface);
+    color: var(--color-danger-text);
+  }
+
+  .publication-list li:hover .marketplace-card-icon {
+    background: color-mix(in srgb, var(--subject, var(--color-text-secondary)) 22%, var(--color-surface));
+    scale: 1.08;
+  }
+}
+
+/* The invitation shows when the learner has not published yet. */
+.publish-invite {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border-radius: var(--radius-control);
+  background: var(--color-success-surface);
+}
+
+.publish-invite-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--color-surface);
+  color: var(--color-success-text);
+}
+
+.publish-invite-icon .sf-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.publish-invite h3 {
+  margin: 0 0 var(--space-1);
+}
+
+.publish-invite .meta-text {
+  margin: 0 0 var(--space-4);
+  color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
+}
+
+@container (width < 600px) {
+  .philanthropy-impact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .publication-list li {
+    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-areas:
+      "icon title"
+      "icon topics"
+      "icon impact"
+      ". actions";
+  }
+
+  .publish-invite {
+    flex-direction: column;
+    padding: var(--space-4);
+  }
 }
 
 .load-more-row {
@@ -4346,6 +4574,8 @@ dialog.inspector::backdrop {
   .node-card,
   .macro-node,
   .surface-panel,
+  .philanthropy-impact,
+  .publish-invite,
   .today-unified-header,
   .badge,
   .proficiency-pill,
