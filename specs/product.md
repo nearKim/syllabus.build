@@ -1264,7 +1264,7 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | Surface | Content in priority order | Primary action and important states |
 | --- | --- | --- |
 | Entry and sign-in | Product purpose; public exploration; save/private-learning benefit | Sign in or explore; session expired, verification needed, preserved return destination |
-| Today | Multi-curriculum daily study queue across active plans; next session per active curriculum; enclosed Review Queue and Completed Work surface card | Resume session (opens detail drawer) or Open Plan; no plan, no session, paused, overdue, unavailable resource, unsynchronized work |
+| Today | Multi-curriculum daily queue; focused curriculum Study Flow; expandable Unit Map/Syllabus overview; enclosed Review Queue and Completed Work | Resume session or Edit Plan & Pacing; no plan, no session, paused, overdue, unavailable resource, unsynchronized work |
 | New curriculum | Goal and intended outcome; proposed scope; editable assumptions | Continue; ambiguous goal, no relevant catalog coverage, preserved draft |
 | Planning constraints | Time/capacity/deadline; access; language; separate spend categories | Review choices; impossible deadline, unavailable subscription, unknown cost |
 | Background and preferences | Topic claims/evidence; math depth; order; known-material treatment | Continue or check prerequisites; unknown, partial evidence, explicit override |
@@ -1273,13 +1273,13 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | Diagnostic results | Assessed objectives; evidence/limitations; unassessed areas | Review planning implications; partial result, no demonstrated evidence |
 | AI authorization | Mode/provider/model; operation; applicable cost basis/ceiling; terms | Authorize generation; expired quote, missing key, insufficient credit |
 | Generation status | Authoritative job state; retained request; available recovery | Open draft or Cancel; queued, running, validating, failed, cancellation requested |
-| Draft review | Bounded outcomes; map/outline; gaps; effort; costs; assumptions | Activate plan; partial coverage, infeasible schedule, stale draft |
-| Plan | Modules and explicit relationships; selected module; outline/map control | Open module; large graph, inaccessible resource, unsupported schema |
+| Draft review | Plan workspace in draft state; bounded outcomes and evidence paths; prerequisites; pacing; instructional assumptions; access and costs | Activate plan after review; partial coverage, infeasible schedule, stale draft |
+| Plan | Outcomes and prerequisites; pacing and distributed practice; instructional approach and adaptation; curriculum lifecycle controls | Inspect evidence, Preview changes, or Resume; missing coverage, infeasible schedule, stale proposal, unsupported schema |
 | Activity | Objective; assigned material/task; effort/access; assistance/evidence status | Open material or Start task; changed source, saved draft, completed/skipped |
 | Practice and feedback | Task/response; help; attributable feedback and next step | Submit or Continue; evaluation pending, advisory result, correction |
 | Progress and evidence | Required completion; objective evidence; review timing; history | Inspect evidence; unknown, assisted, corrected, unmapped old evidence |
-| Schedule and reminders | Session list; timezone; feasibility; quiet hours and permission | Reschedule or Save; DST conflict, stale schedule, denied/unsupported permission |
-| Adaptation review | Proposed diff; reasons; preserved outcomes/depth; access/time/cost effects | Accept revision; no change, infeasible, stale, retained current plan |
+| Schedule and reminders | Plan owns curriculum pacing and session rebalancing; Settings owns reminder preferences, quiet hours, and notification permission | Preview schedule or Save reminder preferences; capacity conflict, DST conflict, stale schedule, denied permission |
+| Adaptation review | Plan-owned before/after diff; reasons; preserved outcomes and depth; evidence, access, time, and cost effects | Accept revision or Keep current plan; no change, infeasible, stale, retained current plan |
 | Resource detail | Exact work/creator; assigned portion; review evidence; access/freshness | Open source or propose replacement; unknown price, no eligible alternative |
 | Explore | Search; supported filters; public revision summaries | Open template; no results, unavailable selection, pagination |
 | Public curriculum | Audience/outcomes; depth/prerequisites; diagram/outline; resources; attribution/version | Use this curriculum; signed out, author view, old revision, unavailable |
@@ -1326,9 +1326,91 @@ Coding activities initially use a local or external environment, with setup requ
 
 ### 9.7 Today, plan diagrams, and progress
 
-**Today vs. Plan composition:** Today serves as the learner's **multi-curriculum daily dashboard** across all active curricula, displaying a white summary header, per-curriculum Next-up session cards (each with `Resume →` to open the activity detail drawer and `Open Plan →` to inspect that curriculum's full architecture), and an enclosed white surface card grouping the **Review queue** and **Completed work** with count badges and hairline rows (never leaving headings or empty states floating unenclosed on the gray canvas). **Plan** serves as the dedicated single-curriculum architecture workspace: a unified white header card (with the active curriculum switcher, progress summary, and `Resume →` CTA) followed by the configurable **Study Flow** matrix enclosed in its own elevated white surface container. Flow configuration switches use concise 1–2 word labels (`Theory`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) with zero layout shift between modes, and flowchart node cards share a uniform width and height without repeating column header titles inside the cards. For niche or humanities topics where no public reviewed quiz bank exists (e.g., literature or philosophy), gates and reviews present a **Synthesis & Self-Check Rubric** (guiding reflection prompt + self-check criteria labeled as self-evaluated per `PED-006`) rather than fabricating objective exam banks. Clicking any activity opens the structured slide-over detail drawer with a 3-state status selector (`Not started` | `In progress` | `Done`), celebratory completion micro-animation, `Go to next step →` button, prominent Study Material / Source card, and task-specific presentations for Coding Labs, Objective Quizzes, and Synthesis Rubrics. No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation.
+**Today composition and contextual transition:** Today is the daily execution surface across active curricula. It contains next-session cards, the selected curriculum's Study Flow, due reviews, and completed work.
 
-**Plan composition on wide screens:** plan title and bounded outcome; progress summary; Map/Outline control; focused module graph; selected-module detail. Show level of mathematical treatment and resource/access warnings in readable text. The graph uses modules as top-level nodes; books, chapters, and quizzes remain activities within modules unless a real dependency warrants more detail. Group large plans into navigable regions with counts and disclosed filters. Never silently hide required work.
+The Focused curriculum header exposes **Resume** and **Edit Plan & Pacing →**. The latter opens Plan for the same curriculum and revision. It preserves module and activity selection. Browser Back restores Today's context and safe scroll position.
+
+An expandable Curriculum overview provides **Unit Map / Syllabus** views without leaving Today. It exposes orientation and inspection, not curriculum mutation. Switching views does not alter the schedule, evidence, or curriculum. Reuse the same curriculum projection for both surfaces.
+
+Study Flow belongs to Today. Plan must not repeat the complete Study Flow matrix as its main content or its accessible outline.
+
+Today retains a white summary header and per-curriculum Next-up session cards. Each card exposes `Resume →` to open the activity detail drawer and `Open Plan →` to inspect that curriculum's architecture. An enclosed white surface card groups the **Review queue** and **Completed work** with count badges and hairline rows. Never leave headings or empty states floating unenclosed on the gray canvas. Enclose Study Flow in its own elevated white surface container.
+
+Flow configuration switches use concise 1–2 word labels (`Theory`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) with zero layout shift between modes. Flowchart node cards share a uniform width and height without repeating column header titles inside the cards. Treat Review and Deep Dive display controls as presentation choices unless they enter an explicit adaptation workflow. Hiding work must not remove its obligation.
+
+For niche or humanities topics where no public reviewed quiz bank exists (e.g., literature or philosophy), gates and reviews present a **Synthesis & Self-Check Rubric**. It contains a guiding reflection prompt and self-check criteria labeled as self-evaluated per `PED-006`. Do not fabricate objective exam banks. Clicking any activity opens the structured slide-over detail drawer with a 3-state status selector (`Not started` | `In progress` | `Done`), celebratory completion micro-animation, `Go to next step →` button, prominent Study Material / Source card, and task-specific presentations for Coding Labs, Objective Quizzes, and Synthesis Rubrics. No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation. Respect reduced-motion preferences.
+
+**Plan composition:** Plan is a single-curriculum planning workspace with the following four sections. Use plain learner-facing labels. Do not expose the research terminology as interface labels.
+
+**1. Outcomes & prerequisites**
+
+Present the curriculum's bounded terminal outcomes first. Where a capstone exists, show its task, success criteria, and assessment conditions.
+
+For each outcome, expose:
+
+- Its acceptable evidence or explicit assessment-coverage limitation.
+- Supporting modules, objectives, and prerequisite relationships.
+- Relevant evidence, existing waivers, and unmet capabilities.
+- Required work separately from optional enrichment.
+
+Selecting an outcome highlights its supporting path. Selecting a prerequisite exposes **View evidence**, available bridging work, and an optional diagnostic.
+
+Use **Check prerequisites · about 5 min**, not a promise to “test out in five minutes.” Five minutes is a sampling and effort target. Show the exact reviewed coverage before starting. Permit pause, stop, and continued work without a speed penalty.
+
+A waiver requires sufficient valid evidence for the exact capability and conditions under the existing reviewed policy. A diagnostic may produce partial evidence without producing a waiver. Self-report and self-evaluated rubrics cannot independently establish demonstrated competence.
+
+Keep **Study ahead**, **Skip this activity**, and an evidence-backed waiver distinct. Preserve required outcomes even when eligible introductory instruction is waived or condensed.
+
+**2. Pacing & review**
+
+Expose weekly availability, session preferences, target deadline and flexibility, and playable-media speed.
+
+Show remaining workload as **Minimum / Point estimate / Maximum**. These are declared planning bounds, not confidence intervals or completion guarantees.
+
+Use the existing canonical workload calculation. Media speed changes playable-media time only. Reading, setup, implementation, practice, assessment, and review retain their own estimates.
+
+Show whether the schedule fits available capacity after prerequisite order and separate review sessions are included. For fixed deadlines, require upper-bound feasibility. A point estimate that fits does not make an upper-bound failure feasible.
+
+If the schedule does not fit, show the conflicting work and offer explicit changes to time, deadline, or scope. Never silently reduce rigor, remove review, or overload future sessions.
+
+Provide **Preview rebalanced schedule**. Show moved sessions, changed finish estimates, review timing, and capacity conflicts before acceptance. Preserve completed work. Only the scheduler commits the accepted schedule revision.
+
+Display the review-policy version and its heuristic status. Where recorded study time exists, compare it with estimates to support replanning. Faster completion must not become evidence of greater proficiency.
+
+**3. Learning approach**
+
+Keep four independent controls:
+
+- Prior-knowledge claims and evidence.
+- Mathematical depth: **Intuitive / Applied / Formal**, with topic overrides.
+- Instructional order: **Theory first / Application first / Balanced**.
+- Familiar-material treatment: **Condense / Keep full treatment / Skip only when demonstrated**.
+
+Display inherited depth separately from explicit overrides. Preserve the requested depth when prerequisite gaps require additional support.
+
+Use relevant evidence to propose worked examples, partial scaffolds, independent practice, or reduced redundant instruction. Do not use a global beginner/expert label to make these decisions.
+
+Provide **Preview changes** before applying an adaptation. The diff shows added, removed, condensed, and reordered work with reasons. It also shows effects on outcomes, depth, evidence mappings, time, access, and cost.
+
+Acceptance uses the existing revision workflow. Rejection or a stale proposal leaves the active plan intact. Any chargeable generation retains its existing authorization step.
+
+Progress may link to this adaptation review. It does not own a second adaptation editor.
+
+**4. Plan status & sharing**
+
+Show the selected curriculum revision and whether it is a draft or active plan.
+
+Expose **Activate plan** only when activation is applicable. Draft activation remains explicit and subject to existing validation.
+
+Expose **Preview publication** as a secondary owner-authorized action. Publication uses the existing sanitized preview, rights checks, visibility choices, and exact-revision confirmation. Opening Plan or accepting an adaptation must never publish anything.
+
+Provide access to **My publications** for lifecycle management. Do not mix public-template state with private learner evidence.
+
+This section supports governance and reproducibility. It is not the educational justification for Plan.
+
+**Architecture views:** Keep the active curriculum switcher, plan title and bounded outcome, progress summary, and `Resume →` action in the Plan header. On wide screens, Outcomes & prerequisites contains a Map/Outline control, focused module graph, and selected-module detail. Show level of mathematical treatment and resource/access warnings in readable text. The graph uses modules as top-level nodes; books, chapters, and quizzes remain activities within modules unless a real dependency warrants more detail. Group large plans into navigable regions with counts and disclosed filters. Never silently hide required work.
+
+Map/Outline equivalence applies to Outcomes & prerequisites. Its outline must contain the same essential facts and actions as its map. The Today execution matrix is not that outline.
 
 Each module has an app-controlled icon/shape, title, objective count, effort range, required/optional label, execution summary, and evidence/review summary. Distinguish a completed activity from an objective demonstrated under stated conditions. Due review is an additional label, not a replacement status such as “skill lost.”
 
