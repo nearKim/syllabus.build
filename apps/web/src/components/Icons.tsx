@@ -17,7 +17,9 @@ export type SfIconName =
   | "clock"
   | "rigor"
   | "pin"
-  | "code";
+  | "code"
+  | "video"
+  | "course";
 
 export type GlyphTone = "todo" | "doing" | "done";
 export type GlyphKind = "module" | "gate";
@@ -130,6 +132,20 @@ function renderSfIconNodes(name: SfIconName): VNode {
       );
     case "code":
       return <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25" />;
+    case "video":
+      return (
+        <>
+          <rect x="2.25" y="3.5" width="11.5" height="9" rx="1.75" />
+          <path d="m6.75 6.25 3.5 1.75-3.5 1.75z" fill="currentColor" stroke="none" />
+        </>
+      );
+    case "course":
+      return (
+        <>
+          <path d="M8 3 1.75 6 8 9l6.25-3L8 3z" />
+          <path d="M4.25 7.5v3.25c0 .9 1.65 1.75 3.75 1.75s3.75-.85 3.75-1.75V7.5" />
+        </>
+      );
   }
 }
 

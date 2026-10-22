@@ -2303,22 +2303,98 @@ math {
   margin-top: var(--space-2);
 }
 
-/* Resources */
-.resources-grid {
+/* Resources: Filterable Data Table + Category Pill Bar (responsive-table container query pattern) */
+.resources-library-panel {
   display: grid;
-  gap: 0;
+  gap: var(--space-4);
 }
 
-.resource-catalog-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-3) var(--space-5);
-  padding: var(--space-5) 0;
+.resources-toolbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
-.resource-catalog-card + .resource-catalog-card {
-  border-top: var(--hairline);
+.resources-category-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.resource-category-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.resources-count {
+  margin: 0;
+  font-size: 13px;
+}
+
+.resources-table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(640px, 78vh);
+  container-type: inline-size;
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.resources-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  --label-2: "Category & curriculum";
+  --label-3: "Used in";
+  --label-4: "Access, rights & cost";
+  --label-5: "Action";
+}
+
+.resources-data-table thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--color-surface-secondary);
+}
+
+.resources-data-table th,
+.resources-data-table td {
+  padding: var(--space-4);
+  border-block-end: var(--hairline);
+  text-align: left;
+  vertical-align: top;
+}
+
+.resources-data-table thead th {
+  padding-block: var(--space-3);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+}
+
+.resources-data-table tbody th.resource-primary-cell {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  min-inline-size: 16rem;
+  max-inline-size: 24rem;
+  font-weight: 400;
+  background: var(--color-surface);
+}
+
+.resources-data-table tbody tr:last-child th,
+.resources-data-table tbody tr:last-child td {
+  border-block-end: 0;
 }
 
 .resource-main {
@@ -2329,6 +2405,138 @@ math {
 
 .resource-main > * {
   margin: 0;
+}
+
+.resource-row-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.resource-row-rationale {
+  font-size: 13.5px;
+  color: var(--color-text-secondary);
+}
+
+.resource-category-stack {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+}
+
+.resource-category-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--color-accent-surface);
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.resource-curriculum-pill {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.resource-usage-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.resource-usage-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 34px;
+  padding: 4px 10px;
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.resource-usage-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-action-cell {
+  white-space: nowrap;
+}
+
+@container (width < 600px) {
+  .resources-data-table,
+  .resources-data-table thead,
+  .resources-data-table tbody,
+  .resources-data-table tr,
+  .resources-data-table th,
+  .resources-data-table td {
+    display: block;
+  }
+
+  .resources-data-table thead {
+    display: none;
+  }
+
+  .resources-data-table tbody tr {
+    margin-block-end: var(--space-4);
+    border: var(--hairline);
+    border-radius: var(--radius-control);
+  }
+
+  .resources-data-table tbody th.resource-primary-cell {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    max-inline-size: none;
+    background: var(--color-surface-secondary);
+  }
+
+  .resources-data-table td:nth-child(2)::before {
+    content: var(--label-2) ": ";
+    display: block;
+    margin-block-end: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .resources-data-table td:nth-child(3)::before {
+    content: var(--label-3) ": ";
+    display: block;
+    margin-block-end: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .resources-data-table td:nth-child(4)::before {
+    content: var(--label-4) ": ";
+    display: block;
+    margin-block-end: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
+
+  .resources-data-table td:nth-child(5)::before {
+    content: var(--label-5) ": ";
+    display: block;
+    margin-block-end: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+  }
 }
 
 /* Explore: the community Marketplace. Search, three filter groups, then a grid of white listing cards. */

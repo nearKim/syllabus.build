@@ -1022,3 +1022,60 @@ test("Progress renders the Competency & Evidence Portfolio without duplicating T
     "Progress must state what remains unassessed in the capability space"
   );
 });
+
+test("Resources renders a Filterable Data Table + Category Pill Bar with Synced Curriculum Switcher and All Curricula aggregation", () => {
+  const { app, root, click, change } = mountWithClicks({ learnSubDestination: "Resources" });
+  const resourcesOf = (html) => html.slice(html.indexOf('id="panel-learn-resources"'), html.indexOf('id="panel-explore"'));
+
+  // 1. Default view: Current curriculum (RAG Python) with 4 resources across Course, Book, YouTube, and Code Lab
+  const initialResources = resourcesOf(root.innerHTML);
+  assert.ok(initialResources.includes('data-resource-scope="selected"'));
+  assert.ok(initialResources.includes('data-resource-category="All"'));
+  assert.ok(initialResources.includes('role="region" aria-labelledby="resources-table-caption" class="table-wrapper resources-table-wrapper"'));
+  assert.ok(initialResources.includes('<table class="resources-data-table">'));
+  assert.equal(initialResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 4);
+
+  for (const cat of ["All (4)", "Course (1)", "Book (1)", "YouTube (1)", "Code Lab (1)", "Problem Set (0)"]) {
+    assert.ok(initialResources.includes(`<span>${cat}</span>`), `Missing category pill count ${cat}`);
+  }
+
+  // 2. Filtering by Category ("YouTube") narrows the table to YouTube resources only
+  click({ action: "set-resource-category", resourceCategory: "YouTube" });
+  const youtubeResources = resourcesOf(root.innerHTML);
+  assert.ok(youtubeResources.includes('data-resource-category="YouTube"'));
+  assert.equal(youtubeResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 1);
+  assert.ok(youtubeResources.includes("YouTube Lecture: Scaled Dot-Product Attention &amp; Softmax Variance Walkthrough"));
+
+  // 3. Switching to "All curricula (3)" aggregates resources across RAG Python, Linear Algebra, and Tolstoy
+  click({ action: "set-resource-category", resourceCategory: "All" });
+  click({ action: "set-resource-scope", resourceScope: "all" });
+  const allCurriculaResources = resourcesOf(root.innerHTML);
+  assert.ok(allCurriculaResources.includes('data-resource-scope="all"'));
+  assert.equal(allCurriculaResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 11);
+  for (const cat of ["All (11)", "Course (1)", "Book (5)", "YouTube (2)", "Code Lab (2)", "Problem Set (1)"]) {
+    assert.ok(allCurriculaResources.includes(`<span>${cat}</span>`), `Missing aggregated category pill count ${cat}`);
+  }
+
+  // 4. Selecting a specific curriculum in the dropdown switches back to that curriculum's resources
+  change("curriculum-linear-algebra-002");
+  assert.equal(app.getState().selectedCurriculumId, "curriculum-linear-algebra-002");
+  assert.equal(app.getState().resourceScope, "selected");
+  const laResources = resourcesOf(root.innerHTML);
+  assert.equal(laResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 4);
+  assert.ok(laResources.includes("Public Problem Sets with Worked Solutions: Linear Algebra"));
+
+  // 5. Clicking a "Used in units & activities" chip opens that activity in the study inspector drawer
+  click({
+    action: "resume-curriculum",
+    curriculumId: "curriculum-linear-algebra-002",
+    activityId: "la-gate-spectral",
+    moduleId: "la-module-spectral",
+  });
+  assert.ok(drawerOf(root.innerHTML).includes('data-open="true"'));
+  assert.ok(drawerOf(root.innerHTML).includes(">Problem Set 1: Eigenvalues &amp; Projections</h2>"));
+
+  // 6. Verify responsive-table container query and sticky header rules in styles.css
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /\.resources-table-wrapper\s*\{[^}]*container-type:\s*inline-size;/s);
+  assert.match(css, /@container \(width < 600px\)\s*\{[\s\S]*?\.resources-data-table thead\s*\{\s*display:\s*none;/);
+});

@@ -55,6 +55,10 @@ import {
   type ActiveCurriculum, type Adoption, type MarketplaceDomain, type MarketplaceListing,
   type MarketplaceRigor, type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
+import {
+  RESOURCE_CATEGORIES, RESOURCE_SCOPES, ResourcesView,
+  type ResourceCategory, type ResourceScope,
+} from "./components/ResourcesView.tsx";
 import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state/store.ts";
 
 export {
@@ -73,6 +77,8 @@ export {
   type MarketplaceListing,
   type Adoption,
   type Vote,
+  type ResourceCategory,
+  type ResourceScope,
 };
 
 export interface CurriculumWebAppStateInput {
@@ -108,6 +114,7 @@ export interface CurriculumWebAppStateInput {
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
   readonly publishedListings?: readonly MarketplaceListing[];
   readonly adoptPublicationId?: string | null; readonly adoptScope?: "full" | "units"; readonly adoptModuleIds?: readonly string[];
+  readonly resourceScope?: ResourceScope; readonly resourceCategory?: ResourceCategory;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -178,7 +185,10 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     {
       activity_id: "activity-example", type: "worked_example", title: "Worked Example: Attention Scaling Factor 1/sqrt(d_k)",
       requirement_level: "required", objective_ids: ["objective-tokenization", "objective-attention"], prerequisite_activity_ids: ["activity-theory"],
-      resource_assignments: [makeResAssign("synthetic-resource-tokenization-v1", "primary", ["seg-bpe-overview"], "Demonstrates variance growth of unscaled dot products.")],
+      resource_assignments: [
+        makeResAssign("synthetic-resource-tokenization-v1", "primary", ["seg-bpe-overview"], "Demonstrates variance growth of unscaled dot products."),
+        makeResAssign("synthetic-resource-attention-youtube-v1", "supplemental", ["seg-yt-attention"], "Visual YouTube lecture deriving 1/sqrt(d_k) variance stabilization."),
+      ],
       duration_estimate: makeDurationEstimate([12, 8, 5, 0, 0], [10, 6, 4, 0, 0], [15, 12, 8, 0, 0]),
       content: { example_prompt: "Inspect how scaling QK^T by 1/sqrt(d_k) keeps variance at 1 and prevents vanishing softmax gradients." },
     },
@@ -210,7 +220,10 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     {
       activity_id: "activity-reflection", type: "reflection", title: "Optional Enrichment: FlashAttention IO-Complexity Notes",
       requirement_level: "optional", objective_ids: ["objective-attention"], prerequisite_activity_ids: ["activity-quiz"],
-      resource_assignments: [makeResAssign("synthetic-resource-cert-prep-v1", "supplemental", [], "Optional hardware-aware enrichment reading.")],
+      resource_assignments: [
+        makeResAssign("synthetic-resource-cert-prep-v1", "supplemental", [], "Optional hardware-aware enrichment reading."),
+        makeResAssign("synthetic-resource-rag-lab-repo-v1", "supplemental", [], "Benchmark code lab repository for SRAM tiling and sequence packing."),
+      ],
       duration_estimate: makeDurationEstimate([0, 10, 5, 0, 0], [0, 8, 4, 0, 0], [0, 14, 8, 0, 0]),
       content: { reflection_prompt: "Summarize SRAM tiling tradeoffs without conflating optional enrichment with required mastery." },
     },
@@ -276,6 +289,20 @@ const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadata
     ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
     segments: [],
   },
+  "synthetic-resource-attention-youtube-v1": makeCatalogEntry(
+    "synthetic-resource-attention-youtube-v1", "YouTube Lecture: Scaled Dot-Product Attention & Softmax Variance Walkthrough", "youtube-attention-walkthrough",
+    ["ai-engineering-youtube", "AI Engineering Channel · YouTube (Curator Verified)"], "free",
+    [["seg-yt-attention", "04:15 — Why unscaled dot products grow with d_k"]],
+  ),
+  "synthetic-resource-rag-lab-repo-v1": makeCatalogEntry(
+    "synthetic-resource-rag-lab-repo-v1", "Code Lab Repository: FlashAttention & Tokenizer Benchmarks", "rag-benchmark-lab-repo",
+    ["open-ml-press", "Open ML Press (Curator Verified)"], "free",
+  ),
+  "synthetic-resource-strang-youtube-v1": makeCatalogEntry(
+    "synthetic-resource-strang-youtube-v1", "MIT OCW YouTube Lecture: Projection Matrices and Least Squares", "youtube-mit-projections",
+    ["mit-ocw-youtube", "MIT OpenCourseWare · YouTube (Curator Verified)"], "free",
+    [["seg-yt-projection", "12:40 — Deriving P = A(AᵀA)⁻¹Aᵀ"]],
+  ),
   "synthetic-resource-la-notes-v1": makeCatalogEntry(
     "synthetic-resource-la-notes-v1", "Open Linear Algebra Notes: Spectral Theory and Projections", "linear-algebra-notes", OPEN_MATH_COMMONS, "free",
     [["seg-la-eigen", "Chapter 6: Eigenvalues and Eigenvectors"], ["seg-la-svd", "Chapter 7: The Singular Value Decomposition"]],
@@ -375,7 +402,10 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
     {
       activity_id: "la-example-projection", type: "worked_example", title: "Worked Example: Projecting onto a Column Space",
       requirement_level: "required", objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: ["la-read-eigen"],
-      resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-eigen"], "Derives the projection matrix from the normal equations.")],
+      resource_assignments: [
+        makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-eigen"], "Derives the projection matrix from the normal equations."),
+        makeResAssign("synthetic-resource-strang-youtube-v1", "supplemental", ["seg-yt-projection"], "Companion MIT OCW YouTube lecture on orthogonal projections."),
+      ],
       duration_estimate: makeDurationEstimate([5, 10, 5, 0, 0], [4, 8, 4, 0, 0], [8, 14, 8, 0, 0]),
       content: { example_prompt: "Follow the derivation of P = A(AᵀA)⁻¹Aᵀ from the normal equations.", guidance_level: "full" },
     },
@@ -850,7 +880,7 @@ const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
   "set-marketplace-domain", "set-marketplace-rigor", "set-marketplace-sort", "set-marketplace-query", "load-more",
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
-  "view-evidence", "check-prerequisites",
+  "view-evidence", "check-prerequisites", "set-resource-scope", "set-resource-category",
 ]);
 
 // A topic with no public quiz bank is checked against a rubric. A gate or review links one through content.assessment_ref.
@@ -1043,12 +1073,6 @@ function shortSessionLabel(startAt: string): string {
   const date = new Date(startAt);
   if (Number.isNaN(date.getTime())) return startAt.slice(0, 10);
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(date);
-}
-
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" }).format(date);
 }
 
 // Map node labels: two title lines plus short status words. Full text stays in aria-label.
@@ -1482,26 +1506,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     return match ? match.title : humanize(verId.replace(/^objective-|-v\d+$/g, ""));
   });
 
-  const resourceCards = basePlanModel.outlineActivities.flatMap((act) => act.resourceProvenanceCards)
-    .filter((card, idx, arr) => arr.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === idx);
-  const resourcesHtml = resourceCards.map((card) => {
-    const cert = card.optionalCertificationBadge
-      ? `<span class="badge badge-cert-cost" data-optional-certification="true">Optional certification ${formatMinorCurrency(4900, "USD")}</span>`
-      : `<span class="badge badge-cert-none">Core access ${formatMinorCurrency(0, "USD")}</span>`;
-    const openLink = card.canonicalUrl
-      ? `<a href="${escapeHtml(card.canonicalUrl)}" target="_blank" rel="noopener noreferrer" class="btn-secondary">Open source<span class="st-sr"> in a new tab</span></a>`
-      : "";
-    return `<article class="resource-catalog-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" data-opaque-surface="true">
-      <div class="resource-main">
-        <h3>${escapeHtml(card.title)}</h3>
-        <p class="meta-text">${escapeHtml(card.verifiedPublisher)} · Version captured <time datetime="${escapeHtml(card.versionTimestamp)}">${escapeHtml(formatDate(card.versionTimestamp))}</time></p>
-        <p class="badge-row"><span class="badge badge-rights" data-rights-basis="${escapeHtml(card.rightsBadge.basis)}">${escapeHtml(rightsWords(card.rightsBadge))}</span><span class="badge">${escapeHtml(humanize(card.accessModel))} access</span>${cert}</p>
-        <p class="prose">${escapeHtml(card.selectionRationale)}</p>
-        ${card.optionalCertificationBadge ? `<p class="prose warning-copy">${escapeHtml(card.optionalCertificationBadge.label)}. Separate optional cost ${formatMinorCurrency(4900, "USD")}. Opening the source does not mark the activity complete.</p>` : `<p class="prose meta-text">No paid certification is required for core access (${formatMinorCurrency(0, "USD")}). Opening the source does not mark the activity complete.</p>`}
-      </div>
-      ${openLink}
-    </article>`;
-  }).join("\n");
+  const resourceScope: ResourceScope = inputState.resourceScope ?? "selected";
+  const resourceCategory: ResourceCategory = inputState.resourceCategory ?? "All";
 
   const fourBucketsHtml = Object.values(costBreakdown.buckets).map((bucket) => `<div class="cost-bucket-card" data-bucket-id="${escapeHtml(bucket.bucketId)}">
     <h3>${escapeHtml(bucket.label)}</h3>
@@ -1869,10 +1875,15 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           </div>
         </section>
 
-        <section class="learn-sub-panel" id="panel-learn-resources" data-learn-panel="Resources" data-active="${isLearn && activeLearnSub === "Resources"}"${isLearn && activeLearnSub === "Resources" ? "" : " hidden"}>
-          <h1 class="page-title">Resources</h1>
-          <div class="resources-grid">${resourcesHtml}</div>
-        </section>
+        ${renderToString(h(ResourcesView, {
+          active: isLearn && activeLearnSub === "Resources",
+          selectedPlan,
+          allPlans: plans,
+          proficiency,
+          catalogResources,
+          resourceScope,
+          resourceCategory,
+        }))}
       </section>`}
 
       ${renderToString(h(ExploreMarketplace, {
@@ -2129,6 +2140,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let adoptPublicationId: string | null = initialState.adoptPublicationId ?? null;
   let adoptScope: "full" | "units" = initialState.adoptScope ?? "full";
   let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? [])];
+  let resourceScope: ResourceScope = initialState.resourceScope ?? "selected";
+  let resourceCategory: ResourceCategory = initialState.resourceCategory ?? "All";
   const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
   const currentPlans = () => plansFor(account.accountId, adoptions, listings());
   const isMyPlan = (curriculumId: unknown): curriculumId is string => currentPlans().some((plan) => plan.curriculumId === curriculumId);
@@ -2279,6 +2292,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     adoptPublicationId = null;
     adoptScope = "full";
     adoptModuleIds = [];
+    resourceScope = "selected";
+    resourceCategory = "All";
     studyDetailOpen = false;
     openDialogId = null;
     selectedCurriculumId = RAG_PLAN.curriculumId;
@@ -2410,6 +2425,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptScope, adoptModuleIds: [...adoptModuleIds] as readonly string[],
+      resourceScope, resourceCategory,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
@@ -2541,8 +2557,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         if (listing) adopt(listing);
       } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
       else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
-      else if (action === "select-curriculum" && isMyPlan(data["curriculumId"])) selectCurriculum(data["curriculumId"]);
-      else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
+      else if (action === "select-curriculum" && data["curriculumId"] === "all") resourceScope = "all";
+      else if (action === "select-curriculum" && isMyPlan(data["curriculumId"])) {
+        selectCurriculum(data["curriculumId"]);
+        resourceScope = "selected";
+      } else if (action === "set-resource-scope" && isOneOf(RESOURCE_SCOPES, data["resourceScope"])) {
+        resourceScope = data["resourceScope"];
+      } else if (action === "set-resource-category" && isOneOf(RESOURCE_CATEGORIES, data["resourceCategory"])) {
+        resourceCategory = data["resourceCategory"];
+      } else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
         selectCurriculum(data["curriculumId"]);
         topLevel = "Learn";
         learnSubDestination = "Plan";
