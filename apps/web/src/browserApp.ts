@@ -970,6 +970,79 @@ export function getDialogLightDismissFallbackScript(): string {
       });
     });
   }
+  if (typeof HTMLButtonElement !== 'undefined' && !('interestForElement' in HTMLButtonElement.prototype)) {
+    const doc = scope.ownerDocument || scope;
+    if (!doc.documentElement || doc.documentElement.dataset.interestDelegated !== 'true') {
+      if (doc.documentElement) doc.documentElement.dataset.interestDelegated = 'true';
+      let hideTimer = null;
+      let activeTrigger = null;
+      let activeTarget = null;
+      const clearHide = () => {
+        if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      };
+      const hideActive = () => {
+        clearHide();
+        if (activeTrigger) activeTrigger.classList.remove('interest-source');
+        if (activeTarget) {
+          activeTarget.classList.remove('interest-target', ':popover-open');
+          if (typeof activeTarget.hidePopover === 'function') {
+            try { activeTarget.hidePopover(); } catch {}
+          }
+        }
+        activeTrigger = null;
+        activeTarget = null;
+      };
+      const showFor = (trigger) => {
+        const targetId = trigger.getAttribute('interestfor');
+        const target = targetId && typeof doc.getElementById === 'function' ? doc.getElementById(targetId) : null;
+        if (!target) return;
+        clearHide();
+        if (activeTarget && activeTarget !== target) hideActive();
+        activeTrigger = trigger;
+        activeTarget = target;
+        trigger.classList.add('interest-source');
+        target.classList.add('interest-target', ':popover-open');
+        if (typeof doc.documentElement !== 'undefined' && !('anchorName' in doc.documentElement.style)) {
+          const rect = trigger.getBoundingClientRect();
+          target.style.position = 'fixed';
+          target.style.top = Math.round(rect.bottom + 8) + 'px';
+          target.style.left = Math.max(12, Math.round(rect.right - Math.min(512, window.innerWidth - 24))) + 'px';
+        }
+        if (typeof target.showPopover === 'function') {
+          try { target.showPopover(); } catch {}
+        }
+      };
+      const scheduleHide = () => {
+        clearHide();
+        hideTimer = setTimeout(hideActive, 150);
+      };
+      doc.addEventListener('mouseover', (event) => {
+        const el = event.target && event.target.closest ? event.target.closest('[interestfor], [popover]') : null;
+        if (!el) return;
+        if (el.hasAttribute('interestfor')) showFor(el);
+        else if (el === activeTarget) clearHide();
+      });
+      doc.addEventListener('mouseout', (event) => {
+        if (!activeTrigger) return;
+        const related = event.relatedTarget;
+        if (related && related.closest && (related.closest('[interestfor]') === activeTrigger || related.closest('[popover]') === activeTarget)) return;
+        scheduleHide();
+      });
+      doc.addEventListener('focusin', (event) => {
+        const trigger = event.target && event.target.closest ? event.target.closest('[interestfor]') : null;
+        if (trigger) showFor(trigger);
+      });
+      doc.addEventListener('focusout', (event) => {
+        if (!activeTrigger) return;
+        const related = event.relatedTarget;
+        if (related && related.closest && (related.closest('[interestfor]') === activeTrigger || related.closest('[popover]') === activeTarget)) return;
+        scheduleHide();
+      });
+      doc.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && activeTarget) hideActive();
+      });
+    }
+  }
 })();`;
 }
 
@@ -1443,7 +1516,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   const legendArrow = (tone: "control" | "accent", style: SegmentStyle) =>
     `<svg class="legend-swatch" viewBox="0 0 64 20" width="64" height="20" aria-hidden="true" data-tone="${tone}" data-style="${style}"><line x1="2" y1="10" x2="50" y2="10" /><path class="arrow-head" d="M49 5 L59 10 L49 15 Z" /></svg>`;
-  const relationshipLegend = `<figure class="relationship-legend">
+  const relationshipLegend = `<figure id="plan-relationship-legend" popover="hint" class="relationship-legend" data-opaque-surface="true">
     <figcaption>Relationship legend</figcaption>
     <ul>
       <li>${legendArrow("control", "solid")}<span><strong>Prerequisite.</strong> Solid directed edge. Required capability before an activity; identify unmet capabilities.</span></li>
@@ -1713,8 +1786,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <h2 id="plan-outcomes-heading">What you'll learn &amp; unit order</h2>
                   <p class="meta-text">${requiredSummary} · ${evidenceSummary} · ${reviewSummary}</p>
                 </div>
-                <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
-                  ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
+                <div class="plan-outcomes-actions">
+                  <button type="button" class="btn-secondary legend-trigger" interestfor="plan-relationship-legend" popovertarget="plan-relationship-legend">${sfIcon("plan", 16)}<span>Relationship legend</span></button>
+                  <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
+                    ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
+                  </div>
                 </div>
               </div>
               <div class="surface-panel plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">

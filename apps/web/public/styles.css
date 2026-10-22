@@ -2356,6 +2356,46 @@ math {
   outline-offset: 2px;
 }
 
+.plan-outcomes-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  gap: var(--space-2);
+}
+
+button[interestfor="plan-relationship-legend"] {
+  anchor-name: --plan-relationship-legend;
+  --interest-delay-start: 0.15s;
+  interest-delay-start: var(--interest-delay-start);
+  --interest-delay-end: 0.1s;
+  interest-delay-end: var(--interest-delay-end);
+}
+
+:is(:interest-source, .interest-source).legend-trigger {
+  border-color: var(--color-accent);
+}
+
+#plan-relationship-legend {
+  position-anchor: --plan-relationship-legend;
+  top: anchor(bottom);
+  right: anchor(right);
+  left: auto;
+  position-try: flip-block, flip-inline;
+  margin: unset;
+  z-index: 40;
+  width: min(32rem, calc(100vw - 2 * var(--layout-gutter-compact)));
+  padding: var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 12px 32px rgba(23, 25, 28, 0.14);
+}
+
+#plan-relationship-legend:is(:popover-open, .\:popover-open, :interest-target, .interest-target) {
+  display: block;
+}
+
 .relationship-legend {
   margin: 0;
 }
@@ -2373,7 +2413,7 @@ math {
   gap: var(--space-3);
   padding: var(--space-3) 0;
   border-top: var(--hairline);
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .relationship-legend li:first-child {
@@ -3683,11 +3723,6 @@ dialog.inspector::backdrop {
 
   .surface-panel {
     padding: var(--space-5);
-  }
-
-  .relationship-legend ul {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: var(--space-6);
   }
 }
 

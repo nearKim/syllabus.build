@@ -1006,6 +1006,8 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   assert.ok(plan.includes("<dt>Total time</dt>"));
   assert.ok(plan.includes("Preview rebalanced schedule"));
   assert.ok(plan.includes('class="plan-architecture-outline"'));
+  assert.ok(plan.includes('interestfor="plan-relationship-legend" popovertarget="plan-relationship-legend"'));
+  assert.ok(plan.includes('<figure id="plan-relationship-legend" popover="hint" class="relationship-legend" data-opaque-surface="true">'));
   assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
   for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds"]) {
     assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);
