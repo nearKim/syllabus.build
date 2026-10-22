@@ -14,7 +14,7 @@
     "typecheck": "pnpm -r typecheck",
     "test:ts": "pnpm -r test",
     "test:rust": "cargo test --workspace",
-    "dev:web": "node apps/web/src/server.mjs",
+    "dev:web": "pnpm --filter @curriculum/web dev",
     "dev:api": "cargo run -p curriculum-api",
     "verify:t00": "python3 scripts/extract_spec.py --check specs/product.md . && python3 scripts/check_current_spec.py specs/product.md && python3 scripts/check_contracts.py && python3 scripts/generate_contracts.py --check && cargo test --workspace && pnpm -r typecheck && pnpm -r test"
   }
