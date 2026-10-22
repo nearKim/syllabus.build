@@ -1,4 +1,4 @@
-import type { VNode } from "preact";
+import type { ComponentChildren, VNode } from "preact";
 import {
   buildPlanMapAndOutlineModel,
   renderUntrustedCatalogText,
@@ -12,15 +12,41 @@ import type { Account, AuthStatus } from "./HeaderBar.tsx";
 import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
 import { displayUnitTitle, effortWords, humanize, isOneOf } from "./StudyFlowBoard.tsx";
 
-// The subject and rigor tags on each card are the filter vocabulary. "All" means no tag is chosen.
-const SUBJECT_TAGS = ["Engineering", "Mathematics", "Physics", "Literature", "Systems"] as const;
+// The taxonomy has three tiers. A category holds subjects, a listing's subject decides its category,
+// and each listing carries its own topic tags. Rigor and format are facets that cut across all tiers.
+const SUBJECTS_BY_CATEGORY = {
+  "Computer Science": ["Engineering", "Systems"],
+  "Math & Sciences": ["Mathematics", "Physics"],
+  Humanities: ["Literature"],
+} as const;
+type CategoryTag = keyof typeof SUBJECTS_BY_CATEGORY;
+const CATEGORY_TAGS = Object.keys(SUBJECTS_BY_CATEGORY) as CategoryTag[];
+const SUBJECT_TAGS = CATEGORY_TAGS.flatMap((category) => SUBJECTS_BY_CATEGORY[category]);
 const RIGOR_TAGS = ["Formal", "Applied", "Intuitive"] as const;
-export const MARKETPLACE_DOMAINS = ["All", ...SUBJECT_TAGS] as const;
+const FORMAT_TAGS = ["Quiz", "Code Lab", "Problem Set", "Rubric"] as const;
+
+// "All" means that no value is chosen for that filter.
+export const MARKETPLACE_CATEGORIES = ["All", ...CATEGORY_TAGS] as const;
+export const MARKETPLACE_SUBJECTS = ["All", ...SUBJECT_TAGS] as const;
 export const MARKETPLACE_RIGORS = ["All", ...RIGOR_TAGS] as const;
+export const MARKETPLACE_FORMATS = ["All", ...FORMAT_TAGS] as const;
+export const MARKETPLACE_FACETS = ["category", "subject", "topic", "rigor", "format"] as const;
 export const MARKETPLACE_SORTS = ["top_upvoted", "most_adopted", "newest"] as const;
-export type MarketplaceDomain = (typeof MARKETPLACE_DOMAINS)[number];
-export type MarketplaceRigor = (typeof MARKETPLACE_RIGORS)[number];
+export type MarketplaceFacet = (typeof MARKETPLACE_FACETS)[number];
 export type MarketplaceSort = (typeof MARKETPLACE_SORTS)[number];
+
+export interface MarketplaceFilters {
+  readonly category: (typeof MARKETPLACE_CATEGORIES)[number];
+  readonly subject: (typeof MARKETPLACE_SUBJECTS)[number];
+  readonly topic: string;
+  readonly rigor: (typeof MARKETPLACE_RIGORS)[number];
+  readonly format: (typeof MARKETPLACE_FORMATS)[number];
+  readonly query: string;
+}
+
+export const NO_MARKETPLACE_FILTERS: MarketplaceFilters = {
+  category: "All", subject: "All", topic: "All", rigor: "All", format: "All", query: "",
+};
 
 export const SORT_LABELS: Readonly<Record<MarketplaceSort, string>> = {
   top_upvoted: "Top",
@@ -36,7 +62,18 @@ const SUBJECT_ICONS: Readonly<Record<string, SfIconName>> = {
   Systems: "systems",
 };
 
+const FACET_LABELS: Readonly<Record<MarketplaceFacet, string>> = {
+  category: "Category",
+  subject: "Subject",
+  topic: "Topic",
+  rigor: "Rigor",
+  format: "Format",
+};
+
 const tagLabelOf = (value: string): string => (value === "Mathematics" ? "Math" : value);
+
+const categoryOf = (subject: string): CategoryTag | undefined =>
+  CATEGORY_TAGS.find((category) => (SUBJECTS_BY_CATEGORY[category] as readonly string[]).includes(subject));
 
 export const PRIVATE_FIELDS_REMOVED = [
   "Your progress and completion records",
@@ -52,6 +89,7 @@ export interface MarketplaceListing {
   readonly revisionId: string;
   readonly subject: string;
   readonly gateStyle: string;
+  readonly topicTags: readonly string[];
   readonly handle: string;
   readonly upvotes: number;
   readonly adoptions: number;
@@ -212,31 +250,96 @@ const rigorTagOf = (listing: MarketplaceListing): (typeof RIGOR_TAGS)[number] | 
   return isOneOf(RIGOR_TAGS, rigor) ? rigor : null;
 };
 
+// The format is the assessment a listing gates on, named in one or two words.
+const formatTagOf = (listing: MarketplaceListing): (typeof FORMAT_TAGS)[number] | null =>
+  FORMAT_TAGS.find((format) => listing.gateStyle.includes(format)) ?? null;
+
+const inTiers = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean =>
+  (filters.category === "All" || categoryOf(listing.subject) === filters.category) &&
+  (filters.subject === "All" || listing.subject === filters.subject);
+
+const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean =>
+  inTiers(listing, filters) &&
+  (filters.topic === "All" || listing.topicTags.includes(filters.topic)) &&
+  (filters.rigor === "All" || rigorTagOf(listing) === filters.rigor) &&
+  (filters.format === "All" || formatTagOf(listing) === filters.format) &&
+  (!filters.query ||
+    [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject,
+      categoryOf(listing.subject) ?? "", ...listing.topicTags]
+      .join(" ")
+      .toLowerCase()
+      .includes(filters.query.toLowerCase()));
+
+// The values a facet accepts. Topics are the tags that some listing carries.
+export const facetValuesOf = (facet: MarketplaceFacet, listings: readonly MarketplaceListing[]): readonly string[] =>
+  facet === "category" ? MARKETPLACE_CATEGORIES
+    : facet === "subject" ? MARKETPLACE_SUBJECTS
+      : facet === "rigor" ? MARKETPLACE_RIGORS
+        : facet === "format" ? MARKETPLACE_FORMATS
+          : ["All", ...listings.flatMap((listing) => listing.topicTags)];
+
+// Setting one filter keeps the tiers on one branch of the taxonomy. A category drops a subject outside it,
+// a subject sets its own category, and a topic stays only while a listing in the new scope still carries it.
+export function withMarketplaceFilter(
+  filters: MarketplaceFilters,
+  facet: MarketplaceFacet,
+  value: string,
+  listings: readonly MarketplaceListing[],
+): MarketplaceFilters {
+  const set = { ...filters, [facet]: value } as MarketplaceFilters;
+  const subject = facet === "category" && categoryOf(set.subject) !== set.category ? "All" : set.subject;
+  const scoped = { ...set, subject, category: categoryOf(subject) ?? set.category };
+  const topicFits =
+    scoped.topic === "All" || listings.some((listing) => inTiers(listing, scoped) && listing.topicTags.includes(scoped.topic));
+  return topicFits ? scoped : { ...scoped, topic: "All" };
+}
+
 interface FilterTagProps {
-  readonly kind: "domain" | "rigor";
+  readonly facet: Exclude<MarketplaceFacet, "category">;
   readonly value: string;
-  readonly active: string;
-  readonly onCard?: boolean;
+  readonly filters: MarketplaceFilters;
+  readonly count?: number;
 }
 
 // A tag sets its filter. Pressing the tag that is already active clears that filter.
-function FilterTag({ kind, value, active, onCard = false }: FilterTagProps): VNode {
-  const pressed = value === active;
-  const next = pressed ? "All" : value;
+// In the filter panel a tag shows its result count. On a card it has no count.
+function FilterTag({ facet, value, filters, count }: FilterTagProps): VNode {
+  const pressed = filters[facet] === value;
   const label = tagLabelOf(value);
+  const onCard = count === undefined;
   return (
     <button
       type="button"
       class="tag"
-      data-action={`set-marketplace-${kind}`}
-      data-domain={kind === "domain" ? next : undefined}
-      data-rigor={kind === "rigor" ? next : undefined}
+      data-action="set-marketplace-filter"
+      data-facet={facet}
+      data-value={pressed ? "All" : value}
+      data-subject={facet === "subject" && !onCard ? value : undefined}
       aria-pressed={pressed}
       aria-label={onCard ? `Filter by ${label}` : undefined}
+      disabled={count === 0 && !pressed}
     >
+      {facet === "subject" && !onCard ? <SfIcon name={SUBJECT_ICONS[value] ?? "course"} size={15} /> : null}
       {label}
-      {pressed && !onCard ? <SfIcon name="close" size={15} /> : null}
+      {onCard ? null : pressed ? <SfIcon name="close" size={15} /> : <span class="tag-count">{count}</span>}
     </button>
+  );
+}
+
+interface FacetRowProps {
+  readonly facet: MarketplaceFacet;
+  readonly tier?: 1 | 2 | 3;
+  readonly children: ComponentChildren;
+}
+
+function FacetRow({ facet, tier, children }: FacetRowProps): VNode {
+  return (
+    <div class="facet-row" data-tier={tier} role="group" aria-labelledby={`facet-${facet}-label`}>
+      <span class="facet-label" id={`facet-${facet}-label`}>
+        {FACET_LABELS[facet]}
+      </span>
+      <div class="facet-options">{children}</div>
+    </div>
   );
 }
 
@@ -248,10 +351,8 @@ export interface ExploreMarketplaceProps {
   readonly myPlans: readonly ActiveCurriculum[];
   readonly votes: readonly Vote[];
   readonly adoptions: readonly Adoption[];
-  readonly marketplaceDomain: MarketplaceDomain;
-  readonly marketplaceRigor: MarketplaceRigor;
+  readonly marketplaceFilters: MarketplaceFilters;
   readonly marketplaceSort: MarketplaceSort;
-  readonly marketplaceQuery: string;
   readonly loadMoreNote: string | null;
 }
 
@@ -263,10 +364,8 @@ export function ExploreMarketplace({
   myPlans,
   votes,
   adoptions,
-  marketplaceDomain,
-  marketplaceRigor,
+  marketplaceFilters: filters,
   marketplaceSort,
-  marketplaceQuery,
   loadMoreNote,
 }: ExploreMarketplaceProps): VNode {
   const upvotesOf = (listing: MarketplaceListing): number =>
@@ -279,19 +378,42 @@ export function ExploreMarketplace({
       : marketplaceSort === "most_adopted"
         ? adoptionsOf(listing)
         : Date.parse(listing.publishedAt);
-  const queryText = marketplaceQuery.toLowerCase();
   const shownListings = listings
-    .filter((listing) => marketplaceDomain === "All" || listing.subject === marketplaceDomain)
-    .filter((listing) => marketplaceRigor === "All" || rigorTagOf(listing) === marketplaceRigor)
-    .filter(
-      (listing) =>
-        !queryText ||
-        [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject]
-          .join(" ")
-          .toLowerCase()
-          .includes(queryText),
-    )
+    .filter((listing) => matchesFilters(listing, filters))
     .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.curriculum).localeCompare(goalTitleOf(b.curriculum)));
+  // A count is the number of results that choosing the value gives, after the tier rules apply.
+  const countIf = (facet: MarketplaceFacet, value: string): number => {
+    const next = withMarketplaceFilter(filters, facet, value, listings);
+    return listings.filter((listing) => matchesFilters(listing, next)).length;
+  };
+  const shownCategories = filters.category === "All" ? CATEGORY_TAGS : [filters.category];
+  const scopedTopics = [
+    ...new Set(listings.filter((listing) => inTiers(listing, filters)).flatMap((listing) => listing.topicTags)),
+  ].sort((a, b) => a.localeCompare(b));
+  // The trail lists the chosen tiers in taxonomy order, then the chosen facets.
+  const chosenTiers = (["category", "subject", "topic"] as const).filter((facet) => filters[facet] !== "All");
+  const chosenFacets = (["rigor", "format"] as const).filter((facet) => filters[facet] !== "All");
+  const filtered = chosenTiers.length + chosenFacets.length > 0 || filters.query !== "";
+  const clearButton = (
+    <button type="button" class="clear-filters" data-action="clear-marketplace-filters">
+      Clear filters
+    </button>
+  );
+  const trailStep = (facet: MarketplaceFacet): VNode => (
+    <li key={facet} class="trail-step" data-facet={facet}>
+      <button
+        type="button"
+        class="trail-chip"
+        data-action="set-marketplace-filter"
+        data-facet={facet}
+        data-value="All"
+        aria-label={`Remove ${FACET_LABELS[facet]}: ${tagLabelOf(filters[facet])}`}
+      >
+        {tagLabelOf(filters[facet])}
+        <SfIcon name="close" size={15} />
+      </button>
+    </li>
+  );
 
   const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
 
@@ -324,30 +446,104 @@ export function ExploreMarketplace({
           id="marketplace-search"
           type="search"
           name="query"
-          value={marketplaceQuery}
-          placeholder="Search titles, curators, and subjects"
+          value={filters.query}
+          placeholder="Search titles, topics, and curators"
           autocomplete="off"
         />
         <button type="submit" class="btn-secondary">
           Search
         </button>
       </form>
-      <div class="marketplace-controls">
-        <div class="tag-group" role="group" aria-label="Subject">
-          {SUBJECT_TAGS.map((subject) => (
-            <FilterTag key={subject} kind="domain" value={subject} active={marketplaceDomain} />
+      <div class="marketplace-filters" role="group" aria-label="Filters">
+        <FacetRow facet="category" tier={1}>
+          {MARKETPLACE_CATEGORIES.map((category) => {
+            const count = countIf("category", category);
+            return (
+              <button
+                key={category}
+                type="button"
+                class="category-btn"
+                data-action="set-marketplace-filter"
+                data-facet="category"
+                data-value={category}
+                aria-pressed={filters.category === category}
+                disabled={count === 0 && filters.category !== category}
+              >
+                {category}
+                <span class="tag-count">{count}</span>
+              </button>
+            );
+          })}
+        </FacetRow>
+        <FacetRow facet="subject" tier={2}>
+          {shownCategories.map((category) => (
+            <span key={category} class="facet-cluster" role="group" aria-label={`${category} subjects`}>
+              {filters.category === "All" ? (
+                <span class="facet-cluster-label" aria-hidden="true">
+                  {category}
+                </span>
+              ) : null}
+              {SUBJECTS_BY_CATEGORY[category].map((subject) => (
+                <FilterTag key={subject} facet="subject" value={subject} filters={filters} count={countIf("subject", subject)} />
+              ))}
+            </span>
           ))}
-        </div>
-        <div class="tag-group" role="group" aria-label="Rigor">
-          {RIGOR_TAGS.map((rigor) => (
-            <FilterTag key={rigor} kind="rigor" value={rigor} active={marketplaceRigor} />
+        </FacetRow>
+        <FacetRow facet="topic" tier={3}>
+          {scopedTopics.map((topic) => (
+            <FilterTag key={topic} facet="topic" value={topic} filters={filters} count={countIf("topic", topic)} />
           ))}
+        </FacetRow>
+        <div class="facet-pair">
+          <FacetRow facet="rigor">
+            {RIGOR_TAGS.map((rigor) => (
+              <FilterTag key={rigor} facet="rigor" value={rigor} filters={filters} count={countIf("rigor", rigor)} />
+            ))}
+          </FacetRow>
+          <FacetRow facet="format">
+            {FORMAT_TAGS.map((format) => (
+              <FilterTag key={format} facet="format" value={format} filters={filters} count={countIf("format", format)} />
+            ))}
+          </FacetRow>
         </div>
       </div>
       <div class="marketplace-results-bar">
-        <p class="marketplace-count" role="status">
-          {shownListings.length} curricul{shownListings.length === 1 ? "um" : "a"}. Community publications have not automatically passed educational review.
-        </p>
+        <div class="marketplace-trail">
+          <p class="marketplace-count" role="status">
+            {filtered
+              ? `${shownListings.length} of ${listings.length} curricula`
+              : `${listings.length} curricul${listings.length === 1 ? "um" : "a"}`}
+          </p>
+          {filtered ? (
+            <>
+              <ul class="filter-trail" aria-label="Active filters">
+                {chosenTiers.length > 0 ? (
+                  <li class="trail-path">
+                    <ol class="trail-tiers" aria-label="Category path">
+                      {chosenTiers.map(trailStep)}
+                    </ol>
+                  </li>
+                ) : null}
+                {chosenFacets.map(trailStep)}
+                {filters.query ? (
+                  <li class="trail-step" data-facet="query">
+                    <button
+                      type="button"
+                      class="trail-chip"
+                      data-action="set-marketplace-query"
+                      data-query=""
+                      aria-label={`Remove search: ${filters.query}`}
+                    >
+                      “{filters.query}”
+                      <SfIcon name="close" size={15} />
+                    </button>
+                  </li>
+                ) : null}
+              </ul>
+              {clearButton}
+            </>
+          ) : null}
+        </div>
         <div class="marketplace-sort" role="group" aria-label="Sort">
           {MARKETPLACE_SORTS.map((sort) => (
             <button
@@ -377,6 +573,7 @@ export function ExploreMarketplace({
             const units = projection.modules.length;
             const upvotes = upvotesOf(listing);
             const rigor = rigorTagOf(listing);
+            const format = formatTagOf(listing);
             return (
               <article
                 key={id}
@@ -391,14 +588,22 @@ export function ExploreMarketplace({
                   <span class="marketplace-card-icon" aria-hidden="true">
                     <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
                   </span>
-                  <FilterTag kind="domain" value={listing.subject} active={marketplaceDomain} onCard />
-                  {rigor ? <FilterTag kind="rigor" value={rigor} active={marketplaceRigor} onCard /> : null}
+                  {isOneOf(SUBJECT_TAGS, listing.subject) ? (
+                    <FilterTag facet="subject" value={listing.subject} filters={filters} />
+                  ) : null}
+                  {rigor ? <FilterTag facet="rigor" value={rigor} filters={filters} /> : null}
+                  {format ? <FilterTag facet="format" value={format} filters={filters} /> : null}
                 </div>
                 <div class="marketplace-card-body">
                   <h2 id={`listing-${id}-title`} class="marketplace-title">
                     {projection.title}
                   </h2>
                   <p class="marketplace-summary">{projection.summary}</p>
+                </div>
+                <div class="marketplace-topics">
+                  {listing.topicTags.map((topic) => (
+                    <FilterTag key={topic} facet="topic" value={topic} filters={filters} />
+                  ))}
                 </div>
                 <p class="marketplace-meta">
                   <span class="marketplace-handle">{listing.handle}</span>
@@ -438,11 +643,15 @@ export function ExploreMarketplace({
           })}
         </div>
       ) : (
-        <p class="empty-state">
+        <div class="empty-state marketplace-empty">
           <SfIcon name="explore" />
           <span>No curricula match these filters.</span>
-        </p>
+          {clearButton}
+        </div>
       )}
+      <p class="meta-text marketplace-note">
+        Community publications have not automatically passed educational review.
+      </p>
       <div class="action-row load-more-row">
         <button type="button" class="btn-secondary" data-action="load-more">
           Load more
@@ -549,6 +758,7 @@ export function AdoptCurriculumDialog({
               total.max += mod.durationTriplet.max;
             }
             const rigor = rigorTagOf(adoptListing);
+            const format = formatTagOf(adoptListing);
             return (
               <>
                 <p class="marketplace-card-head">
@@ -557,6 +767,7 @@ export function AdoptCurriculumDialog({
                   </span>
                   <span class="tag">{tagLabelOf(adoptListing.subject)}</span>
                   {rigor ? <span class="tag">{rigor}</span> : null}
+                  {format ? <span class="tag">{format}</span> : null}
                 </p>
                 <h3 class="adopt-title">{projection.title}</h3>
                 <p class="meta-text">

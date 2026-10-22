@@ -2776,19 +2776,162 @@ button[interestfor="plan-relationship-legend"] {
   max-width: none;
 }
 
-/* Tags: the same pill filters the grid from the bar and from a card. */
-.marketplace-controls {
+/* Filters: three taxonomy tiers, then two facets that cut across them. Each lower tier hangs from the tier above. */
+.marketplace-filters {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
+
+.facet-row {
+  --row-h: 36px;
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 6px var(--space-3);
+}
+
+.facet-row[data-tier="1"] {
+  --row-h: 40px;
+}
+
+.facet-row[data-tier="3"] {
+  --row-h: 32px;
+}
+
+.facet-label {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: var(--row-h);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.facet-row[data-tier="2"] .facet-label {
+  padding-inline-start: 18px;
+}
+
+.facet-row[data-tier="3"] .facet-label {
+  padding-inline-start: 36px;
+}
+
+/* The elbow rule runs from the row gap above down to the middle of this tier's label. */
+.facet-row:is([data-tier="2"], [data-tier="3"]) .facet-label::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--space-3));
+  inset-inline-start: 4px;
+  width: 10px;
+  height: calc(var(--space-3) + var(--row-h) / 2);
+  border-inline-start: 1px solid var(--color-border-control);
+  border-block-end: 1px solid var(--color-border-control);
+  border-end-start-radius: 4px;
+}
+
+.facet-row[data-tier="3"] .facet-label::before {
+  inset-inline-start: 22px;
+}
+
+/* When a tier wraps to more lines, its rule runs on down to the elbow of the tier below. */
+.facet-row:is([data-tier="1"], [data-tier="2"]) {
+  position: relative;
+}
+
+.facet-row:is([data-tier="1"], [data-tier="2"])::after {
+  content: "";
+  position: absolute;
+  top: calc(var(--row-h) / 2 + var(--space-3));
+  bottom: 0;
+  inset-inline-start: 4px;
+  border-inline-start: 1px solid var(--color-border-control);
+}
+
+.facet-row[data-tier="2"]::after {
+  inset-inline-start: 22px;
+}
+
+.facet-options,
+.facet-cluster {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
-  margin: 0 0 var(--space-5);
+  gap: 6px;
+  min-width: 0;
 }
 
-.tag-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.facet-row[data-tier="2"] .facet-options {
+  column-gap: var(--space-5);
+}
+
+.facet-cluster-label {
+  margin-inline-end: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.facet-pair {
+  display: grid;
+  gap: var(--space-3);
+  padding-block-start: var(--space-3);
+  border-block-start: var(--hairline);
+}
+
+/* Tier 1 carries the most weight. Tier 2 and the facets use the standard tag, and tier 3 is one step smaller. */
+.category-btn {
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 40px;
+  padding: 6px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.category-btn[aria-pressed="true"] {
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
+}
+
+.tag-count {
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+.category-btn[aria-pressed="true"] .tag-count {
+  color: color-mix(in srgb, var(--color-action-text) 72%, transparent);
+}
+
+.facet-row[data-tier="2"] .tag:not([aria-pressed="true"]) .sf-icon {
+  color: var(--subject, var(--color-text-secondary));
+}
+
+.facet-row[data-tier="3"] .tag {
+  min-height: 32px;
+  padding: 2px 12px;
+  font-size: 13px;
+}
+
+.facet-row[data-tier="3"] .tag[aria-pressed="true"] {
+  padding-inline-end: 8px;
+}
+
+:is(.tag, .category-btn):disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .tag {
@@ -2829,14 +2972,94 @@ button[interestfor="plan-relationship-legend"] {
   margin: 0 0 var(--space-3);
 }
 
+/* The trail: the result count, the chosen tiers as one path, the chosen facets, then the reset. */
+.marketplace-trail,
+.filter-trail,
+.trail-tiers,
+.trail-step {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.marketplace-trail {
+  gap: var(--space-2) var(--space-3);
+}
+
 .marketplace-count {
   margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.trail-tiers .trail-step + .trail-step::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  margin-inline: 2px 4px;
+  border-block-start: 1.5px solid var(--color-text-secondary);
+  border-inline-end: 1.5px solid var(--color-text-secondary);
+  transform: rotate(45deg);
+}
+
+.trail-chip {
+  gap: 4px;
+  min-width: 0;
+  min-height: 32px;
+  padding: 2px 8px 2px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tint-8);
+  color: var(--color-text-primary);
   font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The tier path takes the accent fill, so the facets after it read as a separate group even when the trail wraps. */
+.trail-tiers .trail-chip {
+  background: var(--color-accent-surface);
+}
+
+.trail-chip .sf-icon {
+  width: 14px;
+  height: 14px;
   color: var(--color-text-secondary);
+}
+
+.clear-filters {
+  min-width: 0;
+  min-height: 32px;
+  padding: 2px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.marketplace-empty .clear-filters {
+  margin-inline-start: auto;
+}
+
+.marketplace-note {
+  margin: 0 0 var(--space-4);
 }
 
 .marketplace-sort {
   display: flex;
+  margin-inline-start: auto;
   gap: 2px;
 }
 
@@ -2866,11 +3089,11 @@ button[interestfor="plan-relationship-legend"] {
   margin: 0 0 var(--space-5);
 }
 
-/* Each card spans four shared rows, so tags, meta lines, and footers line up across a row of cards. */
+/* Each card spans five shared rows, so tags, topics, meta lines, and footers line up across a row of cards. */
 .marketplace-card {
   display: grid;
-  grid-row: span 4;
-  grid-template-rows: auto 1fr auto auto;
+  grid-row: span 5;
+  grid-template-rows: auto 1fr auto auto auto;
   grid-template-rows: subgrid;
   align-items: start;
   row-gap: var(--space-2);
@@ -2947,6 +3170,27 @@ button[interestfor="plan-relationship-legend"] {
 .marketplace-card-head .tag[aria-pressed="true"] {
   background: var(--color-accent-surface);
   color: var(--color-text-primary);
+}
+
+/* Topic tags are the lightest tier on a card: outlined, with no fill until pressed. */
+.marketplace-topics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.marketplace-topics .tag {
+  min-height: 26px;
+  padding: 1px 10px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.marketplace-topics .tag[aria-pressed="true"] {
+  border-color: transparent;
+  background: var(--color-accent-surface);
+  color: var(--color-text-primary);
+  font-weight: 600;
 }
 
 .marketplace-title {
@@ -3032,9 +3276,21 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .tag:not([aria-pressed="true"]):hover,
+  :is(.tag, .category-btn):not([aria-pressed="true"], :disabled):hover,
   .upvote-btn:not([aria-pressed="true"]):hover {
     border-color: var(--color-border-control);
+    background: var(--tint-4);
+  }
+
+  .trail-chip:hover {
+    background: var(--tint-12);
+  }
+
+  .trail-tiers .trail-chip:hover {
+    background: color-mix(in srgb, var(--color-accent-surface) 80%, var(--color-accent));
+  }
+
+  .clear-filters:hover {
     background: var(--tint-4);
   }
 
@@ -3970,6 +4226,20 @@ dialog.inspector::backdrop {
   .resource-catalog-card {
     grid-template-columns: 1fr;
   }
+
+  /* On a phone each tier's label sits above its tags, and the elbow still joins it to the tier above. */
+  .marketplace-filters {
+    padding: var(--space-4);
+  }
+
+  .facet-row {
+    --row-h: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .facet-row::after {
+    display: none;
+  }
 }
 
 /* 2. Medium (768px to 1199px): navigation rail plus one main column */
@@ -4070,6 +4340,11 @@ dialog.inspector::backdrop {
   .sort-btn[aria-pressed="true"],
   .switch-track {
     border: 1px solid CanvasText;
+  }
+
+  :is(.tag, .category-btn)[aria-pressed="true"],
+  .trail-chip {
+    border: 2px solid Highlight;
   }
 
   .map-node rect,

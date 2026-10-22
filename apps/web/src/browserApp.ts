@@ -49,11 +49,11 @@ import {
   type PersonaChoice, type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 import {
-  AdoptCurriculumDialog, ExploreMarketplace, MARKETPLACE_DOMAINS, MARKETPLACE_RIGORS, MARKETPLACE_SORTS,
-  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, goalTitleOf, mathDepthFor,
-  publicProjectionOf, rawListOf,
-  type ActiveCurriculum, type Adoption, type MarketplaceDomain, type MarketplaceListing,
-  type MarketplaceRigor, type MarketplaceSort, type Vote,
+  AdoptCurriculumDialog, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
+  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, facetValuesOf, goalTitleOf, mathDepthFor,
+  publicProjectionOf, rawListOf, withMarketplaceFilter,
+  type ActiveCurriculum, type Adoption, type MarketplaceFilters, type MarketplaceListing,
+  type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
 import {
   RESOURCE_CATEGORIES, RESOURCE_SCOPES, ResourcesView,
@@ -71,8 +71,7 @@ export {
   type Account,
   type PersonaChoice,
   type ReturnDestination,
-  type MarketplaceDomain,
-  type MarketplaceRigor,
+  type MarketplaceFilters,
   type MarketplaceSort,
   type MarketplaceListing,
   type Adoption,
@@ -109,8 +108,7 @@ export interface CurriculumWebAppStateInput {
   readonly selectedCurriculumId?: string;
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
   readonly authNotice?: string | null;
-  readonly marketplaceDomain?: MarketplaceDomain; readonly marketplaceRigor?: MarketplaceRigor;
-  readonly marketplaceSort?: MarketplaceSort; readonly marketplaceQuery?: string;
+  readonly marketplaceFilters?: Partial<MarketplaceFilters>; readonly marketplaceSort?: MarketplaceSort;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
   readonly publishedListings?: readonly MarketplaceListing[];
   readonly adoptPublicationId?: string | null; readonly adoptScope?: "full" | "units"; readonly adoptModuleIds?: readonly string[];
@@ -849,28 +847,28 @@ const STAT_MECH_SCHEDULE: Record<string, unknown> = {
 const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
   {
     publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001", subject: "Engineering", gateStyle: "Reviewed Quiz",
-    handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
+    topicTags: ["Python", "RAG", "Attention", "Linear Algebra"], handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
     ownerAccountId: "learner-default", sourceCurriculumId: "curriculum-rag-python-001", basedOn: null,
     curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
   },
   {
     publicationId: "publication-linear-algebra-001", revisionId: "public-revision-linear-algebra-001", subject: "Mathematics", gateStyle: "Public Quiz Bank",
-    handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
+    topicTags: ["Linear Algebra", "Eigenvalues", "SVD"], handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
   },
   {
     publicationId: "publication-tolstoy-001", revisionId: "public-revision-tolstoy-001", subject: "Literature", gateStyle: "Self-Check Rubric",
-    handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
+    topicTags: ["Tolstoy", "Realism", "Narrative"], handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
   },
   {
     publicationId: "publication-rust-async-001", revisionId: "public-revision-rust-async-001", subject: "Systems", gateStyle: "Code Lab Gate",
-    handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
+    topicTags: ["Rust", "Async", "Concurrency"], handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: RUST_ASYNC_CURRICULUM, schedule: RUST_ASYNC_SCHEDULE,
   },
   {
     publicationId: "publication-statmech-001", revisionId: "public-revision-statmech-001", subject: "Physics", gateStyle: "Problem Set Gate",
-    handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
+    topicTags: ["Thermodynamics", "Ensembles", "Phase Transitions"], handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: STAT_MECH_CURRICULUM, schedule: STAT_MECH_SCHEDULE,
   },
 ];
@@ -878,7 +876,7 @@ const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
 // Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
 const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
-  "set-marketplace-domain", "set-marketplace-rigor", "set-marketplace-sort", "set-marketplace-query", "load-more",
+  "set-marketplace-filter", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query", "load-more",
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
   "view-evidence", "check-prerequisites", "set-resource-scope", "set-resource-category",
 ]);
@@ -1325,10 +1323,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   ).getDiffModel();
 
   // Marketplace: public listings filtered and sorted for this viewer. Counts are public totals across accounts.
-  const marketplaceDomain = inputState.marketplaceDomain ?? "All";
-  const marketplaceRigor = inputState.marketplaceRigor ?? "All";
+  const marketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...inputState.marketplaceFilters };
   const marketplaceSort = inputState.marketplaceSort ?? "top_upvoted";
-  const marketplaceQuery = inputState.marketplaceQuery ?? "";
   const myPlans = signedOut ? [] : plans;
   const adoptScope = inputState.adoptScope ?? "full";
   const originListing = listings.find((listing) => listing.publicationId === selectedPlan.publicationId && listing.ownerAccountId !== account.accountId);
@@ -2056,10 +2052,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         votes,
         adoptions,
         myPlans,
-        marketplaceDomain,
-        marketplaceRigor,
+        marketplaceFilters,
         marketplaceSort,
-        marketplaceQuery,
         loadMoreNote,
       }))}
 
@@ -2290,10 +2284,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let account: Account = initialState.account ?? PERSONAS.learner;
   let returnTo: ReturnDestination | null = initialState.returnTo ?? null;
   let authNotice: string | null = initialState.authNotice ?? null;
-  let marketplaceDomain: MarketplaceDomain = initialState.marketplaceDomain ?? "All";
-  let marketplaceRigor: MarketplaceRigor = initialState.marketplaceRigor ?? "All";
+  let marketplaceFilters: MarketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...initialState.marketplaceFilters };
   let marketplaceSort: MarketplaceSort = initialState.marketplaceSort ?? "top_upvoted";
-  let marketplaceQuery = initialState.marketplaceQuery ?? "";
   let votes: Vote[] = [...(initialState.votes ?? [])];
   let adoptions: Adoption[] = [...(initialState.adoptions ?? [])];
   let publishedListings: MarketplaceListing[] = [...(initialState.publishedListings ?? [])];
@@ -2551,7 +2543,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     const origin = listings().find((listing) => listing.publicationId === plan.publicationId && listing.ownerAccountId !== account.accountId);
     publishedListings = [...publishedListings, {
       publicationId: `publication-${key}`, revisionId: `public-revision-${key}-1`,
-      subject: plan.domain, gateStyle: plan.assessmentMode, handle: handleOf(account),
+      subject: plan.domain, gateStyle: plan.assessmentMode, topicTags: origin?.topicTags ?? [], handle: handleOf(account),
       upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
       ownerAccountId: account.accountId, sourceCurriculumId: plan.curriculumId, basedOn: origin?.handle ?? null,
       curriculum: {
@@ -2581,7 +2573,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      authStatus, account, returnTo, authNotice, marketplaceDomain, marketplaceRigor, marketplaceSort, marketplaceQuery,
+      authStatus, account, returnTo, authNotice, marketplaceFilters, marketplaceSort,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptScope, adoptModuleIds: [...adoptModuleIds] as readonly string[],
@@ -2697,10 +2689,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         else signIn(PERSONAS[data["persona"]]);
       } else if (action === "simulate-session-expired" && signedIn()) expireSession();
       else if (action === "sign-out" && authStatus !== "guest") signOut();
-      else if (action === "set-marketplace-domain" && isOneOf(MARKETPLACE_DOMAINS, data["domain"])) marketplaceDomain = data["domain"];
-      else if (action === "set-marketplace-rigor" && isOneOf(MARKETPLACE_RIGORS, data["rigor"])) marketplaceRigor = data["rigor"];
+      else if (
+        action === "set-marketplace-filter" && isOneOf(MARKETPLACE_FACETS, data["facet"]) &&
+        facetValuesOf(data["facet"], listings()).includes(data["value"] ?? "")
+      ) marketplaceFilters = withMarketplaceFilter(marketplaceFilters, data["facet"], data["value"] ?? "", listings());
+      else if (action === "clear-marketplace-filters") marketplaceFilters = NO_MARKETPLACE_FILTERS;
       else if (action === "set-marketplace-sort" && isOneOf(MARKETPLACE_SORTS, data["sort"])) marketplaceSort = data["sort"];
-      else if (action === "set-marketplace-query") marketplaceQuery = (value("query") ?? "").trim().slice(0, 100);
+      else if (action === "set-marketplace-query") marketplaceFilters = { ...marketplaceFilters, query: (value("query") ?? "").trim().slice(0, 100) };
       else if (action === "open-adopt-dialog" && adoptableListing(data["publicationId"])) {
         adoptPublicationId = data["publicationId"] ?? null;
         adoptScope = "full";
