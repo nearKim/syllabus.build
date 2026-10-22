@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  createCurriculumSignalStore,
   createCurriculumWebAppController,
   getDialogLightDismissFallbackScript,
   mountCurriculumWebApp,
@@ -584,7 +585,7 @@ test("a plan with no public quiz bank gates on a self-check rubric in the drawer
   const rubric = rubricOf(drawerOf(root.innerHTML));
   assert.ok(rubric.includes('<h3 id="learn-detail-inspector-rubric">Synthesis &amp; Self-Check Rubric</h3>'));
   assert.ok(rubric.includes('<p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>'));
-  assert.match(rubric, /<p class="rubric-prompt">Compare Prince Andrei&#39;s disillusionment at Austerlitz[\s\S]*?hedgehog and fox framework applies\.<\/p>/);
+  assert.match(rubric, /<p class="rubric-prompt">Compare Prince Andrei's disillusionment at Austerlitz[\s\S]*?hedgehog and fox framework applies\.<\/p>/);
   assert.equal(rubric.match(/<li>/g)?.length, 3);
   assert.ok(drawerOf(root.innerHTML).includes('<span class="proficiency-pill" data-proficiency-status="unassessed">'));
 
@@ -605,7 +606,7 @@ test("Explore lists the community Marketplace with pills, counts, filters, sorti
   const html = renderCurriculumWebAppHtml({ topLevel: "Explore" });
   assert.deepEqual(titlesOf(html), [
     "Rust Async Runtime Internals", "Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics",
-    "Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina", "Build and Evaluate RAG Systems in Python",
+    "Tolstoy's Major Novels: War &amp; Peace and Anna Karenina", "Build and Evaluate RAG Systems in Python",
   ], "Top Upvoted is the default order");
 
   const rust = cardOf(html, "publication-rust-async-001");
@@ -617,7 +618,7 @@ test("Explore lists the community Marketplace with pills, counts, filters, sorti
   assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">/);
   assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span>/);
 
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Humanities" })), ["Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina"]);
+  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceDomain: "Humanities" })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceRigor: "Applied" })), ["Rust Async Runtime Internals"]);
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
   assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
@@ -692,7 +693,7 @@ test("Share to Marketplace previews the public projection, then publishes it to 
 
   click({ action: "select-curriculum", curriculumId: "curriculum-tolstoy-lit-003" });
   app.openDialog("dialog-publication-preview");
-  assert.ok(dialog().includes('<h3 id="publish-preview-title">Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina</h3>'));
+  assert.ok(dialog().includes("<h3 id=\"publish-preview-title\">Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</h3>"));
   assert.deepEqual([...dialog().matchAll(/<li><svg[\s\S]*?<\/svg><span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), [
     "Your progress and completion records", "Proficiency, evidence, and diagnostic answers", "Notes, attempts, and practice drafts",
     "BYOK keys and provider connections", "Billing, budgets, and wallet state", "Your session dates and reminder settings",
@@ -709,7 +710,7 @@ test("Share to Marketplace previews the public projection, then publishes it to 
   const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
   assert.match(card, /@alex · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?▲ Upvote Revision \(0\)[\s\S]*?<span class="owned-badge">Yours<\/span>/);
   const mine = root.innerHTML.slice(root.innerHTML.indexOf('<section class="surface-panel my-publications"'));
-  assert.ok(mine.includes('<li data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"><strong>Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina</strong>'));
+  assert.ok(mine.includes("<li data-publication-id=\"publication-curriculum-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
   app.openDialog("dialog-publication-preview");
   assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1."));
 });
@@ -891,4 +892,25 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("createCurriculumSignalStore provides fine-grained @preact/signals reactivity and computed views", () => {
+  const store = createCurriculumSignalStore({ topLevel: "Learn", learnSubDestination: "Today" });
+  assert.equal(store.topLevel.value, "Learn");
+  assert.equal(store.learnSubDestination.value, "Today");
+  assert.equal(store.authStatus.value, "authenticated");
+  assert.equal(store.selfReportedCompletedCount.value, 0);
+
+  store.recordTodayActivityCompletion("activity-theory", "evt-signal-test-1");
+  assert.equal(store.selfReportedCompletedCount.value, 1);
+  assert.equal(store.totalStudyMinutes.value, 15);
+  assert.ok(store.renderedHtml.value.includes('data-self-reported-count="1"'));
+
+  store.navigateTopLevel("Explore");
+  assert.equal(store.topLevel.value, "Explore");
+  assert.ok(store.renderedHtml.value.includes('data-current-top-level="Explore"'));
+
+  store.applyUiAction("sign-out");
+  assert.equal(store.authStatus.value, "guest");
+  assert.equal(store.selfReportedCompletedCount.value, 0);
 });

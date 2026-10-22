@@ -1,3 +1,5 @@
+import { h } from "preact";
+import { renderToString } from "preact-render-to-string";
 import {
   buildPlanMapAndOutlineModel, OBJECTIVE_PROFICIENCY_BADGE_STATUSES, renderAccessibleMathFormula,
   renderUntrustedCatalogText, resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
@@ -22,11 +24,56 @@ import {
   type InferenceMode, type MaskedCredentialRecord,
 } from "./byokAndReminders.ts";
 import {
-  buildFourBucketCostBreakdown, createHostedBillingController, formatMinorCurrency, resolveTransitiveAdoptionScope,
-  type HostedCreditWalletSnapshot, type PublicCurriculumContentBlock,
+  buildFourBucketCostBreakdown, createHostedBillingController, formatMinorCurrency,
+  type HostedCreditWalletSnapshot,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
 import { clamp, escapeHtml, normalizeStringList } from "./shared.ts";
+import { SfIcon, StatusGlyph, type SegmentStyle, type SfIconName } from "./components/Icons.tsx";
+import {
+  DEEP_DIVE_MODES, FLOW_ORDERS, SPACED_REVIEW_MODES, TRACK_LABELS, TRACK_OF_TYPE,
+  MacroStage, StepRow, StudyFlowBoard, displayUnitTitle, effortWords, executionTone,
+  executionWords, fit, humanize, isClosed, isOneOf, plannedFlowOrder, rightsWords, unitProgress,
+  type DeepDiveMode, type FlowOrder, type FlowView, type SpacedReviewMode, type StudyActivity, type StudyModule,
+} from "./components/StudyFlowBoard.tsx";
+import {
+  INSPECTOR_ID, InspectorDrawer, SETTABLE_STATUSES,
+  type SelfCheckRubric, type SettableStatus,
+} from "./components/InspectorDrawer.tsx";
+import {
+  AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner,
+  type Account, type AuthStatus,
+} from "./components/HeaderBar.tsx";
+import {
+  AuthDialog, PERSONAS, PERSONA_CHOICES, handleOf,
+  type PersonaChoice, type ReturnDestination,
+} from "./components/AuthDialog.tsx";
+import {
+  AdoptCurriculumDialog, ExploreMarketplace, MARKETPLACE_DOMAINS, MARKETPLACE_RIGORS, MARKETPLACE_SORTS,
+  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, goalTitleOf, mathDepthFor,
+  publicProjectionOf, rawListOf,
+  type ActiveCurriculum, type Adoption, type MarketplaceDomain, type MarketplaceListing,
+  type MarketplaceRigor, type MarketplaceSort, type Vote,
+} from "./components/ExploreMarketplace.tsx";
+import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state/store.ts";
+
+export {
+  createCurriculumSignalStore,
+  type CurriculumSignalStore,
+  type FlowOrder,
+  type DeepDiveMode,
+  type SpacedReviewMode,
+  type AuthStatus,
+  type Account,
+  type PersonaChoice,
+  type ReturnDestination,
+  type MarketplaceDomain,
+  type MarketplaceRigor,
+  type MarketplaceSort,
+  type MarketplaceListing,
+  type Adoption,
+  type Vote,
+};
 
 export interface CurriculumWebAppStateInput {
   readonly topLevel?: TopLevelDestination; readonly learnSubDestination?: LearnSubDestination;
@@ -519,18 +566,6 @@ const TOLSTOY_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-20T16:00:00Z",
 };
 
-// A learner plan: its curriculum and schedule, the domain and gate style its cards show, the Marketplace listing it
-// came from or was published as, and whether it is still a draft. Catalog and proficiency data are shared by all plans.
-interface ActiveCurriculum {
-  readonly curriculumId: string;
-  readonly domain: string;
-  readonly assessmentMode: string;
-  readonly curriculum: Record<string, unknown>;
-  readonly schedule: Record<string, unknown>;
-  readonly publicationId: string | null;
-  readonly draft: boolean;
-}
-
 const RAG_PLAN: ActiveCurriculum = {
   curriculumId: "curriculum-rag-python-001", domain: "Engineering", assessmentMode: "Reviewed Quiz",
   curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE, publicationId: "publication-synthetic-001", draft: false,
@@ -781,35 +816,6 @@ const STAT_MECH_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-08T10:00:00Z",
 };
 
-const MARKETPLACE_DOMAINS = ["All", "Engineering", "Mathematics", "Humanities", "Systems"] as const;
-const MARKETPLACE_RIGORS = ["All", "Formal", "Applied", "Intuitive"] as const;
-const MARKETPLACE_SORTS = ["top_upvoted", "most_adopted", "newest"] as const;
-type MarketplaceDomain = (typeof MARKETPLACE_DOMAINS)[number];
-type MarketplaceRigor = (typeof MARKETPLACE_RIGORS)[number];
-type MarketplaceSort = (typeof MARKETPLACE_SORTS)[number];
-const SORT_LABELS: Readonly<Record<MarketplaceSort, string>> = { top_upvoted: "Top Upvoted", most_adopted: "Most Adopted", newest: "Newest" };
-// A plan's subject maps to one Marketplace filter. Literature files under Humanities and Physics under Mathematics.
-const FILTER_DOMAIN_OF: Readonly<Record<string, Exclude<MarketplaceDomain, "All">>> = {
-  Engineering: "Engineering", Mathematics: "Mathematics", Literature: "Humanities", Systems: "Systems", Physics: "Mathematics",
-};
-
-// A public revision in the Marketplace. It carries the plan an adopter copies, and its owner's account when one is known.
-interface MarketplaceListing {
-  readonly publicationId: string;
-  readonly revisionId: string;
-  readonly subject: string;
-  readonly gateStyle: string;
-  readonly handle: string;
-  readonly upvotes: number;
-  readonly adoptions: number;
-  readonly publishedAt: string;
-  readonly ownerAccountId: string | null;
-  readonly sourceCurriculumId: string | null;
-  readonly basedOn: string | null;
-  readonly curriculum: Record<string, unknown>;
-  readonly schedule: Record<string, unknown>;
-}
-
 const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
   {
     publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001", subject: "Engineering", gateStyle: "Reviewed Quiz",
@@ -846,43 +852,6 @@ const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
   "view-evidence", "check-prerequisites",
 ]);
-
-// Signed-in identity. The demo personas stand in for real accounts, because no account provider is connected.
-const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
-type AuthStatus = (typeof AUTH_STATUSES)[number];
-interface Account { readonly accountId: string; readonly email: string; readonly role: "Learner" | "Curator" | "Moderator" }
-const PERSONAS = {
-  learner: { accountId: "learner-default", email: "alex@curriculum.io", role: "Learner" },
-  curator: { accountId: "curator-ada", email: "ada@curriculum.io", role: "Curator" },
-  moderator: { accountId: "moderator-mo", email: "mo@curriculum.io", role: "Moderator" },
-} as const satisfies Readonly<Record<string, Account>>;
-const PERSONA_CHOICES = ["learner", "curator", "moderator", "guest"] as const;
-const handleOf = (account: Account): string => `@${account.email.split("@")[0] ?? "learner"}`;
-
-// What publishing leaves out. The public projection carries none of it (@S57).
-const PRIVATE_FIELDS_REMOVED = [
-  "Your progress and completion records",
-  "Proficiency, evidence, and diagnostic answers",
-  "Notes, attempts, and practice drafts",
-  "BYOK keys and provider connections",
-  "Billing, budgets, and wallet state",
-  "Your session dates and reminder settings",
-] as const;
-
-// Where sign-in returns the learner. It restores a place and an open dialog, never the action itself (UI-009).
-interface ReturnDestination {
-  readonly label: string;
-  readonly topLevel: TopLevelDestination;
-  readonly learnSubDestination: LearnSubDestination;
-  readonly openDialogId: string | null;
-  readonly adoptPublicationId: string | null;
-}
-
-// Account-owned records. Votes and adoptions belong to one account, so signing out never changes a public count.
-interface Adoption { readonly accountId: string; readonly publicationId: string; readonly moduleIds: readonly string[]; readonly active: boolean }
-interface Vote { readonly accountId: string; readonly revisionId: string }
-
-interface SelfCheckRubric { readonly prompt: string; readonly criteria: readonly string[] }
 
 // A topic with no public quiz bank is checked against a rubric. A gate or review links one through content.assessment_ref.
 const SELF_CHECK_RUBRICS: Readonly<Record<string, SelfCheckRubric>> = {
@@ -974,474 +943,36 @@ export function getDialogLightDismissFallbackScript(): string {
 })();`;
 }
 
-type SfIconName =
-  | "learn" | "explore" | "settings"
-  | "today" | "plan" | "progress" | "resources"
-  | "zoom-in" | "zoom-out" | "reset" | "focus"
-  | "check" | "close"
-  | "clock" | "rigor" | "pin" | "code";
-
-const SF_ICON_PATHS: Record<SfIconName, string> = {
-  learn: `<path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13"/><path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13"/><path d="M3 12.25h3.6"/><path d="M13 12.25H9.4"/>`,
-  explore: `<circle cx="8" cy="8" r="5.25"/><path d="m9.95 6.05-1.15 3.15-3.15 1.15 1.15-3.15z"/>`,
-  settings: `<path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5"/><circle cx="5.5" cy="4.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none"/><circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" stroke="none"/>`,
-  today: `<rect x="2.75" y="3.5" width="10.5" height="9.75" rx="1.5"/><path d="M2.75 6.5h10.5M5.5 2.5v2M10.5 2.5v2"/>`,
-  plan: `<circle cx="4" cy="4.5" r="1.5"/><circle cx="12" cy="4.5" r="1.5"/><circle cx="8" cy="12" r="1.5"/><path d="M5.3 5.4 6.9 10.6M10.7 5.4 9.1 10.6"/>`,
-  progress: `<path d="M3 13V8.5M8 13V4M13 13V6.5"/>`,
-  resources: `<path d="M4.25 2.75h5.4l2.1 2.1v8.15a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V3.5a.75.75 0 0 1 .75-.75z"/><path d="M9.6 2.75V5h2.15"/>`,
-  "zoom-in": `<circle cx="7" cy="7" r="3.75"/><path d="m10 10 3.25 3.25M7 5.25v3.5M5.25 7h3.5"/>`,
-  "zoom-out": `<circle cx="7" cy="7" r="3.75"/><path d="m10 10 3.25 3.25M5.25 7h3.5"/>`,
-  reset: `<path d="M13 8a5 5 0 1 1-1.35-3.4"/><path d="M13 2.75V5.5h-2.75"/>`,
-  focus: `<circle cx="8" cy="8" r="2"/><path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15"/>`,
-  check: `<path d="M3.25 8.25 6.4 11.4 12.75 4.6"/>`,
-  close: `<path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5"/>`,
-  clock: `<circle cx="8" cy="8" r="5.25"/><path d="M8 5.25V8l1.9 1.25"/>`,
-  rigor: `<path d="M3 2.75v10.5h10.5z"/><path d="M3 10.5h2.75v2.75"/>`,
-  pin: `<path d="M6 2.75h4l-.6 3.6 1.85 2.15h-6.5L6.6 6.35z"/><path d="M8 8.5v4.75"/>`,
-  code: `<path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25"/>`,
-};
-
 function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
-  return `<svg class="sf-icon" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${SF_ICON_PATHS[name]}</svg>`;
+  return renderToString(h(SfIcon, { name, size }));
 }
 
-const INSPECTOR_ID = "learn-detail-inspector";
-
-const FLOW_ORDERS = ["theory_first", "application_first", "balanced"] as const;
-const DEEP_DIVE_MODES = ["included", "skipped"] as const;
-const SPACED_REVIEW_MODES = ["included", "compact"] as const;
-export type FlowOrder = (typeof FLOW_ORDERS)[number];
-export type DeepDiveMode = (typeof DEEP_DIVE_MODES)[number];
-export type SpacedReviewMode = (typeof SPACED_REVIEW_MODES)[number];
-
-const isOneOf = <T extends string>(values: readonly T[], value: unknown): value is T =>
-  (values as readonly unknown[]).includes(value);
-
-type GlyphTone = "todo" | "doing" | "done";
-type GlyphKind = "module" | "gate";
-type StudyModule = PlanMapAndOutlineModel["outlineModules"][number];
-type StudyActivity = StudyModule["activities"][number];
-type RightsBadge = StudyActivity["resourceProvenanceCards"][number]["rightsBadge"];
-type FlowTrackId = "lecture" | "deep_dive" | "code" | "review" | "gate";
-type SegmentStyle = "solid" | "dashed";
-
-const TRACK_OF_TYPE: Readonly<Record<StudyActivity["type"], FlowTrackId>> = {
-  theory: "lecture", worked_example: "deep_dive", reflection: "deep_dive",
-  coding: "code", project: "code", review: "review", quiz: "gate",
-};
-
-const TRACK_LABELS: Readonly<Record<FlowTrackId, { readonly column: string; readonly badge: string }>> = {
-  lecture: { column: "Lecture", badge: "Lecture" },
-  deep_dive: { column: "Deep Dive", badge: "Deep Dive" },
-  code: { column: "Code", badge: "Code Lab" },
-  review: { column: "Review", badge: "Spaced Review" },
-  gate: { column: "Gate", badge: "Gate" },
-};
-
-const FLOW_ORDER_OPTIONS: Readonly<Record<FlowOrder, { readonly label: string; readonly tracks: readonly FlowTrackId[] }>> = {
-  theory_first: { label: "Theory", tracks: ["lecture", "deep_dive", "code"] },
-  application_first: { label: "Code first", tracks: ["code", "lecture", "deep_dive"] },
-  balanced: { label: "Balanced", tracks: ["lecture", "code", "deep_dive"] },
-};
-
-interface FlowView {
-  readonly order: FlowOrder;
-  readonly deepDive: DeepDiveMode;
-  readonly spacedReview: SpacedReviewMode;
-}
-
-function plannedFlowOrder(curriculum: Record<string, unknown>): FlowOrder {
-  const applied = curriculum["sequence_preference_applied"];
-  return isOneOf(FLOW_ORDERS, applied) ? applied : "theory_first";
-}
-
-const trackOf = (activity: StudyActivity): FlowTrackId => (activity.masteryGated ? "gate" : TRACK_OF_TYPE[activity.type]);
-
-// Flow tracks in the chosen order, then the optional Review column, then the Gate.
-function flowColumns(view: FlowView): readonly FlowTrackId[] {
-  const tracks = FLOW_ORDER_OPTIONS[view.order].tracks.filter((track) => track !== "deep_dive" || view.deepDive === "included");
-  return [...tracks, ...(view.spacedReview === "included" ? ["review" as const] : []), "gate"];
-}
-
-function humanize(value: string): string {
-  const words = value.replace(/_/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-const fit = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text);
-
-const rightsWords = (badge: RightsBadge): string => `${humanize(badge.basis)}${badge.externalLinkOnly ? " (external link only)" : ""}`;
-
-const isClosed = (status: string): boolean => status === "completed" || status === "self_reported_completed" || status === "waived";
-
-function executionTone(status: string): GlyphTone {
-  if (isClosed(status)) return "done";
-  return status === "in_progress" ? "doing" : "todo";
-}
-
-function executionWords(status: string): string {
-  if (status === "self_reported_completed") return "Self-reported completed";
-  if (status === "completed") return "Completed";
-  if (status === "in_progress") return "In progress";
-  if (status === "waived") return "Waived by reviewed evidence";
-  return "Not started";
-}
-
-const effortWords = ({ min, point, max }: { readonly min: number; readonly point: number; readonly max: number }): string =>
-  min === max ? `${point} min` : `${point} min (${min}–${max} min)`;
-
-interface UnitProgress { readonly done: number; readonly total: number; readonly left: number; readonly started: boolean }
-
-// Optional work stays out of the denominator (Section 9.7).
-function unitProgress(activities: readonly StudyActivity[]): UnitProgress {
-  const required = activities.filter((activity) => activity.required);
-  const open = required.filter((activity) => !isClosed(activity.executionStatus));
-  return {
-    done: required.length - open.length,
-    total: required.length,
-    left: open.reduce((sum, activity) => sum + activity.durationTriplet.point, 0),
-    started: activities.some((activity) => activity.executionStatus !== "not_started"),
-  };
-}
-
-function unitTone(progress: UnitProgress): GlyphTone {
-  if (progress.total > 0 && progress.done === progress.total) return "done";
-  return progress.started ? "doing" : "todo";
-}
-
-function progressLabel(progress: UnitProgress): string {
-  if (progress.total === 0) return "Optional only";
-  return progress.left > 0 ? `${progress.done}/${progress.total} · ${progress.left}m` : `${progress.done}/${progress.total}`;
-}
-
-interface GateStatus { readonly passed: boolean; readonly demonstrated: number; readonly total: number }
-
-function gateStatus(statuses: readonly string[]): GateStatus {
-  const demonstrated = statuses.filter((status) => status === "demonstrated").length;
-  return { passed: statuses.length > 0 && demonstrated === statuses.length, demonstrated, total: statuses.length };
-}
-
-const gateCriteria = (gate: GateStatus): string => gate.total === 0
-  ? "No objectives mapped"
-  : `${gate.passed ? "Passed" : "Not passed"} · ${gate.demonstrated} of ${gate.total} objective${gate.total === 1 ? "" : "s"} demonstrated`;
-
-const gateActivities = (mod: StudyModule): readonly StudyActivity[] => mod.activities.filter((activity) => trackOf(activity) === "gate");
-
-// A unit's gate is its quiz or mastery-gated work; a unit without one is gated by its own objectives.
-function unitGate(mod: StudyModule): GateStatus {
-  const gates = gateActivities(mod);
-  return gates.length > 0
-    ? gateStatus(gates.flatMap((activity) => activity.objectiveProficiencyBadges.map((badge) => badge.status)))
-    : gateStatus(mod.objectives.map((objective) => objective.proficiencyStatus));
-}
-
-const displayUnitTitle = (title: string): string => title.replace(/^Module\s+\d+\s*:\s*/, "");
-
-function statusGlyph(type: GlyphKind, tone: GlyphTone, size = 20): string {
-  const shape = type === "gate"
-    ? `<path class="st-g-shape" d="M10 1.7 18.3 10 10 18.3 1.7 10Z" />`
-    : `<rect class="st-g-shape" x="1.25" y="1.25" width="17.5" height="17.5" rx="4.5" />`;
-  const mark = type === "gate"
-    ? (tone === "done" ? `<path class="st-g-check" d="M6.6 10.2 8.9 12.5 13.5 7.6" />` : "")
-    : tone === "doing"
-      ? `<path class="st-g-half" d="M10 1.25H5.75a4.5 4.5 0 0 0-4.5 4.5v8.5a4.5 4.5 0 0 0 4.5 4.5H10Z" />`
-      : tone === "done"
-        ? `<path class="st-g-check" d="M5.5 10.4 8.4 13.3 14.6 6.8" />`
-        : "";
-  return `<svg class="st-glyph" viewBox="0 0 20 20" width="${size}" height="${size}" aria-hidden="true" data-type="${type}" data-status="${tone}">${shape}${mark}</svg>`;
-}
-
-function unitMarker(tone: GlyphTone, size = 24): string {
-  const body = tone === "done"
-    ? `<circle class="st-m-disc" cx="12" cy="12" r="10" /><path class="st-m-check" d="M7.3 12.3 10.4 15.4 16.6 8.8" />`
-    : `<circle class="st-m-ring" cx="12" cy="12" r="9.2" />${tone === "doing" ? `<path class="st-m-half" d="M12 2.8a9.2 9.2 0 0 0 0 18.4Z" />` : ""}`;
-  return `<svg class="st-marker" viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true" data-status="${tone}">${body}</svg>`;
-}
-
-const ARROW_SVG = (className: string, style: SegmentStyle = "solid"): string =>
-  `<svg class="${className}" viewBox="0 0 28 12" width="28" height="12" aria-hidden="true" data-style="${style}"><line x1="1" y1="6" x2="26" y2="6" /><path d="M20.5 2 26 6 20.5 10" /></svg>`;
-
-// One horizontal piece of a row connector. A cell draws only the part inside its own padding box.
-function connectorSvg(kind: "in" | "out" | "through", style: SegmentStyle): string {
-  const head = kind === "in" ? `<svg x="100%" overflow="visible"><path d="M-7.5 2 -1.5 6 -7.5 10" /></svg>` : "";
-  return `<svg class="matrix-svg" data-seg="${kind}" data-style="${style}" aria-hidden="true"><line x1="0" y1="6" x2="100%" y2="6" />${head}</svg>`;
-}
-
-function flowKeyHtml(): string {
-  const item = (glyph: string, label: string) => `<li>${glyph}<span>${label}</span></li>`;
-  return `<ul class="flow-key" aria-label="Flowchart key">${item(statusGlyph("module", "todo", 16), "Not started")}${item(statusGlyph("module", "doing", 16), "In progress")}${item(statusGlyph("module", "done", 16), "Done")}${item(statusGlyph("gate", "todo", 16), "Gate not passed")}${item(statusGlyph("gate", "done", 16), "Gate passed")}${item(ARROW_SVG("key-line"), "Next step")}${item(ARROW_SVG("key-line", "dashed"), "Optional enrichment")}</ul>`;
-}
-
-function checkButton(activity: StudyActivity, className: string): string {
-  const id = escapeHtml(activity.activityId);
-  const done = activity.executionStatus === "completed" || activity.executionStatus === "self_reported_completed";
-  return `<button type="button" class="${className}" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}" aria-pressed="${done}">${statusGlyph("module", executionTone(activity.executionStatus), 20)}<span class="st-sr">${done ? "Self-reported completed" : "Mark self-reported completed"}: ${escapeHtml(activity.title)}</span></button>`;
-}
-
-// A card holds only its title, duration, optional mark, and check. The column header names the track.
-function renderNodeCard(activity: StudyActivity, selectedActivityId: string | null): string {
-  const id = escapeHtml(activity.activityId);
-  const mod = escapeHtml(activity.moduleId);
-  const selected = activity.activityId === selectedActivityId;
-  const { min, point, max } = activity.durationTriplet;
-  return `<article class="node-card" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-module-id="${mod}" data-track="${trackOf(activity)}" data-required="${activity.required}" data-selected="${selected}" data-open="${selected}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-mastery-gated="${activity.masteryGated}">
-      <button type="button" class="node-open" data-action="select-outline-activity" data-activity-id="${id}" data-module-id="${mod}" aria-pressed="${selected}">
-        <span class="node-title">${escapeHtml(activity.title)}</span>
-        <span class="node-foot"><span class="node-duration">${point}m</span>${activity.required ? "" : `<span class="node-optional">Optional</span>`}</span>
-        <span class="st-sr">${executionWords(activity.executionStatus)}. ${activity.required ? "Required" : "Optional"}. About ${point} minutes, range ${min} to ${max}. Objective proficiency: ${escapeHtml(humanize(activity.objectiveProficiencyStatus))}.</span>
-      </button>
-      ${checkButton(activity, "node-check")}
-    </article>`;
-}
-
-function renderGateDiamond(mod: StudyModule, gate: StudyActivity | null, selectedActivityId: string | null): string {
-  const status = gate
-    ? gateStatus(gate.objectiveProficiencyBadges.map((badge) => badge.status))
-    : gateStatus(mod.objectives.map((objective) => objective.proficiencyStatus));
-  const selected = gate !== null && gate.activityId === selectedActivityId;
-  const target = gate
-    ? `data-action="select-outline-activity" data-activity-id="${escapeHtml(gate.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${selected}"`
-    : `data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}"`;
-  return `<button type="button" class="gate-diamond" ${target} data-status="${status.passed ? "passed" : "open"}">
-      <svg class="gate-shape" viewBox="0 0 84 84" width="84" height="84" aria-hidden="true"><rect x="14" y="14" width="56" height="56" rx="8" transform="rotate(45 42 42)" />${status.passed ? `<path d="M31 43 39 51 54 34" />` : ""}</svg>
-      <span class="st-sr">Gate. </span><span class="gate-title">${escapeHtml(gate ? gate.title : "Objective check")}</span>
-      <span class="gate-criteria">${gateCriteria(status)}${gate ? ` · ${gate.durationTriplet.point}m` : ""}</span>
-    </button>`;
-}
-
-interface UnitPlacement {
-  readonly mod: StudyModule;
-  readonly cells: ReadonlyMap<FlowTrackId, readonly StudyActivity[]>;
-  readonly hidden: readonly StudyActivity[];
-  readonly postGate: ReadonlySet<string>;
-}
-
-// Work that depends on the unit's gate, directly or through other work, comes after the gate.
-function postGateIds(mod: StudyModule): ReadonlySet<string> {
-  const gateIds = new Set(gateActivities(mod).map((activity) => activity.activityId));
-  const postGate = new Set<string>();
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const activity of mod.activities) {
-      if (gateIds.has(activity.activityId) || postGate.has(activity.activityId)) continue;
-      if (activity.prerequisiteActivityIds.some((id) => gateIds.has(id) || postGate.has(id))) {
-        postGate.add(activity.activityId);
-        grew = true;
-      }
-    }
-  }
-  return postGate;
-}
-
-// Reviews and work that depends on the gate keep their column but stay off the row's arrow chain.
-function placeUnit(mod: StudyModule, view: FlowView): UnitPlacement {
-  const postGate = postGateIds(mod);
-  const cells = new Map<FlowTrackId, StudyActivity[]>();
-  const hidden: StudyActivity[] = [];
-  // Pre-gate work goes first in each column, so an arrow always lands on a card that belongs to the chain.
-  const ordered = [...mod.activities].sort((a, b) => Number(postGate.has(a.activityId)) - Number(postGate.has(b.activityId)));
-  for (const activity of ordered) {
-    const own = trackOf(activity);
-    const skipDeepDive = own === "deep_dive" && view.deepDive === "skipped";
-    // The time-saver drops optional deep dives only; required work is never hidden.
-    if (skipDeepDive && !activity.required) {
-      hidden.push(activity);
-      continue;
-    }
-    const column: FlowTrackId = skipDeepDive ? "lecture" : own === "review" && view.spacedReview === "compact" ? "gate" : own;
-    cells.set(column, [...(cells.get(column) ?? []), activity]);
-  }
-  return { mod, cells, hidden, postGate };
-}
-
-function renderUnitRow(
-  units: readonly UnitPlacement[], index: number, columns: readonly FlowTrackId[],
-  selectedModuleId: string | null, selectedActivityId: string | null,
-): string {
-  const unit = units[index];
-  if (!unit) return "";
-  const { mod, cells, postGate } = unit;
-  const modId = escapeHtml(mod.moduleId);
-  const selected = mod.moduleId === selectedModuleId;
-  const progress = unitProgress(mod.activities);
-  const tone = unitTone(progress);
-  const previous = units[index - 1];
-  const spineIn = previous ? (unitTone(unitProgress(previous.mod.activities)) === "done" ? "done" : "todo") : "none";
-  const spineOut = index < units.length - 1 ? (tone === "done" ? "done" : "todo") : "none";
-  const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review" && !postGate.has(activity.activityId);
-
-  const chain = columns.flatMap((track, column) => (track === "gate" || (cells.get(track) ?? []).some(onChain) ? [column] : []));
-  const optionalAt = (column: number): boolean => {
-    const items = (cells.get(columns[column] ?? "gate") ?? []).filter((activity) => onChain(activity) || trackOf(activity) === "gate");
-    return items.length > 0 && items.every((activity) => !activity.required);
-  };
-  const segments = new Map<number, string[]>();
-  const crossed = new Set<number>();
-  const addSegment = (column: number, svg: string) => segments.set(column, [...(segments.get(column) ?? []), svg]);
-  chain.forEach((to, k) => {
-    const from = chain[k - 1];
-    if (from === undefined) return;
-    const style: SegmentStyle = optionalAt(from) || optionalAt(to) ? "dashed" : "solid";
-    addSegment(from, connectorSvg("out", style));
-    for (let column = from + 1; column < to; column++) {
-      addSegment(column, connectorSvg("through", style));
-      crossed.add(column);
-    }
-    addSegment(to, connectorSvg("in", style));
-  });
-
-  const cellsHtml = columns.map((track, column) => {
-    const items = cells.get(track) ?? [];
-    const gates = items.filter((activity) => trackOf(activity) === "gate");
-    const cards = items.filter((activity) => trackOf(activity) !== "gate")
-      .map((activity) => renderNodeCard(activity, selectedActivityId)).join("");
-    const diamonds = track !== "gate" ? ""
-      : gates.length > 0 ? gates.map((gate) => renderGateDiamond(mod, gate, selectedActivityId)).join("") : renderGateDiamond(mod, null, selectedActivityId);
-    // A card in a column the arrow passes over sits below the line instead of under it.
-    const state = items.length === 0 ? ` data-empty="true"` : crossed.has(column) ? ` data-crossed="true"` : "";
-    return `<td class="flow-cell" data-track="${track}"${track === "gate" ? "" : state}>${(segments.get(column) ?? []).join("")}${diamonds}${cards}</td>`;
-  }).join("");
-
-  const rail = `<th class="flow-rail" scope="row" data-spine-in="${spineIn}" data-spine-out="${spineOut}">
-        ${index > 0 ? `<svg class="spine-head" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1 5 5 9 1" /></svg>` : ""}
-        <button type="button" class="unit-hit" data-action="select-outline-module" data-module-id="${modId}" aria-pressed="${selected}">
-          ${unitMarker(tone)}
-          <span class="unit-badge">U${index + 1}</span>
-          <span class="unit-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
-          <span class="unit-meta">${progressLabel(progress)}</span>
-          <span class="st-sr">${selected ? "Selected" : "Select"} unit ${index + 1}. ${progress.done} of ${progress.total} required activities done. ${mod.required ? "Required" : "Optional"}. ${escapeHtml(mod.summary)}</span>
-        </button>
-      </th>`;
-  return `<tr class="study-card outline-module-card${selected ? " is-selected" : ""}" data-module-id="${modId}" data-selected="${selected}" data-opaque-surface="true" data-unit-status="${tone}">${rail}${cellsHtml}</tr>`;
-}
-
-// A switch carries the value it sets next, and a stable id so the client can restore focus after a re-render.
-function renderFlowToolbar(idPrefix: string, view: FlowView): string {
-  const toggle = (key: string, label: string, on: boolean, offValue: string) =>
-    `<button type="button" id="${idPrefix}-${key}" class="flow-switch" role="switch" aria-checked="${on}" data-action="set-${key}" data-${key}="${on ? offValue : "included"}">${label}<span class="switch-track" aria-hidden="true"></span></button>`;
-  return `<div class="flow-toolbar" role="group" aria-label="Flowchart layout">
-        <div class="segmented" role="group" aria-label="Flow order">${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${order === view.order}">${FLOW_ORDER_OPTIONS[order].label}</button>`).join("")}</div>
-        ${toggle("deep-dive", "Deep Dive", view.deepDive === "included", "skipped")}
-        ${toggle("spaced-review", "Review", view.spacedReview === "included", "compact")}
-      </div>`;
+function statusGlyph(type: "module" | "gate", tone: "todo" | "doing" | "done", size = 20): string {
+  return renderToString(h(StatusGlyph, { type, tone, size }));
 }
 
 function renderFlowBoard(
-  idPrefix: string, modules: readonly StudyModule[], selectedModuleId: string | null, selectedActivityId: string | null, view: FlowView,
+  idPrefix: string,
+  modules: readonly StudyModule[],
+  selectedModuleId: string | null,
+  selectedActivityId: string | null,
+  view: FlowView,
 ): string {
-  const units = modules.map((mod) => placeUnit(mod, view));
-  // A track no unit uses gets no column, so a reading plan shows no empty Code column.
-  const columns = flowColumns(view).filter((track) => track === "gate" || units.some((unit) => (unit.cells.get(track) ?? []).length > 0));
-  // The order tabs only move columns, so they add no text. Turning Deep Dive off reports what it hides.
-  const hidden = units.flatMap((unit) => unit.hidden);
-  const hiddenMinutes = hidden.reduce((sum, activity) => sum + activity.durationTriplet.point, 0);
-  const note = view.deepDive !== "skipped" ? ""
-    : hidden.length > 0
-      ? `Deep Dive off hides ${hidden.length} optional deep dive${hidden.length === 1 ? "" : "s"} (${hiddenMinutes} min). Required deep dives stay in the Lecture column.`
-      : "No optional deep dives to hide. Required deep dives stay in the Lecture column.";
-  const headCells = columns.map((track) => {
-    if (track === "gate") {
-      const passed = modules.filter((mod) => unitGate(mod).passed).length;
-      return `<th scope="col" class="flow-colhead" data-track="gate"><span class="colhead-title">Gate</span><span class="colhead-meta">${passed}/${modules.length} passed</span></th>`;
-    }
-    const inColumn = units.flatMap((unit) => unit.cells.get(track) ?? []);
-    return `<th scope="col" class="flow-colhead" data-track="${track}"><span class="colhead-title">${TRACK_LABELS[track].column}</span><span class="colhead-meta">${progressLabel(unitProgress(inColumn))}</span></th>`;
-  }).join("");
-  const rows = units.map((_, index) => renderUnitRow(units, index, columns, selectedModuleId, selectedActivityId)).join("");
-  return `<section class="flow-board" aria-labelledby="${idPrefix}-title" data-flow-order="${view.order}" data-deep-dive="${view.deepDive}" data-spaced-review="${view.spacedReview}">
-    <div class="flow-head">
-      <h2 id="${idPrefix}-title">Study flow</h2>
-      ${renderFlowToolbar(idPrefix, view)}
-    </div>
-    ${note ? `<p class="flow-note">${escapeHtml(note)}</p>` : ""}
-    <div class="matrix-stage">
-      <table class="matrix-table" aria-labelledby="${idPrefix}-title" style="--tracks: ${columns.length - 1}">
-        <colgroup><col class="col-rail">${columns.map(() => `<col class="col-track">`).join("")}</colgroup>
-        <thead><tr><th scope="col" class="flow-colhead"><span class="colhead-title">Unit</span><span class="colhead-meta">${units.length} in order</span></th>${headCells}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    ${flowKeyHtml()}
-  </section>`;
+  return renderToString(h(StudyFlowBoard, { idPrefix, modules, selectedModuleId, selectedActivityId, view }));
 }
 
 function renderMacroStage(modules: readonly StudyModule[], selectedModuleId: string | null): string {
-  const steps = modules.map((mod, index) => {
-    const progress = unitProgress(mod.activities);
-    const tone = unitTone(progress);
-    const gate = unitGate(mod);
-    const percent = progress.total === 0 ? 0 : Math.round((progress.done / progress.total) * 100);
-    return `<li class="macro-step">
-        <button type="button" class="macro-node" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" data-status="${tone}" aria-pressed="${mod.moduleId === selectedModuleId}">
-          <span class="macro-top">${unitMarker(tone, 20)}<span class="unit-badge">U${index + 1}</span><span class="macro-meta">${progressLabel(progress)}</span></span>
-          <span class="macro-title">${escapeHtml(displayUnitTitle(mod.title))}</span>
-          <span class="macro-bar" aria-hidden="true"><span style="width: ${percent}%"></span></span>
-          <span class="st-sr">${progress.done} of ${progress.total} required activities done. Gate ${gate.passed ? "passed" : "not passed"}.</span>
-        </button>
-        ${ARROW_SVG("macro-link")}
-        <span class="macro-gate" data-status="${gate.passed ? "passed" : "open"}" aria-hidden="true">${statusGlyph("gate", gate.passed ? "done" : "todo", 24)}</span>
-        ${index < modules.length - 1 ? ARROW_SVG("macro-link") : ""}
-      </li>`;
-  }).join("");
-  return `<ol class="macro-stage" aria-label="Units in study order">${steps}</ol>`;
+  return renderToString(h(MacroStage, { modules, selectedModuleId }));
 }
 
-function renderStepRow(activity: StudyActivity, selectedActivityId: string | null, note: string, extraAttrs = ""): string {
-  const id = escapeHtml(activity.activityId);
-  const selected = activity.activityId === selectedActivityId;
-  const track = trackOf(activity);
-  const status = track === "gate"
-    ? `<span class="step-check">${statusGlyph("gate", gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)).passed ? "done" : "todo", 20)}</span>`
-    : checkButton(activity, "step-check");
-  return `<li class="today-activity-item step-row" data-activity-id="${id}" data-execution-status="${escapeHtml(activity.executionStatus)}" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}" data-selected="${selected}"${extraAttrs}>
-      ${status}
-      <button type="button" class="step-open" data-action="select-outline-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" aria-pressed="${selected}">
-        <span class="step-title">${escapeHtml(activity.title)}</span>
-        <span class="step-meta">${TRACK_LABELS[track].badge} · ${activity.durationTriplet.point}m${activity.required ? "" : " · Optional"}</span>
-      </button>
-      <span class="st-sr">${escapeHtml(note)}</span>
-    </li>`;
+function renderStepRow(
+  activity: StudyActivity,
+  selectedActivityId: string | null,
+  note: string,
+  reviewSeparationValid?: boolean,
+): string {
+  return renderToString(h(StepRow, { activity, selectedActivityId, note, reviewSeparationValid }));
 }
-
-const MATH_DEPTHS = ["intuitive", "applied", "formal"] as const;
-type MathDepth = (typeof MATH_DEPTHS)[number];
-
-const asRecord = (value: unknown): Readonly<Record<string, unknown>> =>
-  (value !== null && typeof value === "object" ? value as Record<string, unknown> : {});
-
-// The plan's applied math depth for some topics. A topic override wins over the plan default.
-function mathDepthFor(curriculum: Record<string, unknown>, topicIds: readonly string[]): string {
-  const prefs = asRecord(curriculum["instruction_preferences_applied"]);
-  const rawOverrides: unknown = prefs["topic_math_depth_overrides"];
-  const overrides = (Array.isArray(rawOverrides) ? rawOverrides : []).map(asRecord);
-  const depthOf = (topicId: string | null): unknown => overrides.find((entry) => entry["topic_id"] === topicId)?.["math_depth"] ?? prefs["math_depth"];
-  const depths = new Set((topicIds.length > 0 ? topicIds : [null]).map(depthOf).filter((depth): depth is MathDepth => isOneOf(MATH_DEPTHS, depth)));
-  return [...depths].map(humanize).join(", ") || "Not stated";
-}
-
-const activityGlyph = (activity: StudyActivity, size: number): string => trackOf(activity) === "gate"
-  ? statusGlyph("gate", gateStatus(activity.objectiveProficiencyBadges.map((badge) => badge.status)).passed ? "done" : "todo", size)
-  : statusGlyph("module", executionTone(activity.executionStatus), size);
-
-// The statuses a learner can set from the drawer. Done records a self-reported completion.
-const SETTABLE_STATUSES = ["not_started", "in_progress", "completed"] as const;
-type SettableStatus = (typeof SETTABLE_STATUSES)[number];
-const STATUS_LABELS: Readonly<Record<SettableStatus, string>> = { not_started: "Not started", in_progress: "In progress", completed: "Done" };
-
-type SourceCardView = StudyActivity["resourceProvenanceCards"][number];
-
-// Where a resource lives, as a learner reads it. A synthetic .invalid host shows only its path.
-function displayLocation(url: string): string {
-  const { hostname, pathname } = new URL(url);
-  const path = pathname.replace(/\/+$/, "");
-  return hostname.endsWith(".invalid") ? path.replace(/^\/+/, "") || "catalog" : `${hostname.replace(/^www\./, "")}${path}`;
-}
-
-const rawListOf = (record: Readonly<Record<string, unknown>>, key: string): readonly Readonly<Record<string, unknown>>[] => {
-  const list: unknown = record[key];
-  return (Array.isArray(list) ? list : []).map(asRecord);
-};
 
 // The plan model keeps one prompt per activity, so a lab's deliverables and a gate's assessment come from the raw curriculum.
 const rawContentOf = (curriculum: Record<string, unknown>, activityId: string): Readonly<Record<string, unknown>> =>
@@ -1454,9 +985,6 @@ const rubricOf = (curriculum: Record<string, unknown>, activityId: string): Self
 
 const activityIdsOf = (curriculum: Record<string, unknown>): ReadonlySet<string> =>
   new Set(rawListOf(curriculum, "activities").map((entry) => entry["activity_id"]).filter((id): id is string => typeof id === "string"));
-
-const goalTitleOf = (curriculum: Record<string, unknown>): string =>
-  renderUntrustedCatalogText(asRecord(curriculum["goal"])["title"], { maxLength: 200 }).text || "Untitled plan";
 
 // The module that holds the given activity, or else the plan's first module, and the activity to open there.
 function stepOf(curriculum: Record<string, unknown>, activityId?: string | null): { readonly moduleId: string; readonly activityId: string } {
@@ -1493,69 +1021,7 @@ function deliverablesOf(curriculum: Record<string, unknown>, activityId: string)
     .map((item) => renderUntrustedCatalogText(item, { maxLength: 2000 }).text);
 }
 
-const textOf = (value: unknown): string => (typeof value === "string" ? value : "");
-
-// The public projection of a plan: goal title and summary, objectives, prerequisite edges, and units.
-// It carries no progress, evidence, account, schedule, or billing data (@S57).
-function publicProjectionOf(curriculum: Record<string, unknown>): PublicCurriculumContentBlock {
-  const edges = rawListOf(curriculum, "prerequisite_edges")
-    .map((edge) => ({ from_objective_id: textOf(edge["from_objective_id"]), to_objective_id: textOf(edge["to_objective_id"]) }));
-  return {
-    title: goalTitleOf(curriculum),
-    summary: renderUntrustedCatalogText(asRecord(curriculum["goal"])["summary"], { maxLength: 600 }).text,
-    objectives: rawListOf(curriculum, "objectives").map((objective) => ({
-      objective_id: textOf(objective["objective_id"]), title: textOf(objective["title"]),
-      prerequisite_objective_ids: edges.filter((edge) => edge.to_objective_id === objective["objective_id"]).map((edge) => edge.from_objective_id),
-    })),
-    prerequisite_edges: edges,
-    modules: rawListOf(curriculum, "modules").map((mod) => ({
-      module_id: textOf(mod["module_id"]), title: textOf(mod["title"]), summary: textOf(mod["summary"]),
-      objective_ids: normalizeStringList(mod["objective_ids"]), activity_ids: normalizeStringList(mod["activity_ids"]),
-      prerequisite_module_ids: normalizeStringList(mod["prerequisite_module_ids"]),
-    })),
-  };
-}
-
-// The units an adoption takes: the requested ones plus every unit they need, directly or transitively.
-// An empty request means the full curriculum.
-const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly string[]) => resolveTransitiveAdoptionScope({
-  schema_version: "0.2.0", publication_id: listing.publicationId, publication_revision_id: listing.revisionId, revision_number: 1,
-  published_at: listing.publishedAt, content_sha256: "", content: publicProjectionOf(listing.curriculum),
-  publisher: { public_author_id: listing.handle, display_name: listing.handle },
-  publication_terms: {
-    policy_id: "publication-terms-v1", content_license_id: "CC-BY-4.0", rights_scope: "structure_and_author_prompts_only",
-    attribution: listing.handle, third_party_materials_excluded: true,
-  },
-}, requested);
-
-// The adopter's private copy of a listing's plan, cut to the adopted units. It stays a draft until the adopter activates it.
-function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): ActiveCurriculum {
-  const curriculumId = `adopted-${listing.publicationId}`;
-  const modules = rawListOf(listing.curriculum, "modules").filter((mod) => adoption.moduleIds.includes(textOf(mod["module_id"])));
-  const activityIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["activity_ids"])));
-  const objectiveIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["objective_ids"])));
-  const revisionId = `${curriculumId}-draft-1`;
-  const sessions = rawListOf(listing.schedule, "sessions")
-    .map((session) => ({ ...session, activity_ids: normalizeStringList(session["activity_ids"]).filter((id) => activityIds.has(id)) }))
-    .filter((session) => session.activity_ids.length > 0);
-  return {
-    curriculumId, domain: listing.subject, assessmentMode: listing.gateStyle, publicationId: listing.publicationId, draft: !adoption.active,
-    curriculum: {
-      ...listing.curriculum, curriculum_id: curriculumId, revision_id: revisionId, revision_number: 1, account_id: adoption.accountId,
-      predecessor_revision_id: null, revision_reason: "adoption", modules,
-      activities: rawListOf(listing.curriculum, "activities").filter((act) => activityIds.has(textOf(act["activity_id"]))),
-      // The author's evidence never travels with a copy (@S59).
-      objectives: rawListOf(listing.curriculum, "objectives").filter((objective) => objectiveIds.has(textOf(objective["objective_id"])))
-        .map((objective) => ({ ...objective, prior_evidence_refs: [] })),
-      prerequisite_edges: rawListOf(listing.curriculum, "prerequisite_edges")
-        .filter((edge) => objectiveIds.has(textOf(edge["from_objective_id"])) && objectiveIds.has(textOf(edge["to_objective_id"]))),
-    },
-    schedule: { ...listing.schedule, curriculum_revision_id: revisionId, sessions },
-  };
-}
-
 // An account's plans: the base plans, then its own adopted copies.
-// ponytail: every demo persona loads the same base plans. Per-account plans need a real account store.
 const plansFor = (accountId: string, adoptions: readonly Adoption[], listings: readonly MarketplaceListing[]): readonly ActiveCurriculum[] => [
   ...ACTIVE_CURRICULA,
   ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
@@ -1564,158 +1030,8 @@ const plansFor = (accountId: string, adoptions: readonly Adoption[], listings: r
   }),
 ];
 
-interface InspectorInput {
-  readonly modules: readonly StudyModule[];
-  readonly mod: StudyModule;
-  readonly activity: StudyActivity;
-  readonly open: boolean;
-  readonly rigor: string;
-  readonly deliverables: readonly string[];
-  readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
-  readonly rubric: SelfCheckRubric | null;
-  readonly skipRecorded: boolean;
-}
-
-// Drawer: the status control, then any earlier step not yet done, the material, and what the step builds.
-// A coding lab adds its brief, specs, and checklist. A step checked by a self-check rubric shows the rubric first.
-// The footer offers Done, or the next step once done.
-function renderInspector({ modules, mod, activity, open, rigor, deliverables, catalogResources, rubric, skipRecorded }: InspectorInput): string {
-  const id = escapeHtml(activity.activityId);
-  const track = trackOf(activity);
-  const isGate = track === "gate";
-  const isLab = activity.type === "coding" || activity.type === "project";
-  const unitNumber = modules.indexOf(mod) + 1;
-  const tone = executionTone(activity.executionStatus);
-  const status: SettableStatus = tone === "done" ? "completed" : tone === "doing" ? "in_progress" : "not_started";
-  // Previous and next follow the plan's order, which keeps every prerequisite before its dependents.
-  const steps = modules.flatMap((unit) => unit.activities);
-  const at = steps.findIndex((step) => step.activityId === activity.activityId);
-  const prev = steps[at - 1];
-  const next = steps[at + 1];
-  const target = (step: StudyActivity): string =>
-    `data-action="select-outline-activity" data-activity-id="${escapeHtml(step.activityId)}" data-module-id="${escapeHtml(step.moduleId)}"`;
-
-  const statusControl = `<div class="segmented status-control" role="group" aria-label="Activity status">${SETTABLE_STATUSES.map((choice) =>
-    `<button type="button" class="seg-btn${choice === "completed" && status === "completed" ? " status-celebration" : ""}" data-action="set-activity-status" data-activity-id="${id}" data-status="${choice}" aria-pressed="${choice === status}">${STATUS_LABELS[choice]}</button>`).join("")}</div>`;
-  const proficiency = isGate
-    ? `<span class="proficiency-pill" data-proficiency-status="${escapeHtml(activity.objectiveProficiencyStatus)}">${statusGlyph("gate", activity.objectiveProficiencyStatus === "demonstrated" ? "done" : "todo", 16)}<span><span class="st-sr">Objective proficiency: </span>${escapeHtml(humanize(activity.objectiveProficiencyStatus))}</span></span>`
-    : "";
-
-  const stepNav = prev || next ? `<nav class="mobile-step-nav" aria-label="Previous and next step">
-        ${prev ? `<button type="button" class="btn-secondary step-nav-btn" ${target(prev)}><span aria-hidden="true">←</span><span class="step-nav-text">Prev: ${escapeHtml(prev.title)}</span></button>` : ""}
-        ${next ? `<button type="button" class="btn-secondary step-nav-btn step-nav-next" ${target(next)}><span class="step-nav-text">Next: ${escapeHtml(next.title)}</span><span aria-hidden="true">→</span></button>` : ""}
-      </nav>` : "";
-
-  // Earlier steps the learner has not done yet. A mastery gate requires them. Other steps recommend them.
-  const unmet = activity.prerequisiteActivityIds.flatMap((prereqId) => steps.find((step) => step.activityId === prereqId) ?? [])
-    .filter((step) => !isClosed(step.executionStatus));
-  const firstSteps = unmet.length === 0 ? "" : `<div class="first-steps">
-        <p class="first-steps-label">${activity.prerequisiteBridgeRecommendation?.blocking ? "Required first:" : "Recommended first:"}</p>
-        ${unmet.map((step) => `<button type="button" class="first-step" ${target(step)}>${activityGlyph(step, 16)}<span>${escapeHtml(step.title)}</span><span aria-hidden="true">→</span></button>`).join("")}
-      </div>`;
-
-  const sourceCard = (card: SourceCardView, index: number): string => {
-    const segments = catalogResources[card.resourceVersionId]?.segments ?? [];
-    const sections = card.verifiedSegments.flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
-      .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
-    const tags = [
-      humanize(card.accessModel),
-      card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
-      ...(card.optionalCertificationBadge ? [`Optional certificate ${formatMinorCurrency(4900, "USD")}`] : []),
-    ];
-    const url = card.canonicalUrl;
-    return `<section class="source-card" data-resource-version-id="${escapeHtml(card.resourceVersionId)}" aria-labelledby="${INSPECTOR_ID}-source-${index}">
-        <h3 id="${INSPECTOR_ID}-source-${index}" class="source-title">${escapeHtml(card.title)}</h3>
-        <p class="source-publisher">${escapeHtml(card.verifiedPublisher)}</p>
-        ${url ? `<p class="source-location">${sfIcon("resources", 15)}<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(displayLocation(url))}</a></p>` : ""}
-        ${sections.map((section) => `<p class="source-section">${escapeHtml(section)}</p>`).join("")}
-        <ul class="source-tags">${tags.map((tag) => `<li>${escapeHtml(tag)}</li>`).join("")}</ul>
-        ${url ? `<a class="btn-primary source-open" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${isLab ? "Open Lab Specification" : "Open Study Material"}<span aria-hidden="true">↗</span><span class="st-sr"> in a new tab</span></a>` : ""}
-      </section>`;
-  };
-
-  const objectives = new Map(modules.flatMap((unit) => unit.objectives).map((objective) => [objective.objectiveId, objective]));
-  const mine = activity.objectiveIds.flatMap((objectiveId) => objectives.get(objectiveId) ?? []);
-  const focus = `<section class="inspector-section conceptual-focus" aria-labelledby="${INSPECTOR_ID}-focus">
-        <h3 id="${INSPECTOR_ID}-focus">${isGate ? "What this checks" : "What this builds"}</h3>
-        <ul class="focus-list">${mine.map((objective) => `<li>${escapeHtml(objective.title)}</li>`).join("") || "<li>No objective is mapped to this activity.</li>"}</ul>
-        ${isGate || postGateIds(mod).has(activity.activityId) ? "" : `<p class="focus-next">${statusGlyph("gate", unitGate(mod).passed ? "done" : "todo", 16)}<span>Prepares for: Unit ${unitNumber} Gate</span></p>`}
-      </section>`;
-
-  const metaRow = (icon: SfIconName, key: string, value: string): string =>
-    `<tr><th scope="row"><span class="meta-key">${sfIcon(icon)}${key}</span></th><td>${value}</td></tr>`;
-  const details = `<table class="meta-table">
-        <caption class="st-sr">Activity details</caption>
-        <tbody>
-          ${metaRow("clock", "Duration", effortWords(activity.durationTriplet))}
-          ${metaRow("rigor", "Rigor", escapeHtml(rigor))}
-          ${metaRow("pin", "Type", activity.required ? "Required" : "Optional")}
-        </tbody>
-      </table>`;
-  // Coding and project work runs outside the app (execution_mode "external"), in the learner's own IDE.
-  const specs: readonly (readonly [SfIconName, string])[] = [
-    ["clock", effortWords(activity.durationTriplet)], ["rigor", rigor], ["pin", activity.required ? "Required" : "Optional"], ["code", "Local or external IDE"],
-  ];
-  const lab = `<section class="inspector-section lab-brief" aria-labelledby="${INSPECTOR_ID}-brief">
-        <h3 id="${INSPECTOR_ID}-brief">Deliverable brief</h3>
-        <p>${escapeHtml(activity.promptSummary)}</p>
-        ${deliverables.length > 0 ? `<ul class="lab-deliverables">${deliverables.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : ""}
-      </section>
-      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-specs">
-        <h3 id="${INSPECTOR_ID}-specs">Environment and lab specs</h3>
-        <ul class="spec-chips">${specs.map(([icon, text]) => `<li>${sfIcon(icon, 15)}<span>${escapeHtml(text)}</span></li>`).join("")}</ul>
-      </section>
-      <section class="inspector-section" aria-labelledby="${INSPECTOR_ID}-checks">
-        <h3 id="${INSPECTOR_ID}-checks">Verification checklist</h3>
-        <ul class="lab-checklist">${mine.filter((objective) => objective.successCriterion).map((objective) => `<li>${statusGlyph("module", "todo", 16)}<span>${escapeHtml(objective.successCriterion)}</span></li>`).join("") || "<li>No acceptance criteria are stated.</li>"}</ul>
-      </section>`;
-
-  const rubricBlock = rubric ? `<section class="inspector-section rubric-block" aria-labelledby="${INSPECTOR_ID}-rubric">
-        <h3 id="${INSPECTOR_ID}-rubric">Synthesis &amp; Self-Check Rubric</h3>
-        <p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>
-        <p class="rubric-label">Guiding synthesis prompt</p>
-        <p class="rubric-prompt">${escapeHtml(rubric.prompt)}</p>
-        <p class="rubric-label">Check your synthesis against each criterion before you mark this Done</p>
-        <ul class="lab-checklist">${rubric.criteria.map((criterion) => `<li>${statusGlyph("module", "todo", 16)}<span>${escapeHtml(criterion)}</span></li>`).join("")}</ul>
-        <p class="meta-text">Your self-check does not change the objective's proficiency status.</p>
-      </section>` : "";
-
-  const primary = status !== "completed"
-    ? `<button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="${id}" data-module-id="${escapeHtml(activity.moduleId)}" data-event-id="evt-complete-${id}">Mark as Done<span aria-hidden="true">✓</span></button>`
-    : next ? `<button type="button" class="btn-primary next-step" ${target(next)}><span class="next-step-text">Go to next step: ${escapeHtml(next.title)}</span><span aria-hidden="true">→</span></button>` : "";
-
-  return `<dialog id="${INSPECTOR_ID}" class="inspector" closedby="any" aria-labelledby="${INSPECTOR_ID}-title" data-open="${open}" data-activity-id="${id}" data-opaque-surface="true">
-    <header class="inspector-head">
-      <p class="inspector-context">Unit ${unitNumber} · ${TRACK_LABELS[track].badge}</p>
-      <h2 id="${INSPECTOR_ID}-title" tabindex="-1" autofocus>${escapeHtml(activity.title)}</h2>
-      <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">${sfIcon("close")}</button>
-      <div class="inspector-pills">${statusControl}${proficiency}</div>
-    </header>
-    <div class="inspector-scroll" data-scroll-region>
-      ${stepNav}
-      ${firstSteps}
-      ${rubricBlock}
-      ${isLab ? lab : ""}
-      ${activity.resourceProvenanceCards.map(sourceCard).join("")}
-      ${focus}
-      ${isLab ? "" : details}
-      ${skipRecorded ? `<p class="prose" role="status">${escapeHtml(`Skip recorded for ${activity.title} only. Prerequisite evidence was not created.`)}</p>` : ""}
-    </div>
-    <div class="inspector-actions">
-      ${primary}
-      <button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id="${id}">Skip this activity</button>
-    </div>
-  </dialog>`;
-}
-
-function renderTopDestButton(dest: TopLevelDestination, className: string, isCurrent: boolean): string {
-  const icon: SfIconName = dest === "Learn" ? "learn" : dest === "Explore" ? "explore" : "settings";
-  return `<button type="button" class="${className}${isCurrent ? " is-active" : ""}" data-action="navigate-top" data-destination="${dest}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${dest}</span></button>`;
-}
-
-function renderLearnSubButton(sub: LearnSubDestination, isCurrent: boolean): string {
-  const icon: SfIconName = sub === "Today" ? "today" : sub === "Plan" ? "plan" : sub === "Progress" ? "progress" : "resources";
-  return `<button type="button" class="nav-sub-btn${isCurrent ? " is-active" : ""}" data-action="navigate-learn-sub" data-sub-destination="${sub}" aria-current="${isCurrent ? "page" : "false"}">${sfIcon(icon, 16)}<span>${sub}</span></button>`;
+function renderInspector(props: Parameters<typeof InspectorDrawer>[0]): string {
+  return renderToString(h(InspectorDrawer, props));
 }
 
 function renderMapControl(control: "zoom_in" | "zoom_out" | "fit_view" | "reset_focus", label: string, visibleLabel: string, icon: SfIconName): string {
@@ -1883,110 +1199,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const marketplaceSort = inputState.marketplaceSort ?? "top_upvoted";
   const marketplaceQuery = inputState.marketplaceQuery ?? "";
   const myPlans = signedOut ? [] : plans;
-  const upvotesOf = (listing: MarketplaceListing): number => listing.upvotes + votes.filter((vote) => vote.revisionId === listing.revisionId).length;
-  const adoptionsOf = (listing: MarketplaceListing): number =>
-    listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
-  const rigorOf = (listing: MarketplaceListing): string => mathDepthFor(listing.curriculum, []);
-  const rank = (listing: MarketplaceListing): number => (marketplaceSort === "top_upvoted" ? upvotesOf(listing)
-    : marketplaceSort === "most_adopted" ? adoptionsOf(listing) : Date.parse(listing.publishedAt));
-  const queryText = marketplaceQuery.toLowerCase();
-  const shownListings = listings
-    .filter((listing) => marketplaceDomain === "All" || FILTER_DOMAIN_OF[listing.subject] === marketplaceDomain)
-    .filter((listing) => marketplaceRigor === "All" || rigorOf(listing) === marketplaceRigor)
-    .filter((listing) => !queryText || [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject]
-      .join(" ").toLowerCase().includes(queryText))
-    .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.curriculum).localeCompare(goalTitleOf(b.curriculum)));
-  const pills = (listing: MarketplaceListing): string =>
-    `<p class="marketplace-pills"><span class="domain-pill">${escapeHtml(`${listing.subject} · ${listing.gateStyle}`)}</span><span class="rigor-badge">${escapeHtml(rigorOf(listing))}</span><span class="price-badge">Free · $0.00 adopt</span></p>`;
-  const outlineOf = (listing: MarketplaceListing) =>
-    buildPlanMapAndOutlineModel({ curriculum: listing.curriculum, proficiency, activityStates: {}, catalogResources }).outlineModules;
-
-  const listingCard = (listing: MarketplaceListing): string => {
-    const id = escapeHtml(listing.publicationId);
-    const projection = publicProjectionOf(listing.curriculum);
-    const yours = !signedOut && listing.ownerAccountId === account.accountId;
-    const myPlan = myPlans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
-    const voted = !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
-    const units = projection.modules.length;
-    return `<article class="marketplace-card public-template-card" data-publication-id="${id}" data-revision-id="${escapeHtml(listing.revisionId)}" aria-labelledby="listing-${id}-title" data-opaque-surface="true">
-            ${pills(listing)}
-            <h2 id="listing-${id}-title" class="marketplace-title">${escapeHtml(projection.title)}</h2>
-            <p class="marketplace-summary">${escapeHtml(projection.summary)}</p>
-            <p class="marketplace-meta">${escapeHtml(listing.handle)}${listing.basedOn ? ` · based on ${escapeHtml(listing.basedOn)}` : ""} · ${units} unit${units === 1 ? "" : "s"} · ${adoptionsOf(listing)} adopted</p>
-            <details class="flow-preview"><summary>Inspect Study Flow</summary><ol>${outlineOf(listing).map((mod, index) =>
-              `<li><span class="flow-preview-unit">U${index + 1} · ${escapeHtml(displayUnitTitle(mod.title))}</span><span class="meta-text">${mod.activities.length} activities · ${effortWords(mod.durationTriplet)}</span></li>`).join("")}</ol></details>
-            <div class="marketplace-actions">
-              <button type="button" class="btn-secondary upvote-btn" data-action="toggle-upvote" data-publication-id="${id}" data-revision-id="${escapeHtml(listing.revisionId)}" aria-pressed="${voted}">▲ Upvote Revision (${upvotesOf(listing)})</button>
-              ${yours || myPlan
-                ? `<span class="owned-badge">${yours ? "Yours" : "In your plans"}</span>${myPlan ? `<button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open Plan<span aria-hidden="true">→</span></button>` : ""}`
-                : `<button type="button" class="btn-primary" data-action="open-adopt-dialog" data-publication-id="${id}">Preview &amp; Adopt<span aria-hidden="true">→</span></button>`}
-            </div>
-          </article>`;
-  };
-  const filterGroup = (label: string, action: string, key: string, options: readonly (readonly [string, string])[], current: string): string =>
-    `<div class="segmented" role="group" aria-label="${label}">${options.map(([value, text]) => `<button type="button" class="seg-btn" data-action="${action}" data-${key}="${escapeHtml(value)}" aria-pressed="${value === current}">${escapeHtml(text)}</button>`).join("")}</div>`;
-  const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
-  const myPublicationsHtml = signedOut ? "" : `<section class="surface-panel my-publications" data-opaque-surface="true">
-          <h2>My Publications</h2>
-          <p class="meta-text">Owner records load fresh on every visit and are never cached.</p>
-          ${ownedListings.length > 0 ? `<ul class="publication-list">${ownedListings.map((listing) => `<li data-publication-id="${escapeHtml(listing.publicationId)}"><strong>${escapeHtml(goalTitleOf(listing.curriculum))}</strong><span class="meta-text">Public · Revision 1 · ${upvotesOf(listing)} upvotes · ${adoptionsOf(listing)} adopted</span></li>`).join("")}</ul>
-          <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
-          <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-unpublish">Unpublish</button>`
-            : `<p class="empty-state">${sfIcon("resources")}<span>You have not published a curriculum yet.</span></p>`}
-        </section>`;
-
-  // Adoption preview: the chosen units, the units they need, and the effort each one takes.
-  const adoptListing = listings.find((listing) => listing.publicationId === inputState.adoptPublicationId) ?? null;
   const adoptScope = inputState.adoptScope ?? "full";
-  const adoptBody = (() => {
-    if (!adoptListing) return `<p class="meta-text">Choose a curriculum in Explore to preview it.</p>`;
-    const projection = publicProjectionOf(adoptListing.curriculum);
-    const requested = adoptScope === "full" ? [] : inputState.adoptModuleIds ?? [];
-    const scope = adoptScope === "units" && requested.length === 0 ? null : adoptionScopeOf(adoptListing, requested);
-    const included = new Set(scope?.resolvedModuleIds ?? []);
-    const autoIncluded = new Set(scope?.autoIncludedPrerequisiteModuleIds ?? []);
-    const outline = outlineOf(adoptListing);
-    const unitNumber = new Map(projection.modules.map((mod, index) => [mod.module_id, index + 1]));
-    const rows = projection.modules.map((mod, index) => {
-      const unit = outline.find((entry) => entry.moduleId === mod.module_id);
-      const needs = (mod.prerequisite_module_ids ?? []).map((moduleId) => `U${unitNumber.get(moduleId) ?? "?"}`).join(", ");
-      const body = `${statusGlyph("module", included.has(mod.module_id) ? "done" : "todo", 16)}<span class="adopt-unit-text"><span class="adopt-unit-title">U${index + 1} · ${escapeHtml(displayUnitTitle(mod.title))}</span><span class="adopt-unit-meta">${unit ? `${unit.activities.length} activities · ${effortWords(unit.durationTriplet)}` : ""}${needs ? ` · Requires ${needs}` : ""}</span>${autoIncluded.has(mod.module_id) ? `<span class="auto-badge">Auto-included prerequisite</span>` : ""}</span>`;
-      return adoptScope === "units"
-        ? `<li><button type="button" class="adopt-unit" role="checkbox" aria-checked="${included.has(mod.module_id)}" data-action="toggle-adopt-module" data-module-id="${escapeHtml(mod.module_id)}">${body}</button></li>`
-        : `<li><div class="adopt-unit">${body}</div></li>`;
-    }).join("");
-    const chosen = outline.filter((mod) => included.has(mod.moduleId));
-    const total = { min: 0, point: 0, max: 0 };
-    for (const mod of chosen) {
-      total.min += mod.durationTriplet.min;
-      total.point += mod.durationTriplet.point;
-      total.max += mod.durationTriplet.max;
-    }
-    return `${pills(adoptListing)}
-      <h3 class="adopt-title">${escapeHtml(projection.title)}</h3>
-      <p class="meta-text">${escapeHtml(adoptListing.handle)} · ${projection.modules.length} units · ${adoptionsOf(adoptListing)} adopted · CC BY 4.0</p>
-      <div class="segmented adopt-scope" role="group" aria-label="What to adopt">
-        <button type="button" class="seg-btn" data-action="set-adopt-scope" data-scope="full" aria-pressed="${adoptScope === "full"}">Full curriculum</button>
-        <button type="button" class="seg-btn" data-action="set-adopt-scope" data-scope="units" aria-pressed="${adoptScope === "units"}">Select units</button>
-      </div>
-      <ul class="adopt-units">${rows}</ul>
-      <p class="adopt-total">${scope ? `${included.size} of ${projection.modules.length} units · ${effortWords(total)}` : "Select at least one unit."}</p>
-      <p class="prose meta-text">Adoption creates your private draft. It copies none of the author's progress, evidence, votes, keys, or spending authority, and it costs $0.00. You review the draft on the Plan page and activate it there.</p>
-      <div class="action-row"><button type="button" class="btn-primary" data-action="confirm-adopt-curriculum" data-publication-id="${escapeHtml(adoptListing.publicationId)}"${scope ? "" : " disabled"}>Adopt into My Plans<span aria-hidden="true">→</span></button></div>`;
-  })();
-
-  // Publication preview: exactly the public projection of the selected plan, and what publishing removes (@S56, @S57).
-  const publishedFromHere = listings.some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedPlan.curriculumId);
   const originListing = listings.find((listing) => listing.publicationId === selectedPlan.publicationId && listing.ownerAccountId !== account.accountId);
-  const publicProjection = publicProjectionOf(curriculum);
   const returnTo = inputState.returnTo ?? null;
   const authNotice = inputState.authNotice ?? null;
-  const accountClusterHtml = authStatus === "authenticated"
-    ? `<span class="account-pill"><span class="account-email">${escapeHtml(account.email)}</span><span class="role-pill">${account.role}</span></span>
-      <button type="button" class="btn-secondary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Account / Switch</button>
-      <button type="button" class="btn-secondary header-btn" data-action="sign-out">Sign out</button>`
-    : `<span class="account-pill" data-auth-status="${authStatus}">${signedOut ? "Guest · Exploring" : "Session expired"}</span>
-      <button type="button" class="btn-primary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in</button>`;
 
   const byokState = createByokCustodyController({
     initialMode: inputState.byokMode ?? "byok",
@@ -2034,10 +1250,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     { displayMode: "block" },
   );
 
-  const topNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => renderTopDestButton(dest, "nav-top-btn", dest === activeTopLevel)).join("\n          ");
-  const bottomNavHtml = TOP_LEVEL_DESTINATIONS.map((dest) => renderTopDestButton(dest, "bottom-nav-btn", dest === activeTopLevel)).join("\n    ");
-  const learnSubNavHtml = LEARN_SUB_DESTINATIONS.map((sub) => renderLearnSubButton(sub, activeTopLevel === "Learn" && sub === activeLearnSub)).join("\n            ");
-
   const hintRequested = inputState.hintRequested ?? false;
   const workedSolutionRevealed = inputState.workedSolutionRevealed ?? false;
   const practiceSubmitted = inputState.practiceSubmitted ?? false;
@@ -2070,13 +1282,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const selectedModuleId = basePlanModel.selectedModuleId;
   const selectedActivityId = basePlanModel.selectedActivityId;
   const outlineById = new Map(basePlanModel.outlineActivities.map((act) => [act.activityId, act]));
-  const stepRow = (activityId: string, note: string, extraAttrs = ""): string => {
+  const stepRow = (activityId: string, note: string, reviewSeparationValid?: boolean): string => {
     const activity = outlineById.get(activityId);
-    return activity ? renderStepRow(activity, selectedActivityId, note, extraAttrs) : "";
+    return activity ? renderStepRow(activity, selectedActivityId, note, reviewSeparationValid) : "";
   };
 
   const reviewRows = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => act.type === "review").map((act) =>
-    stepRow(act.activityId, `Scheduled ${shortSessionLabel(card.startAt)}. ${card.reviewSeparation.separationSummary} ${act.scheduledReason}`, ` data-review-separation-valid="${card.reviewSeparation.valid}"`),
+    stepRow(act.activityId, `Scheduled ${shortSessionLabel(card.startAt)}. ${card.reviewSeparation.separationSummary} ${act.scheduledReason}`, card.reviewSeparation.valid),
   )).filter(Boolean);
   const completedRows = todayState.todayCards.flatMap((card) => card.activityBreakdown.filter((act) => isExecutionDone(act.executionStatus)))
     .map((act) => stepRow(act.activityId, "Self-reported completed. Objective proficiency is unchanged.")).filter(Boolean);
@@ -2251,21 +1463,23 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
-  <header class="app-header nav-chrome-glass" role="banner">
-    <div class="brand-cluster"><span class="brand-title">Curriculum.io</span></div>
-    <nav class="top-level-nav" aria-label="Primary navigation">${topNavHtml}</nav>
-    <div class="header-status">
-      ${signedOut ? "" : `<span class="duration-pill" data-study-minutes="${studyMinutes}">Study minutes ${studyMinutes}</span>
-      <span class="duration-pill" data-self-reported-count="${selfReportedCount}">Self-reported ${selfReportedCount}</span>`}
-      ${accountClusterHtml}
-    </div>
-  </header>
-  ${authStatus === "session_expired" ? `<div class="session-banner" role="status"><p><strong>Session expired.</strong> Sign in to resume where you left off.</p><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in</button></div>` : ""}
+  ${renderToString(h(HeaderBar, {
+    activeTopLevel,
+    authStatus,
+    signedOut,
+    account,
+    studyMinutes,
+    selfReportedCount,
+  }))}
+  ${renderToString(h(SessionExpiredBanner, { authStatus }))}
   <div class="app-body-grid">
-    <aside class="app-sidebar" aria-label="Learn sections">
-      ${signedOut ? `<div class="sidebar-section"><p class="meta-text">Sign in to see your plans.</p></div>` : `<div class="sidebar-section"><nav class="learn-sub-nav" aria-label="Learn sub-navigation">${learnSubNavHtml}</nav></div>
-      <div class="sidebar-section sidebar-goal"><p class="meta-text">${escapeHtml(basePlanModel.goal.title)}</p><p class="meta-text">About ${totalEffort.point} min planned (${totalEffort.min}–${totalEffort.max})</p></div>`}
-    </aside>
+    ${renderToString(h(AppSidebar, {
+      signedOut,
+      activeTopLevel,
+      activeLearnSub,
+      goalTitle: basePlanModel.goal.title,
+      totalEffort,
+    }))}
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
@@ -2396,30 +1610,22 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         </section>
       </section>`}
 
-      <section class="top-level-panel" id="panel-explore" data-top-panel="Explore" data-active="${activeTopLevel === "Explore"}"${activeTopLevel === "Explore" ? "" : " hidden"}>
-        <div class="section-header">
-          <h1 class="page-title">Explore</h1>
-          <div class="plan-toolbar"><button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button></div>
-        </div>
-        <form class="marketplace-search" role="search" data-action="set-marketplace-query">
-          <label class="st-sr" for="marketplace-search">Search the Marketplace</label>
-          <input id="marketplace-search" type="search" name="query" value="${escapeHtml(marketplaceQuery)}" placeholder="Search titles, curators, and subjects" autocomplete="off">
-          <button type="submit" class="btn-secondary">Search</button>
-        </form>
-        <div class="marketplace-controls">
-          ${filterGroup("Domain", "set-marketplace-domain", "domain", MARKETPLACE_DOMAINS.map((domain) => [domain, domain] as const), marketplaceDomain)}
-          ${filterGroup("Rigor", "set-marketplace-rigor", "rigor", MARKETPLACE_RIGORS.map((rigor) => [rigor, rigor === "All" ? "Any rigor" : rigor] as const), marketplaceRigor)}
-          ${filterGroup("Sort", "set-marketplace-sort", "sort", MARKETPLACE_SORTS.map((sort) => [sort, SORT_LABELS[sort]] as const), marketplaceSort)}
-        </div>
-        <p class="marketplace-count" role="status">${shownListings.length} curricul${shownListings.length === 1 ? "um" : "a"}. Community publications have not automatically passed educational review.</p>
-        ${shownListings.length > 0
-          ? `<div class="marketplace-grid">${shownListings.map(listingCard).join("")}</div>`
-          : `<p class="empty-state">${sfIcon("explore")}<span>No curricula match these filters.</span></p>`}
-        <div class="action-row load-more-row"><button type="button" class="btn-secondary" data-action="load-more">Load more</button></div>
-        ${loadMoreNote ? `<p class="prose" role="status">${escapeHtml(loadMoreNote)}</p>` : ""}
-        ${myPublicationsHtml}
-      </section>
-      </section>
+      ${renderToString(h(ExploreMarketplace, {
+        active: activeTopLevel === "Explore",
+        signedOut,
+        account,
+        listings,
+        votes,
+        adoptions,
+        myPlans,
+        proficiency,
+        catalogResources,
+        marketplaceDomain,
+        marketplaceRigor,
+        marketplaceSort,
+        marketplaceQuery,
+        loadMoreNote,
+      }))}
 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
         <h1 class="page-title">Settings</h1>
@@ -2505,7 +1711,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </main>
   </div>
   ${signedOut ? "" : inspectorHtml}
-  <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">${bottomNavHtml}</nav>
+  ${renderToString(h(CompactBottomNav, { activeTopLevel }))}
 
   ${signedOut ? "" : `  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
@@ -2590,34 +1796,23 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>
 
-  <dialog id="dialog-partial-adoption" closedby="any" aria-labelledby="dialog-partial-adoption-title"${dialogOpen("dialog-partial-adoption")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-partial-adoption-title">Preview &amp; Adopt</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      ${adoptBody}
-    </form>
-  </dialog>
+  ${renderToString(h(AdoptCurriculumDialog, {
+    open: openDialogId === "dialog-partial-adoption",
+    adoptListing: listings.find((listing) => listing.publicationId === inputState.adoptPublicationId) ?? null,
+    adoptions,
+    adoptScope,
+    adoptModuleIds: inputState.adoptModuleIds ?? [],
+    proficiency,
+    catalogResources,
+  }))}
 
-  <dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title"${dialogOpen("dialog-publication-preview")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-publication-preview-title">Share to Marketplace</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      <p class="meta-text">This preview is exactly what becomes public.</p>
-      <section class="publish-preview" aria-labelledby="publish-preview-title">
-        <h3 id="publish-preview-title">${escapeHtml(publicProjection.title)}</h3>
-        <p class="prose">${escapeHtml(publicProjection.summary)}</p>
-        <p class="meta-text">${escapeHtml(handleOf(account))} · ${publicProjection.modules.length} units · ${escapeHtml(`${selectedPlan.domain} · ${selectedPlan.assessmentMode}`)} · CC BY 4.0</p>
-        <ol class="publish-units">${publicProjection.modules.map((mod) => `<li>${escapeHtml(displayUnitTitle(mod.title))}</li>`).join("")}</ol>
-      </section>
-      <section aria-labelledby="publish-private-title">
-        <h3 id="publish-private-title">Removed before publishing</h3>
-        <ul class="lab-checklist privacy-checklist">${PRIVATE_FIELDS_REMOVED.map((item) => `<li>${statusGlyph("module", "done", 16)}<span>${item}</span></li>`).join("")}</ul>
-      </section>
-      <p class="prose meta-text">Visibility: Public. The listing appears in Explore, and anyone can read it. Linked materials stay links, and their content is not relicensed.</p>
-      ${originListing ? `<p class="prose meta-text">Based on ${escapeHtml(originListing.handle)}'s template. Their attribution stays on your listing.</p>` : ""}
-      ${publishedFromHere
-        ? `<p class="prose" role="status">This plan is already in the Marketplace as revision 1.</p>`
-        : `<div class="action-row"><button type="button" class="btn-primary" data-action="confirm-publish-curriculum">Publish to Marketplace<span aria-hidden="true">→</span></button></div>`}
-    </form>
-  </dialog>
+  ${renderToString(h(PublicationPreviewDialog, {
+    open: openDialogId === "dialog-publication-preview",
+    account,
+    selectedPlan,
+    publishedFromHere: listings.some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedPlan.curriculumId),
+    originListing,
+  }))}
 
   <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
@@ -2638,33 +1833,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>`}
 
-  <dialog id="dialog-auth" closedby="any" aria-labelledby="dialog-auth-title"${dialogOpen("dialog-auth")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface auth-surface" data-action="submit-sign-in">
-      <header class="dialog-header"><h2 id="dialog-auth-title">${authStatus === "authenticated" ? "Account" : "Sign in"}</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
-      ${returnTo ? `<p class="auth-return" role="status">After you sign in, you return to <strong>${escapeHtml(returnTo.label)}</strong>. Nothing is voted, published, adopted, or bought on your behalf.</p>` : ""}
-      ${authStatus === "session_expired" ? `<p class="prose">Sign in as ${escapeHtml(account.email)} to keep your work. Signing in as another account starts with a clean session.</p>` : ""}
-      ${authStatus === "authenticated" ? `<p class="prose">Signed in as <strong>${escapeHtml(account.email)}</strong> · ${account.role}.</p>` : ""}
-      <label class="field" for="auth-email-input">Email
-        <input id="auth-email-input" type="email" name="email" autocomplete="username webauthn" spellcheck="false" value="${escapeHtml(account.email)}" required>
-      </label>
-      ${authNotice ? `<p class="field-error" role="alert">${escapeHtml(authNotice)}</p>` : ""}
-      <div class="action-row">
-        <button type="submit" class="btn-primary">Sign in</button>
-        <button type="button" class="btn-secondary" data-action="sign-in-passkey">Sign in with passkey</button>
-      </div>
-      <p class="meta-text">Local demo: no account provider is connected in this build, so sign-in checks no password.</p>
-      <section class="persona-switcher" aria-labelledby="persona-switcher-title">
-        <h3 id="persona-switcher-title">Demo personas</h3>
-        <div class="persona-grid">
-          ${PERSONA_CHOICES.map((persona) => {
-            const current = persona === "guest" ? signedOut : !signedOut && account.accountId === PERSONAS[persona].accountId;
-            return `<button type="button" class="btn-secondary persona-btn" data-action="switch-persona" data-persona="${persona}" aria-pressed="${current}">${persona === "guest" ? "Guest" : PERSONAS[persona].role}</button>`;
-          }).join("")}
-          <button type="button" class="btn-secondary persona-btn" data-action="simulate-session-expired"${authStatus === "authenticated" ? "" : " disabled"}>Expire session</button>
-        </div>
-      </section>
-    </form>
-  </dialog>
+  ${renderToString(h(AuthDialog, {
+    open: openDialogId === "dialog-auth",
+    authStatus,
+    account,
+    returnTo,
+    authNotice,
+  }))}
 
   <script data-dialog-light-dismiss-fallback="true">
 ${getDialogLightDismissFallbackScript()}
