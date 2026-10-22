@@ -1148,6 +1148,44 @@ function shortSessionLabel(startAt: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" }).format(date);
 }
 
+function formatSessionDateTime(startAt: string, timeZone: string, timezoneLabel: string): string {
+  const localMatch = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(startAt.trim());
+  if (localMatch) {
+    const [, y, m, d, hh, mm] = localMatch;
+    const utcDate = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm)));
+    if (!Number.isNaN(utcDate.getTime())) {
+      const datePart = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).format(utcDate);
+      const timePart = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" }).format(utcDate);
+      return `${datePart} · ${timePart} ${timezoneLabel}`;
+    }
+  }
+  const date = new Date(startAt);
+  if (Number.isNaN(date.getTime())) return startAt;
+  const datePart = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", timeZone }).format(date);
+  const timePart = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short", timeZone }).format(date);
+  return `${datePart} · ${timePart}`;
+}
+
+function toDatepickerValueInTimezone(startAt: string, timeZone: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(startAt.trim())) return startAt.trim();
+  const date = new Date(startAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone,
+  }).formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+function sessionTypeLabel(activities: readonly { readonly type: string; readonly requirementLevel: string }[]): string {
+  const required = activities.filter((act) => act.requirementLevel !== "optional");
+  const basis = required.length > 0 ? required : activities;
+  const reviewCount = basis.filter((act) => act.type === "review").length;
+  if (reviewCount > 0 && reviewCount === basis.length) return "Spaced review";
+  if (reviewCount > 0) return "Core study + review";
+  return "Core study";
+}
+
 // Map node labels: two title lines plus short status words. Full text stays in aria-label.
 function titleLines(text: string, max: number): readonly [string, string] {
   const words = text.split(/\s+/);
@@ -1629,27 +1667,48 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <div class="action-row"><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button></div>
     <p class="prose meta-text">${adaptationChoiceCopy}</p>`;
 
-  const scheduleSessions = (Array.isArray(schedule["sessions"]) ? schedule["sessions"] : [])
-    .filter((session): session is Record<string, unknown> => Boolean(session && typeof session === "object"));
   const timezoneLabel = reminderState.timezone === "America/New_York" ? "Eastern Time" : reminderState.timezone;
-  const scheduleRowsHtml = scheduleSessions.map((session) => {
-    const sessionId = typeof session["session_id"] === "string" ? session["session_id"] : "session";
-    const startAt = typeof session["start_at"] === "string" ? session["start_at"] : "";
-    const duration = typeof session["duration_minutes"] === "number" ? session["duration_minutes"] : 0;
-    const preview = rescheduleSessionId === sessionId
-      ? `<p class="prose">Preview for ${escapeHtml(sessionId)}: ${escapeHtml(rescheduleValue || "choose a date and time")}. Timezone ${escapeHtml(reminderState.timezone)} (${escapeHtml(timezoneLabel)}). Ambiguous local times need an explicit choice. This screen does not write a live schedule.</p>`
-      : "";
-    return `<li class="schedule-row">
-      <p><strong>${escapeHtml(shortSessionLabel(startAt))}</strong> · ${duration} min · <time datetime="${escapeHtml(startAt)}">${escapeHtml(startAt)}</time></p>
-      <div class="schedule-edit">
-        <label class="field" for="reschedule-${escapeHtml(sessionId)}">New local time
-          <input id="reschedule-${escapeHtml(sessionId)}" type="datetime-local" data-reschedule-for="${escapeHtml(sessionId)}" name="reschedule-${escapeHtml(sessionId)}">
-        </label>
-        <button type="button" class="btn-secondary" data-action="reschedule-session" data-session-id="${escapeHtml(sessionId)}">Reschedule</button>
-      </div>
-      ${preview}
-    </li>`;
-  }).join("\n");
+  const weeklyMinutes = todayState.weeklyMinutes || 120;
+  const renderScheduleRowsHtml = (idPrefix: "plan" | "settings"): string =>
+    todayState.todayCards.map((card, idx) => {
+      const sessionNum = idx + 1;
+      const sessionId = card.sessionId;
+      const kindLabel = sessionTypeLabel(card.activityBreakdown);
+      const isRescheduled = rescheduleSessionId === sessionId && Boolean(rescheduleValue);
+      const effectiveTimeStr = isRescheduled && rescheduleValue ? rescheduleValue : card.startAt;
+      const humanTime = formatSessionDateTime(effectiveTimeStr, reminderState.timezone, timezoneLabel);
+      const pickerDefault = toDatepickerValueInTimezone(effectiveTimeStr, reminderState.timezone);
+      const inputId = `${idPrefix}-reschedule-${sessionId}`;
+      const lessonsHtml = card.activityBreakdown.map((act) =>
+        `<li class="session-activity-item"><span class="session-activity-title">${escapeHtml(act.title)}</span><span class="meta-text">${act.durationMinutes} min${act.requirementLevel === "optional" ? " · optional" : ""}</span></li>`,
+      ).join("");
+      const preview = rescheduleSessionId === sessionId
+        ? `<p class="prose session-reschedule-note" role="status">${
+            rescheduleValue
+              ? `Session ${sessionNum} moves to <strong>${escapeHtml(humanTime)}</strong>. Not saved yet.`
+              : `Choose a date and time in ${escapeHtml(timezoneLabel)}.`
+          }</p>`
+        : "";
+      return `<li class="schedule-row" data-session-id="${escapeHtml(sessionId)}">
+        <div class="schedule-row-head">
+          <div class="schedule-row-title-group">
+            <p class="schedule-row-title"><strong>Session ${sessionNum}</strong> <span class="badge">${escapeHtml(kindLabel)}</span></p>
+            <p class="schedule-row-time"><time datetime="${escapeHtml(card.startAt)}">${escapeHtml(humanTime)}</time> · ${card.durationMinutes} min</p>
+          </div>
+          <details class="session-reschedule"${rescheduleSessionId === sessionId ? " open" : ""}>
+            <summary class="btn-secondary session-reschedule-summary">${sfIcon("today", 15)}<span>Change time</span></summary>
+            <div class="schedule-edit session-reschedule-panel">
+              <label class="field" for="${escapeHtml(inputId)}"><span>Date &amp; time (${escapeHtml(timezoneLabel)})</span>
+                <input id="${escapeHtml(inputId)}" type="text" class="datepicker-input" data-datepicker="true" data-reschedule-for="${escapeHtml(sessionId)}" name="reschedule-${escapeHtml(sessionId)}" value="${escapeHtml(pickerDefault)}" autocomplete="off">
+              </label>
+              <button type="button" class="btn-primary" data-action="reschedule-session" data-session-id="${escapeHtml(sessionId)}">Apply time</button>
+            </div>
+          </details>
+        </div>
+        ${lessonsHtml ? `<ol class="session-activity-list">${lessonsHtml}</ol>` : ""}
+        ${preview}
+      </li>`;
+    }).join("\n");
 
   const practiceFeedback = practiceSubmitted
     ? `<p class="prose" role="status">Submitted${practiceChoice ? `: ${escapeHtml(practiceChoice)}` : ""}. This check is not demonstrated competence.</p>`
@@ -1810,8 +1869,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <section class="plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
               <div class="section-header">
                 <div>
-                  <h2 id="plan-pacing-heading">Weekly pace &amp; upcoming sessions</h2>
-                  <p class="meta-text">Spaced review stays in a separate session after your initial checkpoint.</p>
+                  <h2 id="plan-pacing-heading">Your study sessions</h2>
+                  <p class="meta-text">Each session is one sitting. Move a session if the time does not work for you.</p>
                 </div>
               </div>
               <dl class="plan-facts">
@@ -1821,16 +1880,14 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 </div>
                 <div>
                   <dt>Weekly pace</dt>
-                  <dd>120 min/wk · ~${Math.max(1, Math.ceil(totalEffort.max / 120))} wk completion</dd>
+                  <dd>${weeklyMinutes} min a week · about ${Math.max(1, Math.ceil(totalEffort.max / weeklyMinutes))} wk to finish</dd>
                 </div>
                 <div>
                   <dt>Spaced review</dt>
                   <dd>${reviewsDue} due · scheduled after initial checkpoint</dd>
                 </div>
               </dl>
-              <p class="prose meta-text">Time ranges reflect fastest to most thorough completion. Changing video playback speed adjusts video minutes only—reading, coding labs, and checkpoints keep their full time.</p>
-              <h3>Preview rebalanced schedule</h3>
-              <ul class="schedule-list">${scheduleRowsHtml}</ul>
+              <ul class="schedule-list">${renderScheduleRowsHtml("plan")}</ul>
             </section>
 
             <section class="plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
@@ -2043,7 +2100,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             ${snoozeNote ? `<p class="prose" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
             <p class="prose disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
             <h3>Schedule</h3>
-            <ul class="schedule-list">${scheduleRowsHtml}</ul>
+            <ul class="schedule-list">${renderScheduleRowsHtml("settings")}</ul>
           </section>
           <section class="surface-panel settings-group" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
             <h2>AI Connections</h2>

@@ -21,6 +21,7 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
+const FLATPICKR_DIST_DIR = path.resolve(__dirname, "../node_modules/flatpickr/dist");
 const EXAMPLES_DIR = path.resolve(
   __dirname,
   "../../../specs/001-curriculum-platform/examples"
@@ -99,6 +100,29 @@ ${fallbackScript}
     });
   }
 
+  function destroyDatepickers() {
+    root.querySelectorAll("[data-datepicker]").forEach((el) => {
+      if (el._flatpickr && typeof el._flatpickr.destroy === "function") {
+        el._flatpickr.destroy();
+      }
+    });
+  }
+
+  function initDatepickers() {
+    if (typeof window.flatpickr !== "function") return;
+    root.querySelectorAll("[data-datepicker]").forEach((el) => {
+      if (el._flatpickr) return;
+      window.flatpickr(el, {
+        enableTime: true,
+        dateFormat: "Y-m-d\\TH:i",
+        altInput: true,
+        altFormat: "D, M j · h:i K",
+        minuteIncrement: 15,
+        allowInput: true,
+      });
+    });
+  }
+
   async function dispatchServerRender(patch) {
     let payload;
     try {
@@ -118,6 +142,7 @@ ${fallbackScript}
     const previous = openDialogScroll();
     const rail = root.querySelector(".today-curricula-grid");
     const railLeft = rail ? rail.scrollLeft : 0;
+    destroyDatepickers();
     root.innerHTML = payload.html;
     const nextRail = root.querySelector(".today-curricula-grid");
     if (nextRail) nextRail.scrollLeft = railLeft;
@@ -127,12 +152,14 @@ ${fallbackScript}
     }
     bindDialogs();
     openMarkedDialogs(previous);
+    initDatepickers();
     if (!focusKey(focusedKey) && patch.action === "close-study-detail") focusKey(inspectorOpenerKey);
     return true;
   }
 
   bindDialogs();
   openMarkedDialogs(new Map());
+  initDatepickers();
 
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
@@ -202,7 +229,8 @@ ${fallbackScript}
         if (checked) patch.practiceChoice = checked.value;
       }
       if (action === "reschedule-session" && target.dataset.sessionId) {
-        const input = root.querySelector('[data-reschedule-for="' + CSS.escape(target.dataset.sessionId) + '"]');
+        const row = target.closest(".schedule-row") || root;
+        const input = row.querySelector('[data-reschedule-for="' + CSS.escape(target.dataset.sessionId) + '"]');
         patch.rescheduleValue = input ? input.value : "";
       }
       dispatchServerRender(patch);
@@ -328,6 +356,26 @@ export function createWebAppServer(options = {}) {
 
     if (pathname.startsWith("/v1/")) {
       proxyOrFallbackApiRequest(req, res, apiBaseUrl);
+      return;
+    }
+
+    if (pathname === "/vendor/flatpickr.min.css") {
+      const css = fs.readFileSync(path.join(FLATPICKR_DIST_DIR, "flatpickr.min.css"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(css);
+      return;
+    }
+
+    if (pathname === "/vendor/flatpickr.min.js") {
+      const js = fs.readFileSync(path.join(FLATPICKR_DIST_DIR, "flatpickr.min.js"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(js);
       return;
     }
 

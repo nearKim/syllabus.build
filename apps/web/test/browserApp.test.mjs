@@ -832,6 +832,11 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const cssText = await cssRes.text();
     assert.ok(cssText.includes("dialog:modal"));
 
+    const fpCssRes = await fetch(`${baseUrl}/vendor/flatpickr.min.css`);
+    assert.equal(fpCssRes.status, 200);
+    const fpJsRes = await fetch(`${baseUrl}/vendor/flatpickr.min.js`);
+    assert.equal(fpJsRes.status, 200);
+
     const stateRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -997,19 +1002,23 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
     assert.ok(plan.includes(sectionId), `Plan is missing section ${sectionId}`);
   }
   assert.ok(plan.includes("What you'll learn &amp; unit order"));
-  assert.ok(plan.includes("Weekly pace &amp; upcoming sessions"));
+  assert.ok(plan.includes("Your study sessions"));
+  assert.ok(plan.includes("Each session is one sitting. Move a session if the time does not work for you."));
   assert.ok(plan.includes("Tailor how this curriculum is taught"));
   assert.ok(plan.includes("Activate or share your syllabus"));
   assert.ok(plan.includes("Read Subword Tokenization &amp; Sequence Packing Notes"));
   assert.ok(plan.includes("Targeted Bridge: Matrix Calculus &amp; Softmax Jacobians"));
   assert.ok(plan.includes('<dl class="plan-facts">'));
   assert.ok(plan.includes("<dt>Total time</dt>"));
-  assert.ok(plan.includes("Preview rebalanced schedule"));
+  assert.ok(plan.includes("<strong>Session 1</strong> <span class=\"badge\">Core study</span>"));
+  assert.ok(plan.includes("<strong>Session 3</strong> <span class=\"badge\">Spaced review</span>"));
+  assert.ok(plan.includes('class="session-activity-list"'));
+  assert.ok(plan.includes('data-datepicker="true"'));
   assert.ok(plan.includes('class="plan-architecture-outline"'));
   assert.ok(plan.includes('interestfor="plan-relationship-legend" popovertarget="plan-relationship-legend"'));
   assert.ok(plan.includes('<figure id="plan-relationship-legend" popover="hint" class="relationship-legend" data-opaque-surface="true">'));
   assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
-  for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds"]) {
+  for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds", "Preview rebalanced schedule"]) {
     assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);
   }
 });
