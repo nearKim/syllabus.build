@@ -1982,14 +1982,169 @@ math {
   color: var(--color-text-secondary);
 }
 
-/* Plan */
+/* Plan & Today Curriculum Overview */
+.today-curriculum-overview {
+  margin-top: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+}
+
+.today-overview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.today-overview-body {
+  display: grid;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.today-overview-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.today-overview-unit-btn {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.today-overview-unit.is-selected .today-overview-unit-btn {
+  border-color: var(--color-accent);
+  background: var(--color-accent-surface);
+}
+
+.today-overview-unit-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 14px;
+}
+
+.plan-sections-stack {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.plan-science-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .plan-goal {
   font-size: 17px;
+  margin: 0;
+}
+
+.plan-architecture-outline {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.plan-Architecture-outline .outline-module-card,
+.plan-architecture-outline .outline-module-card {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+}
+
+.plan-architecture-outline .outline-module-card.is-selected {
+  border-color: var(--color-accent);
+}
+
+.plan-outline-unit-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.plan-outline-unit-head h3 {
+  margin: 4px 0 0;
+  font-size: 17px;
+}
+
+.plan-objective-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-objective-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.plan-objective-main {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.plan-objective-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.plan-pacing-metrics,
+.plan-approach-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-3);
+}
+
+.plan-metric-box {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+}
+
+.plan-adaptation-box {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
 }
 
 .plan-map-container,
 .plan-outline-container {
-  margin: 0 0 var(--space-6);
+  margin: 0;
   min-inline-size: 0;
 }
 
@@ -2027,7 +2182,7 @@ math {
 }
 
 .relationship-legend {
-  margin: 0 0 var(--space-6);
+  margin: 0;
 }
 
 .relationship-legend ul {
@@ -2044,6 +2199,10 @@ math {
   padding: var(--space-3) 0;
   border-top: var(--hairline);
   font-size: 15px;
+}
+
+.relationship-legend li:first-child {
+  border-top: 0;
 }
 
 .legend-swatch {

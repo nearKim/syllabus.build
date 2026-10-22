@@ -1339,7 +1339,64 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               </div>` : `<p class="next-up-text">Nothing is scheduled next.</p>`}
             </div>`;
   const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView);
-  const planBoardHtml = renderFlowBoard("flow-plan", modules, selectedModuleId, selectedActivityId, flowView);
+  const totalEffort = basePlanModel.totalDurationTriplet;
+  const unitIndexById = new Map(modules.map((mod, idx) => [mod.moduleId, idx + 1]));
+  const objectiveById = new Map(basePlanModel.objectiveTracks.map((obj) => [obj.objectiveId, obj]));
+  const todayOverviewUnitsHtml = modules.map((mod, idx) => {
+    const prog = unitProgress(mod.activities);
+    const prereqLabels = mod.prerequisiteModuleIds.map((id) => `U${unitIndexById.get(id) ?? "?"}`);
+    const prereqText = prereqLabels.length > 0 ? `Requires ${prereqLabels.join(", ")}` : "Entry unit";
+    return `<li class="today-overview-unit${mod.moduleId === selectedModuleId ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}">
+      <button type="button" class="today-overview-unit-btn" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${mod.moduleId === selectedModuleId}">
+        <span class="today-overview-unit-top"><span class="badge">U${idx + 1}</span><strong>${escapeHtml(displayUnitTitle(mod.title))}</strong></span>
+        <span class="meta-text">${escapeHtml(prereqText)} · ${mod.objectiveIds.length} objective${mod.objectiveIds.length === 1 ? "" : "s"} · ${prog.done}/${prog.total} required · ${escapeHtml(effortWords(mod.durationTriplet))}</span>
+      </button>
+    </li>`;
+  }).join("\n");
+  const todayCurriculumOverviewHtml = `<details class="today-curriculum-overview">
+              <summary class="today-overview-summary">
+                <span>Unit Map &amp; Syllabus Overview</span>
+                <span class="meta-text">${modules.length} units · ${basePlanModel.objectiveTracks.length} objectives · ${totalEffort.min}–${totalEffort.max} min</span>
+              </summary>
+              <div class="today-overview-body">
+                <ol class="today-overview-list" aria-label="Unit progression overview">
+                  ${todayOverviewUnitsHtml}
+                </ol>
+                <p class="meta-text">Inspect-only overview. Use <strong>Edit Plan &amp; Pacing →</strong> to adjust prerequisites, waivers, pacing, or instructional approach.</p>
+              </div>
+            </details>`;
+
+  const planArchitectureOutlineHtml = `<div class="plan-architecture-outline" role="list" aria-label="Outcomes and prerequisite module outline">
+    ${modules.map((mod, idx) => {
+      const isSelected = mod.moduleId === selectedModuleId;
+      const prog = unitProgress(mod.activities);
+      const prereqLabels = mod.prerequisiteModuleIds.map((id) => `U${unitIndexById.get(id) ?? "?"}`);
+      const prereqText = prereqLabels.length > 0 ? `Requires ${prereqLabels.join(", ")}` : "Entry unit (no prior unit prerequisite)";
+      const reqCount = mod.activities.filter((act) => act.required).length;
+      const optCount = mod.activities.length - reqCount;
+      const unitObjectives = mod.objectiveIds.map((id) => objectiveById.get(id)).filter((obj): obj is NonNullable<typeof obj> => Boolean(obj));
+      const objectivesListHtml = unitObjectives.map((obj) => `<li class="plan-objective-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
+        <div class="plan-objective-main">
+          <strong>${escapeHtml(obj.title)}</strong>
+          <span class="meta-text">Acceptable evidence: ${escapeHtml(humanize(obj.proficiencyBadge.evidenceSupport))} · Status: <code>${escapeHtml(obj.proficiencyStatus)}</code> (${prog.done}/${prog.total} required activities completed)</span>
+        </div>
+        <div class="plan-objective-actions">
+          <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button>
+          <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Progress">Check prerequisites · about 5 min</button>
+        </div>
+      </li>`).join("\n");
+      return `<article class="study-card outline-module-card${isSelected ? " is-selected" : ""}" role="listitem" data-module-id="${escapeHtml(mod.moduleId)}" data-selected="${isSelected}">
+        <div class="plan-outline-unit-head">
+          <div>
+            <p class="meta-text"><span class="badge">U${idx + 1}</span> · ${escapeHtml(prereqText)} · ${reqCount} required${optCount > 0 ? `, ${optCount} optional enrichment` : ""} · ${escapeHtml(effortWords(mod.durationTriplet))}</p>
+            <h3>${escapeHtml(displayUnitTitle(mod.title))}</h3>
+          </div>
+          <button type="button" class="btn-secondary" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${isSelected}">${isSelected ? "Selected unit" : "Select unit"}</button>
+        </div>
+        <ul class="plan-objective-list">${objectivesListHtml}</ul>
+      </article>`;
+    }).join("\n")}
+  </div>`;
 
   const selectedModule = modules.find((mod) => mod.moduleId === selectedModuleId) ?? modules[0];
   const selectedActivity = selectedModule?.activities.find((act) => act.activityId === selectedActivityId) ?? selectedModule?.activities[0];
@@ -1457,7 +1514,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   const openDialogId = inputState.openDialogId ?? null;
   const dialogOpen = (id: string) => ` data-open="${openDialogId === id}"`;
-  const totalEffort = basePlanModel.totalDurationTriplet;
 
   return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
@@ -1501,10 +1557,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <label class="field field-inline" for="selected-plan-control"><span>Selected plan</span>
                     <select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">${planOptionsHtml}</select>
                   </label>
+                  <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Edit Plan &amp; Pacing<span aria-hidden="true">→</span></button>
                 </div>
               </div>
               ${recoveryBanner}
               ${nextUpRowHtml}
+              ${todayCurriculumOverviewHtml}
             </header>
             ${todayBoardHtml}
           </div>
@@ -1558,26 +1616,116 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <div class="plan-view-switcher segmented" role="group" aria-label="Map or outline">
                 ${PLAN_SYNCHRONIZED_VIEWS.map((view) => `<button type="button" class="seg-btn" data-action="switch-plan-view" data-plan-view="${view}" aria-pressed="${view === activePlanView}">${view}</button>`).join("\n")}
               </div>
-              <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
-              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
+              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
             </div>
           </div>
           ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
-          <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
-          <p class="meta-text">${requiredSummary}. ${evidenceSummary}. ${reviewSummary}.</p>
-          <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
-          <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
-            <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
-              ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
-              ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
-              ${renderMapControl("fit_view", "Reset View", "Fit", "reset")}
-              ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
-            </div>
-            ${renderPlanDagSvgHtml(basePlanModel)}
-            <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
+
+          <div class="plan-sections-stack">
+            <section class="surface-panel plan-science-section" id="plan-outcomes-prerequisites" aria-labelledby="plan-outcomes-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">1 · Backward Design &amp; Prerequisite Space</span>
+                  <h2 id="plan-outcomes-heading">Outcomes &amp; prerequisites</h2>
+                </div>
+                <p class="meta-text">${requiredSummary} · ${evidenceSummary} · ${reviewSummary}</p>
+              </div>
+              <p class="prose plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
+              <p class="prose meta-text">Included: ${escapeHtml(basePlanModel.goal.includedTopics.join(", ") || "none")}. Excluded: ${escapeHtml(basePlanModel.goal.excludedTopics.join(", ") || "none")}. ${escapeHtml(basePlanModel.goal.scopeNote)}</p>
+              <div class="plan-map-container" data-plan-surface="Map" data-active="${activePlanView === "Map"}" data-opaque-surface="true">
+                <div class="map-controls-bar" role="toolbar" aria-label="Map viewport controls">
+                  ${renderMapControl("zoom_in", "Zoom In", "Zoom in", "zoom-in")}
+                  ${renderMapControl("zoom_out", "Zoom Out", "Zoom out", "zoom-out")}
+                  ${renderMapControl("fit_view", "Reset View", "Fit", "reset")}
+                  ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
+                </div>
+                ${renderPlanDagSvgHtml(basePlanModel)}
+                <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
+              </div>
+              <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${planArchitectureOutlineHtml}</div>
+              ${relationshipLegend}
+            </section>
+
+            <section class="surface-panel plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">2 · Workload Bounds &amp; Distributed Practice</span>
+                  <h2 id="plan-pacing-heading">Pacing &amp; review</h2>
+                </div>
+                <span class="badge">Review policy v1 · heuristic spacing</span>
+              </div>
+              <div class="plan-pacing-metrics">
+                <div class="plan-metric-box">
+                  <span class="meta-text">Declared effort bounds (Min / Point / Max)</span>
+                  <strong>${totalEffort.min}m / ${totalEffort.point}m / ${totalEffort.max}m</strong>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Weekly capacity &amp; upper-bound horizon</span>
+                  <strong>120 min/wk · ${Math.max(1, Math.ceil(totalEffort.max / 120))} wk upper bound</strong>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Spaced review separation</span>
+                  <strong>${reviewsDue} due · separate session enforced</strong>
+                </div>
+              </div>
+              <p class="prose meta-text">Declared effort bounds are planning estimates, not completion guarantees. Media playback speed scales playable-media minutes only; reading, coding, assessment, and spaced review retain their own bounds. Fixed deadlines require upper-bound feasibility without silently dropping review or lowering rigor.</p>
+              <h3>Preview rebalanced schedule</h3>
+              <ul class="schedule-list">${scheduleRowsHtml}</ul>
+            </section>
+
+            <section class="surface-panel plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">3 · Cognitive Load &amp; Expertise Reversal</span>
+                  <h2 id="plan-approach-heading">Learning approach</h2>
+                </div>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Preview changes</button>
+              </div>
+              <div class="plan-approach-grid">
+                <div class="plan-metric-box">
+                  <span class="meta-text">Prior-knowledge claims &amp; evidence</span>
+                  <strong>${evidenceSummary}</strong>
+                  <span class="meta-text">Self-reports never alter assessed proficiency.</span>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Mathematical depth</span>
+                  <strong>${escapeHtml(humanize(mathDepthFor(curriculum, [])))}</strong>
+                  <span class="meta-text">${depthOverrideReset ? "Topic overrides reset to global default." : "Override: Matrix calculus · Formal."}</span>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Instructional order</span>
+                  <div class="segmented" role="group" aria-label="Instructional order">
+                    ${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${flowView.order === order}">${order === "theory_first" ? "Theory" : order === "application_first" ? "Code first" : "Balanced"}</button>`).join("")}
+                  </div>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Familiar-material treatment</span>
+                  <strong>Skip only when demonstrated</strong>
+                  <span class="meta-text">Waives introductory instruction only with qualifying evidence.</span>
+                </div>
+              </div>
+              <div class="plan-adaptation-box">
+                <h3>Adaptation diff &amp; evidence-backed waivers</h3>
+                ${adaptationBody}
+              </div>
+            </section>
+
+            <section class="surface-panel plan-science-section" id="plan-status-sharing" aria-labelledby="plan-status-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">4 · Governance &amp; Reproducibility</span>
+                  <h2 id="plan-status-heading">Plan status &amp; sharing</h2>
+                </div>
+                <span class="badge">${selectedPlan.draft ? "Private Draft" : "Active Plan"} · <code>${escapeHtml(revisionActivationReq.revisionId)}</code></span>
+              </div>
+              <p class="prose meta-text">Activating a draft requires explicit confirmation and <code>If-Match</code> concurrency validation. Sharing previews a sanitized public snapshot that strips private account IDs, schedules, and proficiency evidence.</p>
+              <div class="action-row">
+                <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
+                <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Explore">My publications</button>
+              </div>
+            </section>
           </div>
-          <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${planBoardHtml}</div>
-          ${relationshipLegend}
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>

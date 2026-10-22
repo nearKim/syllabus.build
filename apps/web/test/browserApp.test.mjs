@@ -961,3 +961,30 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   mounted.applyUiAction("resume-curriculum", { curriculumId: "curriculum-tolstoy-lit-003" });
   assert.equal(rail.scrollLeft, 240);
 });
+
+test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders 4 educational-science sections without duplicating Study Flow", () => {
+  const html = renderCurriculumWebAppHtml();
+  const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
+  const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
+
+  // 1. Today's Focused curriculum header integrates Edit Plan & Pacing -> and expandable Unit Map & Syllabus Overview
+  assert.ok(today.includes('data-action="navigate-learn-sub" data-sub-destination="Plan">Edit Plan &amp; Pacing<span aria-hidden="true">→</span></button>'));
+  assert.ok(today.includes('<details class="today-curriculum-overview">'));
+  assert.ok(today.includes("Unit Map &amp; Syllabus Overview"));
+
+  // 2. Plan does not repeat Today's Study Flow table; it renders the 4 educational-science sections
+  assert.equal(plan.includes('id="flow-plan-title"'), false, "Plan must not duplicate Today's Study Flow execution matrix");
+  for (const sectionId of [
+    'id="plan-outcomes-prerequisites"',
+    'id="plan-pacing-review"',
+    'id="plan-learning-approach"',
+    'id="plan-status-sharing"',
+  ]) {
+    assert.ok(plan.includes(sectionId), `Plan is missing section ${sectionId}`);
+  }
+  assert.ok(plan.includes('class="plan-architecture-outline"'));
+  assert.ok(plan.includes("Check prerequisites · about 5 min"));
+  assert.ok(plan.includes("Declared effort bounds (Min / Point / Max)"));
+  assert.ok(plan.includes("Preview rebalanced schedule"));
+  assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
+});
