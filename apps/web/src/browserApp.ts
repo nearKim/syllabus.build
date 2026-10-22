@@ -32,7 +32,7 @@ import { clamp, escapeHtml, normalizeStringList } from "./shared.ts";
 import { SfIcon, StatusGlyph, type SegmentStyle, type SfIconName } from "./components/Icons.tsx";
 import {
   DEEP_DIVE_MODES, FLOW_ORDERS, SPACED_REVIEW_MODES, TRACK_LABELS, TRACK_OF_TYPE,
-  MacroStage, StepRow, StudyFlowBoard, displayUnitTitle, effortWords, executionTone,
+  StepRow, StudyFlowBoard, displayUnitTitle, effortWords, executionTone,
   executionWords, fit, humanize, isClosed, isOneOf, plannedFlowOrder, rightsWords, unitProgress,
   type DeepDiveMode, type FlowOrder, type FlowView, type SpacedReviewMode, type StudyActivity, type StudyModule,
 } from "./components/StudyFlowBoard.tsx";
@@ -961,10 +961,6 @@ function renderFlowBoard(
   return renderToString(h(StudyFlowBoard, { idPrefix, modules, selectedModuleId, selectedActivityId, view }));
 }
 
-function renderMacroStage(modules: readonly StudyModule[], selectedModuleId: string | null): string {
-  return renderToString(h(MacroStage, { modules, selectedModuleId }));
-}
-
 function renderStepRow(
   activity: StudyActivity,
   selectedActivityId: string | null,
@@ -1328,7 +1324,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const evidenceSummary = `${demonstratedObjectives} of ${basePlanModel.objectiveTracks.length} objectives demonstrated`;
   const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
-  const macroStageHtml = renderMacroStage(modules, selectedModuleId);
   // The second row of Today's header card. Resume opens the drawer, which holds the details.
   const planProgress = unitProgress(basePlanModel.outlineActivities);
   const nextUpRowHtml = `<div class="today-next">
@@ -1430,12 +1425,62 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     if (status === "demonstrated" || status === "unassessed") return statusGlyph("gate", status === "demonstrated" ? "done" : "todo", 20);
     return statusGlyph("module", status === "not_started" ? "todo" : "doing", 20);
   };
+  const conclusionLabel = (status: string): string => {
+    if (status === "demonstrated") return "Demonstrated under stated conditions";
+    if (status === "self_reported") return "Self-reported";
+    if (status === "needs_review" || status === "needs_practice") return "Needs practice";
+    if (status === "in_progress") return "In progress";
+    return "Not assessed";
+  };
+  const calibrationSummary = (obj: (typeof basePlanModel.objectiveTracks)[number]): string => {
+    if (obj.proficiencyStatus === "demonstrated") {
+      return "Reviewed check on a recorded date. No in-app help recorded. Outside help was not verified.";
+    }
+    if (obj.executionStatus === "self_reported_completed" || obj.proficiencyStatus === "self_reported") {
+      return "You marked this familiar or completed its study activity. It has not been checked independently.";
+    }
+    return "No qualifying check is recorded. Missing assessment means unknown, not low ability.";
+  };
+  const retentionSummary = (obj: (typeof basePlanModel.objectiveTracks)[number]): string => {
+    if (obj.proficiencyStatus === "needs_review") {
+      return "A refresh is recommended by the review policy (not proof of skill loss).";
+    }
+    if (obj.proficiencyStatus === "demonstrated") {
+      return "No delayed check recorded.";
+    }
+    return "History unavailable until an initial independent check is recorded.";
+  };
   const proficiencyRowsHtml = basePlanModel.objectiveTracks.map((obj) => `<tr data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
-    <td><strong>${escapeHtml(obj.title)}</strong><div class="meta-text">${escapeHtml(obj.objectiveVersionId)}</div></td>
-    <td><span class="st-status-static">${proficiencyGlyph(obj.proficiencyStatus)}<span>${escapeHtml(humanize(obj.proficiencyStatus))}</span></span><span class="st-sr">${escapeHtml(obj.proficiencyBadge.nonColorCue)}</span></td>
-    <td><span class="st-status-static">${statusGlyph("module", executionTone(obj.executionStatus), 20)}<span>${escapeHtml(executionWords(obj.executionStatus))}</span></span><span class="st-sr">${escapeHtml(obj.executionBadge.nonColorCue)}</span></td>
-    <td><span class="evidence-cell">${escapeHtml(humanize(obj.proficiencyBadge.evidenceSupport))}${obj.proficiencyBadge.evidenceRefs.length > 0 ? ` · <code>${escapeHtml(obj.proficiencyBadge.evidenceRefs.join(", "))}</code>` : ""}</span> <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button></td>
+    <td>
+      <span class="badge">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
+      <strong class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</strong>
+    </td>
+    <td><span class="st-status-static">${proficiencyGlyph(obj.proficiencyStatus)}<span>${escapeHtml(conclusionLabel(obj.proficiencyStatus))}</span></span><span class="st-sr">${escapeHtml(obj.proficiencyBadge.nonColorCue)}</span></td>
+    <td>
+      <p class="prose capability-support">${escapeHtml(calibrationSummary(obj))}</p>
+      <p class="meta-text">${escapeHtml(retentionSummary(obj))}</p>
+    </td>
+    <td>
+      <div class="plan-objective-actions">
+        <button type="button" class="btn-secondary" data-action="view-evidence" data-objective-id="${escapeHtml(obj.objectiveId)}">View evidence</button>
+        <button type="button" class="btn-secondary" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding</button>
+      </div>
+    </td>
   </tr>`).join("\n");
+
+  const inspectedObjective = basePlanModel.objectiveTracks[0];
+  const sampledCapabilityTitles = diagnosticState.target_objective_version_ids.map((verId) => {
+    const match = basePlanModel.objectiveTracks.find((obj) => obj.objectiveVersionId === verId || obj.objectiveId === verId);
+    return match ? match.title : humanize(verId.replace(/^objective-|-v\d+$/g, ""));
+  });
+  const assessedCapabilityTitles = diagnosticState.assessed_objective_version_ids.map((verId) => {
+    const match = basePlanModel.objectiveTracks.find((obj) => obj.objectiveVersionId === verId || obj.objectiveId === verId);
+    return match ? match.title : humanize(verId.replace(/^objective-|-v\d+$/g, ""));
+  });
+  const unassessedCapabilityTitles = diagnosticState.unassessed_objective_version_ids.map((verId) => {
+    const match = basePlanModel.objectiveTracks.find((obj) => obj.objectiveVersionId === verId || obj.objectiveId === verId);
+    return match ? match.title : humanize(verId.replace(/^objective-|-v\d+$/g, ""));
+  });
 
   const resourceCards = basePlanModel.outlineActivities.flatMap((act) => act.resourceProvenanceCards)
     .filter((card, idx, arr) => arr.findIndex((item) => item.resourceVersionId === card.resourceVersionId) === idx);
@@ -1729,35 +1774,99 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
-          <h1 class="page-title">Progress</h1>
-          <div class="progress-summaries">
-            <section class="progress-summary"><h2>Required activities completed</h2><p>${requiredSummary}</p></section>
-            <section class="progress-summary"><h2>Objectives with qualifying evidence</h2><p>${evidenceSummary}</p></section>
-            <section class="progress-summary"><h2>Reviews due</h2><p>${reviewSummary}</p></section>
-          </div>
-          ${macroStageHtml}
-          <section class="surface-panel" data-opaque-surface="true">
-            <h2>Objective evidence ledger</h2>
-            <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
-            <div class="table-responsive"><table class="proficiency-table"><thead><tr><th scope="col">Objective</th><th scope="col">Proficiency status</th><th scope="col">Activity execution</th><th scope="col">Evidence</th></tr></thead><tbody>${proficiencyRowsHtml}</tbody></table></div>
-          </section>
-          <section class="surface-panel diagnostic-panel" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
-            <h2>Topic Diagnostic</h2>
-            <p>Sampled objectives: <code>${escapeHtml(diagnosticState.target_objective_version_ids.join(", ") || "none")}</code></p>
-            <p>Assessed: <code>${escapeHtml(diagnosticState.assessed_objective_version_ids.join(", ") || "none")}</code>. Unassessed: <code>${escapeHtml(diagnosticState.unassessed_objective_version_ids.join(", ") || "none")}</code>.</p>
-            <p class="prose">The effort target (maximum minutes) selects the sample and limits learner burden. The effort target is not a speed score. Reaching it does not lock or mark a response wrong.</p>
-            <p class="prose">Local control: ${escapeHtml(diagnosticControl)}. Pause suspends this task view. Stop leaves unassessed objectives unknown. Continue reads the same active session.</p>
-            <div class="action-row">
-              <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
-              <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
-              <button type="button" class="btn-secondary" data-action="diagnostic-continue">Continue</button>
+          <div class="section-header">
+            <div>
+              <span class="today-selected-eyebrow">Competency &amp; Evidence Portfolio</span>
+              <h1 class="page-title">Your learning evidence</h1>
+              <p class="prose meta-text">See what you have demonstrated and what still needs checking.</p>
             </div>
-          </section>
-          <section class="surface-panel adaptation-review" data-opaque-surface="true">
-            <h2>Adaptation review</h2>
-            ${adaptationBody}
-            <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Open full diff</button>
-          </section>
+            <div class="plan-toolbar">
+              <label class="field field-inline" for="progress-curriculum-control"><span>Curriculum</span>
+                <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
+              </label>
+              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">View review in Today<span aria-hidden="true">→</span></button>
+              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Adjust plan<span aria-hidden="true">→</span></button>
+            </div>
+          </div>
+
+          <div class="plan-sections-stack">
+            <section class="surface-panel" id="progress-capability-portfolio" aria-labelledby="progress-portfolio-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">Learning vs. Performance · Capability Space</span>
+                  <h2 id="progress-portfolio-heading">Capability portfolio &amp; retention checks</h2>
+                </div>
+                <span class="badge">${evidenceSummary}</span>
+              </div>
+              <p class="prose meta-text">Completing a study activity in Today records effort, not demonstrated capability. Each capability below separates self-reported familiarity and supported practice from independent evidence and delayed retrieval checks.</p>
+              <div class="table-responsive">
+                <table class="proficiency-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Capability</th>
+                      <th scope="col">Evidence conclusion</th>
+                      <th scope="col">What the record supports &amp; retention</th>
+                      <th scope="col">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>${proficiencyRowsHtml}</tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="surface-panel" id="progress-evidence-detail" aria-labelledby="progress-evidence-detail-heading" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">Selected capability audit trail</span>
+                  <h2 id="progress-evidence-detail-heading">${escapeHtml(inspectedObjective?.title ?? "Capability evidence detail")}</h2>
+                </div>
+                <span class="badge">${escapeHtml(conclusionLabel(inspectedObjective?.proficiencyStatus ?? "unassessed"))}</span>
+              </div>
+              <div class="plan-pacing-metrics">
+                <div class="plan-metric-box">
+                  <span class="meta-text">What the evidence supports</span>
+                  <strong>${escapeHtml(inspectedObjective ? calibrationSummary(inspectedObjective) : "No qualifying check is recorded.")}</strong>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">What remains unassessed</span>
+                  <strong>Demonstrating introductory matrix operations does not establish matrix calculus or unassessed downstream objectives.</strong>
+                </div>
+                <div class="plan-metric-box">
+                  <span class="meta-text">Later checks &amp; corrections</span>
+                  <strong>${escapeHtml(inspectedObjective ? retentionSummary(inspectedObjective) : "No delayed check recorded.")}</strong>
+                </div>
+              </div>
+              <details class="today-curriculum-overview evidence-technical-details">
+                <summary class="today-overview-summary">
+                  <span>Technical audit metadata &amp; canonical state reference</span>
+                  <span class="meta-text">Versions, evidence refs, and schema states</span>
+                </summary>
+                <div class="today-overview-body">
+                  <p class="meta-text">Objective version: <code>${escapeHtml(inspectedObjective?.objectiveVersionId ?? "unavailable")}</code> · Evidence support: <code>${escapeHtml(inspectedObjective?.proficiencyBadge.evidenceSupport ?? "none")}</code>${inspectedObjective && inspectedObjective.proficiencyBadge.evidenceRefs.length > 0 ? ` · Refs: <code>${escapeHtml(inspectedObjective.proficiencyBadge.evidenceRefs.join(", "))}</code>` : ""}</p>
+                  <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
+                </div>
+              </details>
+            </section>
+
+            <section class="surface-panel diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
+              <div class="section-header">
+                <div>
+                  <span class="today-selected-eyebrow">Verification without speed penalties · ~5 min target</span>
+                  <h2>Check understanding</h2>
+                </div>
+                <span class="badge">Session ${escapeHtml(diagnosticControl)}</span>
+              </div>
+              <p class="prose">Sampled capabilities: <strong>${escapeHtml(sampledCapabilityTitles.join("; ") || "None")}</strong>.</p>
+              <p class="prose meta-text">Assessed so far: ${escapeHtml(assessedCapabilityTitles.join("; ") || "None")}. Still unassessed: ${escapeHtml(unassessedCapabilityTitles.join("; ") || "None")}.</p>
+              <p class="prose meta-text">The 5-minute effort target selects the sample and limits learner burden. It is not a speed score: reaching it never locks or marks a response wrong. Pause suspends this task view; Stop leaves unassessed capabilities unknown; Continue resumes the same session.</p>
+              <div class="action-row">
+                <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
+                <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
+                <button type="button" class="btn-secondary" data-action="diagnostic-continue">Continue</button>
+                <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Adjust plan from evidence<span aria-hidden="true">→</span></button>
+              </div>
+            </section>
+          </div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-resources" data-learn-panel="Resources" data-active="${isLearn && activeLearnSub === "Resources"}"${isLearn && activeLearnSub === "Resources" ? "" : " hidden"}>

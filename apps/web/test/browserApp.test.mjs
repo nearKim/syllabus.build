@@ -988,3 +988,37 @@ test("Today integrates Edit Plan & Pacing transition and Unit Map overview, whil
   assert.ok(plan.includes("Preview rebalanced schedule"));
   assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
 });
+
+test("Progress renders the Competency & Evidence Portfolio without duplicating Today's counters/Unit strip or Plan's adaptation editor", () => {
+  const html = renderCurriculumWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
+  const progress = html.slice(html.indexOf('id="panel-learn-progress"'), html.indexOf('id="panel-learn-resources"'));
+
+  // 1. Progress does not duplicate Today's activity/review counters, Unit strip, or Plan's adaptation review card
+  assert.equal(progress.includes('class="progress-summaries"'), false, "Progress must not duplicate Today's activity/review counters");
+  assert.equal(progress.includes('class="macro-stage"'), false, "Progress must not duplicate the U1/U2 Unit strip");
+  assert.equal(progress.includes('class="adaptation-review"'), false, "Progress must not duplicate Plan's adaptation review card");
+
+  // 2. Progress renders the 3 Competency & Evidence Portfolio sections
+  assert.ok(progress.includes('<h1 class="page-title">Your learning evidence</h1>'));
+  for (const sectionId of [
+    'id="progress-capability-portfolio"',
+    'id="progress-evidence-detail"',
+    'id="progress-diagnostic-verification"',
+  ]) {
+    assert.ok(progress.includes(sectionId), `Progress is missing section ${sectionId}`);
+  }
+
+  // 3. Human-readable capability titles + plain-English evidence conclusions + Illusion-of-Competence calibration
+  assert.ok(progress.includes("Analyze BPE and Unigram tokenization sequence lengths"));
+  assert.ok(progress.includes("Derive scaled dot-product attention gradients and variance scaling"));
+  assert.ok(progress.includes("Demonstrated under stated conditions"));
+  assert.ok(progress.includes("Not assessed"));
+  assert.ok(
+    progress.includes("No qualifying check is recorded. Missing assessment means unknown, not low ability."),
+    "Progress must clearly distinguish unassessed capability from low ability"
+  );
+  assert.ok(
+    progress.includes("Demonstrating introductory matrix operations does not establish matrix calculus or unassessed downstream objectives."),
+    "Progress must state what remains unassessed in the capability space"
+  );
+});

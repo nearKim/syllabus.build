@@ -2270,6 +2270,23 @@ math {
   border-bottom: 0;
 }
 
+.capability-title {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.capability-support {
+  margin: 0 0 var(--space-1);
+  font-size: 14px;
+}
+
+.evidence-technical-details {
+  margin-top: var(--space-3);
+}
+
 .evidence-cell {
   display: block;
   margin-bottom: var(--space-2);
