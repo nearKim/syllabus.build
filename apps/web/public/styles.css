@@ -4816,32 +4816,39 @@ ul.adopt-resources {
   align-items: center;
   gap: 5px;
   margin: 0;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-surface-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  padding: 0;
+  background: transparent;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--color-text-secondary);
 }
 
+/* --- Suggested Fit Tray (Ultra-Minimalist Impeccable Architecture) --- */
 .intake-fit-group {
   display: grid;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .intake-fit-group-title {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--color-text-secondary);
 }
 
 .intake-fit-list {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* 1. Existing Plans: Unboxed shortcut row separated from materials by section rhythm (zero box-in-box) */
+.intake-existing-plans-block {
+  padding-bottom: var(--space-4);
+  border-bottom: var(--hairline);
 }
 
 .intake-existing-plan-card {
@@ -4850,11 +4857,26 @@ ul.adopt-resources {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: 12px 14px;
+  padding: 2px 0;
   border: 0;
-  border-inline-start: 3px solid var(--color-accent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-accent-surface) 75%, var(--color-surface));
+  border-radius: 0;
+  background: transparent;
+}
+
+.intake-existing-plan-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.intake-plan-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
 }
 
 .intake-existing-plan-inner {
@@ -4863,101 +4885,182 @@ ul.adopt-resources {
   min-width: 0;
 }
 
-.intake-existing-plan-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
+.intake-existing-plan-inner .meta-text {
+  margin: 0;
+  font-size: 12.5px;
 }
 
-.intake-entity-pill {
+.intake-plan-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+}
+
+.intake-existing-plan-actions {
+  display: flex;
+  align-items: center;
+}
+
+.intake-existing-plan-actions .btn-secondary {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+/* 2. Indexed Materials: Open, card-less, unshaded, line-free editorial catalogue */
+.intake-materials-list {
+  display: grid;
+  gap: 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intake-material-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.intake-material-row.is-skipped {
+  opacity: 0.42;
+  filter: grayscale(0.6);
+}
+
+.intake-material-badge-col {
+  flex: 0 0 92px;
+  padding-top: 2px;
+}
+
+.intake-material-badge-col .resource-category-badge {
   display: inline-flex;
   align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
-  color: var(--color-accent);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.intake-material-card {
-  display: grid;
   gap: 6px;
-  padding: 12px 14px;
+  padding: 0;
   border: 0;
-  border-radius: 10px;
-  background: var(--tint-4);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
 }
 
-.intake-material-card.is-skipped {
-  background: var(--tint-2);
-  opacity: 0.55;
-}
-
-.intake-fit-card-top {
+.intake-material-content-col {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-}
-
-.intake-fit-card-main {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  flex: 1 1 0;
   min-width: 0;
-  flex: 1 1 18rem;
 }
 
 .intake-material-inner {
   display: grid;
-  gap: 2px;
+  gap: 3px;
+  flex: 1 1 16rem;
   min-width: 0;
-  flex: 1 1 0;
 }
 
-.intake-fit-card-main .meta-text {
+.intake-material-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+}
+
+.intake-material-inner .meta-text {
   margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
 }
 
-.intake-fit-card-actions {
+.intake-material-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
+.intake-material-actions .btn-primary,
+.intake-material-actions .btn-secondary {
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.intake-skip-btn:not(.is-active) {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.intake-skip-btn:not(.is-active):hover {
+  background: var(--tint-4);
+  color: var(--color-text-primary);
+}
+
+/* 3. Indented Syllabus Details with Quiet Guideline */
 .intake-resource-index-details {
-  margin-top: 4px;
-  padding-top: 0;
-  border-top: 0;
+  margin-top: 6px;
+  margin-inline-start: 12px;
+  padding-inline-start: 10px;
+  border-inline-start: 1.5px solid var(--color-border-subtle);
 }
 
 .intake-index-summary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
   cursor: pointer;
+  user-select: none;
+  list-style: none;
+  transition: color 0.15s ease-out;
+}
+
+.intake-index-summary::-webkit-details-marker {
+  display: none;
+}
+
+.intake-index-summary::before {
+  content: "▸";
+  display: inline-block;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+
+.intake-resource-index-details[open] > .intake-index-summary {
+  color: var(--color-text-primary);
+}
+
+.intake-resource-index-details[open] > .intake-index-summary::before {
+  transform: rotate(90deg);
+}
+
+.intake-index-summary:hover {
+  color: var(--color-accent);
 }
 
 .intake-index-body {
-  margin-top: 4px;
-  padding: 4px 0 0;
-  border-radius: 0;
+  margin-top: 6px;
+  padding: 0;
   background: transparent;
-  font-size: 12.5px;
+  font-size: 12px;
 }
 
 .intake-index-list {
-  margin: 6px 0 0;
-  padding-left: 1.2rem;
+  margin: 4px 0 0;
+  padding-left: 1.1rem;
   display: grid;
-  gap: 4px;
+  gap: 3px;
 }
 
 .intake-receipt-banner {

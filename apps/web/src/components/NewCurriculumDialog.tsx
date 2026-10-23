@@ -1065,7 +1065,6 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
     return (
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
-          <SfIcon name="learn" size={15} />
           <span>Chapters ({index.tocChapters.length})</span>
         </summary>
         <div class="intake-index-body">
@@ -1090,7 +1089,6 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
     return (
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
-          <SfIcon name="video" size={15} />
           <span>Videos ({index.syllabusVideos.length})</span>
         </summary>
         <div class="intake-index-body">
@@ -1114,7 +1112,6 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
     return (
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
-          <SfIcon name="code" size={15} />
           <span>Exercises ({index.labExercises.length})</span>
         </summary>
         <div class="intake-index-body">
@@ -1132,7 +1129,6 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
   return (
     <details class="intake-resource-index-details">
       <summary class="intake-index-summary">
-        <SfIcon name="course" size={15} />
         <span>Units ({index.syllabusModules.length})</span>
       </summary>
       <div class="intake-index-body">
@@ -1477,23 +1473,19 @@ export function NewCurriculumDialog({
                       class="intake-fit-card intake-existing-plan-card"
                       data-fit-plan-id={plan.id}
                     >
-                      <div class="intake-fit-card-main">
-                        <span class="marketplace-card-icon" data-subject={plan.subject} aria-hidden="true">
+                      <div class="intake-existing-plan-main">
+                        <span class="intake-plan-icon" data-subject={plan.subject} aria-hidden="true">
                           <SfIcon name={subjectIcon(plan.subject)} size={16} />
                         </span>
                         <div class="intake-existing-plan-inner">
-                          <div class="intake-existing-plan-title-row">
-                            <span class="intake-entity-pill">
-                              {plan.kind === "my_plan" ? "Your plan" : "Marketplace plan"}
-                            </span>
-                            <strong>{plan.title}</strong>
-                          </div>
+                          <strong class="intake-plan-title">{plan.title}</strong>
                           <p class="meta-text">
-                            {plan.subject} · {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics matched
+                            {plan.kind === "my_plan" ? "Your plan" : "Marketplace"} · {plan.subject} ·{" "}
+                            {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics matched
                           </p>
                         </div>
                       </div>
-                      <div class="intake-fit-card-actions">
+                      <div class="intake-existing-plan-actions">
                         {plan.kind === "my_plan" && plan.curriculumId ? (
                           <button
                             type="button"
@@ -1529,26 +1521,26 @@ export function NewCurriculumDialog({
                   return (
                     <li
                       key={mat.resourceVersionId}
-                      class={`intake-fit-card intake-material-card${isUsed ? " is-used" : ""}${isSkipped ? " is-skipped" : ""}`}
+                      class={`intake-fit-card intake-material-card intake-material-row${isUsed ? " is-used" : ""}${isSkipped ? " is-skipped" : ""}`}
                       data-fit-resource-id={mat.resourceVersionId}
                       data-fit-resource-used={String(isUsed)}
                       data-fit-resource-skipped={String(isSkipped)}
                     >
-                      <div class="intake-fit-card-top">
-                        <div class="intake-fit-card-main">
-                          <span class="badge resource-category-badge" data-category={mat.category}>
-                            <SfIcon name={categoryIcon(mat.category)} size={15} />
-                            <span>{mat.category}</span>
-                          </span>
-                          <div class="intake-material-inner">
-                            <strong>{mat.title}</strong>
-                            <p class="meta-text">
-                              {mat.publisher} · {mat.coveredTopics.join(", ")}
-                            </p>
-                            {renderPolymorphicIndexDetails(mat.polymorphicIndex)}
-                          </div>
+                      <div class="intake-material-badge-col">
+                        <span class="badge resource-category-badge" data-category={mat.category}>
+                          <SfIcon name={categoryIcon(mat.category)} size={15} />
+                          <span>{mat.category}</span>
+                        </span>
+                      </div>
+                      <div class="intake-material-content-col">
+                        <div class="intake-material-inner">
+                          <strong class="intake-material-title">{mat.title}</strong>
+                          <p class="meta-text">
+                            {mat.publisher} · {mat.coveredTopics.join(", ")}
+                          </p>
+                          {renderPolymorphicIndexDetails(mat.polymorphicIndex)}
                         </div>
-                        <div class="intake-fit-card-actions">
+                        <div class="intake-material-actions">
                           <button
                             type="button"
                             class={isUsed ? "btn-primary intake-use-btn" : "btn-secondary intake-use-btn"}
