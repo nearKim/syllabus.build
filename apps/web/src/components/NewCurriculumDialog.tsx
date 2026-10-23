@@ -1441,26 +1441,6 @@ export function NewCurriculumDialog({
                   <span>{fitEvaluation.costAndBypassBadge}</span>
                 </p>
               </div>
-              <div class="segmented" role="group" aria-label="Resource fit execution mode">
-                <button
-                  type="button"
-                  class="seg-btn"
-                  data-action="set-intake-fit-mode"
-                  data-fit-mode="fill_gaps"
-                  aria-pressed={fitMode === "fill_gaps"}
-                >
-                  Fill gaps
-                </button>
-                <button
-                  type="button"
-                  class="seg-btn"
-                  data-action="set-intake-fit-mode"
-                  data-fit-mode="use_selected_only"
-                  aria-pressed={fitMode === "use_selected_only"}
-                >
-                  Selected only
-                </button>
-              </div>
             </div>
 
             {fitEvaluation.existingPlans.length > 0 ? (
