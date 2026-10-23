@@ -1,5 +1,9 @@
 import type { VNode } from "preact";
-import { renderUntrustedCatalogText, type CatalogResourceMetadataInput } from "../../../../packages/ui/src/index.ts";
+import {
+  renderAccessibleMathFormula,
+  renderUntrustedCatalogText,
+  type CatalogResourceMetadataInput,
+} from "../../../../packages/ui/src/index.ts";
 import { formatMinorCurrency } from "../billingAndSharing.ts";
 import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
 import {
@@ -40,6 +44,25 @@ export interface SelfCheckRubric {
   readonly criteria: readonly string[];
 }
 
+// One practice question per curriculum, with its formula in TeX. A choice value is what Submit records.
+export interface ConceptCheck {
+  readonly formula: string;
+  readonly question: string;
+  readonly choices: readonly { readonly value: string; readonly label: string }[];
+  readonly hint: string;
+  readonly solution: string;
+}
+
+export interface PracticeState {
+  readonly hintRequested: boolean;
+  readonly workedSolutionRevealed: boolean;
+  readonly submitted: boolean;
+  readonly choice: string | null;
+}
+
+// A worked example, quiz, or review ends with the curriculum's concept check, unless a rubric checks it instead.
+const CONCEPT_CHECK_TYPES: ReadonlySet<string> = new Set(["worked_example", "quiz", "review"]);
+
 export type SourceCardView = StudyActivity["resourceProvenanceCards"][number];
 
 export function displayLocation(url: string): string {
@@ -57,6 +80,8 @@ export interface InspectorDrawerProps {
   readonly deliverables: readonly string[];
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly rubric: SelfCheckRubric | null;
+  readonly conceptCheck: ConceptCheck | null;
+  readonly practice: PracticeState;
   readonly skipRecorded: boolean;
 }
 
@@ -69,6 +94,8 @@ export function InspectorDrawer({
   deliverables,
   catalogResources,
   rubric,
+  conceptCheck,
+  practice,
   skipRecorded,
 }: InspectorDrawerProps): VNode {
   const id = activity.activityId;
@@ -93,6 +120,9 @@ export function InspectorDrawer({
   );
   const mine = activity.objectiveIds.flatMap((objectiveId) => objectives.get(objectiveId) ?? []);
   const criteriaObjectives = mine.filter((objective) => objective.successCriterion);
+
+  const check = conceptCheck && !rubric && CONCEPT_CHECK_TYPES.has(activity.type) ? conceptCheck : null;
+  const chosen = check?.choices.find((choice) => choice.value === practice.choice);
 
   const specs: readonly (readonly [SfIconName, string])[] = [
     ["clock", effortWords(activity.durationTriplet)],
@@ -315,6 +345,66 @@ export function InspectorDrawer({
             </section>
           );
         })}
+
+        {check ? (
+          <section
+            id="study-workspace"
+            class="inspector-section study-workspace"
+            aria-labelledby={`${INSPECTOR_ID}-check`}
+            data-opaque-surface="true"
+          >
+            <h3 id={`${INSPECTOR_ID}-check`}>Concept check</h3>
+            <div
+              class="math-formula-surface"
+              data-opaque-surface="true"
+              dangerouslySetInnerHTML={{ __html: renderAccessibleMathFormula(check.formula, { displayMode: "block" }).mathml }}
+            />
+            <fieldset class="choice-group">
+              <legend>{check.question}</legend>
+              {check.choices.map(({ value, label }) => (
+                <label key={value} class="choice-option" for={`practice-choice-${value}`}>
+                  <input
+                    type="radio"
+                    id={`practice-choice-${value}`}
+                    name="practice-choice"
+                    value={value}
+                    checked={value === practice.choice}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </fieldset>
+            <div class="action-row">
+              <button type="button" class="btn-secondary" data-action="request-hint">
+                Request hint
+              </button>
+              <button type="button" class="btn-secondary" data-action="study-worked-solution">
+                Study worked solution
+              </button>
+              <button type="button" class="btn-primary" data-action="submit-practice">
+                Submit
+              </button>
+            </div>
+            {practice.submitted ? (
+              <p class="meta-text practice-feedback" role="status">
+                {chosen
+                  ? `Answer submitted: ${chosen.label}. Practice answers do not change the objective's proficiency status.`
+                  : "Choose an answer, then select Submit."}
+              </p>
+            ) : null}
+            {practice.hintRequested ? (
+              <p class="practice-note" role="status">
+                <strong>Hint.</strong> {check.hint} Hints carry no penalty.
+              </p>
+            ) : null}
+            {practice.workedSolutionRevealed ? (
+              <p class="practice-note" role="status">
+                <strong>Worked solution.</strong> {check.solution} This counts as solution-assisted study, not an
+                independent attempt.
+              </p>
+            ) : null}
+          </section>
+        ) : null}
 
         <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-focus`}>
           <h3 id={`${INSPECTOR_ID}-focus`}>{isGate ? "What this checks" : "What this builds"}</h3>

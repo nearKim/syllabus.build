@@ -1,7 +1,7 @@
 import { h } from "preact";
 import { renderToString } from "preact-render-to-string";
 import {
-  buildPlanMapAndOutlineModel, OBJECTIVE_PROFICIENCY_BADGE_STATUSES, renderAccessibleMathFormula,
+  buildPlanMapAndOutlineModel, OBJECTIVE_PROFICIENCY_BADGE_STATUSES,
   renderUntrustedCatalogText, resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
   type ActivityExecutionStatus, type CatalogResourceMetadataInput, type MapKeyboardKey,
   type PlanMapAndOutlineModel, type ThemePreference,
@@ -38,7 +38,7 @@ import {
 } from "./components/StudyFlowBoard.tsx";
 import {
   INSPECTOR_ID, InspectorDrawer, SETTABLE_STATUSES,
-  type SelfCheckRubric, type SettableStatus,
+  type ConceptCheck, type SelfCheckRubric, type SettableStatus,
 } from "./components/InspectorDrawer.tsx";
 import {
   AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner,
@@ -874,6 +874,8 @@ const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
   },
 ];
 
+const PRACTICE_ACTIONS: ReadonlySet<string> = new Set(["request-hint", "study-worked-solution", "submit-practice"]);
+
 // Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
 const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
@@ -882,6 +884,54 @@ const OPEN_ACTIONS: ReadonlySet<string> = new Set([
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
   "view-evidence", "check-prerequisites", "set-resource-scope", "set-resource-category",
 ]);
+
+// The drawer's practice question for each published curriculum. An adopted copy keeps its publication id, so it shares the check.
+const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
+  "publication-synthetic-001": {
+    formula: "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
+    question: "Which statement matches the scaling term?",
+    choices: [
+      { value: "variance", label: "It keeps the variance of each dot-product score near 1 as d_k grows" },
+      { value: "normalize", label: "It makes each row of attention weights sum to 1" },
+      { value: "cost", label: "It makes attention cost linear instead of quadratic in sequence length" },
+    ],
+    hint: "Suppose the entries of q and k are independent, with mean 0 and variance 1. The dot product q·k adds d_k such products. What is its variance?",
+    solution: "The dot product q·k has variance d_k. Dividing by √d_k brings the variance back to 1, so the softmax does not saturate and its gradients stay useful. The softmax, not the scale, makes each row sum to 1. The scale does not change the quadratic cost.",
+  },
+  "publication-linear-algebra-001": {
+    formula: "A = Q \\Lambda Q^T",
+    question: "Why does a real symmetric matrix A admit an orthogonal eigenbasis Q?",
+    choices: [
+      { value: "orthogonal", label: "Its eigenvalues are real, and eigenvectors for distinct eigenvalues are orthogonal" },
+      { value: "invertible", label: "Every real symmetric matrix is invertible" },
+      { value: "distinct", label: "Its eigenvalues are always distinct" },
+    ],
+    hint: "Take eigenvectors v₁ and v₂ with eigenvalues λ₁ ≠ λ₂. Compute v₁ᵀAv₂ in two ways, and use Aᵀ = A.",
+    solution: "Because Aᵀ = A, v₁ᵀAv₂ equals both λ₂v₁ᵀv₂ and λ₁v₁ᵀv₂. With λ₁ ≠ λ₂, this forces v₁ᵀv₂ = 0. The spectral theorem also gives a full set of real eigenvectors, so each repeated eigenvalue has an orthonormal basis for its eigenspace. These orthonormal eigenvectors are the columns of Q, and the eigenvalues fill the diagonal of Λ. The zero matrix and the identity show that A need not be invertible or have distinct eigenvalues.",
+  },
+  "publication-statmech-001": {
+    formula: "P_i = \\frac{1}{Z} e^{-\\beta E_i}",
+    question: "What does the partition function Z do in the Boltzmann distribution?",
+    choices: [
+      { value: "normalize", label: "It makes the probabilities of all microstates sum to 1" },
+      { value: "energy", label: "It is the mean energy of the system" },
+      { value: "temperature", label: "It sets the temperature of the heat bath" },
+    ],
+    hint: "Add P_i over every microstate i. What must the total be, and what does that force Z to equal?",
+    solution: "The probabilities must sum to 1, so Z = Σⱼ e^(−βEⱼ), a sum over states. The bath temperature enters through β = 1/(k_B T), not through Z. The mean energy comes from Z as ⟨E⟩ = −∂ ln Z / ∂β, but Z itself is not an energy.",
+  },
+  "publication-rust-async-001": {
+    formula: "\\mathrm{poll}(cx) \\in \\{\\mathrm{Pending}, \\mathrm{Ready}(T)\\}",
+    question: "What must a future do before its poll returns Poll::Pending?",
+    choices: [
+      { value: "waker", label: "Make sure cx.waker() is woken when the future can make progress" },
+      { value: "spin", label: "Loop inside poll until the result is ready" },
+      { value: "nothing", label: "Nothing, because the executor polls every pending future again on its next tick" },
+    ],
+    hint: "After Pending, the executor parks the task. What tells the executor that the task is worth polling again?",
+    solution: "Before it returns Pending, the future stores or registers cx.waker() with the I/O source, timer, or task that it waits on. That source calls wake() when progress is possible, and only then does the executor poll the task again. A loop inside poll blocks the executor thread, and an executor does not poll a parked task again by itself.",
+  },
+};
 
 // A topic with no public quiz bank is checked against a rubric. A gate or review links one through content.assessment_ref.
 const SELF_CHECK_RUBRICS: Readonly<Record<string, SelfCheckRubric>> = {
@@ -1376,11 +1426,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     }],
   }).getState();
 
-  const attentionFormula = renderAccessibleMathFormula(
-    "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
-    { displayMode: "block" },
-  );
-
   const hintRequested = inputState.hintRequested ?? false;
   const workedSolutionRevealed = inputState.workedSolutionRevealed ?? false;
   const practiceSubmitted = inputState.practiceSubmitted ?? false;
@@ -1548,6 +1593,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
       deliverables: deliverablesOf(curriculum, selectedActivity.activityId), catalogResources,
       rubric: rubricOf(curriculum, selectedActivity.activityId),
+      conceptCheck: CONCEPT_CHECKS[selectedPlan.publicationId ?? ""] ?? null,
+      practice: { hintRequested, workedSolutionRevealed, submitted: practiceSubmitted, choice: practiceChoice },
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
     })
     : "";
@@ -1710,11 +1757,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       </li>`;
     }).join("\n");
 
-  const practiceFeedback = practiceSubmitted
-    ? `<p class="prose" role="status">Submitted${practiceChoice ? `: ${escapeHtml(practiceChoice)}` : ""}. This check is not demonstrated competence.</p>`
-    : `<p class="meta-text">Selecting an option does not submit or advance.</p>`;
-  const hintHtml = hintRequested ? `<p class="prose" role="status">Hint: the scale keeps the dot-product variance from growing with d_k. Assistance is recorded without a penalty.</p>` : "";
-  const solutionHtml = workedSolutionRevealed ? `<p class="prose" role="status">Worked solution: softmax(QK^T / sqrt(d_k)) V. Studying the solution records assistance and does not mark the objective demonstrated.</p>` : "";
   // The ready state needs no banner. Any other state still shows above the Next-up bar.
   const recoveryBanner = todayState.asyncRecoveryBanner.state === "ready" ? "" : `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
 
@@ -1772,29 +1814,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </header>
             ${todayBoardHtml}
           </div>
-          <section class="surface-panel study-workspace" id="study-workspace" data-opaque-surface="true">
-            <h2>Study</h2>
-            <p class="prose">One task: ${escapeHtml(nextUp?.title ?? "Scaled dot-product attention")}. ${escapeHtml(nextUp?.requirementLevel === "optional" ? "Optional" : "Required")}.</p>
-            <div class="math-formula-surface" data-opaque-surface="true" role="${attentionFormula.role}" aria-label="${escapeHtml(attentionFormula.ariaLabel)}">${attentionFormula.mathml}</div>
-            <fieldset class="choice-group">
-              <legend>Which statement matches the scaling term?</legend>
-              ${choiceRadio("practice-choice", "variance", "It keeps dot-product variance near 1", "The scale is part of the formula, not a score for you.", practiceChoice === "variance")}
-              ${choiceRadio("practice-choice", "speed", "It is a speed score for the learner", "A target duration is not a timed ability score.", practiceChoice === "speed")}
-              ${choiceRadio("practice-choice", "optional", "It marks the activity optional", "Required and optional stay explicit labels.", practiceChoice === "optional")}
-            </fieldset>
-            ${practiceFeedback}
-            <div class="action-row">
-              <button type="button" class="btn-secondary" data-action="request-hint">Request hint</button>
-              <button type="button" class="btn-secondary" data-action="study-worked-solution">Study worked solution</button>
-              <button type="button" class="btn-primary" data-action="submit-practice">Submit</button>
-            </div>
-            ${hintHtml}
-            ${solutionHtml}
-            <div class="honest-two-layer-summary">
-              <h3>Honest Two-Layer Status Summary</h3>
-              <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
-            </div>
-          </section>
           <section class="today-bottom-grid" aria-label="Reviews and completed work" data-opaque-surface="true">
             <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}" aria-labelledby="review-queue-title">
               <h2 id="review-queue-title">Review queue <span class="count-badge">${reviewRows.length}</span></h2>
@@ -2012,6 +2031,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <div class="today-overview-body">
                   <p class="meta-text">Objective version: <code>${escapeHtml(inspectedObjective?.objectiveVersionId ?? "unavailable")}</code> · Evidence support: <code>${escapeHtml(inspectedObjective?.proficiencyBadge.evidenceSupport ?? "none")}</code>${inspectedObjective && inspectedObjective.proficiencyBadge.evidenceRefs.length > 0 ? ` · Refs: <code>${escapeHtml(inspectedObjective.proficiencyBadge.evidenceRefs.join(", "))}</code>` : ""}</p>
                   <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
+                  <div class="honest-two-layer-summary">
+                    <h3>Honest Two-Layer Status Summary</h3>
+                    <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
+                  </div>
                 </div>
               </details>
             </section>
@@ -2386,8 +2409,14 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       catalogResources, viewportWidthPx, selectedModuleId, selectedActivityId, focusedNodeId, zoom,
     });
 
-  function selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
+  // Practice answers belong to one activity, so another activity starts its concept check fresh.
+  function selectActivity(activityId: string | null): void {
+    if (activityId !== selectedActivityId) resetPractice();
     selectedActivityId = activityId;
+  }
+
+  function selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
+    selectActivity(activityId);
     studyDetailOpen = true;
     const targetModId =
       explicitModuleId ?? buildCurrentPlanModel().outlineModules.find((m) => m.activityIds.includes(activityId))?.moduleId;
@@ -2402,6 +2431,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   function selectCurriculum(curriculumId: string): void {
     if (curriculumId === selectedCurriculumId) return;
     selectedCurriculumId = curriculumId;
+    resetPractice();
     const first = stepOf(planData().curriculum);
     selectedModuleId = first.moduleId;
     selectedActivityId = first.activityId;
@@ -2426,16 +2456,20 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     return getState();
   }
 
+  function resetPractice(): void {
+    hintRequested = false;
+    workedSolutionRevealed = false;
+    practiceSubmitted = false;
+    practiceChoice = null;
+  }
+
   // Clears this browser's private session state: progress, statuses, practice, notes, selection, and open dialogs (@S87).
   // Account-owned records (votes, adoptions, and publications) stay with their account.
   function purgeSessionState(): void {
     recordedProgressEvents = [];
     statusOverrides.clear();
     skippedActivityIds = [];
-    hintRequested = false;
-    workedSolutionRevealed = false;
-    practiceSubmitted = false;
-    practiceChoice = null;
+    resetPractice();
     keyVisible = false;
     loadMoreNote = null;
     intakeNote = null;
@@ -2626,7 +2660,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       studyDetailOpen = true;
       const matchedMod = buildCurrentPlanModel().outlineModules.find((m) => m.moduleId === moduleId);
       if (matchedMod?.activityIds.length && (!selectedActivityId || !matchedMod.activityIds.includes(selectedActivityId))) {
-        selectedActivityId = matchedMod.activityIds[0] ?? null;
+        selectActivity(matchedMod.activityIds[0] ?? null);
       }
       return getState();
     },
@@ -2641,7 +2675,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       const nextModel = buildCurrentPlanModel().navigateKeyboard(key, focusedNodeId ?? undefined);
       focusedNodeId = nextModel.focusedNodeId;
       if (nextModel.selectedModuleId) selectedModuleId = nextModel.selectedModuleId;
-      if (nextModel.selectedActivityId) selectedActivityId = nextModel.selectedActivityId;
+      if (nextModel.selectedActivityId) selectActivity(nextModel.selectedActivityId);
       return getState();
     },
     recordTodayActivityCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt | null {
@@ -2739,9 +2773,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "set-spaced-review" && isOneOf(SPACED_REVIEW_MODES, value("spacedReview"))) spacedReview = value("spacedReview") as SpacedReviewMode;
       else if (action === "toggle-solid-surfaces") solidSurfaces = !solidSurfaces;
       else if (action === "toggle-reduce-motion") reduceMotion = !reduceMotion;
-      else if (action === "request-hint") hintRequested = true;
-      else if (action === "study-worked-solution") workedSolutionRevealed = true;
-      else if (action === "submit-practice") {
+      else if (action === "request-hint") {
+        hintRequested = true;
+        practiceChoice = submittedChoice ?? practiceChoice;
+      } else if (action === "study-worked-solution") {
+        workedSolutionRevealed = true;
+        practiceChoice = submittedChoice ?? practiceChoice;
+      } else if (action === "submit-practice") {
         practiceSubmitted = true;
         practiceChoice = submittedChoice;
       } else if (action === "set-activity-status" && data["activityId"] && isOneOf(SETTABLE_STATUSES, data["status"])) {
@@ -2885,7 +2923,8 @@ export function mountCurriculumWebApp(
       controller.closeDialog();
     } else {
       const data: Record<string, string | undefined> = { ...ds };
-      if (action === "submit-practice" && typeof rootElement.querySelector === "function") {
+      // The drawer re-renders on each practice action, so each one reads the chosen answer first.
+      if (PRACTICE_ACTIONS.has(action ?? "") && typeof rootElement.querySelector === "function") {
         const checked = rootElement.querySelector('input[name="practice-choice"]:checked') as { value?: string } | null;
         data["practiceChoice"] = checked?.value;
       }

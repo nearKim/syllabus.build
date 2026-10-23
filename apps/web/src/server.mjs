@@ -225,7 +225,7 @@ ${fallbackScript}
       dispatchServerRender({ action: "toggle-upvote", revisionId: target.dataset.revisionId });
     } else {
       const patch = Object.assign({}, target.dataset);
-      if (action === "submit-practice") {
+      if (action === "request-hint" || action === "study-worked-solution" || action === "submit-practice") {
         const checked = root.querySelector('input[name="practice-choice"]:checked');
         if (checked) patch.practiceChoice = checked.value;
       }

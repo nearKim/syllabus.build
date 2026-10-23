@@ -864,6 +864,7 @@ textarea {
 }
 
 .choice-option input {
+  flex: none;
   width: 18px;
   height: 18px;
   margin: 3px 0 0;
@@ -1807,12 +1808,35 @@ textarea {
   }
 }
 
-.study-workspace {
-  border: var(--hairline);
+/* Concept check in the drawer: the formula, one question, and the hint and worked solution on request */
+.study-workspace .math-formula-surface {
+  margin-top: 0;
+  padding: var(--space-4);
 }
 
 .study-workspace .choice-group {
-  margin-top: var(--space-5);
+  margin: var(--space-4) 0 0;
+}
+
+.study-workspace .choice-group legend {
+  font-size: 15px;
+}
+
+.study-workspace .choice-option {
+  font-size: 15px;
+}
+
+.practice-feedback,
+.practice-note {
+  margin: var(--space-3) 0 0;
+}
+
+.practice-note {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .math-formula-surface {
@@ -1834,7 +1858,6 @@ math {
 
 .honest-two-layer-summary {
   max-width: 70ch;
-  margin-top: var(--space-6);
 }
 
 .honest-two-layer-summary h3 {
