@@ -43,7 +43,7 @@ function drawerOf(html) {
 }
 
 // A mounted app whose root records its listeners, so a test can click with a button's own data attributes
-// and change a select to a value.
+// (and the field values that click reads) and change a select to a value.
 function mountWithClicks(initialState) {
   const listeners = {};
   const fields = {};
@@ -53,7 +53,10 @@ function mountWithClicks(initialState) {
     querySelector: (selector) => fields[selector] ?? null,
   };
   const app = mountCurriculumWebApp(root, initialState);
-  const click = (dataset) => listeners.click({ target: { closest: () => ({ dataset }) } });
+  const click = (dataset, values = {}) => {
+    Object.assign(fields, values);
+    listeners.click({ target: { closest: () => ({ dataset }) } });
+  };
   const change = (value) => listeners.change({ target: { closest: () => ({ value }) } });
   // Submits a form by its data-action, with field values keyed by the selector the app reads them from.
   const submit = (action, values) => {
@@ -80,15 +83,15 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
     );
   }
 
-  // 2. Today View: session cards, idempotent complete button, spaced-review separation, two-layer summary
+  // 2. Today View: session cards, idempotent complete button, spaced-review separation
   assert.ok(html.includes('data-action="complete-activity"'));
   assert.ok(html.includes('data-review-separation-valid="true"'));
-  assert.ok(html.includes("Honest Two-Layer Status Summary"));
   assert.ok(html.includes('data-opaque-surface="true"'));
 
-  // 3. Accessible MathML formula rendered on opaque surface
-  assert.ok(html.includes("<math"));
-  assert.ok(html.includes('aria-label="Mathematical expression:'));
+  // 3. Accessible MathML formula rendered on opaque surface, in the worked example's concept check
+  const example = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-example", studyDetailOpen: true }));
+  assert.ok(example.includes("<math"));
+  assert.ok(example.includes('aria-label="Mathematical expression:'));
 
   // 4. Synchronized Plan Map (SVG DAG) & Outline
   assert.ok(html.includes('<svg class="plan-dag-svg"'));
@@ -438,6 +441,67 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(coding, /Recommended first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-example"/);
   assert.equal(drawerFor("activity-coding", "module-foundations", { activityStates: { "activity-example": "self_reported_completed" } }).includes("Recommended first"), false);
   assert.match(quiz, /Required first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-coding"/);
+});
+
+test("Today has no detached Study block, and the drawer ends worked examples, quizzes, and reviews with the plan's concept check", () => {
+  const html = renderCurriculumWebAppHtml();
+  const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
+  const progress = html.slice(html.indexOf('id="panel-learn-progress"'), html.indexOf('id="panel-learn-resources"'));
+  assert.equal(/id="study-workspace"|<h2>Study<\/h2>|Two-Layer|data-action="submit-practice"/.test(today), false, "Today still renders the detached Study block");
+  const audit = progress.match(/<details class="today-curriculum-overview evidence-technical-details">[\s\S]*?<\/details>/)?.[0] ?? "";
+  assert.ok(audit.includes("<h3>Honest Two-Layer Status Summary</h3>"), "the status summary sits in the Progress audit disclosure");
+
+  const drawerFor = (selectedActivityId, extra = {}) => drawerOf(renderCurriculumWebAppHtml({ selectedActivityId, studyDetailOpen: true, ...extra }));
+  const checkOf = (drawer) => drawer.match(/<section id="study-workspace" class="inspector-section study-workspace"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const legendOf = (check) => check.match(/<legend>([^<]+)<\/legend>/)?.[1];
+
+  for (const id of ["activity-example", "activity-quiz", "activity-review"]) {
+    const check = checkOf(drawerFor(id));
+    assert.ok(check.includes('<h3 id="learn-detail-inspector-check">Concept check</h3>'), `${id} has no concept check`);
+    assert.match(check, /<div class="math-formula-surface" data-opaque-surface="true"><math [^>]*aria-label="Mathematical expression: Attention/);
+    assert.equal(legendOf(check), "Which statement matches the scaling term?");
+    assert.equal(check.match(/<input type="radio"[^>]*name="practice-choice"/g)?.length, 3);
+    for (const action of ["request-hint", "study-worked-solution", "submit-practice"]) assert.ok(check.includes(`data-action="${action}"`), `${id} has no ${action}`);
+  }
+  for (const id of ["activity-theory", "activity-coding"]) assert.equal(checkOf(drawerFor(id)), "", `${id} has a concept check`);
+
+  // Each plan asks its own question. A plan checked by a rubric has no formula and no concept check.
+  const linear = checkOf(drawerFor("la-example-projection", { selectedCurriculumId: "curriculum-linear-algebra-002" }));
+  assert.equal(legendOf(linear), "Why does a real symmetric matrix A admit an orthogonal eigenbasis Q?");
+  assert.ok(linear.includes("<mi>Λ</mi>"), "the spectral theorem formula renders its Lambda");
+  for (const id of ["tl-close-austerlitz", "tl-gate-war-and-peace", "tl-review-war-and-peace"]) {
+    assert.equal(checkOf(drawerFor(id, { selectedCurriculumId: "curriculum-tolstoy-lit-003" })), "", `${id} has a concept check`);
+  }
+  const adopted = (publicationId, moduleId, activityId) => checkOf(drawerFor(activityId, {
+    adoptions: [{ accountId: "learner-default", publicationId, moduleIds: [moduleId], active: true }], selectedCurriculumId: `adopted-${publicationId}`,
+  }));
+  assert.equal(legendOf(adopted("publication-statmech-001", "sm-module-ensembles", "sm-example-two-level")), "What does the partition function Z do in the Boltzmann distribution?");
+  assert.equal(legendOf(adopted("publication-rust-async-001", "rs-module-futures", "rs-example-waker")), "What must a future do before its poll returns Poll::Pending?");
+
+  // Hint and worked solution keep the chosen answer. Submit names it. Another activity or plan starts the check fresh.
+  const { app, root, click, change } = mountWithClicks({ selectedActivityId: "activity-example", studyDetailOpen: true });
+  const live = () => checkOf(drawerOf(root.innerHTML));
+  const practiceOf = ({ hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice }) => ({ hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice });
+  const fresh = { hintRequested: false, workedSolutionRevealed: false, practiceSubmitted: false, practiceChoice: null };
+  click({ action: "submit-practice" });
+  assert.ok(live().includes("Choose an answer, then select Submit."));
+  const chosen = { 'input[name="practice-choice"]:checked': { value: "variance" } };
+  click({ action: "request-hint" }, chosen);
+  assert.ok(live().includes('value="variance" checked'));
+  assert.match(live(), /<strong>Hint\.<\/strong> Suppose the entries of q and k are independent/);
+  click({ action: "study-worked-solution" }, { 'input[name="practice-choice"]:checked': null });
+  assert.ok(live().includes('value="variance" checked'), "the worked solution keeps the chosen answer");
+  assert.match(live(), /<strong>Worked solution\.<\/strong> The dot product q·k has variance d_k\./);
+  click({ action: "submit-practice" }, chosen);
+  assert.ok(live().includes("Answer submitted: It keeps the variance of each dot-product score near 1 as d_k grows."));
+  assert.deepEqual(practiceOf(app.getState()), { hintRequested: true, workedSolutionRevealed: true, practiceSubmitted: true, practiceChoice: "variance" });
+
+  click({ action: "select-outline-activity", activityId: "activity-quiz", moduleId: "module-attention" });
+  assert.deepEqual(practiceOf(app.getState()), fresh);
+  assert.equal(/practice-note|practice-feedback| checked/.test(live()), false);
+  click({ action: "request-hint" }, chosen);
+  change("curriculum-linear-algebra-002");
+  assert.deepEqual(practiceOf(app.getState()), fresh);
 });
 
 test("the status control sets three states, celebrates Done, and then offers the next step", () => {
