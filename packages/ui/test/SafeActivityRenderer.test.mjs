@@ -9,8 +9,10 @@ import {
   evaluateSafeCurriculumRender,
   isSafeResourceUrl,
   renderAccessibleMathFormula,
+  renderTextWithLatexHtml,
   renderUntrustedCatalogText,
   SUPPORTED_CURRICULUM_MAJOR_VERSION,
+  tokenizeTextWithLatex,
 } from "../src/SafeActivityRenderer.ts";
 import {
   createThemeController,
@@ -306,4 +308,28 @@ test("UI tokens generated from design/ui-tokens.json carry generated-file notice
   assert.ok(tokensCss.includes("--color-canvas: #101216;"));
   assert.ok(tokensCss.includes("@supports not (backdrop-filter: blur(1px))"));
   assert.ok(tokensCss.includes("@media (prefers-reduced-transparency: reduce)"));
+});
+
+test("tokenizeTextWithLatex and renderTextWithLatexHtml render inline and block LaTeX equations while ignoring currency amounts", () => {
+  const inlineSegments = tokenizeTextWithLatex(
+    "Step through $\\frac{1}{\\sqrt{d_k}}$ scaling on a $3 \\times 3$ attention matrix where $P_i = \\frac{1}{Z}e^{-\\beta E_i}$."
+  );
+  const mathSegments = inlineSegments.filter((seg) => seg.kind === "math");
+  assert.equal(mathSegments.length, 3);
+  assert.equal(mathSegments[0].displayMode, "inline");
+  assert.equal(mathSegments[0].latex, "\\frac{1}{\\sqrt{d_k}}");
+  assert.ok(mathSegments[0].formula.mathml.includes("<mfrac>"));
+  assert.ok(mathSegments[1].formula.mathml.includes("<mo>×</mo>"));
+  assert.ok(mathSegments[2].formula.mathml.includes("<mi>β</mi>"));
+
+  // Currency values must remain plain text and never trigger math mode
+  const currencySegments = tokenizeTextWithLatex("Optional certificate costs $49.00 or between $10 and $20.");
+  assert.equal(currencySegments.every((seg) => seg.kind === "text"), true);
+
+  // Block and escaped delimiter support
+  const html = renderTextWithLatexHtml("Block equation: $$A = U\\Sigma V^T$$ and inline \\(\\nabla_\\theta \\mathcal{L}\\).");
+  assert.ok(html.includes('class="math-formula-surface" data-opaque-surface="true" data-latex="A = U\\Sigma V^T"'));
+  assert.ok(html.includes("<mi>Σ</mi>"));
+  assert.ok(html.includes('class="math-inline" data-opaque-surface="true" data-latex="\\nabla_\\theta \\mathcal{L}"'));
+  assert.ok(html.includes("<mi>∇</mi>"));
 });

@@ -259,19 +259,26 @@ export function escapeHtml(raw: string): string {
 
 function latexToSpokenLabel(latex: string): string {
   const spoken = latex
-    .replace(/\\(?:mathrm|text|operatorname)\{([^{}]*)\}/g, " $1 ")
+    .replace(/\\(?:mathrm|text|operatorname|mathbf|mathbb|mathcal)\{([^{}]*)\}/g, " $1 ")
     .replace(/\\(?:left|right)(?![a-zA-Z])/g, " ")
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1) divided by ($2)")
     .replace(/\\sqrt\{([^}]+)\}/g, "square root of ($1)")
     .replace(/\\sum_\{([^}]+)\}\^\{([^}]+)\}/g, "sum from $1 to $2")
     .replace(/\\int_\{([^}]+)\}\^\{([^}]+)\}/g, "integral from $1 to $2")
-    .replace(/\^\{([^}]+)\}|\^([a-zA-Z0-9]+)/g, (_, a, b) => ` to the power of ${a ?? b}`)
-    .replace(/_\{([^}]+)\}|_([a-zA-Z0-9]+)/g, (_, a, b) => ` subscript ${a ?? b}`)
-    .replace(/\\(?:alpha|beta|gamma|delta|theta|lambda|sigma|pi|omega|nabla|partial)/g, (m) => m.slice(1))
+    .replace(/\^\{([^}]+)\}|\^([a-zA-Z0-9+-]+)/g, (_, a, b) => ` to the power of ${a ?? b}`)
+    .replace(/_\{([^}]+)\}|_([a-zA-Z0-9+-]+)/g, (_, a, b) => ` subscript ${a ?? b}`)
+    .replace(
+      /\\(?:alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|theta|Theta|lambda|Lambda|mu|sigma|Sigma|pi|Pi|omega|Omega|nabla|partial|tanh|sinh|cosh|sin|cos|tan|ln|log|exp|softmax)/g,
+      (m) => ` ${m.slice(1)} `,
+    )
+    .replace(/\\(?:langle|lfloor)/g, " ( ")
+    .replace(/\\(?:rangle|rfloor)/g, " ) ")
     .replace(/\\(?:cdot|times)/g, " times ")
     .replace(/\\(?:leq|le)(?![a-zA-Z])/g, " less than or equal to ")
     .replace(/\\(?:geq|ge)(?![a-zA-Z])/g, " greater than or equal to ")
     .replace(/\\(?:neq|ne)(?![a-zA-Z])/g, " not equal to ")
+    .replace(/\\(?:approx)(?![a-zA-Z])/g, " approximately equal to ")
+    .replace(/\\(?:to|rightarrow)(?![a-zA-Z])/g, " to ")
     .replace(/\\in(?![a-zA-Z])/g, " in ")
     .replace(/[\\{}]/g, " ")
     .replace(/\s+/g, " ")
@@ -280,11 +287,31 @@ function latexToSpokenLabel(latex: string): string {
 }
 
 const LATEX_SYMBOLS: Readonly<Record<string, readonly ["mi" | "mo", string]>> = {
-  alpha: ["mi", "α"], beta: ["mi", "β"], gamma: ["mi", "γ"], delta: ["mi", "δ"], theta: ["mi", "θ"],
-  lambda: ["mi", "λ"], Lambda: ["mi", "Λ"], sigma: ["mi", "σ"], pi: ["mi", "π"], omega: ["mi", "ω"], nabla: ["mi", "∇"], partial: ["mi", "∂"],
-  cdot: ["mo", "⋅"], times: ["mo", "×"], le: ["mo", "≤"], leq: ["mo", "≤"], ge: ["mo", "≥"], geq: ["mo", "≥"],
-  ne: ["mo", "≠"], neq: ["mo", "≠"], in: ["mo", "∈"], sum: ["mo", "∑"], int: ["mo", "∫"],
+  alpha: ["mi", "α"], beta: ["mi", "β"], gamma: ["mi", "γ"], Gamma: ["mi", "Γ"],
+  delta: ["mi", "δ"], Delta: ["mi", "Δ"], epsilon: ["mi", "ε"], varepsilon: ["mi", "ε"],
+  zeta: ["mi", "ζ"], eta: ["mi", "η"], theta: ["mi", "θ"], Theta: ["mi", "Θ"],
+  kappa: ["mi", "κ"], lambda: ["mi", "λ"], Lambda: ["mi", "Λ"], mu: ["mi", "μ"],
+  nu: ["mi", "ν"], xi: ["mi", "ξ"], Xi: ["mi", "Ξ"], pi: ["mi", "π"], Pi: ["mi", "Π"],
+  rho: ["mi", "ρ"], sigma: ["mi", "σ"], Sigma: ["mi", "Σ"], tau: ["mi", "τ"],
+  phi: ["mi", "ϕ"], varphi: ["mi", "φ"], Phi: ["mi", "Φ"], chi: ["mi", "χ"],
+  psi: ["mi", "ψ"], Psi: ["mi", "Ψ"], omega: ["mi", "ω"], Omega: ["mi", "Ω"],
+  nabla: ["mi", "∇"], partial: ["mi", "∂"], infty: ["mi", "∞"], top: ["mi", "⊤"],
+  cdot: ["mo", "⋅"], times: ["mo", "×"], div: ["mo", "÷"], pm: ["mo", "±"], mp: ["mo", "∓"],
+  le: ["mo", "≤"], leq: ["mo", "≤"], ge: ["mo", "≥"], geq: ["mo", "≥"],
+  lt: ["mo", "&lt;"], gt: ["mo", "&gt;"], ne: ["mo", "≠"], neq: ["mo", "≠"],
+  approx: ["mo", "≈"], sim: ["mo", "∼"], equiv: ["mo", "≡"], propto: ["mo", "∝"],
+  in: ["mo", "∈"], notin: ["mo", "∉"], subset: ["mo", "⊂"], subseteq: ["mo", "⊆"],
+  cup: ["mo", "∪"], cap: ["mo", "∩"], to: ["mo", "→"], rightarrow: ["mo", "→"],
+  leftarrow: ["mo", "←"], mapsto: ["mo", "↦"], Rightarrow: ["mo", "⇒"], iff: ["mo", "⇔"],
+  forall: ["mo", "∀"], exists: ["mo", "∃"], sum: ["mo", "∑"], prod: ["mo", "∏"], int: ["mo", "∫"],
+  langle: ["mo", "⟨"], rangle: ["mo", "⟩"], lfloor: ["mo", "⌊"], rfloor: ["mo", "⌋"],
+  lceil: ["mo", "⌈"], rceil: ["mo", "⌉"], perp: ["mo", "⊥"], mid: ["mo", "∣"],
 };
+
+const LATEX_OPERATOR_NAMES: ReadonlySet<string> = new Set([
+  "tanh", "sinh", "cosh", "sin", "cos", "tan", "ln", "log", "exp",
+  "min", "max", "det", "dim", "rank", "softmax", "Attention", "lim", "arg", "sup", "inf", "Var",
+]);
 
 // Recursive descent over the LaTeX subset that curriculum formulas use: groups, \frac, \sqrt,
 // \mathrm-style text, \left/\right fences, sub/superscripts, and named symbols.
@@ -329,6 +356,9 @@ function tokenizeLatexToMrowContent(latex: string): string {
       if (name === "frac") return `<mfrac>${group()}${group()}</mfrac>`;
       if (name === "sqrt") return `<msqrt>${group()}</msqrt>`;
       if (name === "mathrm" || name === "text" || name === "operatorname") return `<mi mathvariant="normal">${escapeHtml(readRawGroup())}</mi>`;
+      if (name === "mathbf") return `<mi mathvariant="bold">${escapeHtml(readRawGroup())}</mi>`;
+      if (name === "mathbb") return `<mi mathvariant="double-struck">${escapeHtml(readRawGroup())}</mi>`;
+      if (name === "mathcal") return `<mi mathvariant="script">${escapeHtml(readRawGroup())}</mi>`;
       // Only \left...\right fences stretch, and only to the content between them.
       if (name === "left") {
         const open = fence();
@@ -338,6 +368,7 @@ function tokenizeLatexToMrowContent(latex: string): string {
         return `<mrow>${open}${inner}${fence()}</mrow>`;
       }
       if (name === "right") return fence();
+      if (LATEX_OPERATOR_NAMES.has(name)) return `<mi mathvariant="normal">${escapeHtml(name)}</mi>`;
       const symbol = LATEX_SYMBOLS[name];
       return symbol ? `<${symbol[0]}>${symbol[1]}</${symbol[0]}>` : `<mi>${escapeHtml(name)}</mi>`;
     }
@@ -352,6 +383,14 @@ function tokenizeLatexToMrowContent(latex: string): string {
   const fence = (): string => {
     skipSpaces();
     const ch = latex[pos++] ?? "";
+    if (ch === "\\") {
+      const name = readName();
+      if (name) {
+        const symbol = LATEX_SYMBOLS[name];
+        return symbol ? `<mo>${symbol[1]}</mo>` : `<mo>${escapeHtml(name)}</mo>`;
+      }
+      return `<mo>${escapeHtml(latex[pos++] ?? "")}</mo>`;
+    }
     return ch === "." || ch === "" ? "" : `<mo>${escapeHtml(ch)}</mo>`;
   };
   const sequence = (end?: string, untilRight = false): string => {
@@ -401,6 +440,128 @@ export function renderAccessibleMathFormula(
     overflowBehavior: "scrollable_region",
     isScreenshotOnly: false,
   };
+}
+
+export type TextOrLatexSegment =
+  | { readonly kind: "text"; readonly text: string }
+  | {
+      readonly kind: "math";
+      readonly latex: string;
+      readonly displayMode: "inline" | "block";
+      readonly formula: AccessibleMathFormulaView;
+    };
+
+/**
+ * Splits a text string into plain text and LaTeX math segments (`$$...$$`, `\[...\]`, `\(...\)`, `$...$`),
+ * while guarding currency amounts (e.g., `$49.00` or `$10 to $20`) so they remain plain text.
+ */
+export function tokenizeTextWithLatex(rawText: string): readonly TextOrLatexSegment[] {
+  const input = String(rawText ?? "");
+  if (!input.includes("$") && !input.includes("\\(") && !input.includes("\\[")) {
+    return [{ kind: "text", text: input }];
+  }
+
+  const segments: TextOrLatexSegment[] = [];
+  let textBuffer = "";
+  const flushText = (): void => {
+    if (textBuffer) {
+      segments.push({ kind: "text", text: textBuffer });
+      textBuffer = "";
+    }
+  };
+  const pushMath = (rawLatex: string, displayMode: "inline" | "block"): void => {
+    const trimmed = rawLatex.trim();
+    if (!trimmed) return;
+    flushText();
+    segments.push({
+      kind: "math",
+      latex: trimmed,
+      displayMode,
+      formula: renderAccessibleMathFormula(trimmed, { displayMode }),
+    });
+  };
+
+  let i = 0;
+  while (i < input.length) {
+    if (input.startsWith("\\$", i)) {
+      textBuffer += "$";
+      i += 2;
+      continue;
+    }
+    if (input.startsWith("$$", i)) {
+      const closeIdx = input.indexOf("$$", i + 2);
+      if (closeIdx > i + 2) {
+        pushMath(input.slice(i + 2, closeIdx), "block");
+        i = closeIdx + 2;
+        continue;
+      }
+    }
+    if (input.startsWith("\\[", i)) {
+      const closeIdx = input.indexOf("\\]", i + 2);
+      if (closeIdx > i + 2) {
+        pushMath(input.slice(i + 2, closeIdx), "block");
+        i = closeIdx + 2;
+        continue;
+      }
+    }
+    if (input.startsWith("\\(", i)) {
+      const closeIdx = input.indexOf("\\)", i + 2);
+      if (closeIdx > i + 2) {
+        pushMath(input.slice(i + 2, closeIdx), "inline");
+        i = closeIdx + 2;
+        continue;
+      }
+    }
+    if (input[i] === "$" && input[i + 1] !== "$") {
+      const nextChar = input[i + 1] ?? "";
+      if (nextChar !== "" && !/\s/.test(nextChar)) {
+        let closeIdx = -1;
+        for (let j = i + 2; j < input.length; j++) {
+          if (input[j] === "\n") break;
+          if (input[j] === "$" && input[j - 1] !== "\\" && !/\s/.test(input[j - 1] ?? "")) {
+            const afterClose = input[j + 1] ?? "";
+            if (!/[0-9]/.test(afterClose)) {
+              closeIdx = j;
+            }
+            break;
+          }
+        }
+        if (closeIdx > i + 1) {
+          const candidate = input.slice(i + 1, closeIdx);
+          const looksLikeCurrencyProse = /^\d+(?:[.,]\d+)?\s+[a-zA-Z]/.test(candidate);
+          if (!looksLikeCurrencyProse) {
+            pushMath(candidate, "inline");
+            i = closeIdx + 1;
+            continue;
+          }
+        }
+      }
+    }
+    textBuffer += input[i] ?? "";
+    i++;
+  }
+  flushText();
+  return segments.length > 0 ? segments : [{ kind: "text", text: "" }];
+}
+
+/**
+ * Renders a text string containing inline (`$...$`, `\(...\)`) or block (`$$...$$`, `\[...\]`) LaTeX
+ * into safe HTML with accessible `<math>` MathML elements and `data-latex` source annotations.
+ */
+export function renderTextWithLatexHtml(rawText: string): string {
+  const segments = tokenizeTextWithLatex(rawText);
+  if (segments.length === 1 && segments[0]?.kind === "text") {
+    return escapeHtml(segments[0].text);
+  }
+  return segments
+    .map((seg) =>
+      seg.kind === "text"
+        ? escapeHtml(seg.text)
+        : seg.displayMode === "block"
+          ? `<div class="math-formula-surface" data-opaque-surface="true" data-latex="${escapeHtml(seg.latex)}">${seg.formula.mathml}</div>`
+          : `<span class="math-inline" data-opaque-surface="true" data-latex="${escapeHtml(seg.latex)}">${seg.formula.mathml}</span>`,
+    )
+    .join("");
 }
 
 const asRecord = (val: unknown): Record<string, unknown> | null =>
