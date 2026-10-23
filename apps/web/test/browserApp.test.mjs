@@ -1011,7 +1011,8 @@ test("Share to Marketplace previews the public projection, then publishes it to 
   assert.ok(mine.includes("<li data-publication-id=\"publication-curriculum-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
   // A new publication has no adoptions yet, so its row welcomes the first learner instead of listing zeros.
   const fresh = mine.match(/<li data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default">[\s\S]*?<\/li>/)?.[0] ?? "";
-  assert.ok(fresh.includes('<p class="publication-impact"><span>Live in Explore and ready for its first learner</span><span>Public · Revision 1</span></p>'));
+  assert.ok(fresh.includes('</strong><span class="publication-revision">Public · Revision 1</span>'));
+  assert.match(fresh, /<p class="publication-impact"><span class="impact-pill"><svg[\s\S]*?<\/svg><span>Live in Explore and ready for its first learner<\/span><\/span><\/p>/);
   app.openDialog("dialog-publication-preview");
   assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1."));
 });
@@ -1022,22 +1023,34 @@ test("My Publications thanks the author, totals what their shared plans gave, an
     const start = html.indexOf('<section class="surface-panel my-publications"');
     return html.slice(start, html.indexOf("</section>", start));
   };
+  // Each impact card reads as its tier, its term, and its headline value.
   const impactOf = (html) => [...(sectionOf(html).match(/<dl class="philanthropy-impact">[\s\S]*?<\/dl>/)?.[0] ?? "")
-    .matchAll(/<dt><svg[\s\S]*?<\/svg>([^<]+)<\/dt><dd>([^<]+)<\/dd>/g)].map(([, term, value]) => `${term}: ${value}`);
+    .matchAll(/<div class="impact-(\w+)"><dt>([\s\S]*?)<\/dt><dd class="impact-(?:value|license)">([^<]+)<\/dd>/g)]
+    .map(([, tier, term, value]) => `${tier} · ${text(term)}: ${value}`);
   const rowOf = (html, id) => sectionOf(html).match(new RegExp(`<li data-publication-id="${id}">[\\s\\S]*?</li>`))?.[0] ?? "";
 
-  // The header thanks the author and offers the next share. The strip totals the learners, the study hours
-  // (98 estimated minutes × 142 adoptions ≈ 232 hours), and the upvotes, then names the free license.
+  // The header thanks the author and offers the next share. Learners reached is the focal card with the emblem.
+  // Study hours (98 estimated minutes × 142 adoptions ≈ 232 hours) and upvotes support it with icon badges,
+  // and the seal names the free license.
   const mine = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore" }));
   assert.ok(mine.includes("Thank you for teaching in the open."));
   assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another curriculum</button>'));
   assert.deepEqual(impactOf(mine), [
-    "Learners reached: 142", "Study hours gifted: 232", "Community upvotes: 14", "Free for every learner: CC BY 4.0",
+    "hero · Learners reached: 142",
+    "support · Study hours gifted: 232",
+    "support · Community upvotes: 14",
+    "seal · Free for every learner: CC BY 4.0",
   ]);
+  assert.match(mine, /<div class="impact-hero"><dt><svg class="philanthropy-art"[\s\S]*?<\/svg>Learners reached<\/dt>/);
+  assert.equal(mine.match(/<span class="impact-icon-badge"><svg class="sf-icon"/g)?.length, 2);
+  assert.ok(text(mine).includes("142 Self-learners studying your shared syllabus at no cost"));
+  assert.ok(text(mine).includes("CC BY 4.0 Each adoption gives a learner your plan's structured study hours at no cost."));
 
-  // Each row shows the subject icon, the topics, its own impact, Open for a plan the learner has, and a quiet Unpublish.
+  // Each row shows the subject icon, the revision, the topics, its own impact pills, Open for a plan the learner has,
+  // and a quiet Unpublish.
   const row = rowOf(mine, "publication-synthetic-001");
-  assert.equal(text(row), "Build and Evaluate RAG Systems in Python Python RAG Attention Linear Algebra 142 learners 232 study hours 14 upvotes Public · Revision 1 Open Unpublish");
+  assert.equal(text(row), "Build and Evaluate RAG Systems in Python Public · Revision 1 Python RAG Attention Linear Algebra 142 learners 232 study hours 14 upvotes Open Unpublish");
+  assert.equal(row.match(/<span class="impact-pill"><svg class="sf-icon"/g)?.length, 3);
   assert.ok(row.includes('<span class="marketplace-card-icon" data-subject="Engineering" aria-hidden="true"><svg class="sf-icon"'));
   assert.ok(row.includes('data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">Open</button>'));
   assert.ok(row.includes('<button type="button" class="unpublish-btn" data-action="open-dialog" data-dialog-id="dialog-unpublish" aria-label="Unpublish Build and Evaluate RAG Systems in Python">Unpublish</button>'));
@@ -1048,15 +1061,16 @@ test("My Publications thanks the author, totals what their shared plans gave, an
   // The totals follow live votes, and Unpublish opens the dialog that states the full consequences.
   const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
   click({ action: "toggle-upvote", revisionId: "public-revision-synthetic-001" });
-  assert.equal(impactOf(root.innerHTML)[2], "Community upvotes: 15");
+  assert.equal(impactOf(root.innerHTML)[2], "support · Community upvotes: 15");
   click(buttonsIn(rowOf(root.innerHTML, "publication-synthetic-001")).find((button) => button.label === "Unpublish").data);
   assert.equal(app.getState().openDialogId, "dialog-unpublish");
   const unpublish = root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-unpublish"'));
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
-  // A learner with no publication sees an invitation instead of an empty strip.
+  // A learner with no publication sees an invitation with the emblem instead of an empty impact panel.
   const newcomer = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@curriculum.io", role: "Learner" } }));
   assert.equal(newcomer.includes("philanthropy-impact") || newcomer.includes("Share another curriculum"), false);
+  assert.ok(newcomer.includes('<div class="publish-invite"><svg class="philanthropy-art"'));
   assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first curriculum$/);
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button>'));
 });
