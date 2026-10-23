@@ -1,6 +1,7 @@
 import type { VNode } from "preact";
 import type { LearnSubDestination, TopLevelDestination } from "../index.ts";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
+import { SfIcon } from "./Icons.tsx";
 
 export const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
 
@@ -44,8 +45,8 @@ export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: 
       <form method="dialog" class="dialog-surface auth-surface" data-action="submit-sign-in">
         <header class="dialog-header">
           <h2 id="dialog-auth-title">{authStatus === "authenticated" ? "Account" : "Sign in"}</h2>
-          <button type="submit" class="btn-secondary" data-action="close-dialog">
-            Close
+          <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
+            <SfIcon name="close" />
           </button>
         </header>
         {returnTo ? (
@@ -81,11 +82,11 @@ export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: 
           </p>
         ) : null}
         <div class="action-row">
-          <button type="submit" class="btn-primary">
-            Sign in
-          </button>
           <button type="button" class="btn-secondary" data-action="sign-in-passkey">
             Sign in with passkey
+          </button>
+          <button type="submit" class="btn-primary">
+            Sign in
           </button>
         </div>
         <p class="meta-text">

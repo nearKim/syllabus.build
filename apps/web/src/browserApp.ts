@@ -51,7 +51,7 @@ import {
 import {
   AdoptCurriculumDialog, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
   PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, facetValuesOf, goalTitleOf, mathDepthFor,
-  publicProjectionOf, rawListOf, withMarketplaceFilter,
+  rawListOf, unitIdsOf, withMarketplaceFilter,
   type ActiveCurriculum, type Adoption, type MarketplaceFilters, type MarketplaceListing,
   type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
@@ -112,7 +112,7 @@ export interface CurriculumWebAppStateInput {
   readonly marketplaceTopicsExpanded?: boolean;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
   readonly publishedListings?: readonly MarketplaceListing[];
-  readonly adoptPublicationId?: string | null; readonly adoptScope?: "full" | "units"; readonly adoptModuleIds?: readonly string[];
+  readonly adoptPublicationId?: string | null; readonly adoptModuleIds?: readonly string[];
   readonly resourceScope?: ResourceScope; readonly resourceCategory?: ResourceCategory;
 }
 
@@ -1050,6 +1050,8 @@ function sfIcon(name: SfIconName, size: 15 | 16 = 16): string {
   return renderToString(h(SfIcon, { name, size }));
 }
 
+const DIALOG_CLOSE_BUTTON = `<button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">${sfIcon("close")}</button>`;
+
 function statusGlyph(type: "module" | "gate", tone: "todo" | "doing" | "done", size = 20): string {
   return renderToString(h(StatusGlyph, { type, tone, size }));
 }
@@ -1328,8 +1330,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const marketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...inputState.marketplaceFilters };
   const marketplaceSort = inputState.marketplaceSort ?? "top_upvoted";
   const myPlans = signedOut ? [] : plans;
-  const adoptScope = inputState.adoptScope ?? "full";
   const originListing = listings.find((listing) => listing.publicationId === selectedPlan.publicationId && listing.ownerAccountId !== account.accountId);
+  const adoptListing = listings.find((listing) => listing.publicationId === inputState.adoptPublicationId);
   const returnTo = inputState.returnTo ?? null;
   const authNotice = inputState.authNotice ?? null;
 
@@ -1662,7 +1664,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         <p class="meta-text">Preserved math depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code> · Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256)}</code> · Waived IDs: <code>${escapeHtml(adaptationDiff.waivers.map((w) => w.node_id).join(", "))}</code> · Evidence refs: <code>${escapeHtml(adaptationDiff.waivers.flatMap((w) => w.qualifying_evidence_refs).join(", "))}</code></p>
       </div>
     </details>
-    <div class="action-row"><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button></div>
+    <div class="action-row"><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button></div>
     <p class="prose meta-text">${adaptationChoiceCopy}</p>`;
 
   const timezoneLabel = reminderState.timezone === "America/New_York" ? "Eastern Time" : reminderState.timezone;
@@ -2148,7 +2150,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   ${signedOut ? "" : `  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2>${DIALOG_CLOSE_BUTTON}</header>
       <p class="prose meta-text">Goal and scope → Background and approach → Time and access → Review and generate</p>
       <section>
         <h3>Goal and scope</h3>
@@ -2224,17 +2226,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title"${dialogOpen("dialog-adaptation-diff")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2>${DIALOG_CLOSE_BUTTON}</header>
       ${adaptationBody}
     </form>
   </dialog>
 
   ${renderToString(h(AdoptCurriculumDialog, {
     open: openDialogId === "dialog-partial-adoption",
-    adoptListing: listings.find((listing) => listing.publicationId === inputState.adoptPublicationId) ?? null,
+    adoptListing: adoptListing ?? null,
     adoptions,
-    adoptScope,
-    adoptModuleIds: inputState.adoptModuleIds ?? [],
+    adoptModuleIds: inputState.adoptModuleIds ?? unitIdsOf(adoptListing),
     proficiency,
     catalogResources,
   }))}
@@ -2249,7 +2250,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2>${DIALOG_CLOSE_BUTTON}</header>
       <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
       <p class="prose">This screen does not call a live unpublish route and does not report success.</p>
     </form>
@@ -2257,7 +2258,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title"${dialogOpen("dialog-account-deletion")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2><button type="submit" class="btn-secondary" data-action="close-dialog">Close</button></header>
+      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2>${DIALOG_CLOSE_BUTTON}</header>
       <p>Export Scope Included: <code>${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}</code></p>
       <p>Export Scope Excluded: <code>${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}</code></p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
@@ -2294,11 +2295,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let adoptions: Adoption[] = [...(initialState.adoptions ?? [])];
   let publishedListings: MarketplaceListing[] = [...(initialState.publishedListings ?? [])];
   let adoptPublicationId: string | null = initialState.adoptPublicationId ?? null;
-  let adoptScope: "full" | "units" = initialState.adoptScope ?? "full";
-  let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? [])];
   let resourceScope: ResourceScope = initialState.resourceScope ?? "selected";
   let resourceCategory: ResourceCategory = initialState.resourceCategory ?? "All";
   const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
+  const adoptListing = (): MarketplaceListing | undefined => listings().find((entry) => entry.publicationId === adoptPublicationId);
+  let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? unitIdsOf(adoptListing()))];
   const currentPlans = () => plansFor(account.accountId, adoptions, listings());
   const isMyPlan = (curriculumId: unknown): curriculumId is string => currentPlans().some((plan) => plan.curriculumId === curriculumId);
   // Input overrides replace the selected plan's curriculum and schedule, the same rule the render applies.
@@ -2446,7 +2447,6 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     diagnosticControl = "active";
     adaptationChoice = "pending";
     adoptPublicationId = null;
-    adoptScope = "full";
     adoptModuleIds = [];
     resourceScope = "selected";
     resourceCategory = "All";
@@ -2475,8 +2475,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     openDialogId = destination.openDialogId;
     if (destination.adoptPublicationId) {
       adoptPublicationId = destination.adoptPublicationId;
-      adoptScope = "full";
-      adoptModuleIds = [];
+      adoptModuleIds = unitIdsOf(adoptListing());
     }
   }
 
@@ -2511,19 +2510,24 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     const taken = currentPlans().some((plan) => plan.publicationId === publicationId);
     return listing && listing.ownerAccountId !== account.accountId && !taken ? listing : undefined;
   };
-  const adoptUnitIds = (): readonly string[] => {
-    const listing = listings().find((entry) => entry.publicationId === adoptPublicationId);
-    return listing ? publicProjectionOf(listing.curriculum).modules.map((mod) => mod.module_id) : [];
-  };
+
+  // A checked unit is in the resolved scope, either chosen or pulled in as a prerequisite. Unchecking it also drops
+  // each chosen unit that needs it, so the unit really leaves the scope. Checking an unchecked unit chooses it.
+  // A unit outside the open listing changes nothing.
+  function toggleAdoptUnit(moduleId: string): boolean {
+    const listing = adoptListing();
+    if (!listing || !unitIdsOf(listing).includes(moduleId)) return false;
+    const needs = (id: string): boolean => adoptionScopeOf(listing, [id]).resolvedModuleIds.includes(moduleId);
+    adoptModuleIds = adoptModuleIds.some(needs) ? adoptModuleIds.filter((id) => !needs(id)) : [...adoptModuleIds, moduleId];
+    return true;
+  }
 
   // Adoption makes a private draft and opens it on the Plan page. Activation stays a separate, explicit step (@S59).
   function adopt(listing: MarketplaceListing): void {
-    const requested = adoptScope === "units" ? adoptModuleIds : [];
-    if (adoptScope === "units" && requested.length === 0) return;
-    const moduleIds = adoptionScopeOf(listing, requested).resolvedModuleIds;
+    if (adoptModuleIds.length === 0) return;
+    const moduleIds = adoptionScopeOf(listing, adoptModuleIds).resolvedModuleIds;
     adoptions = [...adoptions, { accountId: account.accountId, publicationId: listing.publicationId, moduleIds, active: false }];
     adoptPublicationId = null;
-    adoptScope = "full";
     adoptModuleIds = [];
     openDialogId = null;
     selectCurriculum(`adopted-${listing.publicationId}`);
@@ -2580,7 +2584,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       authStatus, account, returnTo, authNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
-      adoptPublicationId, adoptScope, adoptModuleIds: [...adoptModuleIds] as readonly string[],
+      adoptPublicationId, adoptModuleIds: [...adoptModuleIds] as readonly string[],
       resourceScope, resourceCategory,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
@@ -2705,17 +2709,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "set-marketplace-query") marketplaceFilters = { ...marketplaceFilters, query: (value("query") ?? "").trim().slice(0, 100) };
       else if (action === "open-adopt-dialog" && adoptableListing(data["publicationId"])) {
         adoptPublicationId = data["publicationId"] ?? null;
-        adoptScope = "full";
-        adoptModuleIds = [];
+        adoptModuleIds = unitIdsOf(adoptListing());
         openDialogId = "dialog-partial-adoption";
-      } else if (action === "set-adopt-scope" && (data["scope"] === "full" || data["scope"] === "units")) {
-        adoptScope = data["scope"];
-        adoptModuleIds = [];
-      } else if (action === "toggle-adopt-module" && adoptScope === "units" && adoptUnitIds().includes(data["moduleId"] ?? "")) {
-        const moduleId = data["moduleId"] ?? "";
-        adoptModuleIds = adoptModuleIds.includes(moduleId) ? adoptModuleIds.filter((id) => id !== moduleId) : [...adoptModuleIds, moduleId];
-      } else if (action === "confirm-adopt-curriculum") {
-        const listing = adoptableListing(data["publicationId"]);
+      } else if (action === "toggle-adopt-module") handled = toggleAdoptUnit(data["moduleId"] ?? "");
+      else if (action === "select-all-adopt-modules" && adoptListing()) adoptModuleIds = unitIdsOf(adoptListing());
+      // The selection belongs to the open listing, so a confirm for another listing adopts nothing.
+      else if (action === "confirm-adopt-curriculum" && data["publicationId"] === adoptPublicationId) {
+        const listing = adoptableListing(adoptPublicationId);
         if (listing) adopt(listing);
       } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
       else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
@@ -2790,6 +2790,8 @@ interface MountedDialog {
   getAttribute?: (name: string) => string | null;
   getBoundingClientRect?: () => { top: number; left: number; width: number; height: number };
   addEventListener?: (type: string, listener: (ev: { target?: unknown; clientX?: number; clientY?: number }) => void) => void;
+  scrollTop?: number;
+  querySelector?: (selector: string) => { focus?: () => void } | null;
 }
 
 export function mountCurriculumWebApp(
@@ -2825,14 +2827,32 @@ export function mountCurriculumWebApp(
   type ScrollableRail = { scrollLeft: number } | null | undefined;
   const getRail = (): ScrollableRail => rootElement.querySelector?.(".today-curricula-grid") as ScrollableRail;
 
+  // The focused control, as a selector made from its data attributes. A control without a data-action has none.
+  function focusedControlSelector(): string | null {
+    const dataset = (globalThis.document?.activeElement as HTMLElement | null | undefined)?.dataset;
+    if (!dataset?.["action"]) return null;
+    return Object.entries(dataset)
+      .map(([key, value]) => `[data-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}="${CSS.escape(value ?? "")}"]`)
+      .join("");
+  }
+
+  // A render replaces every element. When the same dialog stays open, it keeps its scroll position and focused control.
+  // Without this, checking a unit far down in Details jumps back to the top and moves focus to the close button.
   function syncDom(): void {
     const railLeft = getRail()?.scrollLeft ?? 0;
+    const shown = rootElement.querySelector?.("dialog[open]") as MountedDialog | null | undefined;
+    const shownTop = shown?.scrollTop ?? 0;
+    const focused = focusedControlSelector();
     rootElement.innerHTML = controller.renderHtml();
     const nextRail = getRail();
     if (nextRail) nextRail.scrollLeft = railLeft;
     bindDialogs();
     const marked = rootElement.querySelector?.('dialog[data-open="true"]') as MountedDialog | null | undefined;
     if (marked && typeof marked.showModal === "function" && !marked.open) marked.showModal();
+    if (marked && shown && marked.id === shown.id) {
+      marked.scrollTop = shownTop;
+      if (focused) marked.querySelector?.(focused)?.focus?.();
+    }
   }
 
   syncDom();
