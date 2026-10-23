@@ -1848,7 +1848,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   ${selectedTagStripHtml}
                 </div>
                 <div class="plan-toolbar plan-command-picker">
-                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Selected plan</span>
+                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label">Plan</span>
                     <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
                 </div>
@@ -3133,9 +3133,19 @@ export function mountCurriculumWebApp(
 
   // A select reports its choice on change. A click on it only opens the list.
   rootElement.addEventListener?.("change", (rawEvent: unknown) => {
-    const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string } | null } | null };
-    const select = ev.target?.closest?.('select[data-action="select-curriculum"]');
-    if (select?.value && controller.applyUiAction("select-curriculum", { curriculumId: select.value }).handled) syncDom();
+    const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string; dataset?: Record<string, string | undefined> } | null } | null };
+    const select = ev.target?.closest?.("select[data-action]");
+    if (!select?.value) return;
+    const action = select.dataset?.["action"] ?? "select-curriculum";
+    const payload: Record<string, string | undefined> =
+      action === "select-curriculum"
+        ? { curriculumId: select.value }
+        : action === "set-intake-subject"
+          ? { intakeSubject: select.value }
+          : action === "toggle-intake-topic"
+            ? { intakeTopic: select.value }
+            : { value: select.value };
+    if (controller.applyUiAction(action, payload).handled) syncDom();
   });
 
   // The sign-in form, the Marketplace search, and the topic finder submit through their own data-action, with the field they carry.

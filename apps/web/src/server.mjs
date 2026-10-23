@@ -157,6 +157,9 @@ ${fallbackScript}
                 '<span class="ts-plan-item-title">' + escape(data.text) + '</span>' +
                 (metaText ? '<span class="ts-plan-item-meta">' + escape(metaText) + '</span>' : '') +
               '</span>' +
+              '<span class="ts-plan-chevron" aria-hidden="true">' +
+                '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>' +
+              '</span>' +
             '</div>';
           },
           option: function (data, escape) {
@@ -332,7 +335,19 @@ ${fallbackScript}
 
   root.addEventListener("change", (event) => {
     const select = event.target && event.target.closest ? event.target.closest('select[data-action="select-curriculum"]') : null;
-    if (select) dispatchServerRender({ action: "select-curriculum", curriculumId: select.value });
+    if (select) {
+      dispatchServerRender({ action: "select-curriculum", curriculumId: select.value });
+      return;
+    }
+    const subjectSelect = event.target && event.target.closest ? event.target.closest('select[data-action="set-intake-subject"]') : null;
+    if (subjectSelect && subjectSelect.value) {
+      dispatchServerRender({ action: "set-intake-subject", intakeSubject: subjectSelect.value });
+      return;
+    }
+    const topicSelect = event.target && event.target.closest ? event.target.closest('select[data-action="toggle-intake-topic"]') : null;
+    if (topicSelect && topicSelect.value) {
+      dispatchServerRender({ action: "toggle-intake-topic", intakeTopic: topicSelect.value });
+    }
   });
 
   root.addEventListener("keydown", (event) => {

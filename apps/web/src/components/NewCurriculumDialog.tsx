@@ -1058,6 +1058,7 @@ export function NewCurriculumDialog({
   lastPipelineReceipt,
 }: NewCurriculumDialogProps): VNode {
   const availableTopics = DEFAULT_SUBJECT_TOPICS[subject];
+  const unselectedTopics = availableTopics.filter((t) => !requestedTopics.includes(t));
 
   return (
     <dialog
@@ -1092,53 +1093,72 @@ export function NewCurriculumDialog({
             />
           </label>
 
-          <div class="intake-tag-selector-row">
-            <span class="intake-row-label">Subject</span>
-            <div class="intake-pill-group" role="group" aria-label="Subject domain">
-              {INTAKE_SUBJECTS.map((subj) => {
-                const selected = subj === subject;
-                return (
-                  <button
-                    key={subj}
-                    type="button"
-                    class={`filter-chip intake-subject-chip${selected ? " is-selected" : ""}`}
-                    data-action="set-intake-subject"
-                    data-intake-subject={subj}
-                    aria-pressed={selected}
-                  >
-                    <SfIcon name={subjectIcon(subj)} size={15} />
-                    <span>{subj}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <div class="intake-subject-topics-grid">
+            <label class="field intake-dropdown-field" for="intake-subject-select">
+              <span>Subject</span>
+              <select
+                id="intake-subject-select"
+                name="intake-subject"
+                class="intake-select"
+                data-action="set-intake-subject"
+              >
+                {INTAKE_SUBJECTS.map((subj) => (
+                  <option key={subj} value={subj} selected={subj === subject}>
+                    {subj}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <div class="intake-tag-selector-row">
-            <span class="intake-row-label">Topics</span>
-            <div class="intake-pill-group" role="group" aria-label="Included topics">
-              {availableTopics.map((topic) => {
-                const active = requestedTopics.includes(topic);
-                const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
-                return (
-                  <button
-                    key={topic}
-                    type="button"
-                    class={`filter-chip intake-topic-chip${active ? " is-selected" : ""}`}
-                    data-action="toggle-intake-topic"
-                    data-intake-topic={topic}
-                    data-topic-coverage={cov?.status ?? "unselected"}
-                    aria-pressed={active}
-                  >
-                    <span>{topic}</span>
-                    {active && cov ? (
-                      <span class={`intake-topic-cov-dot is-${cov.status}`} aria-hidden="true">
-                        {cov.status === "covered" ? "✓" : cov.status === "partial" ? "◐" : "+"}
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
+            <div class="field intake-dropdown-field">
+              <label for="intake-topic-select">Topics ({subject})</label>
+              <div class="intake-dependent-topics-box">
+                <select
+                  id="intake-topic-select"
+                  name="intake-topic"
+                  class="intake-select"
+                  data-action="toggle-intake-topic"
+                  data-dependent-on-subject={subject}
+                >
+                  <option value="" selected>
+                    {unselectedTopics.length > 0
+                      ? `+ Add ${subject} topic (${unselectedTopics.length} available)…`
+                      : `All ${subject} topics selected`}
+                  </option>
+                  {availableTopics.map((topic) => {
+                    const active = requestedTopics.includes(topic);
+                    return (
+                      <option key={topic} value={topic}>
+                        {active ? `✓ ${topic} (remove)` : `+ ${topic}`}
+                      </option>
+                    );
+                  })}
+                </select>
+                {requestedTopics.length > 0 ? (
+                  <div class="intake-pill-group" role="group" aria-label="Selected topics">
+                    {requestedTopics.map((topic) => {
+                      const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
+                      return (
+                        <button
+                          key={topic}
+                          type="button"
+                          class="filter-chip intake-topic-chip is-selected"
+                          data-action="toggle-intake-topic"
+                          data-intake-topic={topic}
+                          data-topic-coverage={cov?.status ?? "covered"}
+                          aria-pressed="true"
+                          title={`Remove ${topic}`}
+                        >
+                          <span>{topic}</span>
+                          <span class="intake-topic-remove" aria-hidden="true">
+                            ×
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -1204,32 +1224,20 @@ export function NewCurriculumDialog({
             </div>
 
             <div class="intake-control-cell">
-              <label class="intake-row-label" for="weekly-minutes">
-                Pace
-              </label>
-              <div class="intake-pace-row">
-                <div class="segmented" role="group" aria-label="Weekly pace presets">
-                  {[90, 120, 180].map((mins) => (
-                    <button
-                      key={mins}
-                      type="button"
-                      class="seg-btn"
-                      data-action="set-intake-pace"
-                      data-weekly-minutes={String(mins)}
-                      aria-pressed={weeklyMinutes === mins}
-                    >
-                      {mins}m
-                    </button>
-                  ))}
-                </div>
-                <input
-                  id="weekly-minutes"
-                  name="weekly-minutes"
-                  type="text"
-                  class="intake-minutes-input"
-                  value={String(weeklyMinutes)}
-                  aria-label="Weekly minutes"
-                />
+              <span class="intake-row-label">Pace</span>
+              <div class="segmented" role="group" aria-label="Weekly pace presets">
+                {[90, 120, 180, 240].map((mins) => (
+                  <button
+                    key={mins}
+                    type="button"
+                    class="seg-btn"
+                    data-action="set-intake-pace"
+                    data-weekly-minutes={String(mins)}
+                    aria-pressed={weeklyMinutes === mins}
+                  >
+                    {mins}m/wk
+                  </button>
+                ))}
               </div>
             </div>
           </div>

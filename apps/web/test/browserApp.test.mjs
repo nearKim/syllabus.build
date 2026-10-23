@@ -1560,8 +1560,8 @@ test("Explore and Learn share one canonical curriculum tag source data with dist
   for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
     assert.ok(panelHtml.includes('class="learn-curriculum-tags" aria-label="Curriculum taxonomy and topic tags" data-category="Computer Science" data-subject="Engineering" data-difficulty="Formal" data-format="Quiz"'));
     assert.ok(panelHtml.includes('<span class="learn-tag-category">Computer Science</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Engineering</span>'));
-    assert.ok(panelHtml.includes('<span class="learn-tag-facet" data-tag-facet="difficulty">Formal</span>'));
-    assert.ok(panelHtml.includes('<span class="learn-tag-facet" data-tag-facet="format">Quiz</span>'));
+    assert.equal(panelHtml.includes('data-tag-facet="difficulty"'), false);
+    assert.equal(panelHtml.includes('data-tag-facet="format"'), false);
     for (const topic of ["Python", "RAG", "Attention", "Linear Algebra"]) {
       assert.ok(panelHtml.includes(`<li class="learn-topic-chip" data-tag-topic="${topic}">${topic}</li>`));
     }
@@ -1653,8 +1653,11 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
-  // 1. Compact intake + Suggested fit tray renders without unnecessary instructional text
+  // 1. Compact intake + Suggested fit tray renders without unnecessary instructional text and uses dependent Subject -> Topics dropdowns
   const initialDialog = dialogOf(root.innerHTML);
+  assert.ok(initialDialog.includes('id="intake-subject-select"'));
+  assert.ok(initialDialog.includes('id="intake-topic-select"'));
+  assert.ok(initialDialog.includes('data-dependent-on-subject="Engineering"'));
   assert.ok(initialDialog.includes('id="intake-suggested-fit-tray"'));
   assert.ok(initialDialog.includes("Suggested fit"));
   assert.ok(initialDialog.includes("Web search: Vector Indexing"));

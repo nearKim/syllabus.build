@@ -219,7 +219,7 @@ export interface CurriculumTagStripProps {
 
 // Learn tab UI representation of the shared curriculum tag data.
 // While Explore renders these tags as interactive filter buttons, Learn renders the same underlying
-// curriculum taxonomy, difficulty, format, and topic tags as an editorial metadata strip.
+// curriculum taxonomy and topic tags as a concise metadata strip.
 export function CurriculumTagStrip({
   curriculum,
   fallbackSubject,
@@ -249,16 +249,6 @@ export function CurriculumTagStrip({
         ) : null}
         <span class="learn-tag-subject">{tags.subjectLabel}</span>
       </span>
-      {tags.difficulty ? (
-        <span class="learn-tag-facet" data-tag-facet="difficulty">
-          {tags.difficulty}
-        </span>
-      ) : null}
-      {tags.format ? (
-        <span class="learn-tag-facet" data-tag-facet="format">
-          {tags.format}
-        </span>
-      ) : null}
       {tags.topicTags.length > 0 ? (
         <ul class="learn-topic-tags" aria-label="Topics">
           {tags.topicTags.map((topic) => (
