@@ -49,10 +49,10 @@ import {
   type PersonaChoice, type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 import {
-  AdoptCurriculumDialog, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
-  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, facetValuesOf, goalTitleOf, mathDepthFor,
+  AdoptCurriculumDialog, CurriculumTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
+  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, curriculumTagsOf, facetValuesOf, goalTitleOf, mathDepthFor,
   rawListOf, unitIdsOf, withMarketplaceFilter,
-  type ActiveCurriculum, type Adoption, type MarketplaceFilters, type MarketplaceListing,
+  type ActiveCurriculum, type Adoption, type CurriculumTagDescriptor, type MarketplaceFilters, type MarketplaceListing,
   type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
 import {
@@ -63,7 +63,9 @@ import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state
 
 export {
   createCurriculumSignalStore,
+  curriculumTagsOf,
   type CurriculumSignalStore,
+  type CurriculumTagDescriptor,
   type FlowOrder,
   type DeepDiveMode,
   type SpacedReviewMode,
@@ -134,6 +136,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-rag-python-001",
   revision_id: "revision-attention-v2", revision_number: 2, predecessor_revision_id: "revision-attention-v1",
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
+  subject: "Engineering", gate_style: "Reviewed Quiz", topic_tags: ["Python", "RAG", "Attention", "Linear Algebra"],
   goal: {
     title: "Build and Evaluate RAG Systems in Python",
     summary: "Start a Python RAG system from its model foundations: subword tokenization and scaled dot-product attention, with verified resources.",
@@ -351,6 +354,7 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-linear-algebra-002",
   revision_id: "revision-linear-algebra-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
+  subject: "Mathematics", gate_style: "Public Quiz Bank", topic_tags: ["Linear Algebra", "Eigenvalues", "SVD"],
   goal: {
     title: "Linear Algebra & Spectral Methods",
     summary: "Compute eigenvalues, orthogonal projections, and the singular value decomposition, then use the SVD for low-rank approximation.",
@@ -475,6 +479,7 @@ const TOLSTOY_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-tolstoy-lit-003",
   revision_id: "revision-tolstoy-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
+  subject: "Literature", gate_style: "Self-Check Rubric", topic_tags: ["Tolstoy", "Realism", "Narrative"],
   goal: {
     title: "Tolstoy's Major Novels: War & Peace and Anna Karenina",
     summary: "Read Tolstoy's two major novels for their argument about history and their method of moral interiority, and test each reading in a written synthesis.",
@@ -596,22 +601,36 @@ const TOLSTOY_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-20T16:00:00Z",
 };
 
-const RAG_PLAN: ActiveCurriculum = {
-  curriculumId: "curriculum-rag-python-001", domain: "Engineering", assessmentMode: "Reviewed Quiz",
-  curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE, publicationId: "publication-synthetic-001", draft: false,
-};
+function makeActiveCurriculum(
+  curriculumId: string,
+  curriculum: Record<string, unknown>,
+  schedule: Record<string, unknown>,
+  publicationId: string | null,
+): ActiveCurriculum {
+  const tags = curriculumTagsOf(curriculum);
+  return {
+    curriculumId,
+    domain: tags.subject,
+    assessmentMode: tags.gateStyle,
+    curriculum,
+    schedule,
+    publicationId,
+    draft: false,
+  };
+}
+
+const RAG_PLAN: ActiveCurriculum = makeActiveCurriculum(
+  "curriculum-rag-python-001",
+  DEFAULT_SYNTHETIC_CURRICULUM,
+  DEFAULT_SYNTHETIC_SCHEDULE,
+  "publication-synthetic-001",
+);
 
 // The base plans in queue order. The first one is selected by default.
 const ACTIVE_CURRICULA: readonly ActiveCurriculum[] = [
   RAG_PLAN,
-  {
-    curriculumId: "curriculum-linear-algebra-002", domain: "Mathematics", assessmentMode: "Public Quiz Bank",
-    curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE, publicationId: "publication-linear-algebra-001", draft: false,
-  },
-  {
-    curriculumId: "curriculum-tolstoy-lit-003", domain: "Literature", assessmentMode: "Self-Check Rubric",
-    curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE, publicationId: "publication-tolstoy-001", draft: false,
-  },
+  makeActiveCurriculum("curriculum-linear-algebra-002", LINEAR_ALGEBRA_CURRICULUM, LINEAR_ALGEBRA_SCHEDULE, "publication-linear-algebra-001"),
+  makeActiveCurriculum("curriculum-tolstoy-lit-003", TOLSTOY_CURRICULUM, TOLSTOY_SCHEDULE, "publication-tolstoy-001"),
 ];
 
 const planIn = (plans: readonly ActiveCurriculum[], curriculumId: unknown): ActiveCurriculum =>
@@ -621,6 +640,7 @@ const RUST_ASYNC_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-rust-async-004",
   revision_id: "revision-rust-async-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "curator-ferris", created_at: "2026-10-18T12:00:00Z", revision_reason: "initial_generation",
+  subject: "Systems", gate_style: "Code Lab Gate", topic_tags: ["Rust", "Async", "Concurrency"],
   goal: {
     title: "Rust Async Runtime Internals",
     summary: "Build a small async executor from the Future trait up, then add a reactor, a timer wheel, and work stealing.",
@@ -739,6 +759,7 @@ const STAT_MECH_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-statmech-005",
   revision_id: "revision-statmech-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "curator-ada", created_at: "2026-10-08T10:00:00Z", revision_reason: "initial_generation",
+  subject: "Physics", gate_style: "Problem Set Gate", topic_tags: ["Thermodynamics", "Ensembles", "Phase Transitions"],
   goal: {
     title: "Statistical Mechanics & Thermodynamics",
     summary: "Derive thermodynamics from ensembles and the partition function, then use free energy to explain phase transitions.",
@@ -846,33 +867,45 @@ const STAT_MECH_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-08T10:00:00Z",
 };
 
+function makeMarketplaceListing(
+  input: Omit<MarketplaceListing, "subject" | "gateStyle" | "topicTags">,
+): MarketplaceListing {
+  const tags = curriculumTagsOf(input.curriculum);
+  return {
+    ...input,
+    subject: tags.subject,
+    gateStyle: tags.gateStyle,
+    topicTags: tags.topicTags,
+  };
+}
+
 const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
-  {
-    publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001", subject: "Engineering", gateStyle: "Reviewed Quiz",
-    topicTags: ["Python", "RAG", "Attention", "Linear Algebra"], handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
+  makeMarketplaceListing({
+    publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001",
+    handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
     ownerAccountId: "learner-default", sourceCurriculumId: "curriculum-rag-python-001", basedOn: null,
     curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
-  },
-  {
-    publicationId: "publication-linear-algebra-001", revisionId: "public-revision-linear-algebra-001", subject: "Mathematics", gateStyle: "Public Quiz Bank",
-    topicTags: ["Linear Algebra", "Eigenvalues", "SVD"], handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
+  }),
+  makeMarketplaceListing({
+    publicationId: "publication-linear-algebra-001", revisionId: "public-revision-linear-algebra-001",
+    handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
-  },
-  {
-    publicationId: "publication-tolstoy-001", revisionId: "public-revision-tolstoy-001", subject: "Literature", gateStyle: "Self-Check Rubric",
-    topicTags: ["Tolstoy", "Realism", "Narrative"], handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
+  }),
+  makeMarketplaceListing({
+    publicationId: "publication-tolstoy-001", revisionId: "public-revision-tolstoy-001",
+    handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
-  },
-  {
-    publicationId: "publication-rust-async-001", revisionId: "public-revision-rust-async-001", subject: "Systems", gateStyle: "Code Lab Gate",
-    topicTags: ["Rust", "Async", "Concurrency"], handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
+  }),
+  makeMarketplaceListing({
+    publicationId: "publication-rust-async-001", revisionId: "public-revision-rust-async-001",
+    handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: RUST_ASYNC_CURRICULUM, schedule: RUST_ASYNC_SCHEDULE,
-  },
-  {
-    publicationId: "publication-statmech-001", revisionId: "public-revision-statmech-001", subject: "Physics", gateStyle: "Problem Set Gate",
-    topicTags: ["Thermodynamics", "Ensembles", "Phase Transitions"], handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
+  }),
+  makeMarketplaceListing({
+    publicationId: "publication-statmech-001", revisionId: "public-revision-statmech-001",
+    handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
     ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: STAT_MECH_CURRICULUM, schedule: STAT_MECH_SCHEDULE,
-  },
+  }),
 ];
 
 const PRACTICE_ACTIONS: ReadonlySet<string> = new Set(["request-hint", "study-worked-solution", "submit-practice"]);
@@ -1478,13 +1511,14 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   // Today's queue: one card per active plan, showing that plan's next session and its next open activity.
   const queueCardsHtml = queue.map(({ plan, today }) => {
     const id = escapeHtml(plan.curriculumId);
+    const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
     const session = today.nextSession?.activityBreakdown ?? [];
     const open = session.filter((act) => !isClosed(act.executionStatus));
     const next = open[0];
     const done = session.length - open.length;
     const minutesLeft = open.reduce((sum, act) => sum + act.durationTriplet.point, 0);
     return `<article class="curriculum-card" data-curriculum-id="${id}" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
-            <p class="domain-pill">${escapeHtml(`${plan.domain} · ${plan.assessmentMode}`)}</p>
+            <p class="domain-pill">${escapeHtml(`${planTags.subject} · ${planTags.gateStyle}`)}</p>
             <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
             <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
             ${next ? `<div class="queue-next"><p class="queue-next-title">${escapeHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
@@ -1496,14 +1530,22 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   }).join("");
   const planOptionsHtml = [
     ...planToday.map(({ plan, today }) => {
+      const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
       const session = today.nextSession?.activityBreakdown ?? [];
       const open = session.filter((act) => !isClosed(act.executionStatus));
       const done = session.length - open.length;
       const unitsCount = rawListOf(plan.curriculum, "modules").length;
-      return `<option value="${escapeHtml(plan.curriculumId)}" data-domain="${escapeHtml(plan.domain)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`;
+      return `<option value="${escapeHtml(plan.curriculumId)}" data-domain="${escapeHtml(planTags.subject)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`;
     }),
     `<option value="__edit_plan__" data-action-option="edit-plan" data-domain="Plan &amp; Pacing" data-progress="Schedule, waivers &amp; approach">Edit Plan &amp; Pacing →</option>`,
   ].join("");
+  const selectedTagStripHtml = renderToString(
+    h(CurriculumTagStrip, {
+      curriculum: selectedPlan.curriculum,
+      fallbackSubject: selectedPlan.domain,
+      fallbackGateStyle: selectedPlan.assessmentMode,
+    }),
+  );
   const studyMinutes = planToday.reduce((sum, { today }) => sum + today.totalStudyMinutes, 0);
   const selfReportedCount = planToday.reduce((sum, { today }) => sum + today.selfReportedCompletedCount, 0);
 
@@ -1781,6 +1823,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <div class="today-selected-heading">
                   <span class="today-selected-eyebrow">Focused curriculum · <span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
                   <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
+                  ${selectedTagStripHtml}
                 </div>
                 <div class="plan-toolbar plan-command-picker">
                   <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label">Selected plan</span>
@@ -1812,16 +1855,20 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"} data-opaque-surface="true">
           <header class="plan-hero">
             ${planToday.length < 2 ? "" : `<nav class="plan-switcher" aria-label="Your curricula">
-              ${planToday.map(({ plan }) => `<button type="button" class="plan-switch" data-action="select-curriculum" data-curriculum-id="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
-                <span class="plan-switch-domain">${escapeHtml(plan.domain)}</span>
+              ${planToday.map(({ plan }) => {
+                const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
+                return `<button type="button" class="plan-switch" data-action="select-curriculum" data-curriculum-id="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+                <span class="plan-switch-domain">${escapeHtml(planTags.subject)}</span>
                 <span class="plan-switch-title">${escapeHtml(goalTitleOf(plan.curriculum))}</span>
                 <span class="plan-switch-meta">${rawListOf(plan.curriculum, "modules").length} units${plan.draft ? " · Draft" : ""}</span>
-              </button>`).join("")}
+              </button>`;
+              }).join("")}
             </nav>`}
             <div class="plan-title-row">
               <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(curriculum))}</h1>
               <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
             </div>
+            ${selectedTagStripHtml}
             ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
             <div class="plan-brief">
               <section class="plan-brief-goal" aria-labelledby="plan-goal-label">
@@ -2563,13 +2610,19 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     const plan = planData();
     const key = `${plan.curriculumId}-${account.accountId}`;
     const origin = listings().find((listing) => listing.publicationId === plan.publicationId && listing.ownerAccountId !== account.accountId);
+    const tags = curriculumTagsOf(plan.curriculum, {
+      subject: plan.domain,
+      gateStyle: plan.assessmentMode,
+      topicTags: origin?.topicTags,
+    });
     publishedListings = [...publishedListings, {
       publicationId: `publication-${key}`, revisionId: `public-revision-${key}-1`,
-      subject: plan.domain, gateStyle: plan.assessmentMode, topicTags: origin?.topicTags ?? [], handle: handleOf(account),
+      subject: tags.subject, gateStyle: tags.gateStyle, topicTags: tags.topicTags, handle: handleOf(account),
       upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
       ownerAccountId: account.accountId, sourceCurriculumId: plan.curriculumId, basedOn: origin?.handle ?? null,
       curriculum: {
         ...plan.curriculum, account_id: "public-template",
+        subject: tags.subject, gate_style: tags.gateStyle, topic_tags: tags.topicTags,
         objectives: rawListOf(plan.curriculum, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
       },
       schedule: {

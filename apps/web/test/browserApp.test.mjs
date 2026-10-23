@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   createCurriculumSignalStore,
   createCurriculumWebAppController,
+  curriculumTagsOf,
   getDialogLightDismissFallbackScript,
   mountCurriculumWebApp,
   renderCurriculumWebAppHtml,
@@ -1548,4 +1549,61 @@ test("Resources renders a Filterable Data Table + Category Pill Bar with Synced 
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   assert.match(css, /\.resources-table-wrapper\s*\{[^}]*container-type:\s*inline-size;/s);
   assert.match(css, /@container \(width < 600px\)\s*\{[\s\S]*?\.resources-data-table thead\s*\{\s*display:\s*none;/);
+});
+
+test("Explore and Learn share one canonical curriculum tag source data with distinct UI representations", () => {
+  const { app, root, click } = mountWithClicks();
+  const todayOf = (html) => html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
+  const planOf = (html) => html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
+
+  // 1. Default curriculum (RAG Python): Today and Plan render the shared curriculum tags using Learn's metadata strip UI
+  for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
+    assert.ok(panelHtml.includes('class="learn-curriculum-tags" aria-label="Curriculum taxonomy and topic tags" data-category="Computer Science" data-subject="Engineering" data-difficulty="Formal" data-format="Quiz"'));
+    assert.ok(panelHtml.includes('<span class="learn-tag-category">Computer Science</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Engineering</span>'));
+    assert.ok(panelHtml.includes('<span class="learn-tag-facet" data-tag-facet="difficulty">Formal</span>'));
+    assert.ok(panelHtml.includes('<span class="learn-tag-facet" data-tag-facet="format">Quiz</span>'));
+    for (const topic of ["Python", "RAG", "Attention", "Linear Algebra"]) {
+      assert.ok(panelHtml.includes(`<li class="learn-topic-chip" data-tag-topic="${topic}">${topic}</li>`));
+    }
+  }
+
+  // 2. Switching to Linear Algebra updates Today and Plan with Linear Algebra's shared curriculum tags (Math & Sciences › Math, Formal, Quiz, SVD)
+  click({ action: "select-curriculum", curriculumId: "curriculum-linear-algebra-002" });
+  for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
+    assert.ok(panelHtml.includes('data-category="Math &amp; Sciences" data-subject="Mathematics" data-difficulty="Formal" data-format="Quiz"'));
+    assert.ok(panelHtml.includes('<span class="learn-tag-category">Math &amp; Sciences</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Math</span>'));
+    for (const topic of ["Linear Algebra", "Eigenvalues", "SVD"]) {
+      assert.ok(panelHtml.includes(`<li class="learn-topic-chip" data-tag-topic="${topic}">${topic}</li>`));
+    }
+  }
+
+  // 3. Adopting Rust Async from Explore into Learn preserves the exact same curriculum tag data across Explore and Learn
+  app.navigateTopLevel("Explore");
+  click({ action: "open-adopt-dialog", publicationId: "publication-rust-async-001" });
+  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
+    assert.ok(panelHtml.includes('data-category="Computer Science" data-subject="Systems" data-difficulty="Applied" data-format="Code Lab"'));
+    assert.ok(panelHtml.includes('<span class="learn-tag-category">Computer Science</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Systems</span>'));
+    for (const topic of ["Rust", "Async", "Concurrency"]) {
+      assert.ok(panelHtml.includes(`<li class="learn-topic-chip" data-tag-topic="${topic}">${topic}</li>`));
+    }
+  }
+
+  // 4. curriculumTagsOf derives the canonical descriptor directly from a curriculum object
+  const customTags = curriculumTagsOf({
+    subject: "Physics",
+    gate_style: "Problem Set Gate",
+    topic_tags: ["Thermodynamics", "Ensembles"],
+    instruction_preferences_applied: { math_depth: "formal", topic_math_depth_overrides: [] },
+  });
+  assert.deepEqual(customTags, {
+    category: "Math & Sciences",
+    subject: "Physics",
+    subjectLabel: "Physics",
+    subjectIcon: "physics",
+    gateStyle: "Problem Set Gate",
+    difficulty: "Formal",
+    format: "Problem Set",
+    topicTags: ["Thermodynamics", "Ensembles"],
+  });
 });
