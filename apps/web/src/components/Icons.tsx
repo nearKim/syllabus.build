@@ -227,6 +227,47 @@ export function SfIcon({ name, size = 16 }: SfIconProps): VNode {
   );
 }
 
+// Learners on the emblem's orbits, as [cx, cy, r]. A lit learner shares the warm color of the book's pages.
+const ART_LEARNERS: readonly (readonly [number, number, number])[] = [
+  [38.7, 21, 3], [125, 54, 3.5], [8, 80, 2.5], [31.1, 97.8, 3], [128.9, 97.8, 2.5], [130.9, 130.9, 2.5],
+];
+const ART_LIT_LEARNERS: readonly (readonly [number, number, number])[] = [
+  [80, 8, 4.5], [121.3, 21, 3], [35, 54, 3.5], [152, 80, 3], [29.1, 130.9, 3],
+];
+
+// The open-knowledge emblem: an open book at the center of a constellation of the learners it reaches.
+// It is decoration, so the text beside it carries the meaning. The stylesheet sets its colors for each surface.
+export function OpenKnowledgeArt(): VNode {
+  return (
+    <svg
+      class="philanthropy-art"
+      viewBox="0 0 160 160"
+      width="160"
+      height="160"
+      fill="none"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle class="art-orbit" cx="80" cy="80" r="72" stroke-dasharray="0.5 6" />
+      <circle class="art-orbit" cx="80" cy="80" r="52" />
+      <path
+        class="art-link"
+        d="M80 46V8L38.7 21 35 54l18.95 4.15M80 8l41.3 13L125 54l-18.95 4.15M35 54 8 80m39.16 8.8-16.06 9L29.1 130.9m83.74-42.1 16.06 9L152 80m-23.1 17.8 2 33.1"
+      />
+      <circle class="art-core" cx="80" cy="80" r="34" />
+      {ART_LEARNERS.map(([cx, cy, r]) => (
+        <circle key={`${cx},${cy}`} class="art-learner" cx={cx} cy={cy} r={r} />
+      ))}
+      {ART_LIT_LEARNERS.map(([cx, cy, r]) => (
+        <circle key={`${cx},${cy}`} class="art-learner-lit" cx={cx} cy={cy} r={r} />
+      ))}
+      <path class="art-book" d="M80 72c-6-4.5-14-6-24-6v26c10 0 18 1.5 24 6 6-4.5 14-6 24-6V66c-10 0-18 1.5-24 6z" />
+      <path class="art-book-lines" d="M80 72v26M62.5 76h10M62.5 81.5h10M62.5 87h6M87.5 76h10M87.5 81.5h10M87.5 87h6" />
+    </svg>
+  );
+}
+
 export interface StatusGlyphProps {
   readonly type: GlyphKind;
   readonly tone: GlyphTone;
