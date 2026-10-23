@@ -339,7 +339,7 @@ test("Today opens with the active curricula queue, then the focused curriculum h
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
-  for (const removed of ["Next session", "In this session", "Why this is next", 'class="macro-stage"', 'class="status-banner"']) {
+  for (const removed of ["Next session", "In this session", "Why this is next", 'class="macro-stage"', 'class="status-banner"', 'class="today-next"', '<details class="today-curriculum-overview">']) {
     assert.equal(today.includes(removed), false, `Today still renders ${removed}`);
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
@@ -353,30 +353,24 @@ test("Today opens with the active curricula queue, then the focused curriculum h
   assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
   for (const part of [
     '<h2 class="today-selected-title">Build and Evaluate RAG Systems in Python</h2>',
-    '<select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">',
-    '<p class="next-up-progress">0/5 completed · 83m left</p>',
-    '<span class="next-up-label">Next:</span><span class="next-up-title">Read Subword Tokenization &amp; Sequence Packing Notes</span><span class="next-up-time">· 15m</span>',
+    '<span class="today-selected-progress">0/5 completed · 83m left</span>',
+    '<select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">',
+    '<option value="__edit_plan__" data-action-option="edit-plan"',
   ]) {
     assert.ok(card.includes(part), `the header card is missing ${part}`);
   }
-  const resume = card.match(/<button type="button" class="btn-primary" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)">Resume<span aria-hidden="true">→<\/span><\/button>/);
-  assert.ok(resume, "Resume button is missing");
 
-  // Clicking Resume with its own data attributes opens the drawer on that activity.
-  const { root, click } = mountWithClicks({ selectedActivityId: "activity-coding" });
-  click({ action: resume[1], activityId: resume[2], moduleId: resume[3] });
-  const drawer = drawerOf(root.innerHTML);
-  assert.ok(drawer.includes('data-open="true"'));
-  assert.ok(drawer.includes(">Read Subword Tokenization &amp; Sequence Packing Notes</h2>"));
+  // Instead of a redundant Next/Resume bar in the header, the next-up activity node in Study flow carries data-next-up="true".
+  const board = todayBoard(html);
+  assert.match(board, /<article class="node-card" data-activity-id="activity-theory"[^>]*data-next-up="true">/);
 
-  // With every scheduled activity closed, the card offers no Resume.
+  // With every scheduled activity closed, no node is marked next-up and progress shows 5/5 completed.
   const allDone = Object.fromEntries(["activity-theory", "activity-example", "activity-coding", "activity-quiz", "activity-review", "activity-reflection"].map((id) => [id, "completed"]));
   const finished = renderCurriculumWebAppHtml({ activityStates: allDone });
   const finishedStart = finished.indexOf('<header class="today-unified-header"');
   const finishedCard = finished.slice(finishedStart, finished.indexOf("</header>", finishedStart));
-  assert.ok(finishedCard.includes('<p class="next-up-progress">5/5 completed</p>'));
-  assert.ok(finishedCard.includes('<p class="next-up-text">Nothing is scheduled next.</p>'));
-  assert.equal(finishedCard.includes(">Resume<"), false);
+  assert.ok(finishedCard.includes('<span class="today-selected-progress">5/5 completed</span>'));
+  assert.equal(todayBoard(finished).includes('data-next-up="true"'), false);
 });
 
 test("flowchart cards keep one shape in every order: title, duration, optional mark, and check only", () => {
@@ -604,8 +598,8 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   const ids = ["curriculum-rag-python-001", "curriculum-linear-algebra-002", "curriculum-tolstoy-lit-003"];
   const html = renderCurriculumWebAppHtml();
   const select = html.match(/<select id="selected-plan-control"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
-  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), ids);
-  assert.ok(select.includes('<option value="curriculum-rag-python-001" selected>Build and Evaluate RAG Systems in Python</option>'));
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), [...ids, "__edit_plan__"]);
+  assert.match(select, /<option value="curriculum-rag-python-001"[^>]*selected>Build and Evaluate RAG Systems in Python<\/option>/);
 
   const cardsOf = (page) => [...(page.match(/<section class="today-curricula-grid"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "").matchAll(/<article class="curriculum-card" data-curriculum-id="([^"]+)"[\s\S]*?<\/article>/g)];
   const text = (card) => card.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -625,10 +619,15 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
 
   // The select switches Today's header and Study flow to that plan, and the other plan keeps its progress.
   change("curriculum-linear-algebra-002");
-  assert.ok(root.innerHTML.includes('<option value="curriculum-linear-algebra-002" selected>Linear Algebra &amp; Spectral Methods</option>'));
+  assert.match(root.innerHTML, /<option value="curriculum-linear-algebra-002"[^>]*selected>Linear Algebra &amp; Spectral Methods<\/option>/);
   assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Eigenvalues &amp; Orthogonal Projections</span>'));
   assert.match(text(cardsOf(root.innerHTML)[0][0]), /1\/3 completed · 50m left/);
   assert.ok(root.innerHTML.includes('data-study-minutes="15"'));
+
+  // Selecting __edit_plan__ in the consolidated picker navigates to Plan.
+  change("__edit_plan__");
+  assert.ok(root.innerHTML.includes('data-current-learn-sub="Plan"'));
+  app.navigateLearnSubDestination("Today");
 
   // Resume on a card selects that plan and opens its next activity in the drawer.
   const resume = cardsOf(root.innerHTML)[2][0].match(/data-action="(resume-curriculum)" data-curriculum-id="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
@@ -1392,15 +1391,28 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   assert.equal(rail.scrollLeft, 240);
 });
 
-test("Today integrates Edit Plan & Pacing transition and Unit Map overview, while Plan renders curriculum title H1, switcher cards, emphasized Goal, plain text bullets, and 4 editorial sections", () => {
+test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accumulation Summary when clicking a Unit cell, while Plan renders curriculum title H1, switcher cards, emphasized Goal, plain text bullets, and 4 editorial sections", () => {
   const html = renderCurriculumWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
 
-  // 1. Today's Focused curriculum header integrates Edit Plan & Pacing -> and expandable Unit Map & Syllabus Overview
-  assert.ok(today.includes('data-action="navigate-learn-sub" data-sub-destination="Plan">Edit Plan &amp; Pacing<span aria-hidden="true">→</span></button>'));
-  assert.ok(today.includes('<details class="today-curriculum-overview">'));
-  assert.ok(today.includes("Unit Map &amp; Syllabus Overview"));
+  // 1. Today's Focused curriculum header consolidates Selected plan + Edit Plan & Pacing in TomSelect and omits the text-heavy Unit Map overview
+  assert.ok(today.includes('data-tom-select="plan"'));
+  assert.ok(today.includes('<option value="__edit_plan__" data-action-option="edit-plan"'));
+  assert.equal(today.includes('<details class="today-curriculum-overview">'), false);
+  assert.ok(today.includes('<span class="unit-summary-cue" aria-hidden="true">Row summary →</span>'));
+
+  // Clicking a Unit cell opens the InspectorDrawer in Unit Row Accumulation Summary mode (data-inspector-mode="unit")
+  const { root, click } = mountWithClicks();
+  click({ action: "select-outline-module", moduleId: "module-foundations" });
+  const unitDrawer = drawerOf(root.innerHTML);
+  assert.ok(unitDrawer.includes('data-open="true"'));
+  assert.ok(unitDrawer.includes('data-inspector-mode="unit"'));
+  assert.ok(unitDrawer.includes("Unit 1 of 2 · Row Accumulation Summary"));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-overview">Unit overview</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-activities">All activities in this row (3)</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-objectives">Learning objectives &amp; gate criteria (1)</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-resources">Accumulated study materials (3)</h3>'));
 
   // 2. Plan opens with curriculum switcher cards, the curriculum title as H1, emphasized Goal, and plain text bullets
   assert.ok(plan.includes('<nav class="plan-switcher" aria-label="Your curricula">'));
