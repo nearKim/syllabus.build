@@ -10,7 +10,7 @@ import { resolveTransitiveAdoptionScope, type PublicCurriculumContentBlock } fro
 import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
-import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
+import { OpenKnowledgeArt, SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
 import { displayUnitTitle, effortWords, humanize, isOneOf, type StudyActivity } from "./StudyFlowBoard.tsx";
 
 // The taxonomy has three tiers. A category holds subjects, a listing's subject decides its category,
@@ -75,10 +75,13 @@ const FACET_LABELS: Readonly<Record<MarketplaceFacet, string>> = {
 
 const tagLabelOf = (value: string): string => (value === "Mathematics" ? "Math" : value);
 
-// A count and its noun, such as "1 learner" or "142 learners". The number is bold.
-const countWithNoun = (count: number, noun: string): VNode => (
-  <span>
-    <b>{count}</b> {count === 1 ? noun : `${noun}s`}
+// A metric pill with an icon, a count, and its noun, such as "1 learner" or "142 learners". The number is bold.
+const impactPill = (icon: SfIconName, count: number, noun: string): VNode => (
+  <span class="impact-pill">
+    <SfIcon name={icon} />
+    <span>
+      <b>{count}</b> {count === 1 ? noun : `${noun}s`}
+    </span>
   </span>
 );
 
@@ -457,9 +460,8 @@ export function ExploreMarketplace({
   const published = ownedListings.length > 0;
   const ownedTotal = (countOf: (listing: MarketplaceListing) => number): number =>
     ownedListings.reduce((sum, listing) => sum + countOf(listing), 0);
-  const impact: readonly (readonly [SfIconName, string, number])[] = [
-    ["course", "Learners reached", ownedTotal(adoptionsOf)],
-    ["clock", "Study hours gifted", ownedTotal(studyHoursOf)],
+  const supportingImpact: readonly (readonly [SfIconName, string, number, string?])[] = [
+    ["clock", "Study hours gifted", ownedTotal(studyHoursOf), "Each plan's study time, multiplied by its adoptions"],
     ["upvote", "Community upvotes", ownedTotal(upvotesOf)],
   ];
   const shareButton = (label: string, kind: "btn-primary" | "btn-secondary"): VNode => (
@@ -750,24 +752,41 @@ export function ExploreMarketplace({
           {published ? (
             <>
               <dl class="philanthropy-impact">
-                {impact.map(([icon, label, value]) => (
-                  <div key={label}>
+                <div class="impact-hero">
+                  <dt>
+                    <OpenKnowledgeArt />
+                    Learners reached
+                  </dt>
+                  <dd class="impact-value">{ownedTotal(adoptionsOf)}</dd>
+                  <dd class="impact-caption">
+                    Self-learners studying your shared {ownedListings.length === 1 ? "syllabus" : "syllabi"} at no cost
+                  </dd>
+                </div>
+                {supportingImpact.map(([icon, label, value, caption]) => (
+                  <div key={label} class="impact-support">
                     <dt>
-                      <SfIcon name={icon} />
+                      <span class="impact-icon-badge">
+                        <SfIcon name={icon} />
+                      </span>
                       {label}
                     </dt>
-                    <dd>{value}</dd>
+                    <dd class="impact-value">{value}</dd>
+                    {caption ? <dd class="impact-caption">{caption}</dd> : null}
                   </div>
                 ))}
-                <div class="impact-license">
+                <div class="impact-seal">
                   <dt>
-                    <SfIcon name="globe" />
+                    <span class="impact-seal-emblem">
+                      <SfIcon name="globe" />
+                    </span>
                     Free for every learner
                   </dt>
-                  <dd>CC BY 4.0</dd>
+                  <dd class="impact-license">CC BY 4.0</dd>
+                  <dd class="impact-caption">
+                    Each adoption gives a learner your plan's structured study hours at no cost. Anyone may reuse and adapt it with credit to you.
+                  </dd>
                 </div>
               </dl>
-              <p class="meta-text impact-note">Study hours multiply each plan's estimated study time by its adoptions.</p>
               <ul class="publication-list">
                 {ownedListings.map((listing) => {
                   const title = goalTitleOf(listing.curriculum);
@@ -775,6 +794,7 @@ export function ExploreMarketplace({
                   return (
                     <li key={listing.publicationId} data-publication-id={listing.publicationId}>
                       <strong>{title}</strong>
+                      <span class="publication-revision">Public · Revision 1</span>
                       <span class="marketplace-card-icon" data-subject={listing.subject} aria-hidden="true">
                         <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
                       </span>
@@ -790,14 +810,16 @@ export function ExploreMarketplace({
                       <p class="publication-impact">
                         {adoptionsOf(listing) > 0 ? (
                           <>
-                            {countWithNoun(adoptionsOf(listing), "learner")}
-                            {countWithNoun(studyHoursOf(listing), "study hour")}
-                            {countWithNoun(upvotesOf(listing), "upvote")}
+                            {impactPill("course", adoptionsOf(listing), "learner")}
+                            {impactPill("clock", studyHoursOf(listing), "study hour")}
+                            {impactPill("upvote", upvotesOf(listing), "upvote")}
                           </>
                         ) : (
-                          <span>Live in Explore and ready for its first learner</span>
+                          <span class="impact-pill">
+                            <SfIcon name="globe" />
+                            <span>Live in Explore and ready for its first learner</span>
+                          </span>
                         )}
-                        <span>Public · Revision 1</span>
                       </p>
                       <span class="publication-actions">
                         {myPlan ? (
@@ -827,9 +849,7 @@ export function ExploreMarketplace({
             </>
           ) : (
             <div class="publish-invite">
-              <span class="publish-invite-icon" aria-hidden="true">
-                <SfIcon name="globe" />
-              </span>
+              <OpenKnowledgeArt />
               <div>
                 <h3>Help the next learner start where you did</h3>
                 <p class="prose meta-text">

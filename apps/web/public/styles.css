@@ -3355,88 +3355,265 @@ button[interestfor="plan-relationship-legend"] {
   max-width: 60ch;
 }
 
-/* The impact strip is one tinted band. The 1px gap shows the band's darker base as the dividers. */
+/* The impact panel ranks its facts. Learners reached is the focal card with the emblem, study hours and
+   upvotes support it, and the license seal closes the panel. */
 .philanthropy-impact {
+  --impact-hero: #166534;
+  --impact-hero-ink: #FFFFFF;
+  --impact-hero-muted: color-mix(in srgb, #FFFFFF 80%, var(--impact-hero));
+  --impact-lit: #F3CD7A;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-areas:
+    "hero ."
+    "hero ."
+    "seal seal";
+  gap: var(--space-2);
   margin: 0;
-  overflow: clip;
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-success-text) 16%, var(--color-success-surface));
 }
 
-.philanthropy-impact > div {
-  display: flex;
-  flex-direction: column-reverse;
-  justify-content: flex-end;
-  gap: 6px;
-  padding: var(--space-4);
-  background: var(--color-success-surface);
-}
-
-.philanthropy-impact dt {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
-  color: var(--color-success-text);
-}
-
-.philanthropy-impact dt .sf-icon {
-  width: 15px;
-  height: 15px;
-  margin-top: 1px;
+[data-theme="dark"] .philanthropy-impact {
+  --impact-hero: #1D5236;
+  --impact-hero-ink: #F4F6F8;
 }
 
 .philanthropy-impact dd {
   margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-primary);
 }
 
-/* The license reads as a badge, sized to the numbers beside it. */
-.philanthropy-impact .impact-license dd {
-  align-self: flex-start;
-  padding: 4px 12px;
-  border: 1px solid color-mix(in srgb, var(--color-success-text) 32%, transparent);
-  border-radius: 999px;
-  background: var(--color-surface);
+.impact-value {
+  order: -1;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.impact-hero {
+  grid-area: hero;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 248px;
+  padding: var(--space-5);
+  padding-inline-end: calc(var(--space-4) + 200px + var(--space-5));
+  overflow: clip;
+  border-radius: var(--radius-surface);
+  background: var(--impact-hero);
+  color: var(--impact-hero-ink);
+}
+
+.impact-hero dt {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.impact-hero .impact-value {
+  margin-bottom: 2px;
+  font-size: 52px;
+  letter-spacing: -0.035em;
+}
+
+.impact-hero .impact-caption {
+  max-width: 30ch;
   font-size: 14px;
-  line-height: 1.5;
-  letter-spacing: 0;
+  line-height: 1.45;
+  color: var(--impact-hero-muted);
+}
+
+/* The emblem sits in the card's open side. Its pages and lit learners share one warm color. */
+.philanthropy-art {
+  --art-ink: var(--color-success-text);
+  --art-lit: var(--subject-physics);
+  --art-core: var(--color-surface);
+  --art-page: color-mix(in srgb, var(--art-lit) 30%, var(--art-core));
+  flex: none;
+  width: 152px;
+  height: 152px;
+}
+
+.impact-hero .philanthropy-art {
+  --art-ink: var(--impact-hero-ink);
+  --art-lit: var(--impact-lit);
+  --art-core: color-mix(in srgb, var(--impact-hero-ink) 12%, var(--impact-hero));
+  --art-page: color-mix(in srgb, var(--impact-lit) 62%, var(--impact-hero));
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: var(--space-4);
+  width: 200px;
+  height: 200px;
+  translate: 0 -50%;
+}
+
+.philanthropy-art .art-orbit {
+  stroke: var(--art-ink);
+  stroke-opacity: 0.3;
+}
+
+.philanthropy-art .art-link {
+  stroke: var(--art-ink);
+  stroke-opacity: 0.42;
+  transition: stroke-opacity 400ms var(--ease-out);
+}
+
+.philanthropy-art .art-core {
+  fill: var(--art-core);
+}
+
+.philanthropy-art .art-learner {
+  fill: var(--art-core);
+  stroke: var(--art-ink);
+  stroke-width: 1.25;
+}
+
+.philanthropy-art .art-learner-lit {
+  fill: var(--art-lit);
+}
+
+.philanthropy-art .art-book {
+  fill: var(--art-page);
+  stroke: var(--art-ink);
+  stroke-width: 2.25;
+}
+
+.philanthropy-art .art-book-lines {
+  stroke: var(--art-ink);
+  stroke-width: 1.5;
+}
+
+/* Supporting cards are lighter and smaller, each led by a solid icon badge. */
+.impact-support {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--space-4);
+  padding-inline-start: calc(var(--space-4) + 44px + 14px);
+  border-radius: var(--radius-control);
+  background: var(--color-success-surface);
+}
+
+.impact-icon-badge {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: var(--space-4);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--impact-hero);
+  color: var(--impact-hero-ink);
+  translate: 0 -50%;
+}
+
+.impact-icon-badge .sf-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.impact-support dt {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--color-success-text);
 }
 
-.impact-note {
-  margin: var(--space-2) 0 0;
+.impact-support .impact-value {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.impact-support .impact-caption {
   font-size: 13px;
+  line-height: 1.4;
+  color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
+}
+
+/* The seal reads as a stamp: a perforated emblem, the license, and what each adoption gives. */
+.impact-seal {
+  grid-area: seal;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  padding: var(--space-4) var(--space-5);
+  padding-inline-start: calc(var(--space-5) + 52px + var(--space-4));
+  border: 1px solid color-mix(in srgb, var(--color-success-text) 28%, transparent);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.impact-seal-emblem {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: var(--space-5);
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  outline: 1.5px dashed color-mix(in srgb, var(--color-success-text) 55%, transparent);
+  outline-offset: -5px;
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+  translate: 0 -50%;
+}
+
+.impact-seal-emblem .sf-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.impact-seal dt {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.impact-license {
+  order: -1;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--impact-hero);
+  color: var(--impact-hero-ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.impact-seal .impact-caption {
+  flex-basis: 100%;
+  max-width: 72ch;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
 }
 
 .publication-list {
   display: grid;
-  margin: var(--space-4) 0 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
 
-/* The title comes first in the markup. The grid places the subject icon before it. */
+/* The title comes first in the markup. The grid places the subject icon before it and the revision after it. */
 .publication-list li {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, max-content) 1fr auto;
   grid-template-areas:
-    "icon title actions"
-    "icon topics actions"
-    "icon impact actions";
+    "icon title revision actions"
+    "icon topics topics actions"
+    "icon impact impact actions";
   align-items: center;
-  gap: 6px var(--space-3);
-  padding: var(--space-4) 0;
+  gap: 8px var(--space-3);
+  padding: var(--space-5) 0;
 }
 
 .publication-list li + li {
@@ -3445,16 +3622,36 @@ button[interestfor="plan-relationship-legend"] {
 
 .publication-list strong {
   grid-area: title;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.3;
+}
+
+.publication-revision {
+  grid-area: revision;
+  justify-self: start;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .publication-list .marketplace-card-icon {
   grid-area: icon;
   align-self: start;
+  width: 44px;
+  height: 44px;
   margin: 0;
   transition: background-color 240ms var(--ease-out), scale 240ms var(--ease-out);
+}
+
+.publication-list .marketplace-card-icon .sf-icon {
+  width: 22px;
+  height: 22px;
 }
 
 .publication-topics {
@@ -3471,26 +3668,37 @@ button[interestfor="plan-relationship-legend"] {
   font-size: 12px;
 }
 
+/* Metric pills are filled, so they read apart from the outlined topic tags above them. */
 .publication-impact {
   grid-area: impact;
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 8px;
-  margin: 0;
+  gap: 6px;
+  margin: 2px 0 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
-/* The separator trails each group, so a wrapped line never starts with a dot. */
-.publication-impact span:not(:last-child)::after {
-  content: "·";
-  content: "·" / "";
-  margin-inline-start: 8px;
+.impact-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 12px 3px 9px;
+  border-radius: 999px;
+  background: var(--color-success-surface);
+  color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
 }
 
-.publication-impact b {
-  font-weight: 600;
+.impact-pill .sf-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--color-success-text);
+}
+
+.impact-pill b {
+  font-weight: 700;
   color: var(--color-text-primary);
 }
 
@@ -3524,52 +3732,56 @@ button[interestfor="plan-relationship-legend"] {
     background: color-mix(in srgb, var(--subject, var(--color-text-secondary)) 22%, var(--color-surface));
     scale: 1.08;
   }
+
+  /* The constellation brightens while the pointer rests on the card it belongs to. */
+  :is(.impact-hero, .publish-invite):hover .art-link {
+    stroke-opacity: 0.75;
+  }
 }
 
-/* The invitation shows when the learner has not published yet. */
+/* The invitation shows when the learner has not published yet. The emblem shows what a first share starts. */
 .publish-invite {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border-radius: var(--radius-control);
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6) var(--space-5) var(--space-5);
+  border-radius: var(--radius-surface);
   background: var(--color-success-surface);
-}
-
-.publish-invite-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--color-surface);
-  color: var(--color-success-text);
-}
-
-.publish-invite-icon .sf-icon {
-  width: 22px;
-  height: 22px;
 }
 
 .publish-invite h3 {
   margin: 0 0 var(--space-1);
+  font-size: 20px;
+  line-height: 1.3;
 }
 
 .publish-invite .meta-text {
+  max-width: 60ch;
   margin: 0 0 var(--space-4);
   color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
 }
 
-@container (width < 600px) {
+/* Below 720px the focal card spans the full width, and the supporting cards share the row beneath it. */
+@container (width < 720px) {
   .philanthropy-impact {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "hero hero"
+      ". ."
+      "seal seal";
   }
 
+  .impact-hero {
+    min-height: 216px;
+  }
+}
+
+@container (width < 600px) {
   .publication-list li {
-    grid-template-columns: 40px minmax(0, 1fr);
+    grid-template-columns: 44px minmax(0, 1fr);
     grid-template-areas:
       "icon title"
+      "icon revision"
       "icon topics"
       "icon impact"
       ". actions";
@@ -3577,7 +3789,59 @@ button[interestfor="plan-relationship-legend"] {
 
   .publish-invite {
     flex-direction: column;
-    padding: var(--space-4);
+    align-items: flex-start;
+    padding: var(--space-4) var(--space-4) var(--space-5);
+  }
+
+  .publish-invite .philanthropy-art {
+    width: 112px;
+    height: 112px;
+  }
+}
+
+/* On a phone the emblem moves above the number, and each badge sits above its own number. */
+@container (width < 440px) {
+  .impact-hero {
+    min-height: 0;
+    padding: calc(var(--space-4) + 112px) var(--space-5) var(--space-5);
+  }
+
+  .impact-hero .philanthropy-art {
+    inset-block-start: var(--space-3);
+    width: 112px;
+    height: 112px;
+    translate: none;
+  }
+
+  .impact-hero .impact-value {
+    font-size: 44px;
+  }
+
+  .impact-support {
+    justify-content: flex-start;
+    padding: calc(var(--space-4) + 40px + 12px) var(--space-4) var(--space-4);
+  }
+
+  .impact-icon-badge {
+    inset-block-start: var(--space-4);
+    width: 40px;
+    height: 40px;
+    translate: none;
+  }
+
+  .impact-icon-badge .sf-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .impact-seal {
+    padding: calc(var(--space-4) + 52px + var(--space-3)) var(--space-4) var(--space-4);
+  }
+
+  .impact-seal-emblem {
+    inset-block-start: var(--space-4);
+    inset-inline-start: var(--space-4);
+    translate: none;
   }
 }
 
@@ -4864,7 +5128,7 @@ dialog.inspector::backdrop {
   .node-card,
   .macro-node,
   .surface-panel,
-  .philanthropy-impact,
+  .philanthropy-impact > div,
   .publish-invite,
   .today-unified-header,
   .badge,
