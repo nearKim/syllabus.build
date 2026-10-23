@@ -3042,7 +3042,8 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .clear-filters,
-.facet-more {
+.facet-more,
+.select-all-btn {
   min-width: 0;
   min-height: 32px;
   padding: 2px 8px;
@@ -3299,7 +3300,11 @@ button[interestfor="plan-relationship-legend"] {
     background: color-mix(in srgb, var(--color-accent-surface) 80%, var(--color-accent));
   }
 
-  :is(.clear-filters, .facet-more):hover {
+  :is(.clear-filters, .facet-more, .select-all-btn:enabled):hover {
+    background: var(--tint-4);
+  }
+
+  .adopt-unit-toggle:hover {
     background: var(--tint-4);
   }
 
@@ -3317,6 +3322,7 @@ button[interestfor="plan-relationship-legend"] {
 
 .owned-badge,
 .auto-badge,
+.requires-badge,
 .role-pill {
   display: inline-flex;
   align-items: center;
@@ -3579,62 +3585,268 @@ button[interestfor="plan-relationship-legend"] {
   margin: 0 0 var(--space-6);
 }
 
-/* Adoption preview: one row per unit, checked when it is part of the adoption */
-.adopt-title {
-  margin: var(--space-2) 0 0;
+/* Details shows the whole curriculum: its goal and scope, then one card per unit with every activity in order.
+   A unit card is checked when the unit is part of the adoption. */
+#dialog-partial-adoption {
+  max-width: min(760px, calc(100vw - 32px));
 }
 
-.adopt-scope {
-  margin: var(--space-3) 0;
+.adopt-title {
+  margin: var(--space-2) 0 var(--space-1);
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.adopt-summary {
+  margin: var(--space-3) 0 0;
+}
+
+.adopt-coverage {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-4) 0 0;
+  font-size: 14px;
+}
+
+.adopt-coverage > div {
+  display: contents;
+}
+
+.adopt-coverage dt {
+  color: var(--color-text-secondary);
+}
+
+.adopt-coverage dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.adopt-units-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.select-all-btn:disabled {
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  cursor: default;
 }
 
 .adopt-units {
-  display: grid;
-  gap: var(--space-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+/* The indent lines the unit summary and activities up with the unit title, past the checkbox. */
 .adopt-unit {
-  display: flex;
+  --adopt-indent: calc(var(--space-4) + 22px + var(--space-3));
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+}
+
+.adopt-unit + .adopt-unit {
+  margin-top: var(--space-3);
+}
+
+.adopt-unit[data-included="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--line));
+}
+
+.adopt-unit-toggle {
   align-items: flex-start;
   justify-content: flex-start;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-3);
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  padding: var(--space-4);
+  border: 0;
+  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+  background: transparent;
   text-align: left;
 }
 
-.adopt-unit .st-glyph {
-  margin-top: 2px;
+.adopt-unit-toggle:active {
+  transform: none;
+}
+
+.adopt-unit-toggle:focus-visible {
+  outline-offset: -2px;
+}
+
+.adopt-check {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border: 1.5px solid var(--color-border-control);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-action-text);
+}
+
+.adopt-check .sf-icon {
+  width: 14px;
+  height: 14px;
+  visibility: hidden;
+}
+
+[aria-checked="true"] > .adopt-check {
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+}
+
+[aria-checked="true"] > .adopt-check .sf-icon {
+  visibility: visible;
 }
 
 .adopt-unit-text {
   display: grid;
-  gap: 2px;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .adopt-unit-title {
+  font-size: 17px;
   font-weight: 600;
+  line-height: 1.35;
 }
 
 .adopt-unit-meta {
-  font-size: 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--space-2);
+  font-size: 14px;
+  font-weight: 400;
   color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.requires-badge {
+  background: var(--tint-8);
+  color: var(--color-text-primary);
 }
 
 .auto-badge {
-  justify-self: start;
   background: var(--color-warning-surface);
   color: var(--color-warning-text);
 }
 
+.adopt-unit-summary {
+  margin: calc(-1 * var(--space-2)) var(--space-4) var(--space-3) var(--adopt-indent);
+  max-width: 70ch;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.adopt-activities {
+  margin: 0 var(--space-4) 0 var(--adopt-indent);
+  padding: 0;
+  list-style: none;
+  border-top: var(--hairline);
+}
+
+.adopt-activity {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+}
+
+.adopt-activity + .adopt-activity {
+  margin-top: 0;
+  border-top: var(--hairline);
+}
+
+.adopt-step,
+.adopt-minutes {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.adopt-step {
+  font-weight: 600;
+}
+
+.adopt-activity-title {
+  margin: 0;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.adopt-activity-meta {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.adopt-requirement[data-requirement="gate"] {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+ul.adopt-resources {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adopt-resources li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.adopt-resources li + li {
+  margin-top: 0;
+}
+
+.adopt-resources .sf-icon {
+  margin-top: 2px;
+}
+
+.adopt-resources a {
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--color-accent) 35%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.adopt-publisher {
+  display: block;
+}
+
+.adopt-resources .badge {
+  padding: 0 8px;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+
+.adopt-terms {
+  margin-top: var(--space-5);
+}
+
 .adopt-total {
-  margin: var(--space-3) 0;
+  margin: 0 auto 0 0;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -3846,6 +4058,8 @@ dialog {
   background-color: var(--color-surface);
   color: var(--color-text-primary);
   box-shadow: var(--shadow-sheet);
+  scrollbar-width: thin;
+  scrollbar-color: var(--tint-12) transparent;
 }
 
 dialog:modal {
@@ -3863,14 +4077,75 @@ dialog::backdrop {
   top: calc(-1 * var(--space-6));
   z-index: 1;
   display: flex;
-  flex-wrap: wrap;
   align-items: safe center;
   justify-content: space-between;
   gap: var(--space-3);
   margin: calc(-1 * var(--space-6)) calc(-1 * var(--space-6)) var(--space-5);
-  padding: var(--space-5) var(--space-6) var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-4) var(--space-6);
   border-bottom: var(--hairline);
   background: var(--color-surface);
+}
+
+.dialog-header h2 {
+  min-width: 0;
+}
+
+/* The circle is 36px. Its hit area reaches the 44px touch target. */
+.dialog-close-btn {
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+}
+
+.dialog-close-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dialog-close-btn:hover {
+    background: var(--tint-12);
+    color: var(--color-text-primary);
+  }
+}
+
+/* The footer stays pinned to the bottom of a long dialog. A summary sits on the left, and the primary action on the right. */
+.dialog-footer {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: safe center;
+  justify-content: flex-end;
+  gap: var(--space-3) var(--space-4);
+  margin: var(--space-5) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  padding: var(--space-4) var(--space-6);
+  border-top: var(--hairline);
+  background: var(--color-surface);
+}
+
+.dialog-surface > .action-row {
+  justify-content: flex-end;
+}
+
+:is(.btn-primary, .btn-secondary):disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+:is(.btn-primary, .btn-secondary):disabled:active {
+  transform: none;
 }
 
 .dialog-surface > section + section {
@@ -4456,7 +4731,22 @@ dialog.inspector::backdrop {
   .dialog-header {
     top: calc(-1 * var(--space-5));
     margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
-    padding: var(--space-4) var(--space-5);
+    padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
+  }
+
+  .dialog-footer {
+    bottom: calc(-1 * var(--space-5));
+    margin: var(--space-4) calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+    padding: var(--space-3) var(--space-5);
+  }
+
+  .adopt-unit {
+    --adopt-indent: var(--space-4);
+  }
+
+  .adopt-activity {
+    grid-template-columns: 2rem minmax(0, 1fr) auto;
+    gap: var(--space-2);
   }
 
   .resource-catalog-card {
@@ -4585,7 +4875,8 @@ dialog.inspector::backdrop {
   .auth-return,
   .seg-btn[aria-pressed="true"],
   .sort-btn[aria-pressed="true"],
-  .switch-track {
+  .switch-track,
+  .dialog-close-btn {
     border: 1px solid CanvasText;
   }
 

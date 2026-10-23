@@ -11,7 +11,7 @@ import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
 import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
-import { displayUnitTitle, effortWords, humanize, isOneOf } from "./StudyFlowBoard.tsx";
+import { displayUnitTitle, effortWords, humanize, isOneOf, type StudyActivity } from "./StudyFlowBoard.tsx";
 
 // The taxonomy has three tiers. A category holds subjects, a listing's subject decides its category,
 // and each listing carries its own topic tags. Difficulty and format are facets that cut across all tiers.
@@ -197,6 +197,10 @@ export function publicProjectionOf(curriculum: Record<string, unknown>): PublicC
     })),
   };
 }
+
+// A listing's units in the author's order. Details opens with all of them selected.
+export const unitIdsOf = (listing: MarketplaceListing | undefined): string[] =>
+  listing ? publicProjectionOf(listing.curriculum).modules.map((mod) => mod.module_id) : [];
 
 export const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly string[]) =>
   resolveTransitiveAdoptionScope(
@@ -844,17 +848,24 @@ export function ExploreMarketplace({
 export interface AdoptCurriculumDialogProps {
   readonly open: boolean;
   readonly adoptListing: MarketplaceListing | null;
-  readonly adoptScope: "full" | "units";
   readonly adoptModuleIds: readonly string[];
   readonly adoptions: readonly Adoption[];
   readonly proficiency: ProficiencyProfileFixture;
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
 }
 
+// An activity's kind in a learner's words. A coding activity is a code lab.
+const activityKindOf = (activity: StudyActivity): string =>
+  activity.type === "coding" ? "Code lab" : humanize(activity.type);
+
+const requirementOf = (activity: StudyActivity): "gate" | "required" | "optional" =>
+  activity.masteryGated ? "gate" : activity.required ? "required" : "optional";
+
+const REQUIREMENT_LABELS = { gate: "Mastery gate", required: "Required", optional: "Optional" } as const;
+
 export function AdoptCurriculumDialog({
   open,
   adoptListing,
-  adoptScope,
   adoptModuleIds,
   adoptions,
   proficiency,
@@ -874,8 +885,8 @@ export function AdoptCurriculumDialog({
       <form method="dialog" class="dialog-surface">
         <header class="dialog-header">
           <h2 id="dialog-partial-adoption-title">Details</h2>
-          <button type="submit" class="btn-secondary" data-action="close-dialog">
-            Close
+          <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
+            <SfIcon name="close" />
           </button>
         </header>
         {!adoptListing ? (
@@ -883,16 +894,17 @@ export function AdoptCurriculumDialog({
         ) : (
           (() => {
             const projection = publicProjectionOf(adoptListing.curriculum);
-            const requested = adoptScope === "full" ? [] : adoptModuleIds;
-            const scope = adoptScope === "units" && requested.length === 0 ? null : adoptionScopeOf(adoptListing, requested);
+            // The resolver reads an empty selection as the whole curriculum, so an empty selection adopts nothing here.
+            const scope = adoptModuleIds.length > 0 ? adoptionScopeOf(adoptListing, adoptModuleIds) : null;
             const included = new Set(scope?.resolvedModuleIds ?? []);
             const autoIncluded = new Set(scope?.autoIncludedPrerequisiteModuleIds ?? []);
-            const outline = buildPlanMapAndOutlineModel({
+            const model = buildPlanMapAndOutlineModel({
               curriculum: adoptListing.curriculum,
               proficiency,
               activityStates: {},
               catalogResources,
-            }).outlineModules;
+            });
+            const { goal, outlineModules: outline } = model;
             const unitNumber = new Map(projection.modules.map((mod, index) => [mod.module_id, index + 1]));
             const chosen = outline.filter((mod) => included.has(mod.moduleId));
             const total = { min: 0, point: 0, max: 0 };
@@ -903,92 +915,153 @@ export function AdoptCurriculumDialog({
             }
             const difficulty = difficultyTagOf(adoptListing);
             const format = formatTagOf(adoptListing);
+            const units = projection.modules.length;
             return (
               <>
-                <p class="marketplace-card-head">
-                  <span class="marketplace-card-icon" data-subject={adoptListing.subject} aria-hidden="true">
-                    <SfIcon name={SUBJECT_ICONS[adoptListing.subject] ?? "course"} />
-                  </span>
-                  <span class="tag">{tagLabelOf(adoptListing.subject)}</span>
-                  {difficulty ? <span class="tag">{difficulty}</span> : null}
-                  {format ? <span class="tag">{format}</span> : null}
-                </p>
-                <h3 class="adopt-title">{projection.title}</h3>
-                <p class="meta-text">
-                  {adoptListing.handle} · {projection.modules.length} units · {adoptionsOf(adoptListing)} adopted · CC BY 4.0
-                </p>
-                <div class="segmented adopt-scope" role="group" aria-label="What to adopt">
-                  <button
-                    type="button"
-                    class="seg-btn"
-                    data-action="set-adopt-scope"
-                    data-scope="full"
-                    aria-pressed={adoptScope === "full"}
-                  >
-                    Full curriculum
-                  </button>
-                  <button
-                    type="button"
-                    class="seg-btn"
-                    data-action="set-adopt-scope"
-                    data-scope="units"
-                    aria-pressed={adoptScope === "units"}
-                  >
-                    Select units
-                  </button>
-                </div>
-                <ul class="adopt-units">
-                  {projection.modules.map((mod, index) => {
-                    const unit = outline.find((entry) => entry.moduleId === mod.module_id);
-                    const needs = (mod.prerequisite_module_ids ?? [])
-                      .map((moduleId) => `U${unitNumber.get(moduleId) ?? "?"}`)
-                      .join(", ");
-                    const content = (
-                      <>
-                        <StatusGlyph type="module" tone={included.has(mod.module_id) ? "done" : "todo"} size={16} />
-                        <span class="adopt-unit-text">
-                          <span class="adopt-unit-title">
-                            U{index + 1} · {displayUnitTitle(mod.title)}
-                          </span>
-                          <span class="adopt-unit-meta">
-                            {unit ? `${unit.activities.length} activities · ${effortWords(unit.durationTriplet)}` : ""}
-                            {needs ? ` · Requires ${needs}` : ""}
-                          </span>
-                          {autoIncluded.has(mod.module_id) ? (
-                            <span class="auto-badge">Auto-included prerequisite</span>
-                          ) : null}
-                        </span>
-                      </>
-                    );
-                    return (
-                      <li key={mod.module_id}>
-                        {adoptScope === "units" ? (
+                <section class="adopt-overview" aria-labelledby="adopt-title">
+                  <p class="marketplace-card-head">
+                    <span class="marketplace-card-icon" data-subject={adoptListing.subject} aria-hidden="true">
+                      <SfIcon name={SUBJECT_ICONS[adoptListing.subject] ?? "course"} />
+                    </span>
+                    <span class="tag">{tagLabelOf(adoptListing.subject)}</span>
+                    {difficulty ? <span class="tag">{difficulty}</span> : null}
+                    {format ? <span class="tag">{format}</span> : null}
+                  </p>
+                  <h3 id="adopt-title" class="adopt-title">
+                    {projection.title}
+                  </h3>
+                  <p class="meta-text">
+                    {adoptListing.handle} · {units} unit{units === 1 ? "" : "s"} · {effortWords(model.totalDurationTriplet)} · {adoptionsOf(adoptListing)} adopted · CC BY 4.0
+                  </p>
+                  {projection.summary ? <p class="prose adopt-summary">{projection.summary}</p> : null}
+                  {goal.includedTopics.length + goal.excludedTopics.length > 0 ? (
+                    <dl class="adopt-coverage">
+                      {goal.includedTopics.length > 0 ? (
+                        <div>
+                          <dt>Covers</dt>
+                          <dd>
+                            {goal.includedTopics.map((topic) => (
+                              <span key={topic} class="badge">
+                                {topic}
+                              </span>
+                            ))}
+                          </dd>
+                        </div>
+                      ) : null}
+                      {goal.excludedTopics.length > 0 ? (
+                        <div>
+                          <dt>Not covered</dt>
+                          <dd>{goal.excludedTopics.join(", ")}</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  ) : null}
+                  {goal.scopeNote ? <p class="meta-text">{goal.scopeNote}</p> : null}
+                </section>
+                <section aria-labelledby="adopt-units-title">
+                  <div class="adopt-units-head">
+                    <h3 id="adopt-units-title">Units</h3>
+                    <button
+                      type="button"
+                      class="select-all-btn"
+                      data-action="select-all-adopt-modules"
+                      disabled={included.size === units}
+                    >
+                      Select all
+                    </button>
+                  </div>
+                  <ol class="adopt-units">
+                    {projection.modules.map((mod, index) => {
+                      const number = index + 1;
+                      const unit = outline.find((entry) => entry.moduleId === mod.module_id);
+                      const needs = (mod.prerequisite_module_ids ?? [])
+                        .map((moduleId) => `U${unitNumber.get(moduleId) ?? "?"}`)
+                        .join(", ");
+                      return (
+                        <li key={mod.module_id} class="adopt-unit" data-included={String(included.has(mod.module_id))}>
                           <button
                             type="button"
-                            class="adopt-unit"
+                            class="adopt-unit-toggle"
                             role="checkbox"
                             aria-checked={included.has(mod.module_id)}
                             data-action="toggle-adopt-module"
                             data-module-id={mod.module_id}
                           >
-                            {content}
+                            <span class="adopt-check" aria-hidden="true">
+                              <SfIcon name="check" size={15} />
+                            </span>
+                            <span class="adopt-unit-text">
+                              <span class="adopt-unit-title">
+                                U{number} · {displayUnitTitle(mod.title)}
+                              </span>
+                              <span class="adopt-unit-meta">
+                                {unit ? <span>{effortWords(unit.durationTriplet)}</span> : null}
+                                {needs ? <span class="requires-badge">Requires {needs}</span> : null}
+                                {autoIncluded.has(mod.module_id) ? (
+                                  <span class="auto-badge">Auto-included prerequisite</span>
+                                ) : null}
+                              </span>
+                            </span>
                           </button>
-                        ) : (
-                          <div class="adopt-unit">{content}</div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <p class="adopt-total">
-                  {scope
-                    ? `${included.size} of ${projection.modules.length} units · ${effortWords(total)}`
-                    : "Select at least one unit."}
-                </p>
-                <p class="prose meta-text">
+                          {unit?.summary ? <p class="adopt-unit-summary">{unit.summary}</p> : null}
+                          {unit && unit.activities.length > 0 ? (
+                            <ol class="adopt-activities" aria-label={`Unit ${number} activities`}>
+                              {unit.activities.map((activity, step) => {
+                                const requirement = requirementOf(activity);
+                                return (
+                                  <li key={activity.activityId} class="adopt-activity">
+                                    <span class="adopt-step">
+                                      {number}.{step + 1}
+                                    </span>
+                                    <div class="adopt-activity-body">
+                                      <p class="adopt-activity-title">{activity.title}</p>
+                                      <p class="adopt-activity-meta">
+                                        {activityKindOf(activity)} ·{" "}
+                                        <span class="adopt-requirement" data-requirement={requirement}>
+                                          {REQUIREMENT_LABELS[requirement]}
+                                        </span>
+                                      </p>
+                                      {activity.resourceProvenanceCards.length > 0 ? (
+                                        <ul class="adopt-resources" aria-label="Study resources">
+                                          {activity.resourceProvenanceCards.map((card, cardIndex) => (
+                                            <li key={`${card.resourceVersionId}-${cardIndex}`}>
+                                              <SfIcon name="resources" size={15} />
+                                              <span>
+                                                {card.canonicalUrl ? (
+                                                  <a href={card.canonicalUrl} target="_blank" rel="noopener noreferrer">
+                                                    {card.title}
+                                                    <span class="st-sr"> (opens in a new tab)</span>
+                                                  </a>
+                                                ) : (
+                                                  card.title
+                                                )}
+                                                <span class="adopt-publisher">
+                                                  {card.verifiedPublisher} <span class="badge">{humanize(card.accessModel)} access</span>
+                                                </span>
+                                              </span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : null}
+                                    </div>
+                                    <span class="adopt-minutes">{activity.durationTriplet.point} min</span>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </section>
+                <p class="prose meta-text adopt-terms">
                   Adoption creates your private draft. It copies none of the author's progress, evidence, votes, keys, or spending authority, and it costs $0.00. You review the draft on the Plan page and activate it there.
                 </p>
-                <div class="action-row">
+                <footer class="dialog-footer">
+                  <p class="adopt-total">
+                    {scope ? `${included.size} of ${units} units · ${effortWords(total)}` : "Select at least one unit."}
+                  </p>
                   <button
                     type="button"
                     class="btn-primary"
@@ -999,7 +1072,7 @@ export function AdoptCurriculumDialog({
                     Adopt into My Plans
                     <span aria-hidden="true">→</span>
                   </button>
-                </div>
+                </footer>
               </>
             );
           })()
@@ -1036,8 +1109,8 @@ export function PublicationPreviewDialog({
       <form method="dialog" class="dialog-surface">
         <header class="dialog-header">
           <h2 id="dialog-publication-preview-title">Share to Marketplace</h2>
-          <button type="submit" class="btn-secondary" data-action="close-dialog">
-            Close
+          <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
+            <SfIcon name="close" />
           </button>
         </header>
         <p class="meta-text">This preview is exactly what becomes public.</p>
@@ -1077,12 +1150,12 @@ export function PublicationPreviewDialog({
             This plan is already in the Marketplace as revision 1.
           </p>
         ) : (
-          <div class="action-row">
+          <footer class="dialog-footer">
             <button type="button" class="btn-primary" data-action="confirm-publish-curriculum">
               Publish to Marketplace
               <span aria-hidden="true">→</span>
             </button>
-          </div>
+          </footer>
         )}
       </form>
     </dialog>
