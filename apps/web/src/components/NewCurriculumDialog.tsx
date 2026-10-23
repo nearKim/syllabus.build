@@ -44,6 +44,14 @@ export const DEFAULT_SUBJECT_TOPICS: Readonly<Record<IntakeSubject, readonly str
   Literature: ["Tolstoy", "Realism", "Narrative", "Comparative Close Reading"],
 };
 
+export const DEFAULT_SUBJECT_GOAL_PLACEHOLDERS: Readonly<Record<IntakeSubject, string>> = {
+  Engineering: "Build and Evaluate RAG Systems in Python",
+  Systems: "Build an Async Rust Runtime and Work-Stealing Executor",
+  Mathematics: "Master Spectral Methods, SVD, and Matrix Calculus",
+  Physics: "Statistical Mechanics, Ensembles, and Phase Transitions",
+  Literature: "Comparative Close Reading of Tolstoy's Major Novels",
+};
+
 export type PolymorphicResourceIndex =
   | {
       readonly kind: "book";
@@ -488,8 +496,9 @@ export function evaluateIntakeResourceFit(params: {
     ? `Web search: ${deltaTopicsToSearch.join(", ")}`
     : `No web search · ${selectedMaterials.length} selected`;
 
+  const effectiveGoalTitle = goalTitle.trim() || DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject];
   const searchPrompt = [
-    `GOAL: ${goalTitle.trim() || `${subject} Curriculum`}`,
+    `GOAL: ${effectiveGoalTitle}`,
     `SUBJECT: ${subject} | DEPTH: ${depth} | FLOW: ${flowOrder} | PACE: ${weeklyMinutes}m/wk | ACCESS: ${materialsAccess}`,
     `REQUESTED_TOPICS: ${requestedTopics.join(", ") || "general foundations"}`,
     `REUSED_INDEXED_RESOURCES: ${selectedMaterials.map((m) => `${m.resourceVersionId} (${m.category})`).join(", ") || "none"}`,
@@ -602,9 +611,7 @@ export function executeIntakeGenerationPipeline(params: {
     reusedIds.find((id) => id.includes("youtube")) ??
     secondaryResId;
 
-  const effectiveTitle =
-    goalTitle.trim() ||
-    `AI-Synthesized ${subject} Plan: ${requestedTopics.slice(0, 3).join(", ") || "Foundations"}`;
+  const effectiveTitle = goalTitle.trim() || DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject];
   const generatedCurriculumId = "curriculum-ai-generated-001";
   const gateStyle =
     subject === "Systems"
@@ -1052,7 +1059,7 @@ export function NewCurriculumDialog({
   materialsAccess,
   weeklyMinutes,
   fitMode,
-  depthOverrideReset,
+  depthOverrideReset: _depthOverrideReset,
   intakeNote,
   fitEvaluation,
   lastPipelineReceipt,
@@ -1088,7 +1095,7 @@ export function NewCurriculumDialog({
               type="text"
               autocomplete="off"
               value={goalTitle}
-              placeholder="e.g., Build and Evaluate RAG Systems in Python"
+              placeholder={`e.g., ${DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject]}`}
               autofocus
             />
           </label>
@@ -1110,56 +1117,62 @@ export function NewCurriculumDialog({
               </select>
             </label>
 
-            <div class="field intake-dropdown-field">
-              <label for="intake-topic-select">Topics ({subject})</label>
-              <div class="intake-dependent-topics-box">
-                <select
-                  id="intake-topic-select"
-                  name="intake-topic"
-                  class="intake-select"
-                  data-action="toggle-intake-topic"
-                  data-dependent-on-subject={subject}
-                >
-                  <option value="" selected>
-                    {unselectedTopics.length > 0
-                      ? `+ Add ${subject} topic (${unselectedTopics.length} available)…`
-                      : `All ${subject} topics selected`}
-                  </option>
-                  {availableTopics.map((topic) => {
-                    const active = requestedTopics.includes(topic);
-                    return (
-                      <option key={topic} value={topic}>
-                        {active ? `✓ ${topic} (remove)` : `+ ${topic}`}
-                      </option>
-                    );
-                  })}
-                </select>
-                {requestedTopics.length > 0 ? (
-                  <div class="intake-pill-group" role="group" aria-label="Selected topics">
-                    {requestedTopics.map((topic) => {
-                      const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
-                      return (
-                        <button
-                          key={topic}
-                          type="button"
-                          class="filter-chip intake-topic-chip is-selected"
-                          data-action="toggle-intake-topic"
-                          data-intake-topic={topic}
-                          data-topic-coverage={cov?.status ?? "covered"}
-                          aria-pressed="true"
-                          title={`Remove ${topic}`}
-                        >
-                          <span>{topic}</span>
-                          <span class="intake-topic-remove" aria-hidden="true">
-                            ×
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : null}
+            <label class="field intake-dropdown-field" for="intake-topic-select">
+              <span>Topics</span>
+              <select
+                id="intake-topic-select"
+                name="intake-topic"
+                class="intake-select"
+                data-action="toggle-intake-topic"
+                data-dependent-on-subject={subject}
+              >
+                <option value="" selected>
+                  {unselectedTopics.length > 0
+                    ? `+ Add ${subject} topic (${unselectedTopics.length} available)…`
+                    : `All ${subject} topics selected`}
+                </option>
+                {availableTopics.map((topic) => {
+                  const active = requestedTopics.includes(topic);
+                  return (
+                    <option key={topic} value={topic}>
+                      {active ? `✓ ${topic} (remove)` : `+ ${topic}`}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+
+            {requestedTopics.length > 0 ? (
+              <div class="intake-pill-group" role="group" aria-label="Selected topics and catalog coverage">
+                {requestedTopics.map((topic) => {
+                  const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
+                  const status = cov?.status ?? "covered";
+                  const prefix = status === "covered" ? "✓" : status === "partial" ? "◐" : "+";
+                  return (
+                    <button
+                      key={topic}
+                      type="button"
+                      class={`filter-chip intake-topic-chip is-selected is-${status}`}
+                      data-action="toggle-intake-topic"
+                      data-intake-topic={topic}
+                      data-topic-coverage={status}
+                      data-topic-coverage-pill={topic}
+                      data-coverage-state={status}
+                      aria-pressed="true"
+                      title={`Remove ${topic}`}
+                    >
+                      <span class="intake-topic-cov-mark" aria-hidden="true">
+                        {prefix}
+                      </span>
+                      <span>{topic}</span>
+                      <span class="intake-topic-remove" aria-hidden="true">
+                        ×
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            </div>
+            ) : null}
           </div>
 
           <div class="intake-controls-grid">
@@ -1250,7 +1263,17 @@ export function NewCurriculumDialog({
           data-opaque-surface="true"
         >
           <div class="intake-section-head">
-            <h3 id="intake-fit-heading">Suggested fit</h3>
+            <div class="intake-section-title-group">
+              <h3 id="intake-fit-heading">Suggested fit</h3>
+              <p
+                class="intake-bypass-badge"
+                role="status"
+                data-search-bypass-status={fitEvaluation.costAndBypassBadge}
+              >
+                <SfIcon name="focus" size={15} />
+                <span>{fitEvaluation.costAndBypassBadge}</span>
+              </p>
+            </div>
             <div class="segmented" role="group" aria-label="Resource fit execution mode">
               <button
                 type="button"
@@ -1271,29 +1294,6 @@ export function NewCurriculumDialog({
                 Selected only
               </button>
             </div>
-          </div>
-
-          <div class="intake-coverage-bar" role="status" data-search-bypass-status={fitEvaluation.costAndBypassBadge}>
-            <div class="intake-coverage-chips">
-              {fitEvaluation.topicCoverage.map((item) => (
-                <span
-                  key={item.topic}
-                  class={`badge intake-coverage-pill is-${item.status}`}
-                  data-topic-coverage-pill={item.topic}
-                  data-coverage-state={item.status}
-                >
-                  {item.status === "covered"
-                    ? `✓ ${item.topic}`
-                    : item.status === "partial"
-                      ? `◐ ${item.topic}`
-                      : `+ ${item.topic}`}
-                </span>
-              ))}
-            </div>
-            <p class="intake-bypass-badge">
-              <SfIcon name="focus" size={15} />
-              <span>{fitEvaluation.costAndBypassBadge}</span>
-            </p>
           </div>
 
           {fitEvaluation.existingPlans.length > 0 ? (
@@ -1400,44 +1400,6 @@ export function NewCurriculumDialog({
           </div>
         </section>
 
-        <details class="today-curriculum-overview intake-advanced-details">
-          <summary class="today-overview-summary">
-            <span>Advanced &amp; billing</span>
-          </summary>
-          <div class="today-overview-body intake-advanced-body">
-            <div class="intake-evidence-row">
-              <p class="meta-text">
-                <strong>Prior evidence:</strong> Linear algebra demonstrated{" "}
-                <button
-                  type="button"
-                  class="btn-secondary"
-                  data-action="view-evidence"
-                  data-evidence-topic="linear-algebra"
-                >
-                  View evidence
-                </button>{" "}
-                · Matrix calculus not assessed{" "}
-                <button type="button" class="btn-secondary" data-action="check-prerequisites">
-                  Check prerequisites
-                </button>
-              </p>
-              <p class="meta-text">
-                {depthOverrideReset
-                  ? "Matrix calculus override removed. Inherited depth follows the global default."
-                  : "Override: Matrix calculus, Formal."}{" "}
-                <button type="button" class="btn-secondary" data-action="reset-depth-override">
-                  Reset to default
-                </button>
-              </p>
-            </div>
-            <p class="prose warning-copy">
-              Service fees, hosted inference, externally billed BYOK inference, learning materials, certification, and
-              compute stay distinct. Free materials do not imply free generation. An unknown merchant price stays Price
-              unknown (verify externally), not $0.00.
-            </p>
-          </div>
-        </details>
-
         {intakeNote ? (
           <p class="prose intake-status-note" role="status">
             {intakeNote}
@@ -1451,9 +1413,6 @@ export function NewCurriculumDialog({
         ) : null}
 
         <footer class="dialog-footer">
-          <button type="button" class="btn-secondary" data-action="review-generate">
-            Review and generate
-          </button>
           <button type="button" class="btn-primary" data-action="generate-curriculum-ai">
             <SfIcon name="focus" size={15} />
             <span>Generate curriculum</span>

@@ -290,6 +290,10 @@ ${fallbackScript}
       dispatchServerRender({ action: "toggle-upvote", revisionId: target.dataset.revisionId });
     } else {
       const patch = Object.assign({}, target.dataset);
+      if (target.closest("#dialog-new-curriculum")) {
+        const goalInput = root.querySelector("#intake-goal");
+        if (goalInput) patch.intakeGoalTitle = goalInput.value;
+      }
       if (action === "request-hint" || action === "study-worked-solution" || action === "submit-practice") {
         const checked = root.querySelector('input[name="practice-choice"]:checked');
         if (checked) patch.practiceChoice = checked.value;
@@ -341,12 +345,22 @@ ${fallbackScript}
     }
     const subjectSelect = event.target && event.target.closest ? event.target.closest('select[data-action="set-intake-subject"]') : null;
     if (subjectSelect && subjectSelect.value) {
-      dispatchServerRender({ action: "set-intake-subject", intakeSubject: subjectSelect.value });
+      const goalInput = root.querySelector("#intake-goal");
+      dispatchServerRender({
+        action: "set-intake-subject",
+        intakeSubject: subjectSelect.value,
+        intakeGoalTitle: goalInput ? goalInput.value : undefined,
+      });
       return;
     }
     const topicSelect = event.target && event.target.closest ? event.target.closest('select[data-action="toggle-intake-topic"]') : null;
     if (topicSelect && topicSelect.value) {
-      dispatchServerRender({ action: "toggle-intake-topic", intakeTopic: topicSelect.value });
+      const goalInput = root.querySelector("#intake-goal");
+      dispatchServerRender({
+        action: "toggle-intake-topic",
+        intakeTopic: topicSelect.value,
+        intakeGoalTitle: goalInput ? goalInput.value : undefined,
+      });
     }
   });
 

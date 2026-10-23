@@ -2218,7 +2218,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   ${renderToString(h(CompactBottomNav, { activeTopLevel }))}
 
   ${signedOut ? "" : `  ${(() => {
-    const intakeGoalTitle = inputState.intakeGoalTitle ?? "Build and Evaluate RAG Systems in Python";
+    const intakeGoalTitle = inputState.intakeGoalTitle ?? "";
     const intakeSubject: IntakeSubject = inputState.intakeSubject ?? "Engineering";
     const intakeTopics = inputState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"];
     const intakeDepth: IntakeDepthChoice = inputState.intakeDepth ?? "formal";
@@ -2383,7 +2383,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
   let catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>> =
     initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
-  let intakeGoalTitle = initialState.intakeGoalTitle ?? "Build and Evaluate RAG Systems in Python";
+  let intakeGoalTitle = initialState.intakeGoalTitle ?? "";
   let intakeSubject: IntakeSubject = initialState.intakeSubject ?? "Engineering";
   let intakeTopics: string[] = [...(initialState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"])];
   let intakeDepth: IntakeDepthChoice = initialState.intakeDepth ?? "formal";
@@ -2522,6 +2522,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     resourceScope = "selected";
     resourceCategory = "All";
     generatedPlans = [];
+    intakeGoalTitle = "";
     lastPipelineReceipt = null;
     studyDetailOpen = false;
     openDialogId = null;
@@ -2862,6 +2863,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         rescheduleValue = data["rescheduleValue"] ?? "";
       } else if (action === "reset-depth-override") depthOverrideReset = true;
       else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeSubject = data["intakeSubject"];
         intakeTopics = [...DEFAULT_SUBJECT_TOPICS[intakeSubject].slice(0, 4)];
         intakeSelectedResourceIds = buildIndexedMaterialCandidates(
@@ -2872,15 +2874,19 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         ).map((m) => m.resourceVersionId);
         intakeSkippedResourceIds = [];
       } else if (action === "toggle-intake-topic" && data["intakeTopic"]) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         const topic = data["intakeTopic"];
         intakeTopics = intakeTopics.includes(topic)
           ? intakeTopics.filter((t) => t !== topic)
           : [...intakeTopics, topic];
       } else if (action === "set-intake-depth" && isOneOf(INTAKE_DEPTH_CHOICES, data["intakeDepth"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeDepth = data["intakeDepth"];
       } else if (action === "set-intake-flow" && isOneOf(INTAKE_FLOW_CHOICES, data["intakeFlow"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeFlow = data["intakeFlow"];
       } else if (action === "set-intake-materials" && isOneOf(INTAKE_MATERIALS_CHOICES, data["intakeMaterials"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeMaterials = data["intakeMaterials"];
         intakeSelectedResourceIds = buildIndexedMaterialCandidates(
           catalogResources,
@@ -2891,11 +2897,14 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           .map((m) => m.resourceVersionId)
           .filter((id) => !intakeSkippedResourceIds.includes(id));
       } else if (action === "set-intake-pace" && data["weeklyMinutes"]) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         const parsed = Number.parseInt(data["weeklyMinutes"], 10);
         if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
       } else if (action === "set-intake-fit-mode" && isOneOf(INTAKE_FIT_MODES, data["fitMode"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeFitMode = data["fitMode"];
       } else if (action === "toggle-intake-resource" && data["resourceId"]) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         const resId = data["resourceId"];
         if (intakeSelectedResourceIds.includes(resId)) {
           intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
@@ -2904,6 +2913,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           intakeSkippedResourceIds = intakeSkippedResourceIds.filter((id) => id !== resId);
         }
       } else if (action === "skip-intake-resource" && data["resourceId"]) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         const resId = data["resourceId"];
         if (intakeSkippedResourceIds.includes(resId)) {
           intakeSkippedResourceIds = intakeSkippedResourceIds.filter((id) => id !== resId);
@@ -2932,10 +2942,10 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           }
         }
       } else if (action === "review-generate") {
-        if (data["intakeGoalTitle"]) intakeGoalTitle = data["intakeGoalTitle"];
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
       } else if (action === "generate-curriculum-ai") {
-        if (data["intakeGoalTitle"]) intakeGoalTitle = data["intakeGoalTitle"];
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         if (data["weeklyMinutes"]) {
           const parsed = Number.parseInt(data["weeklyMinutes"], 10);
           if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
@@ -3107,9 +3117,11 @@ export function mountCurriculumWebApp(
         const input = rootElement.querySelector(`[data-reschedule-for="${ds["sessionId"]}"]`) as { value?: string } | null;
         data["rescheduleValue"] = input?.value ?? "";
       }
-      if ((action === "generate-curriculum-ai" || action === "review-generate") && typeof rootElement.querySelector === "function") {
+      if (typeof rootElement.querySelector === "function") {
         const goalInput = rootElement.querySelector("#intake-goal") as { value?: string } | null;
-        if (goalInput?.value) data["intakeGoalTitle"] = goalInput.value;
+        if (typeof goalInput?.value === "string") data["intakeGoalTitle"] = goalInput.value;
+      }
+      if ((action === "generate-curriculum-ai" || action === "review-generate") && typeof rootElement.querySelector === "function") {
         const minsInput = rootElement.querySelector("#weekly-minutes") as { value?: string } | null;
         if (minsInput?.value) data["weeklyMinutes"] = minsInput.value;
       }
@@ -3137,13 +3149,18 @@ export function mountCurriculumWebApp(
     const select = ev.target?.closest?.("select[data-action]");
     if (!select?.value) return;
     const action = select.dataset?.["action"] ?? "select-curriculum";
+    const goalInput =
+      typeof rootElement.querySelector === "function"
+        ? (rootElement.querySelector("#intake-goal") as { value?: string } | null)
+        : null;
+    const intakeGoalTitle = typeof goalInput?.value === "string" ? goalInput.value : undefined;
     const payload: Record<string, string | undefined> =
       action === "select-curriculum"
         ? { curriculumId: select.value }
         : action === "set-intake-subject"
-          ? { intakeSubject: select.value }
+          ? { intakeSubject: select.value, intakeGoalTitle }
           : action === "toggle-intake-topic"
-            ? { intakeTopic: select.value }
+            ? { intakeTopic: select.value, intakeGoalTitle }
             : { value: select.value };
     if (controller.applyUiAction(action, payload).handled) syncDom();
   });

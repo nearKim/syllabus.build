@@ -1653,14 +1653,20 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
-  // 1. Compact intake + Suggested fit tray renders without unnecessary instructional text and uses dependent Subject -> Topics dropdowns
+  // 1. First-open onboarding: #intake-goal is empty with subject placeholder, unified topic chips, and one primary CTA
   const initialDialog = dialogOf(root.innerHTML);
+  assert.ok(initialDialog.includes('id="intake-goal"'));
+  assert.ok(initialDialog.includes('placeholder="e.g., Build and Evaluate RAG Systems in Python"'));
+  assert.equal(initialDialog.includes('value="Build and Evaluate RAG Systems in Python"'), false);
   assert.ok(initialDialog.includes('id="intake-subject-select"'));
   assert.ok(initialDialog.includes('id="intake-topic-select"'));
   assert.ok(initialDialog.includes('data-dependent-on-subject="Engineering"'));
   assert.ok(initialDialog.includes('id="intake-suggested-fit-tray"'));
   assert.ok(initialDialog.includes("Suggested fit"));
   assert.ok(initialDialog.includes("Web search: Vector Indexing"));
+  assert.equal(initialDialog.includes('class="intake-coverage-chips"'), false, "Selected topics must not be duplicated in a second chip bar");
+  assert.equal(initialDialog.includes('data-action="review-generate"'), false, "Modal footer has one clear primary CTA");
+  assert.equal(initialDialog.includes("Advanced &amp; billing"), false, "Internal billing jargon accordion is removed from modal");
   for (const verbose of ["Toggle [Use] to bypass", "AI Curriculum Synthesizer", "Shared tag taxonomy"]) {
     assert.equal(initialDialog.includes(verbose), false);
   }
