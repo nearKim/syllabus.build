@@ -22,6 +22,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 const FLATPICKR_DIST_DIR = path.resolve(__dirname, "../node_modules/flatpickr/dist");
+const TOM_SELECT_DIST_DIR = path.resolve(__dirname, "../node_modules/tom-select/dist");
 const EXAMPLES_DIR = path.resolve(
   __dirname,
   "../../../specs/001-curriculum-platform/examples"
@@ -123,6 +124,64 @@ ${fallbackScript}
     });
   }
 
+  function destroyPlanSelects() {
+    root.querySelectorAll('[data-tom-select="plan"]').forEach((el) => {
+      if (el.tomselect && typeof el.tomselect.destroy === "function") {
+        el.tomselect.destroy();
+      }
+    });
+  }
+
+  function initPlanSelects() {
+    if (typeof window.TomSelect !== "function") return;
+    root.querySelectorAll('[data-tom-select="plan"]').forEach((el) => {
+      if (el.tomselect) return;
+      const metaByVal = {};
+      Array.from(el.options).forEach((opt) => {
+        metaByVal[opt.value] = {
+          domain: opt.getAttribute("data-domain") || "",
+          units: opt.getAttribute("data-units") || "",
+          progress: opt.getAttribute("data-progress") || "",
+          actionOption: opt.getAttribute("data-action-option") || "",
+        };
+      });
+      new window.TomSelect(el, {
+        controlInput: null,
+        allowEmptyOption: false,
+        render: {
+          item: function (data, escape) {
+            const m = metaByVal[data.value] || {};
+            const metaText = [m.domain, m.progress].filter(Boolean).join(" · ");
+            return '<div class="ts-plan-item">' +
+              '<span class="ts-plan-item-main">' +
+                '<span class="ts-plan-item-title">' + escape(data.text) + '</span>' +
+                (metaText ? '<span class="ts-plan-item-meta">' + escape(metaText) + '</span>' : '') +
+              '</span>' +
+            '</div>';
+          },
+          option: function (data, escape) {
+            const m = metaByVal[data.value] || {};
+            if (m.actionOption === "edit-plan" || data.value === "__edit_plan__") {
+              return '<div class="ts-plan-option ts-plan-action-option">' +
+                '<span class="ts-plan-action-title">Edit Plan &amp; Pacing</span>' +
+                '<span class="ts-plan-action-sub">Schedule, waivers &amp; approach →</span>' +
+              '</div>';
+            }
+            const metaParts = [m.domain, m.units, m.progress].filter(Boolean).join(" · ");
+            return '<div class="ts-plan-option">' +
+              '<span class="ts-plan-option-title">' + escape(data.text) + '</span>' +
+              (metaParts ? '<span class="ts-plan-option-meta">' + escape(metaParts) + '</span>' : '') +
+            '</div>';
+          },
+        },
+        onChange: function (value) {
+          if (!value) return;
+          dispatchServerRender({ action: "select-curriculum", curriculumId: value });
+        },
+      });
+    });
+  }
+
   async function dispatchServerRender(patch) {
     let payload;
     try {
@@ -143,6 +202,7 @@ ${fallbackScript}
     const rail = root.querySelector(".today-curricula-grid");
     const railLeft = rail ? rail.scrollLeft : 0;
     destroyDatepickers();
+    destroyPlanSelects();
     root.innerHTML = payload.html;
     const nextRail = root.querySelector(".today-curricula-grid");
     if (nextRail) nextRail.scrollLeft = railLeft;
@@ -153,6 +213,7 @@ ${fallbackScript}
     bindDialogs();
     openMarkedDialogs(previous);
     initDatepickers();
+    initPlanSelects();
     if (!focusKey(focusedKey) && patch.action === "close-study-detail") focusKey(inspectorOpenerKey);
     return true;
   }
@@ -160,6 +221,7 @@ ${fallbackScript}
   bindDialogs();
   openMarkedDialogs(new Map());
   initDatepickers();
+  initPlanSelects();
 
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
@@ -390,6 +452,26 @@ export function createWebAppServer(options = {}) {
 
     if (pathname === "/vendor/flatpickr.min.js") {
       const js = fs.readFileSync(path.join(FLATPICKR_DIST_DIR, "flatpickr.min.js"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(js);
+      return;
+    }
+
+    if (pathname === "/vendor/tom-select.min.css") {
+      const css = fs.readFileSync(path.join(TOM_SELECT_DIST_DIR, "css/tom-select.min.css"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(css);
+      return;
+    }
+
+    if (pathname === "/vendor/tom-select.complete.min.js") {
+      const js = fs.readFileSync(path.join(TOM_SELECT_DIST_DIR, "js/tom-select.complete.min.js"), "utf8");
       res.writeHead(200, {
         "Content-Type": "application/javascript; charset=utf-8",
         "Cache-Control": "public, max-age=86400",

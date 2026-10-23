@@ -31,6 +31,9 @@ importers:
       preact-render-to-string:
         specifier: ^6.8.1
         version: 6.8.1(preact@11.0.1)
+      tom-select:
+        specifier: ^2.6.2
+        version: 2.6.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -197,6 +200,12 @@ packages:
     cpu: [x64]
     os: [win32]
 
+  '@orchidjs/sifter@1.1.0':
+    resolution: {integrity: sha512-mYwHCfr736cIWWdhhSZvDbf90AKt2xyrJspKFC3qyIJG1LtrJeJunYEqCGG4Aq2ijENbc4WkOjszcvNaIAS/pQ==}
+
+  '@orchidjs/unicode-variants@1.2.2':
+    resolution: {integrity: sha512-Tfdm/fa2NN+75KwtkjpdOvUeaBOgZlyo08Ngb3m6UXe4ACPcKlgnX32vAI5lp39tlLdv2tXiRW0PPdbWyM5ieA==}
+
   '@preact/signals-core@1.14.4':
     resolution: {integrity: sha512-HNB6HYeYKhQbJ1aKl+YRjrS4+QWHLKX6qKoUsfS/m0vqzsVaEBiZiaKbG/e+NKk2ch5ALQr/ihWaMHxiCuuWHA==}
 
@@ -230,6 +239,9 @@ packages:
     peerDependenciesMeta:
       preact-render-to-string:
         optional: true
+
+  tom-select@2.6.2:
+    resolution: {integrity: sha512-eiXIkk82XzzUTOVQDFpy+ZGejuqdTvMukyUyeZBQaKnqW42UoTiTZnrod/eX0rkqJEc4rZY9DZ3zdjV07i29wQ==}
 
   tsx@4.23.15:
     resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
@@ -316,6 +328,12 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
+  '@orchidjs/sifter@1.1.0':
+    dependencies:
+      '@orchidjs/unicode-variants': 1.2.2
+
+  '@orchidjs/unicode-variants@1.2.2': {}
+
   '@preact/signals-core@1.14.4': {}
 
   '@preact/signals@2.11.3(preact@11.0.1)':
@@ -364,6 +382,11 @@ snapshots:
   preact@11.0.1(preact-render-to-string@6.8.1):
     optionalDependencies:
       preact-render-to-string: 6.8.1(preact@11.0.1)
+
+  tom-select@2.6.2:
+    dependencies:
+      '@orchidjs/sifter': 1.1.0
+      '@orchidjs/unicode-variants': 1.2.2
 
   tsx@4.23.15:
     dependencies:
