@@ -393,9 +393,6 @@ export function UnitRow({
             <MathText text={displayUnitTitle(mod.title)} />
           </span>
           <span class="unit-meta">{progressLabel(progress)}</span>
-          <span class="unit-summary-cue" aria-hidden="true">
-            Row summary →
-          </span>
           <span class="st-sr">
             {selected ? "Selected" : "Select"} unit {index + 1}. {progress.done} of {progress.total} required activities done. {mod.required ? "Required" : "Optional"}. {mod.summary}
           </span>
