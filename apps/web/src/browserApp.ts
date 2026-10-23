@@ -2910,6 +2910,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         const resId = data["resourceId"];
         if (intakeSelectedResourceIds.includes(resId)) {
           intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
+          if (!intakeSkippedResourceIds.includes(resId)) {
+            intakeSkippedResourceIds = [...intakeSkippedResourceIds, resId];
+          }
         } else {
           intakeSelectedResourceIds = [...intakeSelectedResourceIds, resId];
           intakeSkippedResourceIds = intakeSkippedResourceIds.filter((id) => id !== resId);

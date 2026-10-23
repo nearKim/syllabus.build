@@ -4983,26 +4983,40 @@ ul.adopt-resources {
 .intake-material-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
   flex-shrink: 0;
 }
 
-.intake-material-actions .btn-primary,
-.intake-material-actions .btn-secondary {
-  min-height: 32px;
-  padding: 4px 12px;
-  font-size: 13px;
-}
-
-.intake-skip-btn:not(.is-active) {
-  border-color: transparent;
+.intake-material-check {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: var(--color-text-secondary);
+  cursor: pointer;
 }
 
-.intake-skip-btn:not(.is-active):hover {
-  background: var(--tint-4);
-  color: var(--color-text-primary);
+.intake-material-check:hover {
+  background: var(--tint-6);
+}
+
+.intake-material-check-ring {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--color-border-control);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-surface);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.intake-material-check.is-checked .intake-material-check-ring {
+  border-color: var(--color-text-primary);
+  background: var(--color-text-primary);
 }
 
 /* 3. Indented Syllabus Details with Quiet Guideline */

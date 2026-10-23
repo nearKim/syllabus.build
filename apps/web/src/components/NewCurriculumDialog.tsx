@@ -1543,21 +1543,15 @@ export function NewCurriculumDialog({
                         <div class="intake-material-actions">
                           <button
                             type="button"
-                            class={isUsed ? "btn-primary intake-use-btn" : "btn-secondary intake-use-btn"}
+                            class={`intake-material-check${isUsed ? " is-checked" : ""}`}
                             data-action="toggle-intake-resource"
                             data-resource-id={mat.resourceVersionId}
                             aria-pressed={isUsed}
+                            aria-label={`${isUsed ? "Exclude" : "Include"} ${mat.title}`}
                           >
-                            {isUsed ? "✓ Using" : "Use"}
-                          </button>
-                          <button
-                            type="button"
-                            class={`btn-secondary intake-skip-btn${isSkipped ? " is-active" : ""}`}
-                            data-action="skip-intake-resource"
-                            data-resource-id={mat.resourceVersionId}
-                            aria-pressed={isSkipped}
-                          >
-                            {isSkipped ? "Skipped" : "Skip"}
+                            <span class="intake-material-check-ring" aria-hidden="true">
+                              {isUsed ? <SfIcon name="check" size={15} /> : null}
+                            </span>
                           </button>
                         </div>
                       </div>
