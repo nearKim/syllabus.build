@@ -14,9 +14,12 @@
 use curriculum_contracts::generated::CANONICAL_SPEC_SHA256;
 use curriculum_contracts::jcs::sha256_bytes_hex;
 use curriculum_contracts::ContractRegistry;
-use curriculum_domain::{
+pub use curriculum_domain::{
+    evaluate_resource_fit_and_coverage, normalize_canonical_resource_identity,
     validate_dag_acyclic, validate_pedagogical_triad_coverage, ActivityComponentBreakdown,
-    EffortTriplet, GoalSpecification,
+    BookTocChapter, CourseSyllabusUnit, EffortTriplet, GoalSpecification, IndexedMaterialCandidate,
+    RepositoryLabExercise, ResourceFitDecisionMode, ResourceFitEvaluation, ResourceIndexDescriptor,
+    TopicCoverageItem, TopicCoverageStatus, YoutubeSyllabusItem,
 };
 pub use curriculum_persistence::{
     serde_json::{self, json, Value},
@@ -1523,6 +1526,240 @@ pub fn evaluate_dynamic_release_readiness(
     }
 }
 
+/// Structured search prompt specification built in Step 0 from the "New Curriculum" modal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CurriculumSearchPromptSpec {
+    pub goal_title: String,
+    pub subject: String,
+    pub topic_tags: Vec<String>,
+    pub math_depth: String,
+    pub sequence_preference: String,
+    pub free_only: bool,
+    pub weekly_minutes: u32,
+    pub synthesized_search_query: String,
+    pub latex_equation_instruction: String,
+}
+
+/// Step 0: Builds the structured search prompt and LaTeX synthesis instruction from modal inputs.
+#[must_use]
+pub fn build_curriculum_search_prompt(
+    goal_title: &str,
+    subject: &str,
+    topic_tags: &[String],
+    math_depth: &str,
+    sequence_preference: &str,
+    free_only: bool,
+    weekly_minutes: u32,
+) -> CurriculumSearchPromptSpec {
+    let clean_goal = goal_title.trim();
+    let clean_subject = subject.trim();
+    let clean_tags: Vec<String> = topic_tags
+        .iter()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let access_clause = if free_only {
+        "free public open-access materials only"
+    } else {
+        "verified free or paid materials"
+    };
+    let synthesized_search_query = format!(
+        "subject:{clean_subject} goal:\"{clean_goal}\" topics:[{}] depth:{math_depth} order:{sequence_preference} access:({access_clause})",
+        clean_tags.join(", ")
+    );
+    let latex_equation_instruction = "Emit inline ($...$) and block ($$...$$) LaTeX representations for all mathematical equations in Study flow titles, summaries, study prompts, worked examples, and concept checks.".to_string();
+
+    CurriculumSearchPromptSpec {
+        goal_title: clean_goal.to_string(),
+        subject: clean_subject.to_string(),
+        topic_tags: clean_tags,
+        math_depth: math_depth.trim().to_string(),
+        sequence_preference: sequence_preference.trim().to_string(),
+        free_only,
+        weekly_minutes,
+        synthesized_search_query,
+        latex_equation_instruction,
+    }
+}
+
+/// Newly discovered web resource candidate from Step 2 internet search tool call.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DiscoveredWebResourceCandidate {
+    pub resource_id: String,
+    pub resource_version_id: String,
+    pub title: String,
+    pub canonical_url: String,
+    pub external_id: Option<String>,
+    pub resource_type: String,
+    pub subject: String,
+    pub topic_tags: Vec<String>,
+    pub supported_math_depths: Vec<String>,
+    pub supported_roles: Vec<String>,
+    pub access_model: CatalogAccessModel,
+    pub price_minor_units: Option<u64>,
+    pub index_descriptor: ResourceIndexDescriptor,
+}
+
+/// Receipt returned by the 6-stage AI curriculum search, fit-bypass, and polymorphic indexing pipeline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchAndIndexPipelineReceipt {
+    pub search_prompt: CurriculumSearchPromptSpec,
+    pub fit_evaluation: ResourceFitEvaluation,
+    pub effective_mode: ResourceFitDecisionMode,
+    pub web_search_executed: bool,
+    pub searched_missing_topics: Vec<String>,
+    pub bypassed_existing_resource_version_ids: Vec<String>,
+    pub newly_indexed_resources: Vec<IndexedMaterialCandidate>,
+    pub pinned_synthesis_resource_version_ids: Vec<String>,
+}
+
+/// Executes Steps 0 -> 1 -> 1.5 -> 2 -> 3 -> 4:
+/// - Evaluates existing indexed fit (`Step 1` & `Step 1.5`).
+/// - Bypasses internet search (`Step 2`) completely for `DirectPlanAdoption` or `UseSelectedOnly`
+///   (or when all requested topics are covered by accepted DB resources).
+/// - For `FillGaps` (`Path B`) or `SearchAllTopics` (`Path C`), searches only uncovered topics,
+///   deduplicating against already-indexed `canonical_url` / `external_id` and learner-`[Skip]`ped IDs.
+/// - Indexes newly discovered polymorphic resources (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) (`Step 4`).
+pub fn execute_search_and_index_pipeline(
+    goal_title: &str,
+    subject: &str,
+    topic_tags: &[String],
+    math_depth: &str,
+    sequence_preference: &str,
+    free_only: bool,
+    weekly_minutes: u32,
+    indexed_candidates: &[IndexedMaterialCandidate],
+    selected_resource_version_ids: &[String],
+    skipped_resource_version_ids: &[String],
+    requested_mode: Option<ResourceFitDecisionMode>,
+    web_search_discoveries: &[DiscoveredWebResourceCandidate],
+) -> Result<SearchAndIndexPipelineReceipt, PersistenceError> {
+    if goal_title.trim().is_empty() {
+        return Err(PersistenceError::Validation(
+            "goal_title cannot be empty".to_string(),
+        ));
+    }
+
+    // Step 0: Build structured search prompt
+    let search_prompt = build_curriculum_search_prompt(
+        goal_title,
+        subject,
+        topic_tags,
+        math_depth,
+        sequence_preference,
+        free_only,
+        weekly_minutes,
+    );
+
+    // Step 1 & Step 1.5: Evaluate existing indexed resource fit & coverage over accepted resources
+    let fit_evaluation = evaluate_resource_fit_and_coverage(
+        subject,
+        &search_prompt.topic_tags,
+        math_depth,
+        free_only,
+        indexed_candidates,
+        selected_resource_version_ids,
+        skipped_resource_version_ids,
+        requested_mode,
+    );
+    let effective_mode = fit_evaluation.recommended_mode;
+
+    // Collect already-indexed identities and skipped identities so Step 2 never re-fetches or re-indexes them
+    let bypassed_existing_resource_version_ids: Vec<String> = fit_evaluation
+        .ranked_materials
+        .iter()
+        .filter(|c| {
+            selected_resource_version_ids.contains(&c.resource_version_id)
+                && !skipped_resource_version_ids.contains(&c.resource_version_id)
+        })
+        .map(|c| c.resource_version_id.clone())
+        .collect();
+
+    let mut pinned_synthesis_resource_version_ids = bypassed_existing_resource_version_ids.clone();
+    let mut newly_indexed_resources = Vec::new();
+
+    let searched_missing_topics = match effective_mode {
+        ResourceFitDecisionMode::DirectPlanAdoption
+        | ResourceFitDecisionMode::UseSelectedOnly => Vec::new(),
+        ResourceFitDecisionMode::FillGaps => fit_evaluation.missing_topics_for_search.clone(),
+        ResourceFitDecisionMode::SearchAllTopics => search_prompt.topic_tags.clone(),
+    };
+
+    let web_search_executed = !searched_missing_topics.is_empty()
+        && !matches!(
+            effective_mode,
+            ResourceFitDecisionMode::DirectPlanAdoption
+                | ResourceFitDecisionMode::UseSelectedOnly
+        );
+
+    if web_search_executed {
+        for disc in web_search_discoveries {
+            // Validate outbound URL safety before staging
+            curriculum_domain::validate_outbound_egress_url(&disc.canonical_url, &[])
+                .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+
+            // Respect learner [Skip] decisions and free-only policy
+            if skipped_resource_version_ids.contains(&disc.resource_version_id) {
+                continue;
+            }
+            if free_only && disc.access_model != CatalogAccessModel::FreePublic {
+                continue;
+            }
+
+            // Check if this discovery covers at least one of the missing searched topics
+            let covers_missing = searched_missing_topics.iter().any(|missing| {
+                disc.topic_tags
+                    .iter()
+                    .any(|t| t.eq_ignore_ascii_case(missing.trim()))
+            });
+            if !covers_missing {
+                continue;
+            }
+
+            // Deduplicate against already-indexed resources by resource_version_id or resource_id
+            let already_indexed = indexed_candidates.iter().any(|existing| {
+                existing.resource_version_id == disc.resource_version_id
+                    || existing.resource_id == disc.resource_id
+            });
+            if already_indexed {
+                if !pinned_synthesis_resource_version_ids.contains(&disc.resource_version_id) {
+                    pinned_synthesis_resource_version_ids.push(disc.resource_version_id.clone());
+                }
+                continue;
+            }
+
+            let indexed_candidate = IndexedMaterialCandidate {
+                resource_version_id: disc.resource_version_id.clone(),
+                resource_id: disc.resource_id.clone(),
+                title: disc.title.clone(),
+                resource_type: disc.resource_type.clone(),
+                subject: disc.subject.clone(),
+                topic_tags: disc.topic_tags.clone(),
+                supported_math_depths: disc.supported_math_depths.clone(),
+                supported_roles: disc.supported_roles.clone(),
+                access_model: disc.access_model,
+                price_minor_units: disc.price_minor_units,
+                review_status: ResourceReviewStatus::Approved,
+                quarantined: false,
+                index_descriptor: Some(disc.index_descriptor.clone()),
+            };
+            pinned_synthesis_resource_version_ids.push(disc.resource_version_id.clone());
+            newly_indexed_resources.push(indexed_candidate);
+        }
+    }
+
+    Ok(SearchAndIndexPipelineReceipt {
+        search_prompt,
+        fit_evaluation,
+        effective_mode,
+        web_search_executed,
+        searched_missing_topics,
+        bypassed_existing_resource_version_ids,
+        newly_indexed_resources,
+        pinned_synthesis_resource_version_ids,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1806,5 +2043,122 @@ mod tests {
         );
         assert!(!eval_defects.release_ready);
         assert_eq!(eval_defects.blocking_reasons.len(), 2);
+    }
+
+    #[test]
+    fn step_0_to_4_search_fit_bypass_and_polymorphic_indexing_pipeline() {
+        let indexed = vec![
+            IndexedMaterialCandidate {
+                resource_version_id: "synthetic-resource-tokenization-v1".to_string(),
+                resource_id: "res-tokenization".to_string(),
+                title: "Reviewed Open Monograph: Subword Tokenization & Sequence Packing".to_string(),
+                resource_type: "book".to_string(),
+                subject: "Engineering".to_string(),
+                topic_tags: vec!["Tokenization".to_string(), "Attention".to_string()],
+                supported_math_depths: vec!["formal".to_string()],
+                supported_roles: vec!["instruction".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                price_minor_units: Some(0),
+                review_status: ResourceReviewStatus::Approved,
+                quarantined: false,
+                index_descriptor: None,
+            },
+        ];
+
+        let discoveries = vec![
+            DiscoveredWebResourceCandidate {
+                resource_id: "res-flash-attention-yt".to_string(),
+                resource_version_id: "synthetic-resource-flash-attention-yt-v1".to_string(),
+                title: "YouTube Playlist: Hardware-Aware FlashAttention & IO-Complexity".to_string(),
+                canonical_url: "https://example.edu/playlists/flash-attention".to_string(),
+                external_id: Some("yt:playlist:PL_FLASH_01".to_string()),
+                resource_type: "video".to_string(),
+                subject: "Engineering".to_string(),
+                topic_tags: vec!["FlashAttention".to_string()],
+                supported_math_depths: vec!["formal".to_string()],
+                supported_roles: vec!["instruction".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                price_minor_units: Some(0),
+                index_descriptor: ResourceIndexDescriptor::YoutubePlaylistIndex {
+                    channel_title: "Systems ML Lectures".to_string(),
+                    playlist_id: "PL_FLASH_01".to_string(),
+                    total_videos: 3,
+                    syllabus_items: vec![YoutubeSyllabusItem {
+                        segment_id: "seg-flash-tiling".to_string(),
+                        video_id: "yt_flash_1".to_string(),
+                        index: 1,
+                        title: "Lecture 1: SRAM Tiling & Online Softmax Rescaling".to_string(),
+                        duration_minutes: 28,
+                        key_concepts: vec!["FlashAttention".to_string(), "Online Softmax".to_string()],
+                    }],
+                    transcript_outline: Some("00:00 HBM vs SRAM bandwidth; 12:15 Online softmax rescaling.".to_string()),
+                },
+            },
+        ];
+
+        let topics = vec![
+            "Tokenization".to_string(),
+            "Attention".to_string(),
+            "FlashAttention".to_string(),
+        ];
+
+        // Path B (FillGaps): Tokenization & Attention are covered by the accepted DB book;
+        // web search executes ONLY for the missing topic ("FlashAttention") and indexes the YouTube playlist
+        let receipt_path_b = execute_search_and_index_pipeline(
+            "Understand Transformer Internals & FlashAttention",
+            "Engineering",
+            &topics,
+            "formal",
+            "theory_first",
+            true,
+            120,
+            &indexed,
+            &["synthetic-resource-tokenization-v1".to_string()],
+            &[],
+            Some(ResourceFitDecisionMode::FillGaps),
+            &discoveries,
+        )
+        .expect("Path B succeeds");
+
+        assert!(receipt_path_b.web_search_executed);
+        assert_eq!(receipt_path_b.searched_missing_topics, vec!["FlashAttention".to_string()]);
+        assert_eq!(
+            receipt_path_b.bypassed_existing_resource_version_ids,
+            vec!["synthetic-resource-tokenization-v1".to_string()]
+        );
+        assert_eq!(receipt_path_b.newly_indexed_resources.len(), 1);
+        assert_eq!(
+            receipt_path_b.newly_indexed_resources[0].resource_version_id,
+            "synthetic-resource-flash-attention-yt-v1"
+        );
+        assert!(receipt_path_b
+            .search_prompt
+            .latex_equation_instruction
+            .contains("LaTeX"));
+
+        // Path A (UseSelectedOnly): Web search is strictly bypassed even when FlashAttention is uncovered
+        let receipt_path_a = execute_search_and_index_pipeline(
+            "Understand Transformer Internals & FlashAttention",
+            "Engineering",
+            &topics,
+            "formal",
+            "theory_first",
+            true,
+            120,
+            &indexed,
+            &["synthetic-resource-tokenization-v1".to_string()],
+            &[],
+            Some(ResourceFitDecisionMode::UseSelectedOnly),
+            &discoveries,
+        )
+        .expect("Path A succeeds");
+
+        assert!(!receipt_path_a.web_search_executed);
+        assert!(receipt_path_a.searched_missing_topics.is_empty());
+        assert!(receipt_path_a.newly_indexed_resources.is_empty());
+        assert_eq!(
+            receipt_path_a.pinned_synthesis_resource_version_ids,
+            vec!["synthetic-resource-tokenization-v1".to_string()]
+        );
     }
 }
