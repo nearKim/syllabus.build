@@ -1180,6 +1180,7 @@ export function NewCurriculumDialog({
   lastPipelineReceipt,
 }: NewCurriculumDialogProps): VNode {
   const taxonomy = SUBJECT_TOPIC_TAXONOMY[subject];
+  const hasIntakeIntent = goalTitle.trim().length > 0 || requestedTopics.length > 0;
   const disclosedSubtopics: { readonly topic: string; readonly parentTopic: string }[] = [];
   const seenSubtopics = new Set<string>();
   for (const [parentTopic, subs] of Object.entries(taxonomy.subtopicsByParent)) {
@@ -1215,10 +1216,10 @@ export function NewCurriculumDialog({
         <section class="intake-compact-section" aria-label="Curriculum goal and preferences">
           <label class="field intake-goal-field" for="intake-goal">
             <span>Goal</span>
-            <input
+            <textarea
               id="intake-goal"
               name="goal"
-              type="text"
+              rows={2}
               autocomplete="off"
               value={goalTitle}
               placeholder={`e.g., ${DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject]}`}
@@ -1425,149 +1426,156 @@ export function NewCurriculumDialog({
           </div>
         </section>
 
-        <section
-          class="intake-fit-tray"
-          id="intake-suggested-fit-tray"
-          aria-labelledby="intake-fit-heading"
-          data-opaque-surface="true"
-        >
-          <div class="intake-section-head">
-            <div class="intake-section-title-group">
-              <h3 id="intake-fit-heading">Suggested fit</h3>
-              <p
-                class="intake-bypass-badge"
-                role="status"
-                data-search-bypass-status={fitEvaluation.costAndBypassBadge}
-              >
-                <SfIcon name={fitEvaluation.webSearchRequired ? "globe" : "check"} size={15} />
-                <span>{fitEvaluation.costAndBypassBadge}</span>
-              </p>
+        {hasIntakeIntent ? (
+          <section
+            class="intake-fit-tray"
+            id="intake-suggested-fit-tray"
+            aria-labelledby="intake-fit-heading"
+            data-opaque-surface="true"
+          >
+            <div class="intake-section-head">
+              <div class="intake-section-title-group">
+                <h3 id="intake-fit-heading">Suggested fit</h3>
+                <p
+                  class="intake-bypass-badge"
+                  role="status"
+                  data-search-bypass-status={fitEvaluation.costAndBypassBadge}
+                >
+                  <SfIcon name={fitEvaluation.webSearchRequired ? "globe" : "check"} size={15} />
+                  <span>{fitEvaluation.costAndBypassBadge}</span>
+                </p>
+              </div>
+              <div class="segmented" role="group" aria-label="Resource fit execution mode">
+                <button
+                  type="button"
+                  class="seg-btn"
+                  data-action="set-intake-fit-mode"
+                  data-fit-mode="fill_gaps"
+                  aria-pressed={fitMode === "fill_gaps"}
+                >
+                  Fill gaps
+                </button>
+                <button
+                  type="button"
+                  class="seg-btn"
+                  data-action="set-intake-fit-mode"
+                  data-fit-mode="use_selected_only"
+                  aria-pressed={fitMode === "use_selected_only"}
+                >
+                  Selected only
+                </button>
+              </div>
             </div>
-            <div class="segmented" role="group" aria-label="Resource fit execution mode">
-              <button
-                type="button"
-                class="seg-btn"
-                data-action="set-intake-fit-mode"
-                data-fit-mode="fill_gaps"
-                aria-pressed={fitMode === "fill_gaps"}
-              >
-                Fill gaps
-              </button>
-              <button
-                type="button"
-                class="seg-btn"
-                data-action="set-intake-fit-mode"
-                data-fit-mode="use_selected_only"
-                aria-pressed={fitMode === "use_selected_only"}
-              >
-                Selected only
-              </button>
-            </div>
-          </div>
 
-          {fitEvaluation.existingPlans.length > 0 ? (
-            <div class="intake-fit-group">
-              <h4 class="intake-fit-group-title">Existing plans ({fitEvaluation.existingPlans.length})</h4>
-              <ul class="intake-fit-list">
-                {fitEvaluation.existingPlans.map((plan) => (
-                  <li
-                    key={plan.id}
-                    class="intake-fit-card intake-existing-plan-card"
-                    data-fit-plan-id={plan.id}
-                  >
-                    <div class="intake-fit-card-main">
-                      <span class="marketplace-card-icon" data-subject={plan.subject} aria-hidden="true">
-                        <SfIcon name={subjectIcon(plan.subject)} size={16} />
-                      </span>
-                      <div>
-                        <strong>{plan.title}</strong>
-                        <p class="meta-text">
-                          {plan.subject} · {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics
-                        </p>
-                      </div>
-                    </div>
-                    <div class="intake-fit-card-actions">
-                      {plan.kind === "my_plan" && plan.curriculumId ? (
-                        <button
-                          type="button"
-                          class="btn-secondary"
-                          data-action="intake-open-existing-plan"
-                          data-curriculum-id={plan.curriculumId}
-                        >
-                          Open plan
-                        </button>
-                      ) : plan.publicationId ? (
-                        <button
-                          type="button"
-                          class="btn-secondary"
-                          data-action="intake-adopt-marketplace-plan"
-                          data-publication-id={plan.publicationId}
-                        >
-                          Use plan
-                        </button>
-                      ) : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          <div class="intake-fit-group">
-            <h4 class="intake-fit-group-title">Indexed materials ({fitEvaluation.indexedMaterials.length})</h4>
-            <ul class="intake-fit-list">
-              {fitEvaluation.indexedMaterials.map((mat) => {
-                const isUsed = fitEvaluation.selectedResourceIds.includes(mat.resourceVersionId);
-                const isSkipped = fitEvaluation.skippedResourceIds.includes(mat.resourceVersionId);
-                return (
-                  <li
-                    key={mat.resourceVersionId}
-                    class={`intake-fit-card intake-material-card${isUsed ? " is-used" : ""}${isSkipped ? " is-skipped" : ""}`}
-                    data-fit-resource-id={mat.resourceVersionId}
-                    data-fit-resource-used={String(isUsed)}
-                    data-fit-resource-skipped={String(isSkipped)}
-                  >
-                    <div class="intake-fit-card-top">
+            {fitEvaluation.existingPlans.length > 0 ? (
+              <div class="intake-fit-group intake-existing-plans-block">
+                <h4 class="intake-fit-group-title">Existing plans ({fitEvaluation.existingPlans.length})</h4>
+                <ul class="intake-fit-list intake-existing-plans-list">
+                  {fitEvaluation.existingPlans.map((plan) => (
+                    <li
+                      key={plan.id}
+                      class="intake-fit-card intake-existing-plan-card"
+                      data-fit-plan-id={plan.id}
+                    >
                       <div class="intake-fit-card-main">
-                        <span class="badge resource-category-badge" data-category={mat.category}>
-                          <SfIcon name={categoryIcon(mat.category)} size={15} />
-                          <span>{mat.category}</span>
+                        <span class="marketplace-card-icon" data-subject={plan.subject} aria-hidden="true">
+                          <SfIcon name={subjectIcon(plan.subject)} size={16} />
                         </span>
-                        <div>
-                          <strong>{mat.title}</strong>
+                        <div class="intake-existing-plan-inner">
+                          <div class="intake-existing-plan-title-row">
+                            <span class="intake-entity-pill">
+                              {plan.kind === "my_plan" ? "Your plan" : "Marketplace plan"}
+                            </span>
+                            <strong>{plan.title}</strong>
+                          </div>
                           <p class="meta-text">
-                            {mat.publisher} · {mat.coveredTopics.join(", ")}
+                            {plan.subject} · {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics matched
                           </p>
                         </div>
                       </div>
                       <div class="intake-fit-card-actions">
-                        <button
-                          type="button"
-                          class={isUsed ? "btn-primary intake-use-btn" : "btn-secondary intake-use-btn"}
-                          data-action="toggle-intake-resource"
-                          data-resource-id={mat.resourceVersionId}
-                          aria-pressed={isUsed}
-                        >
-                          {isUsed ? "✓ Using" : "Use"}
-                        </button>
-                        <button
-                          type="button"
-                          class={`btn-secondary intake-skip-btn${isSkipped ? " is-active" : ""}`}
-                          data-action="skip-intake-resource"
-                          data-resource-id={mat.resourceVersionId}
-                          aria-pressed={isSkipped}
-                        >
-                          {isSkipped ? "Skipped" : "Skip"}
-                        </button>
+                        {plan.kind === "my_plan" && plan.curriculumId ? (
+                          <button
+                            type="button"
+                            class="btn-secondary intake-open-plan-btn"
+                            data-action="intake-open-existing-plan"
+                            data-curriculum-id={plan.curriculumId}
+                          >
+                            Open plan →
+                          </button>
+                        ) : plan.publicationId ? (
+                          <button
+                            type="button"
+                            class="btn-secondary intake-open-plan-btn"
+                            data-action="intake-adopt-marketplace-plan"
+                            data-publication-id={plan.publicationId}
+                          >
+                            Use plan →
+                          </button>
+                        ) : null}
                       </div>
-                    </div>
-                    {renderPolymorphicIndexDetails(mat.polymorphicIndex)}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        </section>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            <div class="intake-fit-group intake-materials-block">
+              <h4 class="intake-fit-group-title">Indexed materials ({fitEvaluation.indexedMaterials.length})</h4>
+              <ul class="intake-fit-list intake-materials-list">
+                {fitEvaluation.indexedMaterials.map((mat) => {
+                  const isUsed = fitEvaluation.selectedResourceIds.includes(mat.resourceVersionId);
+                  const isSkipped = fitEvaluation.skippedResourceIds.includes(mat.resourceVersionId);
+                  return (
+                    <li
+                      key={mat.resourceVersionId}
+                      class={`intake-fit-card intake-material-card${isUsed ? " is-used" : ""}${isSkipped ? " is-skipped" : ""}`}
+                      data-fit-resource-id={mat.resourceVersionId}
+                      data-fit-resource-used={String(isUsed)}
+                      data-fit-resource-skipped={String(isSkipped)}
+                    >
+                      <div class="intake-fit-card-top">
+                        <div class="intake-fit-card-main">
+                          <span class="badge resource-category-badge" data-category={mat.category}>
+                            <SfIcon name={categoryIcon(mat.category)} size={15} />
+                            <span>{mat.category}</span>
+                          </span>
+                          <div class="intake-material-inner">
+                            <strong>{mat.title}</strong>
+                            <p class="meta-text">
+                              {mat.publisher} · {mat.coveredTopics.join(", ")}
+                            </p>
+                            {renderPolymorphicIndexDetails(mat.polymorphicIndex)}
+                          </div>
+                        </div>
+                        <div class="intake-fit-card-actions">
+                          <button
+                            type="button"
+                            class={isUsed ? "btn-primary intake-use-btn" : "btn-secondary intake-use-btn"}
+                            data-action="toggle-intake-resource"
+                            data-resource-id={mat.resourceVersionId}
+                            aria-pressed={isUsed}
+                          >
+                            {isUsed ? "✓ Using" : "Use"}
+                          </button>
+                          <button
+                            type="button"
+                            class={`btn-secondary intake-skip-btn${isSkipped ? " is-active" : ""}`}
+                            data-action="skip-intake-resource"
+                            data-resource-id={mat.resourceVersionId}
+                            aria-pressed={isSkipped}
+                          >
+                            {isSkipped ? "Skipped" : "Skip"}
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </section>
+        ) : null}
 
         {intakeNote ? (
           <p class="prose intake-status-note" role="status">

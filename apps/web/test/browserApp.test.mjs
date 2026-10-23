@@ -1653,17 +1653,19 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
-  // 1. First-open onboarding: #intake-goal is empty with subject placeholder, unified topic chips, and one primary CTA
+  // 1. First-open onboarding: #intake-goal is a multi-line textarea with subject placeholder, and Suggested fit is hidden until Goal or Topics are entered
   const initialDialog = dialogOf(root.innerHTML);
-  assert.ok(initialDialog.includes('id="intake-goal"'));
+  assert.ok(initialDialog.includes('<textarea id="intake-goal"'));
   assert.ok(initialDialog.includes('placeholder="e.g., Build and Evaluate RAG Systems in Python"'));
   assert.equal(initialDialog.includes('value="Build and Evaluate RAG Systems in Python"'), false);
   assert.ok(initialDialog.includes('id="intake-subject-select"'));
   assert.ok(initialDialog.includes('id="intake-topic-select"'));
   assert.ok(initialDialog.includes('data-dependent-on-subject="Engineering"'));
-  assert.ok(initialDialog.includes('id="intake-suggested-fit-tray"'));
-  assert.ok(initialDialog.includes("Suggested fit"));
-  assert.ok(initialDialog.includes("Web search: Vector Indexing"));
+  assert.equal(
+    initialDialog.includes('id="intake-suggested-fit-tray"'),
+    false,
+    "Suggested fit tray is hidden when neither Goal nor Topics have been entered yet",
+  );
   assert.equal(initialDialog.includes('class="intake-coverage-chips"'), false, "Selected topics must not be duplicated in a second chip bar");
   assert.equal(initialDialog.includes('data-action="review-generate"'), false, "Modal footer has one clear primary CTA");
   assert.equal(initialDialog.includes("Advanced &amp; billing"), false, "Internal billing jargon accordion is removed from modal");
@@ -1671,18 +1673,12 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     assert.equal(initialDialog.includes(verbose), false);
   }
 
-  // Polymorphic index previews: Book TOC + summary and YouTube playlist syllabus + transcript
-  assert.ok(initialDialog.includes("Chapters (3)"));
-  assert.ok(initialDialog.includes("978-0-262-04912-2"));
-  assert.ok(initialDialog.includes("Byte-Pair Encoding &amp; Unigram Likelihood"));
-  assert.ok(initialDialog.includes("Videos (2)"));
-  assert.ok(initialDialog.includes("<code>04:15</code>"));
-
   // 1b. Dependent tag hierarchy: Subject -> Topics -> Sub-topics with prerequisite auto-inclusion and cascading deselect
   assert.equal(initialDialog.includes('id="intake-subtopics-label"'), false, "Tier 3 sub-topics are hidden until a parent topic is selected");
   click({ action: "toggle-intake-topic", intakeTopic: "RAG" });
   assert.deepEqual(app.getState().intakeTopics, ["Python", "RAG"], "Selecting RAG automatically includes prerequisite Python");
   const afterRagDialog = dialogOf(root.innerHTML);
+  assert.ok(afterRagDialog.includes('id="intake-suggested-fit-tray"'), "Selecting a topic reveals Suggested fit tray");
   assert.ok(afterRagDialog.includes("prereq"), "Auto-included prerequisite displays prereq badge");
   assert.ok(afterRagDialog.includes('id="intake-subtopics-label"'), "Selecting RAG progressively discloses Tier 3 Sub-topics");
   assert.ok(afterRagDialog.includes('data-intake-topic="Vector Indexing"'));
@@ -1693,6 +1689,19 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.deepEqual(app.getState().intakeTopics, ["Python"], "Deselecting parent RAG cascades to deselect child Vector Indexing");
   click({ action: "clear-intake-topics" });
   assert.deepEqual(app.getState().intakeTopics, []);
+
+  // Entering a Goal also reveals Suggested fit tray with Polymorphic index previews (Book TOC + YouTube syllabus indented in .intake-material-inner)
+  click({ action: "set-intake-goal", intakeGoalTitle: "Build and Evaluate RAG Systems in Python" });
+  const afterGoalDialog = dialogOf(root.innerHTML);
+  assert.ok(afterGoalDialog.includes('id="intake-suggested-fit-tray"'));
+  assert.ok(afterGoalDialog.includes("Suggested fit"));
+  assert.ok(afterGoalDialog.includes("Web search: Vector Indexing"));
+  assert.ok(afterGoalDialog.includes('class="intake-material-inner"'));
+  assert.ok(afterGoalDialog.includes("Chapters (3)"));
+  assert.ok(afterGoalDialog.includes("978-0-262-04912-2"));
+  assert.ok(afterGoalDialog.includes("Byte-Pair Encoding &amp; Unigram Likelihood"));
+  assert.ok(afterGoalDialog.includes("Videos (2)"));
+  assert.ok(afterGoalDialog.includes("<code>04:15</code>"));
 
   // 2. Switching fitMode to "use_selected_only" bypasses web search completely (0 web calls)
   click({ action: "set-intake-fit-mode", fitMode: "use_selected_only" });

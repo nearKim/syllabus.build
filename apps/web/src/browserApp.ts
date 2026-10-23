@@ -2862,7 +2862,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         rescheduleSessionId = data["sessionId"];
         rescheduleValue = data["rescheduleValue"] ?? "";
       } else if (action === "reset-depth-override") depthOverrideReset = true;
-      else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
+      else if (action === "set-intake-goal" && typeof data["intakeGoalTitle"] === "string") {
+        intakeGoalTitle = data["intakeGoalTitle"];
+      } else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeSubject = data["intakeSubject"];
         intakeTopics = [];

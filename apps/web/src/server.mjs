@@ -200,7 +200,12 @@ ${fallbackScript}
       return false;
     }
     if (!payload || typeof payload.html !== "string") return false;
-    const focusedKey = keyFor(document.activeElement);
+    const activeEl = document.activeElement;
+    const isGoalFocused = Boolean(activeEl && activeEl.id === "intake-goal");
+    const goalLiveValue = isGoalFocused ? activeEl.value : null;
+    const goalSelStart = isGoalFocused && typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null;
+    const goalSelEnd = isGoalFocused && typeof activeEl.selectionEnd === "number" ? activeEl.selectionEnd : null;
+    const focusedKey = keyFor(activeEl);
     const previous = openDialogScroll();
     const rail = root.querySelector(".today-curricula-grid");
     const railLeft = rail ? rail.scrollLeft : 0;
@@ -218,6 +223,15 @@ ${fallbackScript}
     initDatepickers();
     initPlanSelects();
     if (!focusKey(focusedKey) && patch.action === "close-study-detail") focusKey(inspectorOpenerKey);
+    if (isGoalFocused) {
+      const nextGoal = root.querySelector("#intake-goal");
+      if (nextGoal) {
+        if (goalLiveValue !== null) nextGoal.value = goalLiveValue;
+        if (goalSelStart !== null && goalSelEnd !== null && typeof nextGoal.setSelectionRange === "function") {
+          nextGoal.setSelectionRange(goalSelStart, goalSelEnd);
+        }
+      }
+    }
     return true;
   }
 
@@ -331,7 +345,16 @@ ${fallbackScript}
 
   // A topic picked from the finder's list applies at once. A pick fires an input event with no inputType or with
   // insertReplacementText. Typed text fires insertText and waits for Enter.
+  let goalInputTimer = null;
   root.addEventListener("input", (event) => {
+    if (event.target && event.target.id === "intake-goal") {
+      if (goalInputTimer) clearTimeout(goalInputTimer);
+      const val = event.target.value;
+      goalInputTimer = setTimeout(() => {
+        dispatchServerRender({ action: "set-intake-goal", intakeGoalTitle: val });
+      }, 150);
+      return;
+    }
     if (event.target.id !== "marketplace-topic") return;
     event.target.setCustomValidity("");
     if (!event.inputType || event.inputType === "insertReplacementText") event.target.form.requestSubmit();
