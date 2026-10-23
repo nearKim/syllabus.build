@@ -62,7 +62,7 @@ import {
 import {
   DEFAULT_SUBJECT_TOPICS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
   INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
-  evaluateIntakeResourceFit, executeIntakeGenerationPipeline,
+  evaluateIntakeResourceFit, executeIntakeGenerationPipeline, resolveDependentTopicToggle,
   type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
   type IntakePipelineExecutionReceipt, type IntakeSubject,
 } from "./components/NewCurriculumDialog.tsx";
@@ -2875,10 +2875,10 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         intakeSkippedResourceIds = [];
       } else if (action === "toggle-intake-topic" && data["intakeTopic"]) {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
-        const topic = data["intakeTopic"];
-        intakeTopics = intakeTopics.includes(topic)
-          ? intakeTopics.filter((t) => t !== topic)
-          : [...intakeTopics, topic];
+        intakeTopics = resolveDependentTopicToggle(intakeSubject, intakeTopics, data["intakeTopic"]);
+      } else if (action === "clear-intake-topics") {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
+        intakeTopics = [];
       } else if (action === "set-intake-depth" && isOneOf(INTAKE_DEPTH_CHOICES, data["intakeDepth"])) {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeDepth = data["intakeDepth"];

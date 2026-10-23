@@ -1678,6 +1678,22 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.ok(initialDialog.includes("Videos (2)"));
   assert.ok(initialDialog.includes("<code>04:15</code>"));
 
+  // 1b. Dependent tag hierarchy: Subject -> Topics -> Sub-topics with prerequisite auto-inclusion and cascading deselect
+  assert.equal(initialDialog.includes('id="intake-subtopics-label"'), false, "Tier 3 sub-topics are hidden until a parent topic is selected");
+  click({ action: "toggle-intake-topic", intakeTopic: "RAG" });
+  assert.deepEqual(app.getState().intakeTopics, ["Python", "RAG"], "Selecting RAG automatically includes prerequisite Python");
+  const afterRagDialog = dialogOf(root.innerHTML);
+  assert.ok(afterRagDialog.includes("prereq"), "Auto-included prerequisite displays prereq badge");
+  assert.ok(afterRagDialog.includes('id="intake-subtopics-label"'), "Selecting RAG progressively discloses Tier 3 Sub-topics");
+  assert.ok(afterRagDialog.includes('data-intake-topic="Vector Indexing"'));
+  assert.ok(afterRagDialog.includes('data-intake-topic="Evaluation"'));
+  click({ action: "toggle-intake-topic", intakeTopic: "Vector Indexing" });
+  assert.deepEqual(app.getState().intakeTopics, ["Python", "RAG", "Vector Indexing"]);
+  click({ action: "toggle-intake-topic", intakeTopic: "RAG" });
+  assert.deepEqual(app.getState().intakeTopics, ["Python"], "Deselecting parent RAG cascades to deselect child Vector Indexing");
+  click({ action: "clear-intake-topics" });
+  assert.deepEqual(app.getState().intakeTopics, []);
+
   // 2. Switching fitMode to "use_selected_only" bypasses web search completely (0 web calls)
   click({ action: "set-intake-fit-mode", fitMode: "use_selected_only" });
   const bypassDialog = dialogOf(root.innerHTML);

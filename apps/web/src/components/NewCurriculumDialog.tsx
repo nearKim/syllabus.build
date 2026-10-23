@@ -44,6 +44,116 @@ export const DEFAULT_SUBJECT_TOPICS: Readonly<Record<IntakeSubject, readonly str
   Literature: ["Tolstoy", "Realism", "Narrative", "Comparative Close Reading"],
 };
 
+export interface SubjectTopicTaxonomy {
+  readonly coreTopics: readonly string[];
+  readonly prerequisitesByTopic: Readonly<Record<string, readonly string[]>>;
+  readonly subtopicsByParent: Readonly<Record<string, readonly string[]>>;
+}
+
+export const SUBJECT_TOPIC_TAXONOMY: Readonly<Record<IntakeSubject, SubjectTopicTaxonomy>> = {
+  Engineering: {
+    coreTopics: ["Python", "RAG", "Attention", "Linear Algebra"],
+    prerequisitesByTopic: {
+      RAG: ["Python"],
+      Attention: ["Linear Algebra"],
+      "Vector Indexing": ["RAG", "Python"],
+      Evaluation: ["RAG", "Python"],
+    },
+    subtopicsByParent: {
+      RAG: ["Vector Indexing", "Evaluation"],
+      Attention: ["Vector Indexing", "Evaluation"],
+    },
+  },
+  Systems: {
+    coreTopics: ["Rust", "Async", "Concurrency"],
+    prerequisitesByTopic: {
+      Async: ["Rust"],
+      Concurrency: ["Rust"],
+      Wakers: ["Async", "Rust"],
+      "Work Stealing": ["Concurrency", "Rust"],
+    },
+    subtopicsByParent: {
+      Async: ["Wakers", "Work Stealing"],
+      Concurrency: ["Work Stealing"],
+    },
+  },
+  Mathematics: {
+    coreTopics: ["Linear Algebra", "Eigenvalues", "Matrix Calculus"],
+    prerequisitesByTopic: {
+      Eigenvalues: ["Linear Algebra"],
+      "Matrix Calculus": ["Linear Algebra"],
+      SVD: ["Eigenvalues", "Linear Algebra"],
+    },
+    subtopicsByParent: {
+      Eigenvalues: ["SVD"],
+    },
+  },
+  Physics: {
+    coreTopics: ["Thermodynamics", "Ensembles"],
+    prerequisitesByTopic: {
+      Ensembles: ["Thermodynamics"],
+      "Phase Transitions": ["Ensembles", "Thermodynamics"],
+      "Ising Model": ["Ensembles", "Thermodynamics"],
+    },
+    subtopicsByParent: {
+      Ensembles: ["Phase Transitions", "Ising Model"],
+    },
+  },
+  Literature: {
+    coreTopics: ["Tolstoy", "Realism", "Narrative"],
+    prerequisitesByTopic: {
+      Realism: ["Tolstoy"],
+      Narrative: ["Tolstoy"],
+      "Comparative Close Reading": ["Realism", "Tolstoy"],
+    },
+    subtopicsByParent: {
+      Realism: ["Comparative Close Reading"],
+      Narrative: ["Comparative Close Reading"],
+    },
+  },
+};
+
+export function resolveDependentTopicToggle(
+  subject: IntakeSubject,
+  currentTopics: readonly string[],
+  toggledTopic: string,
+): string[] {
+  const taxonomy = SUBJECT_TOPIC_TAXONOMY[subject];
+  const allOrdered = DEFAULT_SUBJECT_TOPICS[subject];
+  const currentSet = new Set(currentTopics);
+
+  if (!currentSet.has(toggledTopic)) {
+    currentSet.add(toggledTopic);
+    for (const prereq of taxonomy.prerequisitesByTopic[toggledTopic] ?? []) {
+      currentSet.add(prereq);
+    }
+    const matchingParents = Object.entries(taxonomy.subtopicsByParent)
+      .filter(([, subs]) => subs.includes(toggledTopic))
+      .map(([parent]) => parent);
+    if (matchingParents.length > 0 && !matchingParents.some((parent) => currentSet.has(parent))) {
+      const primaryParent = matchingParents[0]!;
+      currentSet.add(primaryParent);
+      for (const prereq of taxonomy.prerequisitesByTopic[primaryParent] ?? []) {
+        currentSet.add(prereq);
+      }
+    }
+  } else {
+    currentSet.delete(toggledTopic);
+    const childSubs = taxonomy.subtopicsByParent[toggledTopic] ?? [];
+    for (const sub of childSubs) {
+      const stillHasOtherActiveParent = Object.entries(taxonomy.subtopicsByParent).some(
+        ([otherParent, otherSubs]) =>
+          otherParent !== toggledTopic && currentSet.has(otherParent) && otherSubs.includes(sub),
+      );
+      if (!stillHasOtherActiveParent) {
+        currentSet.delete(sub);
+      }
+    }
+  }
+
+  return allOrdered.filter((t) => currentSet.has(t));
+}
+
 export const DEFAULT_SUBJECT_GOAL_PLACEHOLDERS: Readonly<Record<IntakeSubject, string>> = {
   Engineering: "Build and Evaluate RAG Systems in Python",
   Systems: "Build an Async Rust Runtime and Work-Stealing Executor",
@@ -1069,8 +1179,19 @@ export function NewCurriculumDialog({
   fitEvaluation,
   lastPipelineReceipt,
 }: NewCurriculumDialogProps): VNode {
-  const availableTopics = DEFAULT_SUBJECT_TOPICS[subject];
-  const unselectedTopics = availableTopics.filter((t) => !requestedTopics.includes(t));
+  const taxonomy = SUBJECT_TOPIC_TAXONOMY[subject];
+  const disclosedSubtopics: { readonly topic: string; readonly parentTopic: string }[] = [];
+  const seenSubtopics = new Set<string>();
+  for (const [parentTopic, subs] of Object.entries(taxonomy.subtopicsByParent)) {
+    if (requestedTopics.includes(parentTopic)) {
+      for (const sub of subs) {
+        if (!seenSubtopics.has(sub)) {
+          seenSubtopics.add(sub);
+          disclosedSubtopics.push({ topic: sub, parentTopic });
+        }
+      }
+    }
+  }
 
   return (
     <dialog
@@ -1105,79 +1226,120 @@ export function NewCurriculumDialog({
             />
           </label>
 
-          <div class="intake-subject-topics-grid">
-            <label class="field intake-dropdown-field" for="intake-subject-select">
-              <span>Subject</span>
-              <select
-                id="intake-subject-select"
-                name="intake-subject"
-                class="intake-select"
-                data-action="set-intake-subject"
-              >
-                {INTAKE_SUBJECTS.map((subj) => (
-                  <option key={subj} value={subj} selected={subj === subject}>
-                    {subj}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label class="field intake-dropdown-field" for="intake-topic-select">
-              <span>Topics</span>
-              <select
-                id="intake-topic-select"
-                name="intake-topic"
-                class="intake-select"
-                data-action="toggle-intake-topic"
-                data-dependent-on-subject={subject}
-              >
-                <option value="" selected>
-                  {requestedTopics.length === 0
-                    ? `All ${subject} topics (select to filter)…`
-                    : unselectedTopics.length > 0
-                      ? `+ Add ${subject} topic (${unselectedTopics.length} more)…`
-                      : `All ${subject} topics selected`}
-                </option>
-                {availableTopics.map((topic) => {
-                  const active = requestedTopics.includes(topic);
+          <div class="intake-taxonomy-tree" role="group" aria-label="Subject and dependent topic tags">
+            <div class="facet-row" data-tier="1" role="group" aria-labelledby="intake-subject-label">
+              <span class="facet-label" id="intake-subject-label">
+                Subject
+              </span>
+              <div class="facet-options" id="intake-subject-select">
+                {INTAKE_SUBJECTS.map((subj) => {
+                  const active = subj === subject;
                   return (
-                    <option key={topic} value={topic}>
-                      {active ? `✓ ${topic} (remove)` : `+ ${topic}`}
-                    </option>
+                    <button
+                      key={subj}
+                      type="button"
+                      class="tag intake-subject-tag"
+                      data-action="set-intake-subject"
+                      data-intake-subject={subj}
+                      data-subject={subj}
+                      aria-pressed={active}
+                    >
+                      <SfIcon name={subjectIcon(subj)} size={15} />
+                      <span>{subj === "Mathematics" ? "Math" : subj}</span>
+                    </button>
                   );
                 })}
-              </select>
-            </label>
+              </div>
+            </div>
 
-            {requestedTopics.length > 0 ? (
-              <div class="intake-pill-group" role="group" aria-label="Selected topics and catalog coverage">
-                {requestedTopics.map((topic) => {
+            <div class="facet-row" data-tier="2" role="group" aria-labelledby="intake-topics-label">
+              <span class="facet-label" id="intake-topics-label">
+                Topics
+              </span>
+              <div
+                class="facet-options"
+                id="intake-topic-select"
+                data-dependent-on-subject={subject}
+              >
+                {taxonomy.coreTopics.map((topic) => {
+                  const active = requestedTopics.includes(topic);
+                  const requiredBy = requestedTopics.filter(
+                    (other) => other !== topic && (taxonomy.prerequisitesByTopic[other] ?? []).includes(topic),
+                  );
+                  const childSubs = taxonomy.subtopicsByParent[topic] ?? [];
                   const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
                   const status = cov?.status ?? "covered";
-                  const prefix = status === "covered" ? "✓" : status === "partial" ? "◐" : "+";
                   return (
                     <button
                       key={topic}
                       type="button"
-                      class={`filter-chip intake-topic-chip is-selected is-${status}`}
+                      class="tag intake-topic-tag"
                       data-action="toggle-intake-topic"
                       data-intake-topic={topic}
-                      data-topic-coverage={status}
-                      data-topic-coverage-pill={topic}
-                      data-coverage-state={status}
-                      aria-pressed="true"
-                      title={`Remove ${topic}`}
+                      data-topic-coverage={active ? status : undefined}
+                      data-topic-coverage-pill={active ? topic : undefined}
+                      data-coverage-state={active ? status : undefined}
+                      aria-pressed={active}
                     >
-                      <span class="intake-topic-cov-mark" aria-hidden="true">
-                        {prefix}
-                      </span>
                       <span>{topic}</span>
-                      <span class="intake-topic-remove" aria-hidden="true">
-                        ×
-                      </span>
+                      {active && requiredBy.length > 0 ? (
+                        <span
+                          class="tag-dep-badge"
+                          title={`Prerequisite for ${requiredBy.join(", ")}`}
+                        >
+                          prereq
+                        </span>
+                      ) : !active && childSubs.length > 0 ? (
+                        <span class="tag-count" title={`Unlocks ${childSubs.join(", ")}`}>
+                          +{childSubs.length}
+                        </span>
+                      ) : null}
+                      {active ? <SfIcon name="close" size={15} /> : null}
                     </button>
                   );
                 })}
+                {requestedTopics.length > 0 ? (
+                  <button
+                    type="button"
+                    class="clear-filters intake-clear-topics-btn"
+                    data-action="clear-intake-topics"
+                  >
+                    Reset
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {disclosedSubtopics.length > 0 ? (
+              <div class="facet-row" data-tier="3" role="group" aria-labelledby="intake-subtopics-label">
+                <span class="facet-label" id="intake-subtopics-label">
+                  Sub-topics
+                </span>
+                <div class="facet-options" data-dependent-subtopics-for={subject}>
+                  {disclosedSubtopics.map(({ topic, parentTopic }) => {
+                    const active = requestedTopics.includes(topic);
+                    const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
+                    const status = cov?.status ?? "covered";
+                    return (
+                      <button
+                        key={topic}
+                        type="button"
+                        class="tag intake-subtopic-tag"
+                        data-action="toggle-intake-topic"
+                        data-intake-topic={topic}
+                        data-parent-topic={parentTopic}
+                        data-topic-coverage={active ? status : undefined}
+                        data-topic-coverage-pill={active ? topic : undefined}
+                        data-coverage-state={active ? status : undefined}
+                        aria-pressed={active}
+                      >
+                        <span>{topic}</span>
+                        <span class="tag-dep-badge">via {parentTopic}</span>
+                        {active ? <SfIcon name="close" size={15} /> : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ) : null}
           </div>

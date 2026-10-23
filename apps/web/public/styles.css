@@ -4658,6 +4658,61 @@ ul.adopt-resources {
   border-color: var(--color-accent);
 }
 
+.intake-taxonomy-tree {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: 2px;
+}
+
+.intake-taxonomy-tree .facet-row {
+  --row-h: 34px;
+  grid-template-columns: 7rem minmax(0, 1fr);
+}
+
+.intake-taxonomy-tree .facet-row[data-tier="2"] {
+  --row-h: 32px;
+}
+
+.intake-taxonomy-tree .facet-row[data-tier="3"] {
+  --row-h: 30px;
+}
+
+.intake-taxonomy-tree:not(:has(.facet-row[data-tier="3"])) .facet-row[data-tier="2"]::after {
+  display: none;
+}
+
+.intake-taxonomy-tree .intake-subject-tag:not([aria-pressed="true"]) .sf-icon {
+  color: var(--subject, var(--color-text-secondary));
+}
+
+.intake-taxonomy-tree .tag {
+  min-height: var(--row-h);
+  padding: 2px 12px;
+  font-size: 13px;
+}
+
+.intake-taxonomy-tree .tag[aria-pressed="true"] {
+  padding-inline-end: 9px;
+}
+
+.tag-dep-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.intake-clear-topics-btn {
+  min-height: 28px;
+  padding: 2px 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
 .intake-row-label {
   font-size: 13px;
   font-weight: 600;
