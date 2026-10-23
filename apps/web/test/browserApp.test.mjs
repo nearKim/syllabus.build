@@ -1401,7 +1401,6 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
   assert.ok(today.includes('data-tom-select="plan"'));
   assert.ok(today.includes('<option value="__edit_plan__" data-action-option="edit-plan"'));
   assert.equal(today.includes('<details class="today-curriculum-overview">'), false);
-  assert.ok(today.includes('<span class="unit-summary-cue" aria-hidden="true">Row summary →</span>'));
 
   // Clicking a Unit cell opens the InspectorDrawer in Unit Row Accumulation Summary mode (data-inspector-mode="unit")
   const { root, click } = mountWithClicks();
@@ -1643,3 +1642,74 @@ test("Study flow texts render inline LaTeX equations into accessible MathML acro
   assert.ok(laUnitDrawer.includes('data-latex="P = A(A^T A)^{-1}A^T"'));
   assert.ok(laUnitDrawer.includes('data-latex="3 \\times 3"'));
 });
+
+test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing Fit tray, search-bypass toggle, and polymorphic Book/YouTube indexing", () => {
+  const { app, root, click } = mountWithClicks();
+  app.openDialog("dialog-new-curriculum");
+
+  const dialogOf = (html) => {
+    const start = html.indexOf('<dialog id="dialog-new-curriculum"');
+    return html.slice(start, html.indexOf("</dialog>", start));
+  };
+
+  // 1. Step 0 compact intake + Step 1 & 1.5 Suggested Existing Fit tray renders with 1/4 topic gap (Vector Indexing)
+  const initialDialog = dialogOf(root.innerHTML);
+  assert.ok(initialDialog.includes('id="intake-suggested-fit-tray"'));
+  assert.ok(initialDialog.includes("Suggested existing fit"));
+  assert.ok(
+    initialDialog.includes(
+      "Delta web search: 1 uncovered topic(s) (Vector Indexing) · Bypassing 15 indexed URLs · AI synthesis required"
+    )
+  );
+
+  // Polymorphic index previews: Book TOC + summary and YouTube playlist syllabus + transcript
+  assert.ok(initialDialog.includes("Show Book TOC &amp; summary (3 chapters)"));
+  assert.ok(initialDialog.includes("978-0-262-04912-2"));
+  assert.ok(initialDialog.includes("Byte-Pair Encoding &amp; Unigram Likelihood"));
+  assert.ok(initialDialog.includes("Show YouTube syllabus &amp; transcript (2 videos · Transcript indexed)"));
+  assert.ok(initialDialog.includes("<code>04:15</code>"));
+
+  // 2. Switching fitMode to "use_selected_only" bypasses web search completely (0 web calls)
+  click({ action: "set-intake-fit-mode", fitMode: "use_selected_only" });
+  const bypassDialog = dialogOf(root.innerHTML);
+  assert.ok(bypassDialog.includes('data-web-search-required="false"'));
+  assert.ok(bypassDialog.includes("No web search · Reusing 3 indexed resource(s) · AI synthesis only"));
+
+  // 3. Skipping an indexed resource moves it out of intakeSelectedResourceIds; clicking Use restores it
+  click({ action: "skip-intake-resource", resourceId: "synthetic-resource-tokenization-v1" });
+  assert.equal(app.getState().intakeSelectedResourceIds.includes("synthetic-resource-tokenization-v1"), false);
+  assert.equal(app.getState().intakeSkippedResourceIds.includes("synthetic-resource-tokenization-v1"), true);
+  click({ action: "toggle-intake-resource", resourceId: "synthetic-resource-tokenization-v1" });
+  assert.equal(app.getState().intakeSelectedResourceIds.includes("synthetic-resource-tokenization-v1"), true);
+
+  // 4. Switch back to "fill_gaps" and trigger Step 2-4 AI Curriculum Synthesis + Polymorphic DB Indexing
+  click({ action: "set-intake-fit-mode", fitMode: "fill_gaps" });
+  click({ action: "generate-curriculum-ai" });
+
+  const afterGen = app.getState();
+  assert.equal(afterGen.selectedCurriculumId, "curriculum-ai-generated-001");
+  assert.equal(afterGen.learnSubDestination, "Plan");
+  assert.equal(afterGen.openDialogId, null);
+  assert.ok(afterGen.lastPipelineReceipt);
+  assert.equal(afterGen.lastPipelineReceipt.webSearchExecuted, true);
+  assert.deepEqual(afterGen.lastPipelineReceipt.searchedDeltaTopics, ["Vector Indexing"]);
+  assert.deepEqual(afterGen.lastPipelineReceipt.newlyIndexedResourceIds, [
+    "discovered-book-hnsw-vector-v1",
+    "discovered-youtube-rag-eval-playlist-v1",
+  ]);
+  assert.equal(afterGen.lastPipelineReceipt.bypassedCanonicalUrls.length, 15);
+
+  // 5. Newly discovered resources are indexed into Learn › Resources with polymorphic Book and YouTube categories
+  app.navigateLearnSubDestination("Resources");
+  const resourcesHtml = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-learn-resources"'),
+    root.innerHTML.indexOf('id="panel-explore"')
+  );
+  assert.ok(resourcesHtml.includes("Book: Approximate Nearest Neighbor &amp; HNSW Vector Indexing (Vector Indexing)"));
+  assert.ok(resourcesHtml.includes("YouTube Playlist: RAG Triad Evaluation, Faithfulness &amp; Context Recall Walkthrough"));
+
+  // 6. Switching to Today shows the newly synthesized curriculum with inline LaTeX math and borderless Unit spine
+  app.navigateLearnSubDestination("Today");
+  assert.ok(root.innerHTML.includes('data-latex="\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}"'));
+});
+

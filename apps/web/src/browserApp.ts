@@ -59,6 +59,13 @@ import {
   RESOURCE_CATEGORIES, RESOURCE_SCOPES, ResourcesView,
   type ResourceCategory, type ResourceScope,
 } from "./components/ResourcesView.tsx";
+import {
+  DEFAULT_SUBJECT_TOPICS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
+  INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
+  evaluateIntakeResourceFit, executeIntakeGenerationPipeline,
+  type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
+  type IntakePipelineExecutionReceipt, type IntakeSubject,
+} from "./components/NewCurriculumDialog.tsx";
 import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state/store.ts";
 
 export {
@@ -80,6 +87,12 @@ export {
   type Vote,
   type ResourceCategory,
   type ResourceScope,
+  type IntakeSubject,
+  type IntakeDepthChoice,
+  type IntakeFlowChoice,
+  type IntakeMaterialsChoice,
+  type IntakeFitMode,
+  type IntakePipelineExecutionReceipt,
 };
 
 export interface CurriculumWebAppStateInput {
@@ -117,6 +130,13 @@ export interface CurriculumWebAppStateInput {
   readonly publishedListings?: readonly MarketplaceListing[];
   readonly adoptPublicationId?: string | null; readonly adoptModuleIds?: readonly string[];
   readonly resourceScope?: ResourceScope; readonly resourceCategory?: ResourceCategory;
+  readonly intakeGoalTitle?: string; readonly intakeSubject?: IntakeSubject;
+  readonly intakeTopics?: readonly string[]; readonly intakeDepth?: IntakeDepthChoice;
+  readonly intakeFlow?: IntakeFlowChoice; readonly intakeMaterials?: IntakeMaterialsChoice;
+  readonly intakeWeeklyMinutes?: number; readonly intakeFitMode?: IntakeFitMode;
+  readonly intakeSelectedResourceIds?: readonly string[]; readonly intakeSkippedResourceIds?: readonly string[];
+  readonly generatedPlans?: readonly ActiveCurriculum[];
+  readonly lastPipelineReceipt?: IntakePipelineExecutionReceipt | null;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -1207,13 +1227,19 @@ function deliverablesOf(curriculum: Record<string, unknown>, activityId: string)
     .map((item) => renderUntrustedCatalogText(item, { maxLength: 2000 }).text);
 }
 
-// An account's plans: the base plans, then its own adopted copies.
-const plansFor = (accountId: string, adoptions: readonly Adoption[], listings: readonly MarketplaceListing[]): readonly ActiveCurriculum[] => [
+// An account's plans: the base plans, its own adopted copies, and any AI-generated drafts.
+const plansFor = (
+  accountId: string,
+  adoptions: readonly Adoption[],
+  listings: readonly MarketplaceListing[],
+  generatedPlans: readonly ActiveCurriculum[] = [],
+): readonly ActiveCurriculum[] => [
   ...ACTIVE_CURRICULA,
   ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
     const listing = listings.find((entry) => entry.publicationId === adoption.publicationId);
     return listing ? [adoptedPlanOf(listing, adoption)] : [];
   }),
+  ...generatedPlans.filter((plan) => (plan.curriculum["account_id"] ?? accountId) === accountId),
 ];
 
 function renderInspector(props: Parameters<typeof InspectorDrawer>[0]): string {
@@ -1222,11 +1248,6 @@ function renderInspector(props: Parameters<typeof InspectorDrawer>[0]): string {
 
 function renderMapControl(control: "zoom_in" | "zoom_out" | "fit_view" | "reset_focus", label: string, visibleLabel: string, icon: SfIconName): string {
   return `<button type="button" class="btn-secondary map-control-btn" data-action="map-control" data-map-control="${control}" aria-label="${escapeHtml(label)}">${sfIcon(icon, 16)}<span>${escapeHtml(visibleLabel)}</span></button>`;
-}
-
-function choiceRadio(name: string, value: string, label: string, description: string, checked: boolean): string {
-  const id = `${name}-${value}`;
-  return `<label class="choice-option" for="${id}"><input type="radio" id="${id}" name="${name}" value="${escapeHtml(value)}"${checked ? " checked" : ""}><span><strong>${escapeHtml(label)}</strong><span class="meta-text">${escapeHtml(description)}</span></span></label>`;
 }
 
 function shortSessionLabel(startAt: string): string {
@@ -1338,7 +1359,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const listings = [...MARKETPLACE_LISTINGS, ...(inputState.publishedListings ?? [])];
   const votes = inputState.votes ?? [];
   const adoptions = inputState.adoptions ?? [];
-  const plans = plansFor(account.accountId, adoptions, listings);
+  const generatedPlans = inputState.generatedPlans ?? [];
+  const plans = plansFor(account.accountId, adoptions, listings, generatedPlans);
   // A curriculum or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
   const registered = planIn(plans, inputState.selectedCurriculumId);
   const selectedPlan: ActiveCurriculum = {
@@ -2196,81 +2218,52 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   ${signedOut ? "" : inspectorHtml}
   ${renderToString(h(CompactBottomNav, { activeTopLevel }))}
 
-  ${signedOut ? "" : `  <dialog id="dialog-new-curriculum" closedby="any" aria-labelledby="dialog-new-curriculum-title"${dialogOpen("dialog-new-curriculum")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-new-curriculum-title">New Curriculum &amp; Preferences</h2>${DIALOG_CLOSE_BUTTON}</header>
-      <p class="prose meta-text">Goal and scope → Background and approach → Time and access → Review and generate</p>
-      <section>
-        <h3>Goal and scope</h3>
-        <label class="field" for="intake-goal">What do you want to learn? <span class="meta-text">Required</span>
-          <input id="intake-goal" name="goal" type="text" autocomplete="off" autofocus>
-        </label>
-        <label class="field" for="intake-use">Intended use <span class="meta-text">Optional</span>
-          <input id="intake-use" name="intended-use" type="text" autocomplete="off" placeholder="Building applications, foundations, or research">
-        </label>
-        <p class="prose">A broad goal opens editable scope choices. A finite catalog plan is not exhaustive. Included and excluded topics stay visible before generation.</p>
-      </section>
-      <section>
-        <h3>Background and approach</h3>
-        <fieldset class="choice-group">
-          <legend>What I already know</legend>
-          <ul class="knowledge-list">
-            <li>Linear algebra: introductory matrix operations demonstrated <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-topic="linear-algebra">View evidence</button></li>
-            <li>Matrix calculus: not assessed <button type="button" class="btn-secondary" data-action="check-prerequisites">Check prerequisites</button></li>
-          </ul>
-          <p class="prose">Claims and observations stay separate from assessed proficiency. Editing this self-report does not change assessed evidence.</p>
-        </fieldset>
-        <fieldset class="choice-group">
-          <legend>Mathematical depth</legend>
-          ${choiceRadio("math-depth", "intuitive", "Intuitive", "Conceptual explanations with necessary mathematical ideas.", false)}
-          ${choiceRadio("math-depth", "applied", "Applied", "Mathematics used for implementation and evaluation.", false)}
-          ${choiceRadio("math-depth", "formal", "Formal", "Relevant assumptions, derivations, and proof or mathematical reasoning where appropriate. Proofs are not promised for every engineering activity.", true)}
-          <p>Inherited: Tokenization, Formal. This follows the global default.</p>
-          <p>${depthOverrideReset ? "Matrix calculus override removed. Inherited depth follows the global default." : "Override: Matrix calculus, Formal."}</p>
-          <label class="field" for="topic-depth-override">Per-topic override <span class="meta-text">Optional</span>
-            <select id="topic-depth-override" name="topic-depth-override"><option>Matrix calculus: Formal</option></select>
-          </label>
-          <button type="button" class="btn-secondary" data-action="reset-depth-override">Reset to default</button>
-        </fieldset>
-        <fieldset class="choice-group">
-          <legend>How I want to start</legend>
-          ${choiceRadio("start-order", "theory_first", "Theory first", "Instruction begins with the formal treatment.", false)}
-          ${choiceRadio("start-order", "application_first", "Application first", "An early working example can precede formal derivation. This is compatible with Formal depth.", true)}
-          ${choiceRadio("start-order", "balanced", "Balanced", "Theory and application alternate. This is instructional order, not a learning-style diagnosis.", false)}
-        </fieldset>
-        <fieldset class="choice-group">
-          <legend>Familiar material</legend>
-          ${choiceRadio("familiar-material", "condense", "Condense", "Shorter treatment of familiar material.", false)}
-          ${choiceRadio("familiar-material", "retain_full", "Keep full treatment", "Retain the full explanation.", false)}
-          ${choiceRadio("familiar-material", "skip_if_demonstrated", "Skip only when demonstrated", "Skip only when qualifying evidence exists.", true)}
-        </fieldset>
-      </section>
-      <section>
-        <h3>Time and access</h3>
-        <label class="field" for="weekly-minutes">Weekly minutes <span class="meta-text">Required</span>
-          <input id="weekly-minutes" name="weekly-minutes" type="text" value="120">
-        </label>
-        <p>Timezone: America/New_York (Eastern Time). Deadline: <span class="meta-text">Optional</span> none set.</p>
-        <fieldset class="choice-group"><legend>Materials access</legend>
-          ${choiceRadio("materials-access", "free_only", "Free-only", "Use free learning materials only.", false)}
-          ${choiceRadio("materials-access", "paid_allowed", "Paid allowed", "Paid materials stay separate from inference charges.", true)}
-        </fieldset>
-        <p class="prose warning-copy">Service fees, hosted inference, externally billed BYOK inference, learning materials, certification, and compute stay distinct. Free materials do not imply free generation. An unknown merchant price stays Price unknown (verify externally), not $0.00.</p>
-      </section>
-      <section>
-        <h3>Review and generate</h3>
-        <ul>
-          <li>Mathematical depth: Formal, with Matrix calculus ${depthOverrideReset ? "inherited" : "overridden"}.</li>
-          <li>Start: Application first.</li>
-          <li>Familiar material: Skip only when demonstrated.</li>
-          <li>Linear algebra: introductory matrix operations demonstrated. Matrix calculus: not assessed.</li>
-        </ul>
-        <p class="prose">Generating a draft does not activate the plan, schedule reminders, or start a charge.</p>
-        <button type="button" class="btn-primary" data-action="review-generate">Review and generate</button>
-        ${intakeNote ? `<p class="prose" role="status">${escapeHtml(intakeNote)}</p>` : ""}
-      </section>
-    </form>
-  </dialog>
+  ${signedOut ? "" : `  ${(() => {
+    const intakeGoalTitle = inputState.intakeGoalTitle ?? "Build and Evaluate RAG Systems in Python";
+    const intakeSubject: IntakeSubject = inputState.intakeSubject ?? "Engineering";
+    const intakeTopics = inputState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"];
+    const intakeDepth: IntakeDepthChoice = inputState.intakeDepth ?? "formal";
+    const intakeFlow: IntakeFlowChoice = inputState.intakeFlow ?? "application_first";
+    const intakeMaterials: IntakeMaterialsChoice = inputState.intakeMaterials ?? "free_only";
+    const intakeWeeklyMinutes = inputState.intakeWeeklyMinutes ?? 120;
+    const intakeFitMode: IntakeFitMode = inputState.intakeFitMode ?? "fill_gaps";
+    const defaultCandidateIds = buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials)
+      .map((m) => m.resourceVersionId);
+    const intakeSelectedResourceIds = inputState.intakeSelectedResourceIds ?? defaultCandidateIds;
+    const intakeSkippedResourceIds = inputState.intakeSkippedResourceIds ?? [];
+    const fitEvaluation = evaluateIntakeResourceFit({
+      goalTitle: intakeGoalTitle,
+      subject: intakeSubject,
+      requestedTopics: intakeTopics,
+      depth: intakeDepth,
+      flowOrder: intakeFlow,
+      materialsAccess: intakeMaterials,
+      weeklyMinutes: intakeWeeklyMinutes,
+      fitMode: intakeFitMode,
+      selectedResourceIds: intakeSelectedResourceIds,
+      skippedResourceIds: intakeSkippedResourceIds,
+      catalogResources,
+      myPlans,
+      marketplaceListings: listings,
+    });
+    return renderToString(
+      h(NewCurriculumDialog, {
+        open: openDialogId === "dialog-new-curriculum",
+        goalTitle: intakeGoalTitle,
+        subject: intakeSubject,
+        requestedTopics: intakeTopics,
+        depth: intakeDepth,
+        flowOrder: intakeFlow,
+        materialsAccess: intakeMaterials,
+        weeklyMinutes: intakeWeeklyMinutes,
+        fitMode: intakeFitMode,
+        depthOverrideReset,
+        intakeNote,
+        fitEvaluation,
+        lastPipelineReceipt: inputState.lastPipelineReceipt ?? null,
+      }),
+    );
+  })()}
 
   <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title"${dialogOpen("dialog-adaptation-diff")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
@@ -2348,7 +2341,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
   const adoptListing = (): MarketplaceListing | undefined => listings().find((entry) => entry.publicationId === adoptPublicationId);
   let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? unitIdsOf(adoptListing()))];
-  const currentPlans = () => plansFor(account.accountId, adoptions, listings());
+  let generatedPlans: ActiveCurriculum[] = [...(initialState.generatedPlans ?? [])];
+  const currentPlans = () => plansFor(account.accountId, adoptions, listings(), generatedPlans);
   const isMyPlan = (curriculumId: unknown): curriculumId is string => currentPlans().some((plan) => plan.curriculumId === curriculumId);
   // Input overrides replace the selected plan's curriculum and schedule, the same rule the render applies.
   let selectedCurriculumId = planIn(currentPlans(), initialState.selectedCurriculumId).curriculumId;
@@ -2388,7 +2382,24 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let openDialogId: string | null = initialState.openDialogId ?? null;
 
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
-  const catalogResources = initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
+  let catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>> =
+    initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
+  let intakeGoalTitle = initialState.intakeGoalTitle ?? "Build and Evaluate RAG Systems in Python";
+  let intakeSubject: IntakeSubject = initialState.intakeSubject ?? "Engineering";
+  let intakeTopics: string[] = [...(initialState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"])];
+  let intakeDepth: IntakeDepthChoice = initialState.intakeDepth ?? "formal";
+  let intakeFlow: IntakeFlowChoice = initialState.intakeFlow ?? "application_first";
+  let intakeMaterials: IntakeMaterialsChoice = initialState.intakeMaterials ?? "free_only";
+  let intakeWeeklyMinutes = initialState.intakeWeeklyMinutes ?? 120;
+  let intakeFitMode: IntakeFitMode = initialState.intakeFitMode ?? "fill_gaps";
+  let intakeSelectedResourceIds: string[] = [
+    ...(initialState.intakeSelectedResourceIds ??
+      buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials).map(
+        (m) => m.resourceVersionId,
+      )),
+  ];
+  let intakeSkippedResourceIds: string[] = [...(initialState.intakeSkippedResourceIds ?? [])];
+  let lastPipelineReceipt: IntakePipelineExecutionReceipt | null = initialState.lastPipelineReceipt ?? null;
   let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(planData().curriculum);
   let deepDive: DeepDiveMode = initialState.deepDive ?? "included";
   let spacedReview: SpacedReviewMode = initialState.spacedReview ?? "included";
@@ -2511,6 +2522,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     adoptModuleIds = [];
     resourceScope = "selected";
     resourceCategory = "All";
+    generatedPlans = [];
+    lastPipelineReceipt = null;
     studyDetailOpen = false;
     openDialogId = null;
     selectedCurriculumId = RAG_PLAN.curriculumId;
@@ -2599,6 +2612,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   function activateSelectedDraft(): void {
     adoptions = adoptions.map((adoption) => (adoption.accountId === account.accountId && `adopted-${adoption.publicationId}` === selectedCurriculumId
       ? { ...adoption, active: true } : adoption));
+    generatedPlans = generatedPlans.map((plan) => (plan.curriculumId === selectedCurriculumId ? { ...plan, draft: false } : plan));
   }
 
   const publishedFromSelected = (): boolean =>
@@ -2658,6 +2672,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
       depthOverrideReset, studyDetailOpen, inspectorMode, flowOrder, deepDive, spacedReview,
+      catalogResources, intakeGoalTitle, intakeSubject,
+      intakeTopics: [...intakeTopics] as readonly string[],
+      intakeDepth, intakeFlow, intakeMaterials, intakeWeeklyMinutes, intakeFitMode,
+      intakeSelectedResourceIds: [...intakeSelectedResourceIds] as readonly string[],
+      intakeSkippedResourceIds: [...intakeSkippedResourceIds] as readonly string[],
+      generatedPlans: [...generatedPlans] as readonly ActiveCurriculum[],
+      lastPipelineReceipt,
     };
   };
 
@@ -2841,8 +2862,125 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         rescheduleSessionId = data["sessionId"];
         rescheduleValue = data["rescheduleValue"] ?? "";
       } else if (action === "reset-depth-override") depthOverrideReset = true;
-      else if (action === "review-generate") intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
-      else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
+      else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
+        intakeSubject = data["intakeSubject"];
+        intakeTopics = [...DEFAULT_SUBJECT_TOPICS[intakeSubject].slice(0, 4)];
+        intakeSelectedResourceIds = buildIndexedMaterialCandidates(
+          catalogResources,
+          intakeSubject,
+          intakeTopics,
+          intakeMaterials,
+        ).map((m) => m.resourceVersionId);
+        intakeSkippedResourceIds = [];
+      } else if (action === "toggle-intake-topic" && data["intakeTopic"]) {
+        const topic = data["intakeTopic"];
+        intakeTopics = intakeTopics.includes(topic)
+          ? intakeTopics.filter((t) => t !== topic)
+          : [...intakeTopics, topic];
+      } else if (action === "set-intake-depth" && isOneOf(INTAKE_DEPTH_CHOICES, data["intakeDepth"])) {
+        intakeDepth = data["intakeDepth"];
+      } else if (action === "set-intake-flow" && isOneOf(INTAKE_FLOW_CHOICES, data["intakeFlow"])) {
+        intakeFlow = data["intakeFlow"];
+      } else if (action === "set-intake-materials" && isOneOf(INTAKE_MATERIALS_CHOICES, data["intakeMaterials"])) {
+        intakeMaterials = data["intakeMaterials"];
+        intakeSelectedResourceIds = buildIndexedMaterialCandidates(
+          catalogResources,
+          intakeSubject,
+          intakeTopics,
+          intakeMaterials,
+        )
+          .map((m) => m.resourceVersionId)
+          .filter((id) => !intakeSkippedResourceIds.includes(id));
+      } else if (action === "set-intake-pace" && data["weeklyMinutes"]) {
+        const parsed = Number.parseInt(data["weeklyMinutes"], 10);
+        if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
+      } else if (action === "set-intake-fit-mode" && isOneOf(INTAKE_FIT_MODES, data["fitMode"])) {
+        intakeFitMode = data["fitMode"];
+      } else if (action === "toggle-intake-resource" && data["resourceId"]) {
+        const resId = data["resourceId"];
+        if (intakeSelectedResourceIds.includes(resId)) {
+          intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
+        } else {
+          intakeSelectedResourceIds = [...intakeSelectedResourceIds, resId];
+          intakeSkippedResourceIds = intakeSkippedResourceIds.filter((id) => id !== resId);
+        }
+      } else if (action === "skip-intake-resource" && data["resourceId"]) {
+        const resId = data["resourceId"];
+        if (intakeSkippedResourceIds.includes(resId)) {
+          intakeSkippedResourceIds = intakeSkippedResourceIds.filter((id) => id !== resId);
+        } else {
+          intakeSkippedResourceIds = [...intakeSkippedResourceIds, resId];
+          intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
+        }
+      } else if (action === "intake-open-existing-plan" && isMyPlan(data["curriculumId"])) {
+        selectCurriculum(data["curriculumId"]);
+        openDialogId = null;
+        topLevel = "Learn";
+        learnSubDestination = "Plan";
+      } else if (action === "intake-adopt-marketplace-plan" && data["publicationId"]) {
+        const listing = adoptableListing(data["publicationId"]);
+        if (listing) {
+          adoptPublicationId = listing.publicationId;
+          adoptModuleIds = unitIdsOf(listing);
+          adopt(listing);
+        } else {
+          const existing = currentPlans().find((p) => p.publicationId === data["publicationId"]);
+          if (existing) {
+            selectCurriculum(existing.curriculumId);
+            openDialogId = null;
+            topLevel = "Learn";
+            learnSubDestination = "Plan";
+          }
+        }
+      } else if (action === "review-generate") {
+        if (data["intakeGoalTitle"]) intakeGoalTitle = data["intakeGoalTitle"];
+        intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
+      } else if (action === "generate-curriculum-ai") {
+        if (data["intakeGoalTitle"]) intakeGoalTitle = data["intakeGoalTitle"];
+        if (data["weeklyMinutes"]) {
+          const parsed = Number.parseInt(data["weeklyMinutes"], 10);
+          if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
+        }
+        const fitEvaluation = evaluateIntakeResourceFit({
+          goalTitle: intakeGoalTitle,
+          subject: intakeSubject,
+          requestedTopics: intakeTopics,
+          depth: intakeDepth,
+          flowOrder: intakeFlow,
+          materialsAccess: intakeMaterials,
+          weeklyMinutes: intakeWeeklyMinutes,
+          fitMode: intakeFitMode,
+          selectedResourceIds: intakeSelectedResourceIds,
+          skippedResourceIds: intakeSkippedResourceIds,
+          catalogResources,
+          myPlans: currentPlans(),
+          marketplaceListings: listings(),
+        });
+        const pipelineResult = executeIntakeGenerationPipeline({
+          fitEvaluation,
+          goalTitle: intakeGoalTitle,
+          subject: intakeSubject,
+          requestedTopics: intakeTopics,
+          depth: intakeDepth,
+          flowOrder: intakeFlow,
+          materialsAccess: intakeMaterials,
+          weeklyMinutes: intakeWeeklyMinutes,
+          fitMode: intakeFitMode,
+          accountId: account.accountId,
+          catalogResources,
+        });
+        catalogResources = pipelineResult.updatedCatalogResources;
+        generatedPlans = [
+          ...generatedPlans.filter((p) => p.curriculumId !== pipelineResult.generatedPlan.curriculumId),
+          pipelineResult.generatedPlan,
+        ];
+        lastPipelineReceipt = pipelineResult.receipt;
+        intakeNote = pipelineResult.receipt.summaryNote;
+        openDialogId = null;
+        selectCurriculum(pipelineResult.generatedPlan.curriculumId);
+        topLevel = "Learn";
+        learnSubDestination = "Plan";
+      } else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
       else handled = false;
       return { handled, state: getState() };
     },
@@ -2969,6 +3107,12 @@ export function mountCurriculumWebApp(
       if (action === "reschedule-session" && ds["sessionId"] && typeof rootElement.querySelector === "function") {
         const input = rootElement.querySelector(`[data-reschedule-for="${ds["sessionId"]}"]`) as { value?: string } | null;
         data["rescheduleValue"] = input?.value ?? "";
+      }
+      if ((action === "generate-curriculum-ai" || action === "review-generate") && typeof rootElement.querySelector === "function") {
+        const goalInput = rootElement.querySelector("#intake-goal") as { value?: string } | null;
+        if (goalInput?.value) data["intakeGoalTitle"] = goalInput.value;
+        const minsInput = rootElement.querySelector("#weekly-minutes") as { value?: string } | null;
+        if (minsInput?.value) data["weeklyMinutes"] = minsInput.value;
       }
       const submittedChoice = data["practiceChoice"] ?? null;
       if (!action || !controller.applyUiAction(action, data, submittedChoice).handled) return;
