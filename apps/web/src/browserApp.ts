@@ -38,7 +38,7 @@ import {
 } from "./components/StudyFlowBoard.tsx";
 import {
   INSPECTOR_ID, InspectorDrawer, SETTABLE_STATUSES,
-  type ConceptCheck, type SelfCheckRubric, type SettableStatus,
+  type ConceptCheck, type InspectorMode, type SelfCheckRubric, type SettableStatus,
 } from "./components/InspectorDrawer.tsx";
 import {
   AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner,
@@ -104,6 +104,7 @@ export interface CurriculumWebAppStateInput {
   readonly keyActionNote?: string | null; readonly snoozeNote?: string | null;
   readonly rescheduleSessionId?: string | null; readonly rescheduleValue?: string | null;
   readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
+  readonly inspectorMode?: InspectorMode;
   readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
   readonly selectedCurriculumId?: string;
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
@@ -1112,8 +1113,9 @@ function renderFlowBoard(
   selectedModuleId: string | null,
   selectedActivityId: string | null,
   view: FlowView,
+  nextUpActivityId?: string | null,
 ): string {
-  return renderToString(h(StudyFlowBoard, { idPrefix, modules, selectedModuleId, selectedActivityId, view }));
+  return renderToString(h(StudyFlowBoard, { idPrefix, modules, selectedModuleId, selectedActivityId, view, nextUpActivityId }));
 }
 
 function renderStepRow(
@@ -1444,6 +1446,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const rescheduleValue = inputState.rescheduleValue ?? null;
   const depthOverrideReset = inputState.depthOverrideReset ?? false;
   const studyDetailOpen = inputState.studyDetailOpen ?? false;
+  const inspectorMode: InspectorMode = inputState.inspectorMode ?? "activity";
   const flowView: FlowView = {
     order: inputState.flowOrder ?? plannedFlowOrder(curriculum),
     deepDive: inputState.deepDive ?? "included",
@@ -1491,8 +1494,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
           </article>`;
   }).join("");
-  const planOptionsHtml = planToday.map(({ plan }) =>
-    `<option value="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`).join("");
+  const planOptionsHtml = [
+    ...planToday.map(({ plan, today }) => {
+      const session = today.nextSession?.activityBreakdown ?? [];
+      const open = session.filter((act) => !isClosed(act.executionStatus));
+      const done = session.length - open.length;
+      const unitsCount = rawListOf(plan.curriculum, "modules").length;
+      return `<option value="${escapeHtml(plan.curriculumId)}" data-domain="${escapeHtml(plan.domain)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`;
+    }),
+    `<option value="__edit_plan__" data-action-option="edit-plan" data-domain="Plan &amp; Pacing" data-progress="Schedule, waivers &amp; approach">Edit Plan &amp; Pacing →</option>`,
+  ].join("");
   const studyMinutes = planToday.reduce((sum, { today }) => sum + today.totalStudyMinutes, 0);
   const selfReportedCount = planToday.reduce((sum, { today }) => sum + today.selfReportedCompletedCount, 0);
 
@@ -1504,42 +1515,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const evidenceSummary = `${demonstratedObjectives} of ${basePlanModel.objectiveTracks.length} objectives demonstrated`;
   const reviewSummary = `${reviewsDue} review${reviewsDue === 1 ? "" : "s"} due`;
 
-  // The second row of Today's header card. Resume opens the drawer, which holds the details.
   const planProgress = unitProgress(basePlanModel.outlineActivities);
-  const nextUpRowHtml = `<div class="today-next">
-              <p class="next-up-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</p>
-              ${nextUp ? `<div class="next-up">
-                <p class="next-up-text"><span class="next-up-label">Next:</span><span class="next-up-title">${escapeHtml(nextUp.title)}</span><span class="next-up-time">· ${nextUp.durationTriplet.point}m</span></p>
-                <button type="button" class="btn-primary" data-action="select-outline-activity" data-activity-id="${escapeHtml(nextUp.activityId)}" data-module-id="${escapeHtml(nextUp.moduleId)}">Resume<span aria-hidden="true">→</span></button>
-              </div>` : `<p class="next-up-text">Nothing is scheduled next.</p>`}
-            </div>`;
-  const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView);
+  const todayBoardHtml = renderFlowBoard("flow-today", modules, selectedModuleId, selectedActivityId, flowView, nextUp?.activityId ?? null);
   const totalEffort = basePlanModel.totalDurationTriplet;
   const unitIndexById = new Map(modules.map((mod, idx) => [mod.moduleId, idx + 1]));
   const objectiveById = new Map(basePlanModel.objectiveTracks.map((obj) => [obj.objectiveId, obj]));
-  const todayOverviewUnitsHtml = modules.map((mod, idx) => {
-    const prog = unitProgress(mod.activities);
-    const prereqLabels = mod.prerequisiteModuleIds.map((id) => `U${unitIndexById.get(id) ?? "?"}`);
-    const prereqText = prereqLabels.length > 0 ? `Requires ${prereqLabels.join(", ")}` : "Entry unit";
-    return `<li class="today-overview-unit${mod.moduleId === selectedModuleId ? " is-selected" : ""}" data-module-id="${escapeHtml(mod.moduleId)}">
-      <button type="button" class="today-overview-unit-btn" data-action="select-outline-module" data-module-id="${escapeHtml(mod.moduleId)}" aria-pressed="${mod.moduleId === selectedModuleId}">
-        <span class="today-overview-unit-top"><span class="badge">U${idx + 1}</span><strong>${escapeHtml(displayUnitTitle(mod.title))}</strong></span>
-        <span class="meta-text">${escapeHtml(prereqText)} · ${mod.objectiveIds.length} objective${mod.objectiveIds.length === 1 ? "" : "s"} · ${prog.done}/${prog.total} required · ${escapeHtml(effortWords(mod.durationTriplet))}</span>
-      </button>
-    </li>`;
-  }).join("\n");
-  const todayCurriculumOverviewHtml = `<details class="today-curriculum-overview">
-              <summary class="today-overview-summary">
-                <span>Unit Map &amp; Syllabus Overview</span>
-                <span class="meta-text">${modules.length} units · ${basePlanModel.objectiveTracks.length} objectives · ${totalEffort.min}–${totalEffort.max} min</span>
-              </summary>
-              <div class="today-overview-body">
-                <ol class="today-overview-list" aria-label="Unit progression overview">
-                  ${todayOverviewUnitsHtml}
-                </ol>
-                <p class="meta-text">Inspect-only overview. Use <strong>Edit Plan &amp; Pacing →</strong> to adjust prerequisites, waivers, pacing, or instructional approach.</p>
-              </div>
-            </details>`;
 
   const planArchitectureOutlineHtml = `<div class="plan-architecture-outline" role="list" aria-label="Outcomes and prerequisite module outline">
     ${modules.map((mod, idx) => {
@@ -1590,6 +1570,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const inspectorHtml = selectedModule && selectedActivity
     ? renderInspector({
       modules, mod: selectedModule, activity: selectedActivity, open: studyDetailOpen && isLearn,
+      mode: inspectorMode,
       rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
       deliverables: deliverablesOf(curriculum, selectedActivity.activityId), catalogResources,
       rubric: rubricOf(curriculum, selectedActivity.activityId),
@@ -1798,19 +1779,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <header class="today-unified-header" data-opaque-surface="true">
               <div class="section-header">
                 <div class="today-selected-heading">
-                  <span class="today-selected-eyebrow">Focused curriculum</span>
+                  <span class="today-selected-eyebrow">Focused curriculum · <span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
                   <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
                 </div>
-                <div class="plan-toolbar">
-                  <label class="field field-inline" for="selected-plan-control"><span>Selected plan</span>
-                    <select id="selected-plan-control" name="selected-plan" data-action="select-curriculum">${planOptionsHtml}</select>
+                <div class="plan-toolbar plan-command-picker">
+                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label">Selected plan</span>
+                    <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
-                  <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Edit Plan &amp; Pacing<span aria-hidden="true">→</span></button>
                 </div>
               </div>
               ${recoveryBanner}
-              ${nextUpRowHtml}
-              ${todayCurriculumOverviewHtml}
             </header>
             ${todayBoardHtml}
           </div>
@@ -2359,6 +2337,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let rescheduleValue: string | null = initialState.rescheduleValue ?? null;
   let depthOverrideReset = initialState.depthOverrideReset ?? false;
   let studyDetailOpen = initialState.studyDetailOpen ?? false;
+  let inspectorMode: InspectorMode = initialState.inspectorMode ?? "activity";
   let openDialogId: string | null = initialState.openDialogId ?? null;
 
   const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
@@ -2417,6 +2396,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
 
   function selectPlanActivity(activityId: string, explicitModuleId?: string, _sourceView?: PlanSynchronizedView) {
     selectActivity(activityId);
+    inspectorMode = "activity";
     studyDetailOpen = true;
     const targetModId =
       explicitModuleId ?? buildCurrentPlanModel().outlineModules.find((m) => m.activityIds.includes(activityId))?.moduleId;
@@ -2624,7 +2604,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
-      depthOverrideReset, studyDetailOpen, flowOrder, deepDive, spacedReview,
+      depthOverrideReset, studyDetailOpen, inspectorMode, flowOrder, deepDive, spacedReview,
     };
   };
 
@@ -2657,6 +2637,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     selectPlanModule(moduleId: string, _sourceView?: PlanSynchronizedView) {
       selectedModuleId = moduleId;
       focusedNodeId = moduleId;
+      inspectorMode = "unit";
       studyDetailOpen = true;
       const matchedMod = buildCurrentPlanModel().outlineModules.find((m) => m.moduleId === moduleId);
       if (matchedMod?.activityIds.length && (!selectedActivityId || !matchedMod.activityIds.includes(selectedActivityId))) {
@@ -2753,7 +2734,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         if (listing) adopt(listing);
       } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
       else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
-      else if (action === "select-curriculum" && data["curriculumId"] === "all") resourceScope = "all";
+      else if (action === "select-curriculum" && data["curriculumId"] === "__edit_plan__") {
+        topLevel = "Learn";
+        learnSubDestination = "Plan";
+        studyDetailOpen = false;
+      } else if (action === "select-curriculum" && data["curriculumId"] === "all") resourceScope = "all";
       else if (action === "select-curriculum" && isMyPlan(data["curriculumId"])) {
         selectCurriculum(data["curriculumId"]);
         resourceScope = "selected";
