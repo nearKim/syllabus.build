@@ -1402,17 +1402,18 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
   assert.ok(today.includes('<option value="__edit_plan__" data-action-option="edit-plan"'));
   assert.equal(today.includes('<details class="today-curriculum-overview">'), false);
 
-  // Clicking a Unit cell opens the InspectorDrawer in Unit Row Accumulation Summary mode (data-inspector-mode="unit")
+  // Clicking a Unit cell opens the InspectorDrawer in Unit mode (data-inspector-mode="unit") without verbose "Row summary" labels
   const { root, click } = mountWithClicks();
   click({ action: "select-outline-module", moduleId: "module-foundations" });
   const unitDrawer = drawerOf(root.innerHTML);
   assert.ok(unitDrawer.includes('data-open="true"'));
   assert.ok(unitDrawer.includes('data-inspector-mode="unit"'));
-  assert.ok(unitDrawer.includes("Unit 1 of 2 · Row Accumulation Summary"));
-  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-overview">Unit overview</h3>'));
-  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-activities">All activities in this row (3)</h3>'));
-  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-objectives">Learning objectives &amp; gate criteria (1)</h3>'));
-  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-resources">Accumulated study materials (3)</h3>'));
+  assert.ok(unitDrawer.includes("Unit 1 of 2"));
+  assert.equal(/Row summary|Row Accumulation Summary/i.test(root.innerHTML), false);
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-overview">Overview</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-activities">Activities (3)</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-objectives">Objectives (1)</h3>'));
+  assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-resources">Materials (3)</h3>'));
 
   // 2. Plan opens with curriculum switcher cards, the curriculum title as H1, emphasized Goal, and plain text bullets
   assert.ok(plan.includes('<nav class="plan-switcher" aria-label="Your curricula">'));
@@ -1652,28 +1653,27 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
-  // 1. Step 0 compact intake + Step 1 & 1.5 Suggested Existing Fit tray renders with 1/4 topic gap (Vector Indexing)
+  // 1. Compact intake + Suggested fit tray renders without unnecessary instructional text
   const initialDialog = dialogOf(root.innerHTML);
   assert.ok(initialDialog.includes('id="intake-suggested-fit-tray"'));
-  assert.ok(initialDialog.includes("Suggested existing fit"));
-  assert.ok(
-    initialDialog.includes(
-      "Delta web search: 1 uncovered topic(s) (Vector Indexing) · Bypassing 15 indexed URLs · AI synthesis required"
-    )
-  );
+  assert.ok(initialDialog.includes("Suggested fit"));
+  assert.ok(initialDialog.includes("Web search: Vector Indexing"));
+  for (const verbose of ["Toggle [Use] to bypass", "AI Curriculum Synthesizer", "Shared tag taxonomy"]) {
+    assert.equal(initialDialog.includes(verbose), false);
+  }
 
   // Polymorphic index previews: Book TOC + summary and YouTube playlist syllabus + transcript
-  assert.ok(initialDialog.includes("Show Book TOC &amp; summary (3 chapters)"));
+  assert.ok(initialDialog.includes("Chapters (3)"));
   assert.ok(initialDialog.includes("978-0-262-04912-2"));
   assert.ok(initialDialog.includes("Byte-Pair Encoding &amp; Unigram Likelihood"));
-  assert.ok(initialDialog.includes("Show YouTube syllabus &amp; transcript (2 videos · Transcript indexed)"));
+  assert.ok(initialDialog.includes("Videos (2)"));
   assert.ok(initialDialog.includes("<code>04:15</code>"));
 
   // 2. Switching fitMode to "use_selected_only" bypasses web search completely (0 web calls)
   click({ action: "set-intake-fit-mode", fitMode: "use_selected_only" });
   const bypassDialog = dialogOf(root.innerHTML);
   assert.ok(bypassDialog.includes('data-web-search-required="false"'));
-  assert.ok(bypassDialog.includes("No web search · Reusing 3 indexed resource(s) · AI synthesis only"));
+  assert.ok(bypassDialog.includes("No web search · 3 selected"));
 
   // 3. Skipping an indexed resource moves it out of intakeSelectedResourceIds; clicking Use restores it
   click({ action: "skip-intake-resource", resourceId: "synthetic-resource-tokenization-v1" });

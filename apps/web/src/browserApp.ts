@@ -1843,12 +1843,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <header class="today-unified-header" data-opaque-surface="true">
               <div class="section-header">
                 <div class="today-selected-heading">
-                  <span class="today-selected-eyebrow">Focused curriculum · <span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
+                  <span class="today-selected-eyebrow"><span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
                   <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
                   ${selectedTagStripHtml}
                 </div>
                 <div class="plan-toolbar plan-command-picker">
-                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label">Selected plan</span>
+                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Selected plan</span>
                     <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
                 </div>
@@ -1860,7 +1860,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <section class="today-bottom-grid" aria-label="Reviews and completed work" data-opaque-surface="true">
             <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}" aria-labelledby="review-queue-title">
               <h2 id="review-queue-title">Review queue <span class="count-badge">${reviewRows.length}</span></h2>
-              <p class="meta-text">Due and scheduled spaced review stays in a separate session.</p>
               ${listOrEmpty(reviewRows, "today", "No reviews are due.")}
             </section>
             <section class="completed-history" aria-labelledby="completed-history-title">

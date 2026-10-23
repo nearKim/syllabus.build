@@ -117,7 +117,6 @@ export function InspectorDrawer({
     const nextMod = modules[unitIdx + 1];
     const unitIndexById = new Map(modules.map((m, i) => [m.moduleId, i + 1]));
     const prereqLabels = mod.prerequisiteModuleIds.map((pid) => `Unit ${unitIndexById.get(pid) ?? "?"}`);
-    const prereqText = prereqLabels.length > 0 ? `Requires ${prereqLabels.join(", ")}` : "Entry unit (no prior unit prerequisite)";
     const reqCount = mod.activities.filter((act) => act.required).length;
     const optCount = mod.activities.length - reqCount;
     const nextUnitActivity = mod.activities.find((act) => !isClosed(act.executionStatus)) ?? mod.activities[0];
@@ -136,8 +135,8 @@ export function InspectorDrawer({
     const unitSpecs: readonly (readonly [SfIconName, string])[] = [
       ["clock", `${effortWords(mod.durationTriplet)}${uProg.left > 0 ? ` · ${uProg.left}m left` : ""}`],
       ["rigor", rigor],
-      ["pin", `${mod.activities.length} activities (${reqCount} required${optCount > 0 ? `, ${optCount} optional` : ""})`],
-      ["learn", prereqText],
+      ["pin", `${reqCount} required${optCount > 0 ? ` · ${optCount} optional` : ""}`],
+      ...(prereqLabels.length > 0 ? ([["learn", `Requires ${prereqLabels.join(", ")}`]] as const) : []),
     ];
 
     return (
@@ -154,7 +153,7 @@ export function InspectorDrawer({
       >
         <header class="inspector-head">
           <p class="inspector-context">
-            Unit {unitNumber} of {modules.length} · Row Accumulation Summary
+            Unit {unitNumber} of {modules.length}
           </p>
           <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
             <MathText text={displayUnitTitle(mod.title)} />
@@ -166,12 +165,12 @@ export function InspectorDrawer({
             <span class="proficiency-pill" data-unit-status={uTone}>
               <UnitMarker tone={uTone} size={16} />
               <span>
-                {uProg.done}/{uProg.total} required completed
+                {uProg.done}/{uProg.total}
               </span>
             </span>
             <span class="proficiency-pill" data-proficiency-status={gate.passed ? "demonstrated" : "unassessed"}>
               <StatusGlyph type="gate" tone={gate.passed ? "done" : "todo"} size={16} />
-              <span>Gate: {gate.passed ? "Passed" : `${gate.demonstrated}/${gate.total} demonstrated`}</span>
+              <span>{gate.passed ? "Gate passed" : `${gate.demonstrated}/${gate.total} demonstrated`}</span>
             </span>
           </div>
         </header>
@@ -204,7 +203,7 @@ export function InspectorDrawer({
           ) : null}
 
           <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-overview`}>
-            <h3 id={`${INSPECTOR_ID}-unit-overview`}>Unit overview</h3>
+            <h3 id={`${INSPECTOR_ID}-unit-overview`}>Overview</h3>
             <p class="prose">
               <MathText text={mod.summary} />
             </p>
@@ -219,7 +218,7 @@ export function InspectorDrawer({
           </section>
 
           <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-activities`}>
-            <h3 id={`${INSPECTOR_ID}-unit-activities`}>All activities in this row ({mod.activities.length})</h3>
+            <h3 id={`${INSPECTOR_ID}-unit-activities`}>Activities ({mod.activities.length})</h3>
             <ol class="unit-row-activity-list">
               {mod.activities.map((act) => {
                 const actTrack = trackOf(act);
@@ -252,7 +251,7 @@ export function InspectorDrawer({
           </section>
 
           <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-unit-objectives`}>
-            <h3 id={`${INSPECTOR_ID}-unit-objectives`}>Learning objectives &amp; gate criteria ({mod.objectives.length})</h3>
+            <h3 id={`${INSPECTOR_ID}-unit-objectives`}>Objectives ({mod.objectives.length})</h3>
             <ul class="lab-checklist">
               {mod.objectives.map((obj) => (
                 <li key={obj.objectiveId}>
@@ -282,7 +281,7 @@ export function InspectorDrawer({
 
           {unitResources.length > 0 ? (
             <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-resources`}>
-              <h3 id={`${INSPECTOR_ID}-unit-resources`}>Accumulated study materials ({unitResources.length})</h3>
+              <h3 id={`${INSPECTOR_ID}-unit-resources`}>Materials ({unitResources.length})</h3>
               {unitResources.map((card, index) => {
                 const url = card.canonicalUrl;
                 return (
@@ -317,7 +316,7 @@ export function InspectorDrawer({
               data-module-id={mod.moduleId}
             >
               <span class="next-step-text">
-                {isClosed(nextUnitActivity.executionStatus) ? "Inspect activity" : "Open next in unit"}: <MathText text={nextUnitActivity.title} />
+                {isClosed(nextUnitActivity.executionStatus) ? "Open" : "Start"}: <MathText text={nextUnitActivity.title} />
               </span>
               <span aria-hidden="true">→</span>
             </button>

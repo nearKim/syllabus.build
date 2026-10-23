@@ -485,8 +485,8 @@ export function evaluateIntakeResourceFit(params: {
 
   const webSearchRequired = fitMode === "fill_gaps" && deltaTopicsToSearch.length > 0;
   const costAndBypassBadge = webSearchRequired
-    ? `Delta web search: ${deltaTopicsToSearch.length} uncovered topic(s) (${deltaTopicsToSearch.join(", ")}) · Bypassing ${bypassedCanonicalUrls.length} indexed URLs · AI synthesis required`
-    : `No web search · Reusing ${selectedMaterials.length} indexed resource(s) · AI synthesis only`;
+    ? `Web search: ${deltaTopicsToSearch.join(", ")}`
+    : `No web search · ${selectedMaterials.length} selected`;
 
   const searchPrompt = [
     `GOAL: ${goalTitle.trim() || `${subject} Curriculum`}`,
@@ -944,11 +944,11 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
           <SfIcon name="learn" size={15} />
-          <span>Show Book TOC &amp; summary ({index.tocChapters.length} chapters)</span>
+          <span>Chapters ({index.tocChapters.length})</span>
         </summary>
         <div class="intake-index-body">
           <p class="meta-text">
-            <strong>ISBN-13:</strong> <code>{index.isbn13}</code> — {index.briefSummary}
+            <code>{index.isbn13}</code> · {index.briefSummary}
           </p>
           <ul class="intake-index-list">
             {index.tocChapters.map((ch) => (
@@ -969,16 +969,10 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
           <SfIcon name="video" size={15} />
-          <span>
-            Show YouTube syllabus &amp; transcript ({index.syllabusVideos.length} videos ·{" "}
-            {index.transcriptAvailable ? "Transcript indexed" : "Metadata only"})
-          </span>
+          <span>Videos ({index.syllabusVideos.length})</span>
         </summary>
         <div class="intake-index-body">
-          <p class="meta-text">
-            <strong>Channel:</strong> {index.channelTitle} ·{" "}
-            <span class="badge">{index.transcriptAvailable ? "Transcript Outline Available" : "Syllabus Only"}</span>
-          </p>
+          <p class="meta-text">{index.channelTitle}</p>
           <ul class="intake-index-list">
             {index.syllabusVideos.map((vid) => (
               <li key={vid.timestampOrIndex}>
@@ -999,12 +993,9 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
       <details class="intake-resource-index-details">
         <summary class="intake-index-summary">
           <SfIcon name="code" size={15} />
-          <span>Show Code Lab exercises ({index.labExercises.length} test suites)</span>
+          <span>Exercises ({index.labExercises.length})</span>
         </summary>
         <div class="intake-index-body">
-          <p class="meta-text">
-            <strong>Runtime:</strong> <code>{index.runtimeLanguage}</code>
-          </p>
           <ul class="intake-index-list">
             {index.labExercises.map((ex) => (
               <li key={ex.id}>
@@ -1020,12 +1011,9 @@ function renderPolymorphicIndexDetails(index: PolymorphicResourceIndex): VNode {
     <details class="intake-resource-index-details">
       <summary class="intake-index-summary">
         <SfIcon name="course" size={15} />
-        <span>Show Course syllabus ({index.syllabusModules.length} units)</span>
+        <span>Units ({index.syllabusModules.length})</span>
       </summary>
       <div class="intake-index-body">
-        <p class="meta-text">
-          <strong>Institution:</strong> {index.institution}
-        </p>
         <ul class="intake-index-list">
           {index.syllabusModules.map((mod) => (
             <li key={mod.unit}>
@@ -1084,47 +1072,15 @@ export function NewCurriculumDialog({
     >
       <form method="dialog" class="dialog-surface intake-dialog-surface">
         <header class="dialog-header">
-          <div>
-            <span class="today-selected-eyebrow">AI Curriculum Synthesizer · Catalog Fit &amp; Search Bypass</span>
-            <h2 id="dialog-new-curriculum-title">New Curriculum</h2>
-          </div>
+          <h2 id="dialog-new-curriculum-title">New Curriculum</h2>
           <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
             <SfIcon name="close" />
           </button>
         </header>
 
-        {/* Pipeline Stepper Pills */}
-        <ol class="intake-pipeline-steps" aria-label="AI Curriculum Generation Pipeline">
-          <li class="intake-step-pill is-active">
-            <span class="intake-step-num">0</span>
-            <span>Intent &amp; Tags</span>
-          </li>
-          <li class="intake-step-pill is-active">
-            <span class="intake-step-num">1.5</span>
-            <span>Suggested Existing Fit ({fitEvaluation.indexedMaterials.length})</span>
-          </li>
-          <li class={`intake-step-pill${fitEvaluation.webSearchRequired ? " is-active" : " is-bypassed"}`}>
-            <span class="intake-step-num">2</span>
-            <span>
-              {fitEvaluation.webSearchRequired
-                ? `Delta Web Search (${fitEvaluation.deltaTopicsToSearch.length})`
-                : "Web Search Bypassed (0)"}
-            </span>
-          </li>
-          <li class="intake-step-pill">
-            <span class="intake-step-num">3–4</span>
-            <span>AI Synthesis &amp; DB Index</span>
-          </li>
-        </ol>
-
-        {/* Step 0: Compact Goal, Subject & Topic Tag Chips */}
-        <section class="intake-compact-section" aria-labelledby="intake-step0-heading">
-          <div class="intake-section-head">
-            <h3 id="intake-step0-heading">1. Goal, subject &amp; topic scope</h3>
-            <span class="meta-text">Shared tag taxonomy with Explore &amp; Learn</span>
-          </div>
+        <section class="intake-compact-section" aria-label="Curriculum goal and preferences">
           <label class="field intake-goal-field" for="intake-goal">
-            <span>What do you want to learn?</span>
+            <span>Goal</span>
             <input
               id="intake-goal"
               name="goal"
@@ -1186,10 +1142,9 @@ export function NewCurriculumDialog({
             </div>
           </div>
 
-          {/* Compact 2x2 Control Grid */}
           <div class="intake-controls-grid">
             <div class="intake-control-cell">
-              <span class="intake-row-label">Math depth</span>
+              <span class="intake-row-label">Depth</span>
               <div class="segmented" role="group" aria-label="Mathematical depth">
                 {INTAKE_DEPTH_CHOICES.map((d) => (
                   <button
@@ -1207,7 +1162,7 @@ export function NewCurriculumDialog({
             </div>
 
             <div class="intake-control-cell">
-              <span class="intake-row-label">Study flow</span>
+              <span class="intake-row-label">Flow</span>
               <div class="segmented" role="group" aria-label="Study flow order">
                 {INTAKE_FLOW_CHOICES.map((f) => (
                   <button
@@ -1250,7 +1205,7 @@ export function NewCurriculumDialog({
 
             <div class="intake-control-cell">
               <label class="intake-row-label" for="weekly-minutes">
-                Weekly pace ({weeklyMinutes}m)
+                Pace
               </label>
               <div class="intake-pace-row">
                 <div class="segmented" role="group" aria-label="Weekly pace presets">
@@ -1280,7 +1235,6 @@ export function NewCurriculumDialog({
           </div>
         </section>
 
-        {/* Step 1 & Step 1.5: Suggested Existing Fit Tray */}
         <section
           class="intake-fit-tray"
           id="intake-suggested-fit-tray"
@@ -1288,10 +1242,7 @@ export function NewCurriculumDialog({
           data-opaque-surface="true"
         >
           <div class="intake-section-head">
-            <div>
-              <span class="today-selected-eyebrow">Step 1.5 · Local DB Fit Before Web Search</span>
-              <h3 id="intake-fit-heading">Suggested existing fit</h3>
-            </div>
+            <h3 id="intake-fit-heading">Suggested fit</h3>
             <div class="segmented" role="group" aria-label="Resource fit execution mode">
               <button
                 type="button"
@@ -1300,7 +1251,7 @@ export function NewCurriculumDialog({
                 data-fit-mode="fill_gaps"
                 aria-pressed={fitMode === "fill_gaps"}
               >
-                Fill gaps (hybrid)
+                Fill gaps
               </button>
               <button
                 type="button"
@@ -1309,12 +1260,11 @@ export function NewCurriculumDialog({
                 data-fit-mode="use_selected_only"
                 aria-pressed={fitMode === "use_selected_only"}
               >
-                Use selected only (0 web calls)
+                Selected only
               </button>
             </div>
           </div>
 
-          {/* Live Coverage & Search-Bypass Status Bar */}
           <div class="intake-coverage-bar" role="status" data-search-bypass-status={fitEvaluation.costAndBypassBadge}>
             <div class="intake-coverage-chips">
               {fitEvaluation.topicCoverage.map((item) => (
@@ -1325,10 +1275,10 @@ export function NewCurriculumDialog({
                   data-coverage-state={item.status}
                 >
                   {item.status === "covered"
-                    ? `✓ ${item.topic} (Indexed)`
+                    ? `✓ ${item.topic}`
                     : item.status === "partial"
-                      ? `◐ ${item.topic} (Partial)`
-                      : `⊕ ${item.topic} (${fitMode === "use_selected_only" ? "Omitted from search" : "Delta web search"})`}
+                      ? `◐ ${item.topic}`
+                      : `+ ${item.topic}`}
                 </span>
               ))}
             </div>
@@ -1338,13 +1288,9 @@ export function NewCurriculumDialog({
             </p>
           </div>
 
-          {/* 1. Existing Plans (Direct Adoption — 0 AI / 0 Web Search) */}
           {fitEvaluation.existingPlans.length > 0 ? (
             <div class="intake-fit-group">
-              <h4 class="intake-fit-group-title">
-                Existing plans ({fitEvaluation.existingPlans.length}) ·{" "}
-                <span class="meta-text">No AI generation · No web search</span>
-              </h4>
+              <h4 class="intake-fit-group-title">Existing plans ({fitEvaluation.existingPlans.length})</h4>
               <ul class="intake-fit-list">
                 {fitEvaluation.existingPlans.map((plan) => (
                   <li
@@ -1359,8 +1305,7 @@ export function NewCurriculumDialog({
                       <div>
                         <strong>{plan.title}</strong>
                         <p class="meta-text">
-                          {plan.subject} · {plan.gateStyle} · {plan.handle} · Covers {plan.matchedTopics.length}/
-                          {plan.totalRequestedTopics} requested topics
+                          {plan.subject} · {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics
                         </p>
                       </div>
                     </div>
@@ -1381,7 +1326,7 @@ export function NewCurriculumDialog({
                           data-action="intake-adopt-marketplace-plan"
                           data-publication-id={plan.publicationId}
                         >
-                          Use this plan
+                          Use plan
                         </button>
                       ) : null}
                     </div>
@@ -1391,12 +1336,8 @@ export function NewCurriculumDialog({
             </div>
           ) : null}
 
-          {/* 2. Indexed Materials (Polymorphic Book TOC / YouTube Syllabus / Code Lab) */}
           <div class="intake-fit-group">
-            <h4 class="intake-fit-group-title">
-              Indexed catalog materials ({fitEvaluation.indexedMaterials.length}) ·{" "}
-              <span class="meta-text">Toggle [Use] to bypass web search for covered topics</span>
-            </h4>
+            <h4 class="intake-fit-group-title">Indexed materials ({fitEvaluation.indexedMaterials.length})</h4>
             <ul class="intake-fit-list">
               {fitEvaluation.indexedMaterials.map((mat) => {
                 const isUsed = fitEvaluation.selectedResourceIds.includes(mat.resourceVersionId);
@@ -1418,9 +1359,7 @@ export function NewCurriculumDialog({
                         <div>
                           <strong>{mat.title}</strong>
                           <p class="meta-text">
-                            {mat.publisher} · <span class="badge">{mat.accessModel}</span> · Covers:{" "}
-                            {mat.coveredTopics.join(", ")}
-                            {mat.partialTopics.length > 0 ? ` (Partial: ${mat.partialTopics.join(", ")})` : ""}
+                            {mat.publisher} · {mat.coveredTopics.join(", ")}
                           </p>
                         </div>
                       </div>
@@ -1453,19 +1392,11 @@ export function NewCurriculumDialog({
           </div>
         </section>
 
-        {/* Progressive Disclosure: Search Prompt Preview, Prior Evidence & Overrides */}
         <details class="today-curriculum-overview intake-advanced-details">
           <summary class="today-overview-summary">
-            <span>Search prompt preview, prior evidence &amp; billing disclosures</span>
-            <span class="meta-text">Step 0 prompt · overrides · 4-bucket cost separation</span>
+            <span>Advanced &amp; billing</span>
           </summary>
           <div class="today-overview-body intake-advanced-body">
-            <div class="intake-prompt-box">
-              <span class="intake-row-label">Step 0 Constructed Search &amp; Synthesis Prompt</span>
-              <pre class="intake-prompt-pre" data-intake-search-prompt="true">
-                {fitEvaluation.searchPrompt}
-              </pre>
-            </div>
             <div class="intake-evidence-row">
               <p class="meta-text">
                 <strong>Prior evidence:</strong> Linear algebra demonstrated{" "}
@@ -1517,11 +1448,7 @@ export function NewCurriculumDialog({
           </button>
           <button type="button" class="btn-primary" data-action="generate-curriculum-ai">
             <SfIcon name="focus" size={15} />
-            <span>
-              {fitEvaluation.webSearchRequired
-                ? `Search ${fitEvaluation.deltaTopicsToSearch.length} gap(s) & generate`
-                : "Generate from selected fit"}
-            </span>
+            <span>Generate curriculum</span>
           </button>
         </footer>
       </form>

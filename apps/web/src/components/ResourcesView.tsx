@@ -211,13 +211,7 @@ export function ResourcesView({
       hidden={!active}
     >
       <div class="section-header">
-        <div>
-          <span class="today-selected-eyebrow">Curriculum Resource Library</span>
-          <h1 class="page-title">Resources</h1>
-          <p class="prose meta-text">
-            Curator-verified courses, books, YouTube lectures, code labs, and problem sets mapped to your study units.
-          </p>
-        </div>
+        <h1 class="page-title">Resources</h1>
         <div class="plan-toolbar">
           <div class="segmented" role="group" aria-label="Resource curriculum scope">
             <button
@@ -240,7 +234,7 @@ export function ResourcesView({
             </button>
           </div>
           <label class="field field-inline" for="resources-curriculum-control">
-            <span>Curriculum</span>
+            <span class="st-sr">Curriculum</span>
             <select
               id="resources-curriculum-control"
               name="resources-curriculum"
@@ -284,15 +278,14 @@ export function ResourcesView({
             ))}
           </div>
           <p class="resources-count meta-text">
-            Showing {filteredRows.length} of {allScopedRows.length} resource{allScopedRows.length === 1 ? "" : "s"} in{" "}
-            <strong>{resourceScope === "all" ? `All curricula (${allPlans.length})` : selectedCurriculumTitle}</strong>
+            {filteredRows.length} of {allScopedRows.length}
           </p>
         </div>
 
         {filteredRows.length === 0 ? (
           <p class="empty-state">
             <SfIcon name="resources" />
-            <span>No resources match the {resourceCategory} category in this curriculum view.</span>
+            <span>No {resourceCategory} resources.</span>
           </p>
         ) : (
           <div
@@ -310,11 +303,11 @@ export function ResourcesView({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Resource &amp; publisher</th>
-                  <th scope="col">Category &amp; curriculum</th>
-                  <th scope="col">Used in units &amp; activities</th>
-                  <th scope="col">Access, rights &amp; cost</th>
-                  <th scope="col">Action</th>
+                  <th scope="col">Resource</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Units</th>
+                  <th scope="col">Access</th>
+                  <th scope="col"><span class="st-sr">Action</span></th>
                 </tr>
               </thead>
               <tbody>
