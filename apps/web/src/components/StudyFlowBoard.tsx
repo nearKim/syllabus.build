@@ -183,11 +183,14 @@ export function CheckButton({ activity, className }: { readonly activity: StudyA
 export function NodeCard({
   activity,
   selectedActivityId,
+  nextUpActivityId,
 }: {
   readonly activity: StudyActivity;
   readonly selectedActivityId: string | null;
+  readonly nextUpActivityId?: string | null | undefined;
 }): VNode {
   const selected = activity.activityId === selectedActivityId;
+  const isNextUp = Boolean(nextUpActivityId && activity.activityId === nextUpActivityId);
   const { min, point, max } = activity.durationTriplet;
   return (
     <article
@@ -201,6 +204,7 @@ export function NodeCard({
       data-open={String(selected)}
       data-proficiency-status={activity.objectiveProficiencyStatus}
       data-mastery-gated={String(activity.masteryGated)}
+      data-next-up={isNextUp ? "true" : undefined}
     >
       <button
         type="button"
@@ -228,15 +232,18 @@ export function GateDiamond({
   mod,
   gate,
   selectedActivityId,
+  nextUpActivityId,
 }: {
   readonly mod: StudyModule;
   readonly gate: StudyActivity | null;
   readonly selectedActivityId: string | null;
+  readonly nextUpActivityId?: string | null | undefined;
 }): VNode {
   const status = gate
     ? gateStatus(gate.objectiveProficiencyBadges.map((badge) => badge.status))
     : gateStatus(mod.objectives.map((objective) => objective.proficiencyStatus));
   const selected = gate !== null && gate.activityId === selectedActivityId;
+  const isNextUp = Boolean(gate && nextUpActivityId && gate.activityId === nextUpActivityId);
   return (
     <button
       type="button"
@@ -246,6 +253,7 @@ export function GateDiamond({
       data-module-id={mod.moduleId}
       aria-pressed={gate ? selected : undefined}
       data-status={status.passed ? "passed" : "open"}
+      data-next-up={isNextUp ? "true" : undefined}
     >
       <svg class="gate-shape" viewBox="0 0 84 84" width="84" height="84" aria-hidden="true">
         <rect x="14" y="14" width="56" height="56" rx="8" transform="rotate(45 42 42)" />
@@ -309,12 +317,14 @@ export function UnitRow({
   columns,
   selectedModuleId,
   selectedActivityId,
+  nextUpActivityId,
 }: {
   readonly units: readonly UnitPlacement[];
   readonly index: number;
   readonly columns: readonly FlowTrackId[];
   readonly selectedModuleId: string | null;
   readonly selectedActivityId: string | null;
+  readonly nextUpActivityId?: string | null | undefined;
 }): VNode | null {
   const unit = units[index];
   if (!unit) return null;
@@ -376,6 +386,9 @@ export function UnitRow({
           <span class="unit-badge">U{index + 1}</span>
           <span class="unit-title">{displayUnitTitle(mod.title)}</span>
           <span class="unit-meta">{progressLabel(progress)}</span>
+          <span class="unit-summary-cue" aria-hidden="true">
+            Row summary →
+          </span>
           <span class="st-sr">
             {selected ? "Selected" : "Select"} unit {index + 1}. {progress.done} of {progress.total} required activities done. {mod.required ? "Required" : "Optional"}. {mod.summary}
           </span>
@@ -399,12 +412,23 @@ export function UnitRow({
             {track === "gate"
               ? gates.length > 0
                 ? gates.map((gate) => (
-                    <GateDiamond key={gate.activityId} mod={mod} gate={gate} selectedActivityId={selectedActivityId} />
+                    <GateDiamond
+                      key={gate.activityId}
+                      mod={mod}
+                      gate={gate}
+                      selectedActivityId={selectedActivityId}
+                      nextUpActivityId={nextUpActivityId}
+                    />
                   ))
-                : <GateDiamond mod={mod} gate={null} selectedActivityId={selectedActivityId} />
+                : <GateDiamond mod={mod} gate={null} selectedActivityId={selectedActivityId} nextUpActivityId={nextUpActivityId} />
               : null}
             {cards.map((activity) => (
-              <NodeCard key={activity.activityId} activity={activity} selectedActivityId={selectedActivityId} />
+              <NodeCard
+                key={activity.activityId}
+                activity={activity}
+                selectedActivityId={selectedActivityId}
+                nextUpActivityId={nextUpActivityId}
+              />
             ))}
           </td>
         );
@@ -466,12 +490,14 @@ export function StudyFlowBoard({
   selectedModuleId,
   selectedActivityId,
   view,
+  nextUpActivityId,
 }: {
   readonly idPrefix: string;
   readonly modules: readonly StudyModule[];
   readonly selectedModuleId: string | null;
   readonly selectedActivityId: string | null;
   readonly view: FlowView;
+  readonly nextUpActivityId?: string | null | undefined;
 }): VNode {
   const units = modules.map((mod) => placeUnit(mod, view));
   const columns = flowColumns(view).filter(
@@ -544,6 +570,7 @@ export function StudyFlowBoard({
                 columns={columns}
                 selectedModuleId={selectedModuleId}
                 selectedActivityId={selectedActivityId}
+                nextUpActivityId={nextUpActivityId}
               />
             ))}
           </tbody>

@@ -5,10 +5,11 @@ import {
   type CatalogResourceMetadataInput,
 } from "../../../../packages/ui/src/index.ts";
 import { formatMinorCurrency } from "../billingAndSharing.ts";
-import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
+import { SfIcon, StatusGlyph, UnitMarker, type SfIconName } from "./Icons.tsx";
 import {
   ActivityGlyph,
   TRACK_LABELS,
+  displayUnitTitle,
   effortWords,
   executionTone,
   humanize,
@@ -16,6 +17,8 @@ import {
   postGateIds,
   trackOf,
   unitGate,
+  unitProgress,
+  unitTone,
   type StudyActivity,
   type StudyModule,
 } from "./StudyFlowBoard.tsx";
@@ -71,11 +74,14 @@ export function displayLocation(url: string): string {
   return hostname.endsWith(".invalid") ? path.replace(/^\/+/, "") || "catalog" : `${hostname.replace(/^www\./, "")}${path}`;
 }
 
+export type InspectorMode = "unit" | "activity";
+
 export interface InspectorDrawerProps {
   readonly modules: readonly StudyModule[];
   readonly mod: StudyModule;
   readonly activity: StudyActivity;
   readonly open: boolean;
+  readonly mode?: InspectorMode | undefined;
   readonly rigor: string;
   readonly deliverables: readonly string[];
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
@@ -90,6 +96,7 @@ export function InspectorDrawer({
   mod,
   activity,
   open,
+  mode = "activity",
   rigor,
   deliverables,
   catalogResources,
@@ -98,11 +105,218 @@ export function InspectorDrawer({
   practice,
   skipRecorded,
 }: InspectorDrawerProps): VNode {
+  const unitIdx = modules.indexOf(mod);
+  const unitNumber = unitIdx + 1;
+
+  if (mode === "unit") {
+    const uProg = unitProgress(mod.activities);
+    const uTone = unitTone(uProg);
+    const gate = unitGate(mod);
+    const prevMod = modules[unitIdx - 1];
+    const nextMod = modules[unitIdx + 1];
+    const unitIndexById = new Map(modules.map((m, i) => [m.moduleId, i + 1]));
+    const prereqLabels = mod.prerequisiteModuleIds.map((pid) => `Unit ${unitIndexById.get(pid) ?? "?"}`);
+    const prereqText = prereqLabels.length > 0 ? `Requires ${prereqLabels.join(", ")}` : "Entry unit (no prior unit prerequisite)";
+    const reqCount = mod.activities.filter((act) => act.required).length;
+    const optCount = mod.activities.length - reqCount;
+    const nextUnitActivity = mod.activities.find((act) => !isClosed(act.executionStatus)) ?? mod.activities[0];
+
+    const seenResources = new Set<string>();
+    const unitResources: SourceCardView[] = [];
+    for (const act of mod.activities) {
+      for (const card of act.resourceProvenanceCards) {
+        if (!seenResources.has(card.resourceVersionId)) {
+          seenResources.add(card.resourceVersionId);
+          unitResources.push(card);
+        }
+      }
+    }
+
+    const unitSpecs: readonly (readonly [SfIconName, string])[] = [
+      ["clock", `${effortWords(mod.durationTriplet)}${uProg.left > 0 ? ` · ${uProg.left}m left` : ""}`],
+      ["rigor", rigor],
+      ["pin", `${mod.activities.length} activities (${reqCount} required${optCount > 0 ? `, ${optCount} optional` : ""})`],
+      ["learn", prereqText],
+    ];
+
+    return (
+      <dialog
+        id={INSPECTOR_ID}
+        class="inspector"
+        closedby="any"
+        aria-labelledby={`${INSPECTOR_ID}-title`}
+        data-open={String(open)}
+        data-inspector-mode="unit"
+        data-module-id={mod.moduleId}
+        data-activity-id={activity.activityId}
+        data-opaque-surface="true"
+      >
+        <header class="inspector-head">
+          <p class="inspector-context">
+            Unit {unitNumber} of {modules.length} · Row Accumulation Summary
+          </p>
+          <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
+            {displayUnitTitle(mod.title)}
+          </h2>
+          <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">
+            <SfIcon name="close" />
+          </button>
+          <div class="inspector-pills unit-summary-pills">
+            <span class="proficiency-pill" data-unit-status={uTone}>
+              <UnitMarker tone={uTone} size={16} />
+              <span>
+                {uProg.done}/{uProg.total} required completed
+              </span>
+            </span>
+            <span class="proficiency-pill" data-proficiency-status={gate.passed ? "demonstrated" : "unassessed"}>
+              <StatusGlyph type="gate" tone={gate.passed ? "done" : "todo"} size={16} />
+              <span>Gate: {gate.passed ? "Passed" : `${gate.demonstrated}/${gate.total} demonstrated`}</span>
+            </span>
+          </div>
+        </header>
+        <div class="inspector-scroll" data-scroll-region>
+          {prevMod || nextMod ? (
+            <nav class="mobile-step-nav" aria-label="Previous and next unit">
+              {prevMod ? (
+                <button
+                  type="button"
+                  class="btn-secondary step-nav-btn"
+                  data-action="select-outline-module"
+                  data-module-id={prevMod.moduleId}
+                >
+                  <span aria-hidden="true">←</span>
+                  <span class="step-nav-text">Prev: U{unitIdx} · {displayUnitTitle(prevMod.title)}</span>
+                </button>
+              ) : null}
+              {nextMod ? (
+                <button
+                  type="button"
+                  class="btn-secondary step-nav-btn step-nav-next"
+                  data-action="select-outline-module"
+                  data-module-id={nextMod.moduleId}
+                >
+                  <span class="step-nav-text">Next: U{unitIdx + 2} · {displayUnitTitle(nextMod.title)}</span>
+                  <span aria-hidden="true">→</span>
+                </button>
+              ) : null}
+            </nav>
+          ) : null}
+
+          <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-overview`}>
+            <h3 id={`${INSPECTOR_ID}-unit-overview`}>Unit overview</h3>
+            <p class="prose">{mod.summary}</p>
+            <ul class="spec-chips">
+              {unitSpecs.map(([icon, text], idx) => (
+                <li key={idx}>
+                  <SfIcon name={icon} size={15} />
+                  <span>{text}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-activities`}>
+            <h3 id={`${INSPECTOR_ID}-unit-activities`}>All activities in this row ({mod.activities.length})</h3>
+            <ol class="unit-row-activity-list">
+              {mod.activities.map((act) => {
+                const actTrack = trackOf(act);
+                return (
+                  <li key={act.activityId} class="unit-row-activity-item" data-activity-id={act.activityId} data-track={actTrack}>
+                    <button
+                      type="button"
+                      class="unit-row-activity-btn"
+                      data-action="select-outline-activity"
+                      data-activity-id={act.activityId}
+                      data-module-id={mod.moduleId}
+                    >
+                      <span class="unit-row-activity-head">
+                        <ActivityGlyph activity={act} size={16} />
+                        <span class="badge">{TRACK_LABELS[actTrack].badge}</span>
+                        <span class="unit-row-activity-time">{effortWords(act.durationTriplet)}</span>
+                        {act.required ? null : <span class="node-optional">Optional</span>}
+                      </span>
+                      <strong class="unit-row-activity-title">{act.title}</strong>
+                      <span class="unit-row-activity-summary">{act.promptSummary}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+
+          <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-unit-objectives`}>
+            <h3 id={`${INSPECTOR_ID}-unit-objectives`}>Learning objectives &amp; gate criteria ({mod.objectives.length})</h3>
+            <ul class="lab-checklist">
+              {mod.objectives.map((obj) => (
+                <li key={obj.objectiveId}>
+                  <StatusGlyph
+                    type="gate"
+                    tone={obj.proficiencyStatus === "demonstrated" ? "done" : "todo"}
+                    size={16}
+                  />
+                  <div>
+                    <strong>{obj.title}</strong>
+                    <span class="meta-text" style="display:block">
+                      {humanize(obj.proficiencyStatus)}
+                      {obj.successCriterion ? ` · ${obj.successCriterion}` : ""}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {unitResources.length > 0 ? (
+            <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-resources`}>
+              <h3 id={`${INSPECTOR_ID}-unit-resources`}>Accumulated study materials ({unitResources.length})</h3>
+              {unitResources.map((card, index) => {
+                const url = card.canonicalUrl;
+                return (
+                  <article
+                    key={`${card.resourceVersionId}-${index}`}
+                    class="source-card"
+                    data-resource-version-id={card.resourceVersionId}
+                  >
+                    <h4 class="source-title">{card.title}</h4>
+                    <p class="source-publisher">{card.verifiedPublisher}</p>
+                    {url ? (
+                      <p class="source-location">
+                        <SfIcon name="resources" size={15} />
+                        <a href={url} target="_blank" rel="noopener noreferrer">
+                          {displayLocation(url)}
+                        </a>
+                      </p>
+                    ) : null}
+                  </article>
+                );
+              })}
+            </section>
+          ) : null}
+        </div>
+        {nextUnitActivity ? (
+          <div class="inspector-actions">
+            <button
+              type="button"
+              class="btn-primary next-step"
+              data-action="select-outline-activity"
+              data-activity-id={nextUnitActivity.activityId}
+              data-module-id={mod.moduleId}
+            >
+              <span class="next-step-text">
+                {isClosed(nextUnitActivity.executionStatus) ? "Inspect activity" : "Open next in unit"}: {nextUnitActivity.title}
+              </span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </div>
+        ) : null}
+      </dialog>
+    );
+  }
+
   const id = activity.activityId;
   const track = trackOf(activity);
   const isGate = track === "gate";
   const isLab = activity.type === "coding" || activity.type === "project";
-  const unitNumber = modules.indexOf(mod) + 1;
   const tone = executionTone(activity.executionStatus);
   const status: SettableStatus = tone === "done" ? "completed" : tone === "doing" ? "in_progress" : "not_started";
 
@@ -138,6 +352,7 @@ export function InspectorDrawer({
       closedby="any"
       aria-labelledby={`${INSPECTOR_ID}-title`}
       data-open={String(open)}
+      data-inspector-mode="activity"
       data-activity-id={id}
       data-opaque-surface="true"
     >
