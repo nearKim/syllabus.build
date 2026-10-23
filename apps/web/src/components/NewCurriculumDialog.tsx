@@ -37,7 +37,7 @@ export const INTAKE_FIT_MODES = ["fill_gaps", "use_selected_only"] as const;
 export type IntakeFitMode = (typeof INTAKE_FIT_MODES)[number];
 
 export const DEFAULT_SUBJECT_TOPICS: Readonly<Record<IntakeSubject, readonly string[]>> = {
-  Engineering: ["Python", "RAG", "Attention", "Linear Algebra", "Vector Indexing", "Evaluation"],
+  Engineering: ["Python", "RAG", "Attention", "Vector Indexing", "Linear Algebra", "Evaluation"],
   Systems: ["Rust", "Async", "Concurrency", "Wakers", "Work Stealing"],
   Mathematics: ["Linear Algebra", "Eigenvalues", "SVD", "Matrix Calculus"],
   Physics: ["Thermodynamics", "Ensembles", "Phase Transitions", "Ising Model"],
@@ -409,13 +409,16 @@ export function evaluateIntakeResourceFit(params: {
     marketplaceListings,
   } = params;
 
+  const effectiveTopics: readonly string[] =
+    requestedTopics.length > 0 ? requestedTopics : DEFAULT_SUBJECT_TOPICS[subject].slice(0, 4);
+
   const existingPlans: ExistingPlanFitCandidate[] = [];
   const seenTitles = new Set<string>();
 
   for (const plan of myPlans) {
     const title = goalTitleOf(plan.curriculum);
     const rawTags = Array.isArray(plan.curriculum["topic_tags"]) ? (plan.curriculum["topic_tags"] as string[]) : [];
-    const matchedTopics = requestedTopics.filter((req) =>
+    const matchedTopics = effectiveTopics.filter((req) =>
       rawTags.some((tag) => tag.toLowerCase() === req.toLowerCase()),
     );
     if (plan.domain === subject || matchedTopics.length > 0) {
@@ -430,7 +433,7 @@ export function evaluateIntakeResourceFit(params: {
         gateStyle: plan.assessmentMode,
         handle: "In your plans",
         matchedTopics,
-        totalRequestedTopics: requestedTopics.length,
+        totalRequestedTopics: effectiveTopics.length,
       });
     }
   }
@@ -438,7 +441,7 @@ export function evaluateIntakeResourceFit(params: {
   for (const listing of marketplaceListings) {
     const title = goalTitleOf(listing.curriculum);
     if (seenTitles.has(title.toLowerCase())) continue;
-    const matchedTopics = requestedTopics.filter((req) =>
+    const matchedTopics = effectiveTopics.filter((req) =>
       listing.topicTags.some((tag) => tag.toLowerCase() === req.toLowerCase()),
     );
     if (listing.subject === subject || matchedTopics.length > 0) {
@@ -452,16 +455,16 @@ export function evaluateIntakeResourceFit(params: {
         gateStyle: listing.gateStyle,
         handle: listing.handle,
         matchedTopics,
-        totalRequestedTopics: requestedTopics.length,
+        totalRequestedTopics: effectiveTopics.length,
       });
     }
   }
 
-  const indexedMaterials = buildIndexedMaterialCandidates(catalogResources, subject, requestedTopics, materialsAccess);
+  const indexedMaterials = buildIndexedMaterialCandidates(catalogResources, subject, effectiveTopics, materialsAccess);
   const activeSelectedIds = selectedResourceIds.filter((id) => !skippedResourceIds.includes(id));
   const selectedMaterials = indexedMaterials.filter((item) => activeSelectedIds.includes(item.resourceVersionId));
 
-  const topicCoverage: TopicCoverageItem[] = requestedTopics.map((topic) => {
+  const topicCoverage: TopicCoverageItem[] = effectiveTopics.map((topic) => {
     const lower = topic.toLowerCase();
     const coveringIds = selectedMaterials
       .filter((mat) => mat.coveredTopics.some((t) => t.toLowerCase() === lower))
@@ -500,7 +503,7 @@ export function evaluateIntakeResourceFit(params: {
   const searchPrompt = [
     `GOAL: ${effectiveGoalTitle}`,
     `SUBJECT: ${subject} | DEPTH: ${depth} | FLOW: ${flowOrder} | PACE: ${weeklyMinutes}m/wk | ACCESS: ${materialsAccess}`,
-    `REQUESTED_TOPICS: ${requestedTopics.join(", ") || "general foundations"}`,
+    `REQUESTED_TOPICS: ${effectiveTopics.join(", ") || "general foundations"}`,
     `REUSED_INDEXED_RESOURCES: ${selectedMaterials.map((m) => `${m.resourceVersionId} (${m.category})`).join(", ") || "none"}`,
     `SKIPPED_RESOURCES: ${skippedResourceIds.join(", ") || "none"}`,
     `DELTA_WEB_SEARCH_TOPICS: ${webSearchRequired ? deltaTopicsToSearch.join(", ") : "NONE (web search bypassed)"}`,
@@ -611,6 +614,8 @@ export function executeIntakeGenerationPipeline(params: {
     reusedIds.find((id) => id.includes("youtube")) ??
     secondaryResId;
 
+  const effectiveTopics: readonly string[] =
+    requestedTopics.length > 0 ? requestedTopics : DEFAULT_SUBJECT_TOPICS[subject].slice(0, 4);
   const effectiveTitle = goalTitle.trim() || DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject];
   const generatedCurriculumId = "curriculum-ai-generated-001";
   const gateStyle =
@@ -631,11 +636,11 @@ export function executeIntakeGenerationPipeline(params: {
     revision_reason: "initial_generation",
     subject,
     gate_style: gateStyle,
-    topic_tags: requestedTopics.length > 0 ? [...requestedTopics] : ["Python", "RAG", "Attention"],
+    topic_tags: [...effectiveTopics],
     goal: {
       title: effectiveTitle,
       summary: `Generated via ${fitMode === "use_selected_only" ? "selected indexed materials only (0 web searches)" : "hybrid catalog reuse + delta web search"} with ${depth} mathematical depth.`,
-      included_topics: [...requestedTopics],
+      included_topics: [...effectiveTopics],
       excluded_topics: [...fitEvaluation.skippedResourceIds],
       scope_note: fitEvaluation.costAndBypassBadge,
     },
@@ -1127,9 +1132,11 @@ export function NewCurriculumDialog({
                 data-dependent-on-subject={subject}
               >
                 <option value="" selected>
-                  {unselectedTopics.length > 0
-                    ? `+ Add ${subject} topic (${unselectedTopics.length} available)…`
-                    : `All ${subject} topics selected`}
+                  {requestedTopics.length === 0
+                    ? `All ${subject} topics (select to filter)…`
+                    : unselectedTopics.length > 0
+                      ? `+ Add ${subject} topic (${unselectedTopics.length} more)…`
+                      : `All ${subject} topics selected`}
                 </option>
                 {availableTopics.map((topic) => {
                   const active = requestedTopics.includes(topic);
@@ -1270,7 +1277,7 @@ export function NewCurriculumDialog({
                 role="status"
                 data-search-bypass-status={fitEvaluation.costAndBypassBadge}
               >
-                <SfIcon name="focus" size={15} />
+                <SfIcon name={fitEvaluation.webSearchRequired ? "globe" : "check"} size={15} />
                 <span>{fitEvaluation.costAndBypassBadge}</span>
               </p>
             </div>
@@ -1414,7 +1421,7 @@ export function NewCurriculumDialog({
 
         <footer class="dialog-footer">
           <button type="button" class="btn-primary" data-action="generate-curriculum-ai">
-            <SfIcon name="focus" size={15} />
+            <SfIcon name="sparkles" size={15} />
             <span>Generate curriculum</span>
           </button>
         </footer>

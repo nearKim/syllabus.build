@@ -12,6 +12,7 @@ export type SfIconName =
   | "zoom-out"
   | "reset"
   | "focus"
+  | "sparkles"
   | "check"
   | "close"
   | "clock"
@@ -37,128 +38,173 @@ function renderSfIconNodes(name: SfIconName): VNode {
     case "learn":
       return (
         <>
-          <path d="M3 2.75h3.6c.8 0 1.4.65 1.4 1.45V13" />
-          <path d="M13 2.75H9.4c-.8 0-1.4.65-1.4 1.45V13" />
-          <path d="M3 12.25h3.6" />
-          <path d="M13 12.25H9.4" />
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
         </>
       );
     case "explore":
       return (
         <>
-          <circle cx="8" cy="8" r="5.25" />
-          <path d="m9.95 6.05-1.15 3.15-3.15 1.15 1.15-3.15z" />
+          <circle cx="12" cy="12" r="10" />
+          <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
         </>
       );
     case "settings":
       return (
         <>
-          <path d="M2.75 4.5h10.5M2.75 8h10.5M2.75 11.5h10.5" />
-          <circle cx="5.5" cy="4.5" r="1.5" fill="currentColor" stroke="none" />
-          <circle cx="10.5" cy="8" r="1.5" fill="currentColor" stroke="none" />
-          <circle cx="6.5" cy="11.5" r="1.5" fill="currentColor" stroke="none" />
+          <line x1="21" x2="14" y1="4" y2="4" />
+          <line x1="10" x2="3" y1="4" y2="4" />
+          <line x1="21" x2="12" y1="12" y2="12" />
+          <line x1="8" x2="3" y1="12" y2="12" />
+          <line x1="21" x2="16" y1="20" y2="20" />
+          <line x1="12" x2="3" y1="20" y2="20" />
+          <line x1="14" x2="14" y1="2" y2="6" />
+          <line x1="8" x2="8" y1="10" y2="14" />
+          <line x1="16" x2="16" y1="18" y2="22" />
         </>
       );
     case "today":
       return (
         <>
-          <rect x="2.75" y="3.5" width="10.5" height="9.75" rx="1.5" />
-          <path d="M2.75 6.5h10.5M5.5 2.5v2M10.5 2.5v2" />
+          <path d="M8 2v4" />
+          <path d="M16 2v4" />
+          <rect width="18" height="18" x="3" y="4" rx="2" />
+          <path d="M3 10h18" />
         </>
       );
     case "plan":
       return (
         <>
-          <circle cx="4" cy="4.5" r="1.5" />
-          <circle cx="12" cy="4.5" r="1.5" />
-          <circle cx="8" cy="12" r="1.5" />
-          <path d="M5.3 5.4 6.9 10.6M10.7 5.4 9.1 10.6" />
+          <rect x="16" y="16" width="6" height="6" rx="1" />
+          <rect x="2" y="16" width="6" height="6" rx="1" />
+          <rect x="9" y="2" width="6" height="6" rx="1" />
+          <path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3" />
+          <path d="M12 12V8" />
         </>
       );
     case "progress":
-      return <path d="M3 13V8.5M8 13V4M13 13V6.5" />;
+      return (
+        <>
+          <path d="M3 3v18h18" />
+          <path d="M18 17V9" />
+          <path d="M13 17V5" />
+          <path d="M8 17v-3" />
+        </>
+      );
     case "resources":
       return (
         <>
-          <path d="M4.25 2.75h5.4l2.1 2.1v8.15a.75.75 0 0 1-.75.75H4.25a.75.75 0 0 1-.75-.75V3.5a.75.75 0 0 1 .75-.75z" />
-          <path d="M9.6 2.75V5h2.15" />
+          <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+          <path d="M14 2v4a2 2 0 0 0 2 2h4" />
+          <path d="M10 9H8" />
+          <path d="M16 13H8" />
+          <path d="M16 17H8" />
         </>
       );
     case "zoom-in":
       return (
         <>
-          <circle cx="7" cy="7" r="3.75" />
-          <path d="m10 10 3.25 3.25M7 5.25v3.5M5.25 7h3.5" />
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" x2="16.65" y1="21" y2="16.65" />
+          <line x1="11" x2="11" y1="8" y2="14" />
+          <line x1="8" x2="14" y1="11" y2="11" />
         </>
       );
     case "zoom-out":
       return (
         <>
-          <circle cx="7" cy="7" r="3.75" />
-          <path d="m10 10 3.25 3.25M5.25 7h3.5" />
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" x2="16.65" y1="21" y2="16.65" />
+          <line x1="8" x2="14" y1="11" y2="11" />
         </>
       );
     case "reset":
       return (
         <>
-          <path d="M13 8a5 5 0 1 1-1.35-3.4" />
-          <path d="M13 2.75V5.5h-2.75" />
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
         </>
       );
     case "focus":
       return (
         <>
-          <circle cx="8" cy="8" r="2" />
-          <path d="M8 2.25v2.15M8 11.6v2.15M2.25 8h2.15M11.6 8h2.15" />
+          <circle cx="12" cy="12" r="10" />
+          <line x1="22" x2="18" y1="12" y2="12" />
+          <line x1="6" x2="2" y1="12" y2="12" />
+          <line x1="12" x2="12" y1="6" y2="2" />
+          <line x1="12" x2="12" y1="22" y2="18" />
+        </>
+      );
+    case "sparkles":
+      return (
+        <>
+          <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+          <path d="M20 3v4" />
+          <path d="M22 5h-4" />
+          <path d="M4 17v2" />
+          <path d="M5 18H3" />
         </>
       );
     case "check":
-      return <path d="M3.25 8.25 6.4 11.4 12.75 4.6" />;
+      return <path d="M20 6 9 17l-5-5" />;
     case "close":
-      return <path d="M4.5 4.5 11.5 11.5M11.5 4.5 4.5 11.5" />;
+      return (
+        <>
+          <path d="M18 6 6 18" />
+          <path d="m6 6 12 12" />
+        </>
+      );
     case "clock":
       return (
         <>
-          <circle cx="8" cy="8" r="5.25" />
-          <path d="M8 5.25V8l1.9 1.25" />
+          <circle cx="12" cy="12" r="10" />
+          <polyline points="12 6 12 12 16 14" />
         </>
       );
     case "globe":
       return (
         <>
-          <circle cx="8" cy="8" r="5.25" />
-          <path d="M2.75 8h10.5" />
-          <path d="M8 2.75c1.45 1.4 2.2 3.15 2.2 5.25S9.45 11.85 8 13.25C6.55 11.85 5.8 10.1 5.8 8S6.55 4.15 8 2.75z" />
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+          <path d="M2 12h20" />
         </>
       );
     case "rigor":
       return (
         <>
-          <path d="M3 2.75v10.5h10.5z" />
-          <path d="M3 10.5h2.75v2.75" />
+          <path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" />
+          <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+          <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
         </>
       );
     case "pin":
       return (
         <>
-          <path d="M6 2.75h4l-.6 3.6 1.85 2.15h-6.5L6.6 6.35z" />
-          <path d="M8 8.5v4.75" />
+          <line x1="12" x2="12" y1="17" y2="22" />
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" />
         </>
       );
     case "code":
-      return <path d="M5.75 4.75 2.5 8l3.25 3.25M10.25 4.75 13.5 8l-3.25 3.25" />;
+      return (
+        <>
+          <path d="m18 16 4-4-4-4" />
+          <path d="m6 8-4 4 4 4" />
+          <path d="m14.5 4-5 16" />
+        </>
+      );
     case "video":
       return (
         <>
-          <rect x="2.25" y="3.5" width="11.5" height="9" rx="1.75" />
-          <path d="m6.75 6.25 3.5 1.75-3.5 1.75z" fill="currentColor" stroke="none" />
+          <rect width="18" height="18" x="3" y="3" rx="2" />
+          <polygon points="10 8 16 12 10 16 10 8" />
         </>
       );
     case "course":
       return (
         <>
-          <path d="M8 3 1.75 6 8 9l6.25-3L8 3z" />
-          <path d="M4.25 7.5v3.25c0 .9 1.65 1.75 3.75 1.75s3.75-.85 3.75-1.75V7.5" />
+          <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z" />
+          <path d="M22 10v6" />
+          <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5" />
         </>
       );
     case "upvote":
@@ -166,38 +212,45 @@ function renderSfIconNodes(name: SfIconName): VNode {
         <>
           <path
             class="upvote-thumb"
-            d="M9.8 4.33 9.2 6.8h3.5a1.2 1.2 0 0 1 1.15 1.54l-1.4 4.8a1.2 1.2 0 0 1-1.15.86H3.2A1.2 1.2 0 0 1 2 12.8V8a1.2 1.2 0 0 1 1.2-1.2h1.66a1.2 1.2 0 0 0 1.07-.67L8 2a1.88 1.88 0 0 1 1.8 2.33z"
+            d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"
           />
-          <path class="upvote-cuff" d="M5 7.6v5.6" />
+          <path class="upvote-cuff" d="M7 10v12" />
         </>
       );
     case "engineering":
       return (
-        <path d="M9.62 4.58a.6.6 0 0 0 0 .84l.96.96a.6.6 0 0 0 .84 0l2.26-2.26a3.6 3.6 0 0 1-4.76 4.76l-4.15 4.15a1.27 1.27 0 0 1-1.8-1.8l4.15-4.15a3.6 3.6 0 0 1 4.76-4.76z" />
+        <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
       );
     case "math":
-      return <path d="M11.75 3.25H4.25L8.5 8l-4.25 4.75h7.5" />;
+      return <path d="M18 7V4H6l6 8-6 8h12v-3" />;
     case "physics":
       return (
         <>
-          <ellipse cx="8" cy="8" rx="6" ry="2.4" />
-          <ellipse cx="8" cy="8" rx="6" ry="2.4" transform="rotate(60 8 8)" />
-          <ellipse cx="8" cy="8" rx="6" ry="2.4" transform="rotate(-60 8 8)" />
-          <circle cx="8" cy="8" r="1" fill="currentColor" stroke="none" />
+          <circle cx="12" cy="12" r="1" />
+          <path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z" />
+          <path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z" />
         </>
       );
     case "literature":
       return (
         <>
-          <path d="M8 4.5C6.75 3.6 5 3.25 2.25 3.25v9c2.75 0 4.5.35 5.75 1.25 1.25-.9 3-1.25 5.75-1.25v-9C11 3.25 9.25 3.6 8 4.5z" />
-          <path d="M8 4.5v9" />
+          <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+          <polyline points="10 2 10 10 13 7 16 10 16 2" />
         </>
       );
     case "systems":
       return (
         <>
-          <rect x="4.25" y="4.25" width="7.5" height="7.5" rx="1.25" />
-          <path d="M6.5 2v2.25M9.5 2v2.25M6.5 11.75V14M9.5 11.75V14M2 6.5h2.25M2 9.5h2.25M11.75 6.5H14M11.75 9.5H14" />
+          <rect width="16" height="16" x="4" y="4" rx="2" />
+          <rect width="6" height="6" x="9" y="9" rx="1" />
+          <path d="M15 2v2" />
+          <path d="M15 20v2" />
+          <path d="M2 15h2" />
+          <path d="M2 9h2" />
+          <path d="M20 15h2" />
+          <path d="M20 9h2" />
+          <path d="M9 2v2" />
+          <path d="M9 20v2" />
         </>
       );
   }
@@ -214,10 +267,10 @@ export function SfIcon({ name, size = 16 }: SfIconProps): VNode {
       class="sf-icon"
       width={size}
       height={size}
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.5"
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
       aria-hidden="true"

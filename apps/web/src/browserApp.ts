@@ -2220,7 +2220,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   ${signedOut ? "" : `  ${(() => {
     const intakeGoalTitle = inputState.intakeGoalTitle ?? "";
     const intakeSubject: IntakeSubject = inputState.intakeSubject ?? "Engineering";
-    const intakeTopics = inputState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"];
+    const intakeTopics = inputState.intakeTopics ?? [];
     const intakeDepth: IntakeDepthChoice = inputState.intakeDepth ?? "formal";
     const intakeFlow: IntakeFlowChoice = inputState.intakeFlow ?? "application_first";
     const intakeMaterials: IntakeMaterialsChoice = inputState.intakeMaterials ?? "free_only";
@@ -2385,7 +2385,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
   let intakeGoalTitle = initialState.intakeGoalTitle ?? "";
   let intakeSubject: IntakeSubject = initialState.intakeSubject ?? "Engineering";
-  let intakeTopics: string[] = [...(initialState.intakeTopics ?? ["Python", "RAG", "Attention", "Vector Indexing"])];
+  let intakeTopics: string[] = [...(initialState.intakeTopics ?? [])];
   let intakeDepth: IntakeDepthChoice = initialState.intakeDepth ?? "formal";
   let intakeFlow: IntakeFlowChoice = initialState.intakeFlow ?? "application_first";
   let intakeMaterials: IntakeMaterialsChoice = initialState.intakeMaterials ?? "free_only";
@@ -2865,7 +2865,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeSubject = data["intakeSubject"];
-        intakeTopics = [...DEFAULT_SUBJECT_TOPICS[intakeSubject].slice(0, 4)];
+        intakeTopics = [];
         intakeSelectedResourceIds = buildIndexedMaterialCandidates(
           catalogResources,
           intakeSubject,

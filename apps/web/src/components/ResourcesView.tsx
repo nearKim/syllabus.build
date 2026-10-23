@@ -8,6 +8,7 @@ import type { ProficiencyProfileFixture } from "../diagnosticsAndAdaptation.ts";
 import { goalTitleOf, type ActiveCurriculum } from "./ExploreMarketplace.tsx";
 import { SfIcon, type SfIconName } from "./Icons.tsx";
 import type { SourceCardView } from "./InspectorDrawer.tsx";
+import { MathText } from "./MathText.tsx";
 import { humanize, rightsWords } from "./StudyFlowBoard.tsx";
 
 export const RESOURCE_CATEGORIES = ["All", "Course", "Book", "YouTube", "Code Lab", "Problem Set"] as const;
@@ -368,7 +369,9 @@ export function ResourcesView({
                                 data-module-id={usage.moduleId}
                               >
                                 <span class="badge">U{usage.unitIndex}</span>
-                                <span class="resource-usage-title">{usage.activityTitle}</span>
+                                <span class="resource-usage-title">
+                                  <MathText text={usage.activityTitle} />
+                                </span>
                                 <span aria-hidden="true">→</span>
                               </button>
                             </li>
