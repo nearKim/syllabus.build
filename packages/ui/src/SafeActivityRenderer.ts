@@ -281,7 +281,7 @@ function latexToSpokenLabel(latex: string): string {
 
 const LATEX_SYMBOLS: Readonly<Record<string, readonly ["mi" | "mo", string]>> = {
   alpha: ["mi", "α"], beta: ["mi", "β"], gamma: ["mi", "γ"], delta: ["mi", "δ"], theta: ["mi", "θ"],
-  lambda: ["mi", "λ"], sigma: ["mi", "σ"], pi: ["mi", "π"], omega: ["mi", "ω"], nabla: ["mi", "∇"], partial: ["mi", "∂"],
+  lambda: ["mi", "λ"], Lambda: ["mi", "Λ"], sigma: ["mi", "σ"], pi: ["mi", "π"], omega: ["mi", "ω"], nabla: ["mi", "∇"], partial: ["mi", "∂"],
   cdot: ["mo", "⋅"], times: ["mo", "×"], le: ["mo", "≤"], leq: ["mo", "≤"], ge: ["mo", "≥"], geq: ["mo", "≥"],
   ne: ["mo", "≠"], neq: ["mo", "≠"], in: ["mo", "∈"], sum: ["mo", "∑"], int: ["mo", "∫"],
 };
