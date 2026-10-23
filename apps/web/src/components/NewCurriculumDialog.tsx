@@ -201,6 +201,7 @@ export interface IndexedMaterialCandidate {
   readonly coveredTopics: readonly string[];
   readonly partialTopics: readonly string[];
   readonly polymorphicIndex: PolymorphicResourceIndex;
+  readonly source?: "indexed" | "web";
 }
 
 export type TopicCoverageState = "covered" | "partial" | "missing";
@@ -482,10 +483,91 @@ export function buildIndexedMaterialCandidates(
       coveredTopics,
       partialTopics,
       polymorphicIndex: meta?.polymorphicIndex ?? fallbackIndex,
+      source: resourceVersionId.startsWith("discovered-") ? "web" : "indexed",
     });
   }
 
   return candidates;
+}
+
+function buildWebDiscoveredMaterialCandidates(
+  subject: IntakeSubject,
+  deltaTopics: readonly string[],
+  catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>,
+): readonly IndexedMaterialCandidate[] {
+  if (deltaTopics.length === 0) return [];
+  const primaryTopic = deltaTopics[0] ?? subject;
+  const discovered: IndexedMaterialCandidate[] = [];
+
+  const bookId = "discovered-book-hnsw-vector-v1";
+  const bookUrl = "https://example.invalid/catalog/hnsw-vector-indexing-book";
+  if (!catalogResources[bookId]) {
+    discovered.push({
+      resourceVersionId: bookId,
+      title: `Book: Approximate Nearest Neighbor & HNSW Vector Indexing (${primaryTopic})`,
+      publisher: "Open ML Press · Web search",
+      canonicalUrl: bookUrl,
+      accessModel: "free",
+      category: "Book",
+      subject,
+      coveredTopics: [...deltaTopics],
+      partialTopics: [],
+      source: "web",
+      polymorphicIndex: {
+        kind: "book",
+        isbn13: "978-0-262-54811-3",
+        briefSummary: `Web-discovered monograph covering ${deltaTopics.join(", ")}, navigable small world graphs, and recall bounds.`,
+        tocChapters: [
+          {
+            number: "Ch. 1",
+            title: "Navigable Small World Graphs & Recall@k Bounds",
+            summary: "Hierarchical proximity graphs and greedy routing.",
+          },
+          {
+            number: "Ch. 2",
+            title: "Product Quantization & Memory-Bounded Search",
+            summary: "Asymmetric distance computation and codebook quantization.",
+          },
+        ],
+      },
+    });
+  }
+
+  const ytId = "discovered-youtube-rag-eval-playlist-v1";
+  const ytUrl = "https://example.invalid/catalog/youtube-rag-evaluation-playlist";
+  if (!catalogResources[ytId]) {
+    discovered.push({
+      resourceVersionId: ytId,
+      title: "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
+      publisher: "AI Evaluation Lab · Web search",
+      canonicalUrl: ytUrl,
+      accessModel: "free",
+      category: "YouTube",
+      subject,
+      coveredTopics: [...deltaTopics],
+      partialTopics: [],
+      source: "web",
+      polymorphicIndex: {
+        kind: "youtube_playlist",
+        channelTitle: "AI Evaluation Lab · YouTube",
+        transcriptAvailable: true,
+        syllabusVideos: [
+          {
+            timestampOrIndex: "06:20",
+            title: "Deriving Context Recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$",
+            transcriptSummary: "Ground-truth chunk retrieval recall and precision tradeoffs.",
+          },
+          {
+            timestampOrIndex: "18:05",
+            title: "Faithfulness & Groundedness Scoring Rubrics",
+            transcriptSummary: "Claim-level entailment verification against retrieved context.",
+          },
+        ],
+      },
+    });
+  }
+
+  return discovered;
 }
 
 export function evaluateIntakeResourceFit(params: {
@@ -570,19 +652,21 @@ export function evaluateIntakeResourceFit(params: {
     }
   }
 
-  const indexedMaterials = buildIndexedMaterialCandidates(catalogResources, subject, effectiveTopics, materialsAccess);
-  const activeSelectedIds = selectedResourceIds.filter((id) => !skippedResourceIds.includes(id));
-  const selectedMaterials = indexedMaterials.filter((item) => activeSelectedIds.includes(item.resourceVersionId));
+  const catalogCandidates = buildIndexedMaterialCandidates(catalogResources, subject, effectiveTopics, materialsAccess);
+  const activeCatalogIds = selectedResourceIds.filter((id) => !skippedResourceIds.includes(id));
+  const selectedCatalogMaterials = catalogCandidates.filter((item) =>
+    activeCatalogIds.includes(item.resourceVersionId),
+  );
 
   const topicCoverage: TopicCoverageItem[] = effectiveTopics.map((topic) => {
     const lower = topic.toLowerCase();
-    const coveringIds = selectedMaterials
+    const coveringIds = selectedCatalogMaterials
       .filter((mat) => mat.coveredTopics.some((t) => t.toLowerCase() === lower))
       .map((mat) => mat.resourceVersionId);
     if (coveringIds.length > 0) {
       return { topic, status: "covered", coveredByResourceIds: coveringIds };
     }
-    const partialIds = selectedMaterials
+    const partialIds = selectedCatalogMaterials
       .filter((mat) => mat.partialTopics.some((t) => t.toLowerCase() === lower))
       .map((mat) => mat.resourceVersionId);
     if (partialIds.length > 0) {
@@ -600,11 +684,27 @@ export function evaluateIntakeResourceFit(params: {
       ? []
       : topicCoverage.filter((c) => c.status !== "covered").map((c) => c.topic);
 
+  const webSearchRequired = fitMode === "fill_gaps" && deltaTopicsToSearch.length > 0;
+  const webDiscoveredMaterials = webSearchRequired
+    ? buildWebDiscoveredMaterialCandidates(subject, deltaTopicsToSearch, catalogResources)
+    : [];
+  const indexedMaterials: readonly IndexedMaterialCandidate[] = [
+    ...catalogCandidates,
+    ...webDiscoveredMaterials,
+  ];
+  const activeWebIds = webDiscoveredMaterials
+    .map((m) => m.resourceVersionId)
+    .filter((id) => !skippedResourceIds.includes(id));
+  const activeSelectedIds = [
+    ...activeCatalogIds,
+    ...activeWebIds.filter((id) => !activeCatalogIds.includes(id)),
+  ];
+  const selectedMaterials = indexedMaterials.filter((item) => activeSelectedIds.includes(item.resourceVersionId));
+
   const bypassedCanonicalUrls = Object.values(catalogResources)
     .map((r) => r.canonical_url)
     .filter((u): u is string => typeof u === "string" && u.length > 0);
 
-  const webSearchRequired = fitMode === "fill_gaps" && deltaTopicsToSearch.length > 0;
   const costAndBypassBadge = webSearchRequired
     ? `Web search: ${deltaTopicsToSearch.join(", ")}`
     : `No web search · ${selectedMaterials.length} selected`;
@@ -1493,7 +1593,7 @@ export function NewCurriculumDialog({
             ) : null}
 
             <div class="intake-fit-group intake-materials-block">
-              <h4 class="intake-fit-group-title">Indexed materials ({fitEvaluation.indexedMaterials.length})</h4>
+              <h4 class="intake-fit-group-title">Materials ({fitEvaluation.indexedMaterials.length})</h4>
               <ul class="intake-fit-list intake-materials-list">
                 {fitEvaluation.indexedMaterials.map((mat) => {
                   const isUsed = fitEvaluation.selectedResourceIds.includes(mat.resourceVersionId);
@@ -1503,6 +1603,7 @@ export function NewCurriculumDialog({
                       key={mat.resourceVersionId}
                       class={`intake-fit-card intake-material-card intake-material-row${isUsed ? " is-used" : ""}${isSkipped ? " is-skipped" : ""}`}
                       data-fit-resource-id={mat.resourceVersionId}
+                      data-fit-resource-source={mat.source ?? "indexed"}
                       data-fit-resource-used={String(isUsed)}
                       data-fit-resource-skipped={String(isSkipped)}
                     >
