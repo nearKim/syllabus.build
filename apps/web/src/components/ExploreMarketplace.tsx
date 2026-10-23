@@ -164,6 +164,113 @@ export function mathDepthFor(curriculum: Record<string, unknown>, topicIds: read
   return [...depths].map(humanize).join(", ") || "Not stated";
 }
 
+export interface CurriculumTagDescriptor {
+  readonly category: CategoryTag | null;
+  readonly subject: string;
+  readonly subjectLabel: string;
+  readonly subjectIcon: SfIconName;
+  readonly gateStyle: string;
+  readonly difficulty: (typeof DIFFICULTY_TAGS)[number] | null;
+  readonly format: (typeof FORMAT_TAGS)[number] | null;
+  readonly topicTags: readonly string[];
+}
+
+// Single source of truth for curriculum tags shared by Explore and Learn.
+// Reads canonical tag metadata directly from the curriculum document (with optional legacy fallbacks).
+export function curriculumTagsOf(
+  curriculum: Record<string, unknown>,
+  fallback?: {
+    readonly subject?: string | undefined;
+    readonly gateStyle?: string | undefined;
+    readonly topicTags?: readonly string[] | undefined;
+  },
+): CurriculumTagDescriptor {
+  const subject = textOf(curriculum["subject"]) || fallback?.subject || "Engineering";
+  const gateStyle = textOf(curriculum["gate_style"]) || fallback?.gateStyle || "Reviewed Quiz";
+  const depth = mathDepthFor(curriculum, []);
+  const difficulty = isOneOf(DIFFICULTY_TAGS, depth) ? depth : null;
+  const format = FORMAT_TAGS.find((entry) => gateStyle.includes(entry)) ?? null;
+  const fromCurriculum = normalizeStringList(curriculum["topic_tags"]);
+  const fromFallback = fallback?.topicTags ? [...fallback.topicTags] : [];
+  const topicTags =
+    fromCurriculum.length > 0
+      ? fromCurriculum
+      : fromFallback.length > 0
+        ? fromFallback
+        : normalizeStringList(asRecord(curriculum["goal"])["included_topics"]);
+  return {
+    category: categoryOf(subject) ?? null,
+    subject,
+    subjectLabel: tagLabelOf(subject),
+    subjectIcon: SUBJECT_ICONS[subject] ?? "course",
+    gateStyle,
+    difficulty,
+    format,
+    topicTags,
+  };
+}
+
+export interface CurriculumTagStripProps {
+  readonly curriculum: Record<string, unknown>;
+  readonly fallbackSubject?: string;
+  readonly fallbackGateStyle?: string;
+}
+
+// Learn tab UI representation of the shared curriculum tag data.
+// While Explore renders these tags as interactive filter buttons, Learn renders the same underlying
+// curriculum taxonomy, difficulty, format, and topic tags as an editorial metadata strip.
+export function CurriculumTagStrip({
+  curriculum,
+  fallbackSubject,
+  fallbackGateStyle,
+}: CurriculumTagStripProps): VNode {
+  const tags = curriculumTagsOf(curriculum, { subject: fallbackSubject, gateStyle: fallbackGateStyle });
+  return (
+    <div
+      class="learn-curriculum-tags"
+      aria-label="Curriculum taxonomy and topic tags"
+      data-category={tags.category ?? undefined}
+      data-subject={tags.subject}
+      data-difficulty={tags.difficulty ?? undefined}
+      data-format={tags.format ?? undefined}
+    >
+      <span class="learn-tag-primary" data-tag-facet="subject">
+        <span class="learn-tag-icon" aria-hidden="true">
+          <SfIcon name={tags.subjectIcon} size={15} />
+        </span>
+        {tags.category ? (
+          <>
+            <span class="learn-tag-category">{tags.category}</span>
+            <span class="learn-tag-sep" aria-hidden="true">
+              ›
+            </span>
+          </>
+        ) : null}
+        <span class="learn-tag-subject">{tags.subjectLabel}</span>
+      </span>
+      {tags.difficulty ? (
+        <span class="learn-tag-facet" data-tag-facet="difficulty">
+          {tags.difficulty}
+        </span>
+      ) : null}
+      {tags.format ? (
+        <span class="learn-tag-facet" data-tag-facet="format">
+          {tags.format}
+        </span>
+      ) : null}
+      {tags.topicTags.length > 0 ? (
+        <ul class="learn-topic-tags" aria-label="Topics">
+          {tags.topicTags.map((topic) => (
+            <li key={topic} class="learn-topic-chip" data-tag-topic={topic}>
+              {topic}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 // A plan's estimated study time at 1x speed, in minutes.
 const studyMinutesOf = (curriculum: Record<string, unknown>): number =>
   rawListOf(curriculum, "activities").reduce(
@@ -229,6 +336,7 @@ export const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly
 
 export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): ActiveCurriculum {
   const curriculumId = `adopted-${listing.publicationId}`;
+  const tags = curriculumTagsOf(listing.curriculum, listing);
   const modules = rawListOf(listing.curriculum, "modules").filter((mod) =>
     adoption.moduleIds.includes(textOf(mod["module_id"])),
   );
@@ -243,12 +351,15 @@ export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): 
     .filter((session) => session.activity_ids.length > 0);
   return {
     curriculumId,
-    domain: listing.subject,
-    assessmentMode: listing.gateStyle,
+    domain: tags.subject,
+    assessmentMode: tags.gateStyle,
     publicationId: listing.publicationId,
     draft: !adoption.active,
     curriculum: {
       ...listing.curriculum,
+      subject: tags.subject,
+      gate_style: tags.gateStyle,
+      topic_tags: tags.topicTags,
       curriculum_id: curriculumId,
       revision_id: revisionId,
       revision_number: 1,
@@ -269,31 +380,40 @@ export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): 
   };
 }
 
+const listingTagsOf = (listing: MarketplaceListing): CurriculumTagDescriptor =>
+  curriculumTagsOf(listing.curriculum, listing);
+
 // The difficulty is the plan's math depth.
-const difficultyTagOf = (listing: MarketplaceListing): (typeof DIFFICULTY_TAGS)[number] | null => {
-  const depth = mathDepthFor(listing.curriculum, []);
-  return isOneOf(DIFFICULTY_TAGS, depth) ? depth : null;
-};
+const difficultyTagOf = (listing: MarketplaceListing): (typeof DIFFICULTY_TAGS)[number] | null =>
+  listingTagsOf(listing).difficulty;
 
 // The format is the assessment a listing gates on, named in one or two words.
 const formatTagOf = (listing: MarketplaceListing): (typeof FORMAT_TAGS)[number] | null =>
-  FORMAT_TAGS.find((format) => listing.gateStyle.includes(format)) ?? null;
+  listingTagsOf(listing).format;
 
-const inTiers = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean =>
-  (filters.category === "All" || categoryOf(listing.subject) === filters.category) &&
-  (filters.subject === "All" || listing.subject === filters.subject);
+const inTiers = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean => {
+  const tags = listingTagsOf(listing);
+  return (
+    (filters.category === "All" || tags.category === filters.category) &&
+    (filters.subject === "All" || tags.subject === filters.subject)
+  );
+};
 
-const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean =>
-  inTiers(listing, filters) &&
-  (filters.topic === "All" || listing.topicTags.includes(filters.topic)) &&
-  (filters.difficulty === "All" || difficultyTagOf(listing) === filters.difficulty) &&
-  (filters.format === "All" || formatTagOf(listing) === filters.format) &&
-  (!filters.query ||
-    [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, listing.subject,
-      categoryOf(listing.subject) ?? "", ...listing.topicTags]
-      .join(" ")
-      .toLowerCase()
-      .includes(filters.query.toLowerCase()));
+const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters): boolean => {
+  const tags = listingTagsOf(listing);
+  return (
+    inTiers(listing, filters) &&
+    (filters.topic === "All" || tags.topicTags.includes(filters.topic)) &&
+    (filters.difficulty === "All" || tags.difficulty === filters.difficulty) &&
+    (filters.format === "All" || tags.format === filters.format) &&
+    (!filters.query ||
+      [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, tags.subject,
+        tags.category ?? "", ...tags.topicTags]
+        .join(" ")
+        .toLowerCase()
+        .includes(filters.query.toLowerCase()))
+  );
+};
 
 // The values a facet accepts. Topics are the tags that some listing carries.
 export const facetValuesOf = (facet: MarketplaceFacet, listings: readonly MarketplaceListing[]): readonly string[] =>
@@ -301,7 +421,7 @@ export const facetValuesOf = (facet: MarketplaceFacet, listings: readonly Market
     : facet === "subject" ? MARKETPLACE_SUBJECTS
       : facet === "difficulty" ? MARKETPLACE_DIFFICULTIES
         : facet === "format" ? MARKETPLACE_FORMATS
-          : ["All", ...listings.flatMap((listing) => listing.topicTags)];
+          : ["All", ...listings.flatMap((listing) => listingTagsOf(listing).topicTags)];
 
 // Setting one filter keeps the tiers on one branch of the taxonomy. A category drops a subject outside it,
 // a subject sets its own category, and a topic stays only while a listing in the new scope still carries it.
@@ -315,7 +435,7 @@ export function withMarketplaceFilter(
   const subject = facet === "category" && categoryOf(set.subject) !== set.category ? "All" : set.subject;
   const scoped = { ...set, subject, category: categoryOf(subject) ?? set.category };
   const topicFits =
-    scoped.topic === "All" || listings.some((listing) => inTiers(listing, scoped) && listing.topicTags.includes(scoped.topic));
+    scoped.topic === "All" || listings.some((listing) => inTiers(listing, scoped) && listingTagsOf(listing).topicTags.includes(scoped.topic));
   return topicFits ? scoped : { ...scoped, topic: "All" };
 }
 
@@ -422,7 +542,7 @@ export function ExploreMarketplace({
   // Topics rank by result count, then by name. A long list shows only its first topics until the learner asks
   // for all of them, and the chosen topic always stays in view. A "1 more" button would only replace one tag.
   const topics = [
-    ...new Set(listings.filter((listing) => inTiers(listing, filters)).flatMap((listing) => listing.topicTags)),
+    ...new Set(listings.filter((listing) => inTiers(listing, filters)).flatMap((listing) => listingTagsOf(listing).topicTags)),
   ]
     .map((topic) => ({ topic, count: countIf("topic", topic) }))
     .sort((a, b) => b.count - a.count || a.topic.localeCompare(b.topic));
@@ -646,24 +766,24 @@ export function ExploreMarketplace({
               !signedOut && votes.some((vote) => vote.revisionId === listing.revisionId && vote.accountId === account.accountId);
             const units = projection.modules.length;
             const upvotes = upvotesOf(listing);
-            const difficulty = difficultyTagOf(listing);
-            const format = formatTagOf(listing);
+            const tags = listingTagsOf(listing);
+            const { difficulty, format } = tags;
             return (
               <article
                 key={id}
                 class="marketplace-card public-template-card"
                 data-publication-id={id}
                 data-revision-id={listing.revisionId}
-                data-subject={listing.subject}
+                data-subject={tags.subject}
                 aria-labelledby={`listing-${id}-title`}
                 data-opaque-surface="true"
               >
                 <div class="marketplace-card-head">
                   <span class="marketplace-card-icon" aria-hidden="true">
-                    <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
+                    <SfIcon name={tags.subjectIcon} />
                   </span>
-                  {isOneOf(SUBJECT_TAGS, listing.subject) ? (
-                    <FilterTag facet="subject" value={listing.subject} filters={filters} />
+                  {isOneOf(SUBJECT_TAGS, tags.subject) ? (
+                    <FilterTag facet="subject" value={tags.subject} filters={filters} />
                   ) : null}
                   {difficulty ? <FilterTag facet="difficulty" value={difficulty} filters={filters} /> : null}
                   {format ? <FilterTag facet="format" value={format} filters={filters} /> : null}
@@ -675,7 +795,7 @@ export function ExploreMarketplace({
                   <p class="marketplace-summary">{projection.summary}</p>
                 </div>
                 <div class="marketplace-topics">
-                  {listing.topicTags.map((topic) => (
+                  {tags.topicTags.map((topic) => (
                     <FilterTag key={topic} facet="topic" value={topic} filters={filters} />
                   ))}
                 </div>
@@ -791,16 +911,17 @@ export function ExploreMarketplace({
                 {ownedListings.map((listing) => {
                   const title = goalTitleOf(listing.curriculum);
                   const myPlan = planOf(listing);
+                  const tags = listingTagsOf(listing);
                   return (
                     <li key={listing.publicationId} data-publication-id={listing.publicationId}>
                       <strong>{title}</strong>
                       <span class="publication-revision">Public · Revision 1</span>
-                      <span class="marketplace-card-icon" data-subject={listing.subject} aria-hidden="true">
-                        <SfIcon name={SUBJECT_ICONS[listing.subject] ?? "course"} />
+                      <span class="marketplace-card-icon" data-subject={tags.subject} aria-hidden="true">
+                        <SfIcon name={tags.subjectIcon} />
                       </span>
-                      {listing.topicTags.length > 0 ? (
+                      {tags.topicTags.length > 0 ? (
                         <span class="publication-topics">
-                          {listing.topicTags.map((topic) => (
+                          {tags.topicTags.map((topic) => (
                             <span key={topic} class="tag">
                               {topic}
                             </span>
