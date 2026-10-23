@@ -518,7 +518,7 @@ test("the status control sets three states, celebrates Done, and then offers the
   assert.deepEqual(pressed(), ["Done"]);
   assert.match(control(), /class="seg-btn status-celebration" data-action="set-activity-status" data-activity-id="activity-theory" data-status="completed" aria-pressed="true"/);
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && root.innerHTML.includes('data-study-minutes="15"'));
-  const next = drawer().match(/<button type="button" class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"><span class="next-step-text">Go to next step: Worked Example: Attention Scaling Factor 1\/sqrt\(d_k\)<\/span><span aria-hidden="true">→<\/span><\/button>/);
+  const next = drawer().match(/<button type="button" class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"><span class="next-step-text">Go to next step: Worked Example: Attention Scaling Factor <span class="math-inline" data-opaque-surface="true" data-latex="\\frac\{1\}\{\\sqrt\{d_k\}\}"><math [\s\S]*?<\/math><\/span><\/span><span aria-hidden="true">→<\/span><\/button>/);
   assert.ok(next, "Done turns the primary button into the next step");
   assert.equal(drawer().includes(">Mark as Done<"), false);
 
@@ -535,7 +535,7 @@ test("the status control sets three states, celebrates Done, and then offers the
   assert.deepEqual(pressed(), ["Done"]);
   const go = drawer().match(/class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
   click({ action: go[1], activityId: go[2], moduleId: go[3] });
-  assert.ok(drawer().includes(">Worked Example: Attention Scaling Factor 1/sqrt(d_k)</h2>"));
+  assert.match(drawer(), />Worked Example: Attention Scaling Factor <span class="math-inline" data-opaque-surface="true" data-latex="\\frac\{1\}\{\\sqrt\{d_k\}\}"><math [\s\S]*?<\/math><\/span><\/h2>/);
   assert.ok(drawer().includes('data-open="true"'));
 
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
@@ -1606,4 +1606,40 @@ test("Explore and Learn share one canonical curriculum tag source data with dist
     format: "Problem Set",
     topicTags: ["Thermodynamics", "Ensembles"],
   });
+});
+
+test("Study flow texts render inline LaTeX equations into accessible MathML across board cards, unit accumulation summaries, and activity inspector drawers", () => {
+  const { root, click } = mountWithClicks({ selectedActivityId: "activity-example", studyDetailOpen: true });
+
+  // 1. Study flow board card title renders inline LaTeX (\frac{1}{\sqrt{d_k}}) as MathML
+  assert.match(
+    root.innerHTML,
+    /class="node-title"[^>]*>Worked Example: Attention Scaling Factor <span class="math-inline" data-opaque-surface="true" data-latex="\\frac\{1\}\{\\sqrt\{d_k\}\}"><math [^>]*display="inline"[\s\S]*?<mfrac>/
+  );
+
+  // 2. Activity inspector drawer renders Study focus prompt, segment title, and learning objective criterion with inline LaTeX MathML
+  const activityDrawer = drawerOf(root.innerHTML);
+  assert.ok(activityDrawer.includes('<h3 id="learn-detail-inspector-prompt">Study focus</h3>'));
+  assert.ok(activityDrawer.includes('data-latex="QK^T"'));
+  assert.ok(activityDrawer.includes('data-latex="\\mathrm{Var}(q \\cdot k) = 1"'));
+  assert.ok(activityDrawer.includes("<mfrac><mrow><mn>1</mn></mrow><mrow><msqrt><mrow><msub><mi>d</mi><mi>k</mi></msub></mrow></msqrt></mrow></mfrac>"));
+
+  // 3. Clicking the Unit 1 & Unit 2 cells opens the Unit Row Accumulation Summary with LaTeX equations across its accumulated steps
+  click({ action: "select-outline-module", moduleId: "module-foundations" });
+  const unit1Drawer = drawerOf(root.innerHTML);
+  assert.equal(unit1Drawer.includes('data-inspector-mode="unit"'), true);
+  assert.ok(unit1Drawer.includes('data-latex="\\frac{1}{\\sqrt{d_k}}"'));
+  assert.ok(unit1Drawer.includes('data-latex="QK^T"'));
+
+  click({ action: "select-outline-module", moduleId: "module-attention" });
+  const unit2Drawer = drawerOf(root.innerHTML);
+  assert.equal(unit2Drawer.includes('data-inspector-mode="unit"'), true);
+  assert.ok(unit2Drawer.includes('data-latex="\\frac{1}{\\sqrt{d_k}}"'));
+
+  // 4. Switching to Linear Algebra renders projection matrix P = A(A^T A)^{-1}A^T and SVD A = U\Sigma V^T in Unit and Activity Study flow texts
+  click({ action: "select-curriculum", curriculumId: "curriculum-linear-algebra-002" });
+  click({ action: "select-outline-module", moduleId: "la-module-spectral" });
+  const laUnitDrawer = drawerOf(root.innerHTML);
+  assert.ok(laUnitDrawer.includes('data-latex="P = A(A^T A)^{-1}A^T"'));
+  assert.ok(laUnitDrawer.includes('data-latex="3 \\times 3"'));
 });

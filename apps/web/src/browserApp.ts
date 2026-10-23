@@ -2,7 +2,7 @@ import { h } from "preact";
 import { renderToString } from "preact-render-to-string";
 import {
   buildPlanMapAndOutlineModel, OBJECTIVE_PROFICIENCY_BADGE_STATUSES,
-  renderUntrustedCatalogText, resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
+  renderTextWithLatexHtml, renderUntrustedCatalogText, resolveSurfaceStyle, resolveThemeMode, resolveThemePalette,
   type ActivityExecutionStatus, type CatalogResourceMetadataInput, type MapKeyboardKey,
   type PlanMapAndOutlineModel, type ThemePreference,
 } from "../../../packages/ui/src/index.ts";
@@ -157,7 +157,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     {
       objective_id: "objective-attention", objective_version_id: "objective-attention-v1", topic_id: "topic-matrix-calculus",
       title: "Derive scaled dot-product attention gradients and variance scaling",
-      description: "Explain why dot products grow with dimension d_k and how 1/sqrt(d_k) prevents softmax saturation.",
+      description: "Explain why dot products grow with dimension $d_k$ and how $\\frac{1}{\\sqrt{d_k}}$ prevents softmax saturation.",
       success_criterion: "Compute forward attention weights and Jacobian structure for an unseen query-key-value example.",
       level: "applied", requirement_level: "required", assessment_activity_ids: ["activity-quiz", "activity-review"], prior_evidence_refs: [],
     },
@@ -172,7 +172,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
     },
     {
       module_id: "module-attention", title: "Module 2: Scaled Dot-Product Attention & Diagnostics",
-      summary: "Matrix shape contracts, variance scaling by 1/sqrt(d_k), and spaced review.",
+      summary: "Matrix shape contracts, variance scaling by $\\frac{1}{\\sqrt{d_k}}$, and spaced review.",
       requirement_level: "required", prerequisite_module_ids: ["module-foundations"], objective_ids: ["objective-attention"],
       activity_ids: ["activity-quiz", "activity-review", "activity-reflection"],
     },
@@ -183,17 +183,17 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-tokenization"], prerequisite_activity_ids: [],
       resource_assignments: [makeResAssign("synthetic-resource-tokenization-v1", "primary", ["seg-bpe-overview"], "Reviewed open reference covering BPE merge tables and sequence compression.")],
       duration_estimate: makeDurationEstimate([0, 15, 0, 0, 0], [0, 10, 0, 0, 0], [0, 22, 0, 0, 0]),
-      content: { study_prompt: "Compare byte-pair encoding merge rules against unigram language model likelihood pruning." },
+      content: { study_prompt: "Compare byte-pair encoding merge rules against unigram language model likelihood pruning $\\mathcal{L}(\\theta) = \\sum_{x \\in \\mathcal{V}} P(x)$." },
     },
     {
-      activity_id: "activity-example", type: "worked_example", title: "Worked Example: Attention Scaling Factor 1/sqrt(d_k)",
+      activity_id: "activity-example", type: "worked_example", title: "Worked Example: Attention Scaling Factor $\\frac{1}{\\sqrt{d_k}}$",
       requirement_level: "required", objective_ids: ["objective-tokenization", "objective-attention"], prerequisite_activity_ids: ["activity-theory"],
       resource_assignments: [
         makeResAssign("synthetic-resource-tokenization-v1", "primary", ["seg-bpe-overview"], "Demonstrates variance growth of unscaled dot products."),
-        makeResAssign("synthetic-resource-attention-youtube-v1", "supplemental", ["seg-yt-attention"], "Visual YouTube lecture deriving 1/sqrt(d_k) variance stabilization."),
+        makeResAssign("synthetic-resource-attention-youtube-v1", "supplemental", ["seg-yt-attention"], "Visual YouTube lecture deriving $\\frac{1}{\\sqrt{d_k}}$ variance stabilization."),
       ],
       duration_estimate: makeDurationEstimate([12, 8, 5, 0, 0], [10, 6, 4, 0, 0], [15, 12, 8, 0, 0]),
-      content: { example_prompt: "Inspect how scaling QK^T by 1/sqrt(d_k) keeps variance at 1 and prevents vanishing softmax gradients." },
+      content: { example_prompt: "Inspect how scaling $QK^T$ by $\\frac{1}{\\sqrt{d_k}}$ keeps variance at $\\mathrm{Var}(q \\cdot k) = 1$ and prevents vanishing softmax gradients." },
     },
     {
       activity_id: "activity-coding", type: "coding", title: "Implement Reversible Tokenizer & Shape Validator",
@@ -295,7 +295,7 @@ const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadata
   "synthetic-resource-attention-youtube-v1": makeCatalogEntry(
     "synthetic-resource-attention-youtube-v1", "YouTube Lecture: Scaled Dot-Product Attention & Softmax Variance Walkthrough", "youtube-attention-walkthrough",
     ["ai-engineering-youtube", "AI Engineering Channel · YouTube (Curator Verified)"], "free",
-    [["seg-yt-attention", "04:15 — Why unscaled dot products grow with d_k"]],
+    [["seg-yt-attention", "04:15 — Why unscaled dot products grow with $d_k$"]],
   ),
   "synthetic-resource-rag-lab-repo-v1": makeCatalogEntry(
     "synthetic-resource-rag-lab-repo-v1", "Code Lab Repository: FlashAttention & Tokenizer Benchmarks", "rag-benchmark-lab-repo",
@@ -304,7 +304,7 @@ const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadata
   "synthetic-resource-strang-youtube-v1": makeCatalogEntry(
     "synthetic-resource-strang-youtube-v1", "MIT OCW YouTube Lecture: Projection Matrices and Least Squares", "youtube-mit-projections",
     ["mit-ocw-youtube", "MIT OpenCourseWare · YouTube (Curator Verified)"], "free",
-    [["seg-yt-projection", "12:40 — Deriving P = A(AᵀA)⁻¹Aᵀ"]],
+    [["seg-yt-projection", "12:40 — Deriving $P = A(A^T A)^{-1}A^T$"]],
   ),
   "synthetic-resource-la-notes-v1": makeCatalogEntry(
     "synthetic-resource-la-notes-v1", "Open Linear Algebra Notes: Spectral Theory and Projections", "linear-algebra-notes", OPEN_MATH_COMMONS, "free",
@@ -369,14 +369,14 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
       objective_id: "objective-la-spectral", objective_version_id: "objective-la-spectral-v1", topic_id: "topic-eigenvalues",
       title: "Compute eigenvalues and orthogonal projections, and explain their geometry",
       description: "Relate eigenvectors to invariant directions and orthogonal projections to least-squares fits.",
-      success_criterion: "Diagonalize a symmetric 3×3 matrix and project a vector onto its column space, justifying each step.",
+      success_criterion: "Diagonalize a symmetric $3 \\times 3$ matrix $A = Q\\Lambda Q^T$ and project a vector onto its column space, justifying each step.",
       level: "applied", requirement_level: "required", assessment_activity_ids: ["la-gate-spectral"], prior_evidence_refs: [],
     },
     {
       objective_id: "objective-la-svd", objective_version_id: "objective-la-svd-v1", topic_id: "topic-svd",
       title: "Derive the singular value decomposition and use it for low-rank approximation",
-      description: "Connect singular values to the eigenvalues of AᵀA and to the best rank-k approximation.",
-      success_criterion: "Compute the SVD of a 2×2 matrix by hand and state the Eckart–Young error of its best rank-1 approximation.",
+      description: "Connect singular values to the eigenvalues of $A^T A$ and to the best rank-$k$ approximation.",
+      success_criterion: "Compute the SVD of a $2 \\times 2$ matrix by hand and state the Eckart–Young error of its best rank-$1$ approximation.",
       level: "applied", requirement_level: "required", assessment_activity_ids: ["la-gate-svd"], prior_evidence_refs: [],
     },
   ],
@@ -390,7 +390,7 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
     },
     {
       module_id: "la-module-svd", title: "Module 2: Singular Value Decomposition",
-      summary: "The SVD, its link to AᵀA, and the Eckart–Young theorem.",
+      summary: "The SVD $A = U\\Sigma V^T$, its link to $A^T A$, and the Eckart–Young theorem.",
       requirement_level: "required", prerequisite_module_ids: ["la-module-spectral"], objective_ids: ["objective-la-svd"],
       activity_ids: ["la-read-svd", "la-example-svd", "la-gate-svd", "la-review-svd"],
     },
@@ -401,7 +401,7 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-la-spectral"], prerequisite_activity_ids: [],
       resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-eigen"], "Open notes with a full treatment of the spectral theorem.")],
       duration_estimate: makeDurationEstimate([0, 20, 0, 0, 0], [0, 15, 0, 0, 0], [0, 30, 0, 0, 0]),
-      content: { study_prompt: "Work out why a real symmetric matrix has orthogonal eigenvectors." },
+      content: { study_prompt: "Work out why a real symmetric matrix $A = A^T$ has orthogonal eigenvectors." },
     },
     {
       activity_id: "la-example-projection", type: "worked_example", title: "Worked Example: Projecting onto a Column Space",
@@ -411,7 +411,7 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
         makeResAssign("synthetic-resource-strang-youtube-v1", "supplemental", ["seg-yt-projection"], "Companion MIT OCW YouTube lecture on orthogonal projections."),
       ],
       duration_estimate: makeDurationEstimate([5, 10, 5, 0, 0], [4, 8, 4, 0, 0], [8, 14, 8, 0, 0]),
-      content: { example_prompt: "Follow the derivation of P = A(AᵀA)⁻¹Aᵀ from the normal equations.", guidance_level: "full" },
+      content: { example_prompt: "Follow the derivation of $P = A(A^T A)^{-1}A^T$ from the normal equations $A^T(b - Ax) = 0$.", guidance_level: "full" },
     },
     {
       activity_id: "la-lab-power-iteration", type: "coding", title: "Implement Power Iteration and Check It Against NumPy",
@@ -436,14 +436,14 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-gate-spectral"],
       resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-svd"], "Builds the SVD from the spectral theorem.")],
       duration_estimate: makeDurationEstimate([0, 20, 0, 0, 0], [0, 15, 0, 0, 0], [0, 30, 0, 0, 0]),
-      content: { study_prompt: "Connect the singular values of A to the eigenvalues of AᵀA." },
+      content: { study_prompt: "Connect the singular values $\\sigma_i$ of $A$ to the eigenvalues $\\lambda_i$ of $A^T A$." },
     },
     {
-      activity_id: "la-example-svd", type: "worked_example", title: "Worked Example: SVD of a 2×2 Matrix by Hand",
+      activity_id: "la-example-svd", type: "worked_example", title: "Worked Example: SVD of a $2 \\times 2$ Matrix by Hand",
       requirement_level: "required", objective_ids: ["objective-la-svd"], prerequisite_activity_ids: ["la-read-svd"],
       resource_assignments: [makeResAssign("synthetic-resource-la-notes-v1", "primary", ["seg-la-svd"], "A fully worked 2×2 example.")],
       duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
-      content: { example_prompt: "Compute U, Σ, and V for a 2×2 matrix and check that UΣVᵀ reproduces it.", guidance_level: "full" },
+      content: { example_prompt: "Compute $U$, $\\Sigma$, and $V^T$ for a $2 \\times 2$ matrix and check that $A = U\\Sigma V^T$ reproduces it.", guidance_level: "full" },
     },
     {
       activity_id: "la-gate-svd", type: "quiz", title: "Problem Set 2: SVD & Low-Rank Approximation",
@@ -806,14 +806,14 @@ const STAT_MECH_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-sm-ensembles"], prerequisite_activity_ids: [],
       resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ensembles"], "Open lecture notes with full derivations.")],
       duration_estimate: makeDurationEstimate([0, 30, 0, 0, 0], [0, 25, 0, 0, 0], [0, 45, 0, 0, 0]),
-      content: { study_prompt: "Derive the Boltzmann factor from the microcanonical ensemble of a large reservoir." },
+      content: { study_prompt: "Derive the Boltzmann factor $P_i = \\frac{1}{Z}e^{-\\beta E_i}$ from the microcanonical ensemble of a large reservoir." },
     },
     {
       activity_id: "sm-example-two-level", type: "worked_example", title: "Worked Example: The Two-Level System",
       requirement_level: "required", objective_ids: ["objective-sm-ensembles"], prerequisite_activity_ids: ["sm-read-ensembles"],
       resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ensembles"], "A complete worked example of the Schottky anomaly.")],
       duration_estimate: makeDurationEstimate([5, 10, 10, 0, 0], [4, 8, 8, 0, 0], [8, 14, 14, 0, 0]),
-      content: { example_prompt: "Follow the heat capacity of a two-level system to its Schottky peak.", guidance_level: "full" },
+      content: { example_prompt: "Follow the heat capacity $C_V = \\frac{\\partial \\langle E \\rangle}{\\partial T}$ of a two-level system to its Schottky peak.", guidance_level: "full" },
     },
     {
       activity_id: "sm-gate-ensembles", type: "quiz", title: "Problem Set 1: Partition Functions",
@@ -827,14 +827,14 @@ const STAT_MECH_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-gate-ensembles"],
       resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ising"], "The Ising model and its mean-field treatment.")],
       duration_estimate: makeDurationEstimate([0, 30, 0, 0, 0], [0, 25, 0, 0, 0], [0, 45, 0, 0, 0]),
-      content: { study_prompt: "Explain why minimizing free energy, and not energy alone, decides the stable phase." },
+      content: { study_prompt: "Explain why minimizing free energy $F = U - TS$, and not energy $U$ alone, decides the stable phase." },
     },
     {
       activity_id: "sm-example-mean-field", type: "worked_example", title: "Worked Example: Mean-Field Magnetization",
       requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-read-free-energy"],
       resource_assignments: [makeResAssign("synthetic-resource-statmech-notes-v1", "primary", ["seg-sm-ising"], "Solves the self-consistency equation graphically.")],
       duration_estimate: makeDurationEstimate([5, 10, 15, 0, 0], [4, 8, 10, 0, 0], [8, 14, 20, 0, 0]),
-      content: { example_prompt: "Solve m = tanh(βJzm) graphically and find where nonzero solutions appear.", guidance_level: "full" },
+      content: { example_prompt: "Solve $m = \\tanh(\\beta J z m)$ graphically and find where nonzero solutions appear.", guidance_level: "full" },
     },
     {
       activity_id: "sm-gate-phase", type: "quiz", title: "Problem Set 2: Phase Transitions",
@@ -848,7 +848,7 @@ const STAT_MECH_CURRICULUM: Record<string, unknown> = {
       requirement_level: "required", objective_ids: ["objective-sm-phase"], prerequisite_activity_ids: ["sm-gate-phase"],
       resource_assignments: [],
       duration_estimate: makeDurationEstimate([0, 0, 0, 0, 10], [0, 0, 0, 0, 8], [0, 0, 0, 0, 15]),
-      content: { recall_prompt: "Without notes, relate the heat capacity to energy fluctuations in the canonical ensemble.", assessment_ref: null },
+      content: { recall_prompt: "Without notes, relate the heat capacity $C_V = k_B \\beta^2 (\\langle E^2 \\rangle - \\langle E \\rangle^2)$ to energy fluctuations in the canonical ensemble.", assessment_ref: null },
     },
   ],
   certification_options: [],
@@ -929,8 +929,8 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "normalize", label: "It makes each row of attention weights sum to 1" },
       { value: "cost", label: "It makes attention cost linear instead of quadratic in sequence length" },
     ],
-    hint: "Suppose the entries of q and k are independent, with mean 0 and variance 1. The dot product q·k adds d_k such products. What is its variance?",
-    solution: "The dot product q·k has variance d_k. Dividing by √d_k brings the variance back to 1, so the softmax does not saturate and its gradients stay useful. The softmax, not the scale, makes each row sum to 1. The scale does not change the quadratic cost.",
+    hint: "Suppose the entries of q and k are independent, with mean 0 and variance 1. The dot product $q \\cdot k$ adds $d_k$ such products. What is its variance?",
+    solution: "The dot product q·k has variance d_k. Dividing by $\\sqrt{d_k}$ brings the variance back to $1$, so the softmax does not saturate and its gradients stay useful. The softmax, not the scale, makes each row sum to 1. The scale does not change the quadratic cost.",
   },
   "publication-linear-algebra-001": {
     formula: "A = Q \\Lambda Q^T",
@@ -940,8 +940,8 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "invertible", label: "Every real symmetric matrix is invertible" },
       { value: "distinct", label: "Its eigenvalues are always distinct" },
     ],
-    hint: "Take eigenvectors v₁ and v₂ with eigenvalues λ₁ ≠ λ₂. Compute v₁ᵀAv₂ in two ways, and use Aᵀ = A.",
-    solution: "Because Aᵀ = A, v₁ᵀAv₂ equals both λ₂v₁ᵀv₂ and λ₁v₁ᵀv₂. With λ₁ ≠ λ₂, this forces v₁ᵀv₂ = 0. The spectral theorem also gives a full set of real eigenvectors, so each repeated eigenvalue has an orthonormal basis for its eigenspace. These orthonormal eigenvectors are the columns of Q, and the eigenvalues fill the diagonal of Λ. The zero matrix and the identity show that A need not be invertible or have distinct eigenvalues.",
+    hint: "Take eigenvectors $v_1$ and $v_2$ with eigenvalues $\\lambda_1 \\neq \\lambda_2$. Compute $v_1^T A v_2$ in two ways, and use $A^T = A$.",
+    solution: "Because $A^T = A$, $v_1^T A v_2$ equals both $\\lambda_2 v_1^T v_2$ and $\\lambda_1 v_1^T v_2$. With $\\lambda_1 \\neq \\lambda_2$, this forces $v_1^T v_2 = 0$. The spectral theorem also gives a full set of real eigenvectors, so each repeated eigenvalue has an orthonormal basis for its eigenspace. These orthonormal eigenvectors are the columns of $Q$, and the eigenvalues fill the diagonal of $\\Lambda$. The zero matrix and the identity show that $A$ need not be invertible or have distinct eigenvalues.",
   },
   "publication-statmech-001": {
     formula: "P_i = \\frac{1}{Z} e^{-\\beta E_i}",
@@ -951,8 +951,8 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "energy", label: "It is the mean energy of the system" },
       { value: "temperature", label: "It sets the temperature of the heat bath" },
     ],
-    hint: "Add P_i over every microstate i. What must the total be, and what does that force Z to equal?",
-    solution: "The probabilities must sum to 1, so Z = Σⱼ e^(−βEⱼ), a sum over states. The bath temperature enters through β = 1/(k_B T), not through Z. The mean energy comes from Z as ⟨E⟩ = −∂ ln Z / ∂β, but Z itself is not an energy.",
+    hint: "Add $P_i$ over every microstate $i$. What must the total be, and what does that force $Z$ to equal?",
+    solution: "The probabilities must sum to $1$, so $Z = \\sum_j e^{-\\beta E_j}$, a sum over states. The bath temperature enters through $\\beta = \\frac{1}{k_B T}$, not through $Z$. The mean energy comes from $Z$ as $\\langle E \\rangle = -\\frac{\\partial \\ln Z}{\\partial \\beta}$, but $Z$ itself is not an energy.",
   },
   "publication-rust-async-001": {
     formula: "\\mathrm{poll}(cx) \\in \\{\\mathrm{Pending}, \\mathrm{Ready}(T)\\}",
@@ -1521,7 +1521,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <p class="domain-pill">${escapeHtml(`${planTags.subject} · ${planTags.gateStyle}`)}</p>
             <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
             <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
-            ${next ? `<div class="queue-next"><p class="queue-next-title">${escapeHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
+            ${next ? `<div class="queue-next"><p class="queue-next-title">${renderTextWithLatexHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
             <div class="queue-actions">
               ${next ? `<button type="button" class="btn-primary" data-action="resume-curriculum" data-curriculum-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}
               <button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${id}">Open Plan<span aria-hidden="true">→</span></button>

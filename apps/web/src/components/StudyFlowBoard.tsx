@@ -1,6 +1,7 @@
 import type { VNode } from "preact";
 import type { PlanMapAndOutlineModel } from "../../../../packages/ui/src/index.ts";
 import { ArrowSvg, ConnectorSvg, FlowKey, StatusGlyph, UnitMarker, type GlyphTone, type SegmentStyle } from "./Icons.tsx";
+import { MathText } from "./MathText.tsx";
 
 export const FLOW_ORDERS = ["theory_first", "application_first", "balanced"] as const;
 export const DEEP_DIVE_MODES = ["included", "skipped"] as const;
@@ -214,7 +215,9 @@ export function NodeCard({
         data-module-id={activity.moduleId}
         aria-pressed={selected}
       >
-        <span class="node-title">{activity.title}</span>
+        <span class="node-title">
+          <MathText text={activity.title} />
+        </span>
         <span class="node-foot">
           <span class="node-duration">{point}m</span>
           {activity.required ? null : <span class="node-optional">Optional</span>}
@@ -260,7 +263,9 @@ export function GateDiamond({
         {status.passed ? <path d="M31 43 39 51 54 34" /> : null}
       </svg>
       <span class="st-sr">Gate. </span>
-      <span class="gate-title">{gate ? gate.title : "Objective check"}</span>
+      <span class="gate-title">
+        <MathText text={gate ? gate.title : "Objective check"} />
+      </span>
       <span class="gate-criteria">
         {gateCriteria(status)}
         {gate ? ` · ${gate.durationTriplet.point}m` : ""}
@@ -384,7 +389,9 @@ export function UnitRow({
         >
           <UnitMarker tone={tone} />
           <span class="unit-badge">U{index + 1}</span>
-          <span class="unit-title">{displayUnitTitle(mod.title)}</span>
+          <span class="unit-title">
+            <MathText text={displayUnitTitle(mod.title)} />
+          </span>
           <span class="unit-meta">{progressLabel(progress)}</span>
           <span class="unit-summary-cue" aria-hidden="true">
             Row summary →
@@ -671,7 +678,9 @@ export function StepRow({
         data-module-id={activity.moduleId}
         aria-pressed={selected}
       >
-        <span class="step-title">{activity.title}</span>
+        <span class="step-title">
+          <MathText text={activity.title} />
+        </span>
         <span class="step-meta">
           {TRACK_LABELS[track].badge} · {activity.durationTriplet.point}m{activity.required ? "" : " · Optional"}
         </span>

@@ -11,6 +11,7 @@ import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
 import { OpenKnowledgeArt, SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
+import { MathText } from "./MathText.tsx";
 import { displayUnitTitle, effortWords, humanize, isOneOf, type StudyActivity } from "./StudyFlowBoard.tsx";
 
 // The taxonomy has three tiers. A category holds subjects, a listing's subject decides its category,
@@ -1144,7 +1145,11 @@ export function AdoptCurriculumDialog({
                               </span>
                             </span>
                           </button>
-                          {unit?.summary ? <p class="adopt-unit-summary">{unit.summary}</p> : null}
+                          {unit?.summary ? (
+                            <p class="adopt-unit-summary">
+                              <MathText text={unit.summary} />
+                            </p>
+                          ) : null}
                           {unit && unit.activities.length > 0 ? (
                             <ol class="adopt-activities" aria-label={`Unit ${number} activities`}>
                               {unit.activities.map((activity, step) => {
@@ -1155,7 +1160,9 @@ export function AdoptCurriculumDialog({
                                       {number}.{step + 1}
                                     </span>
                                     <div class="adopt-activity-body">
-                                      <p class="adopt-activity-title">{activity.title}</p>
+                                      <p class="adopt-activity-title">
+                                        <MathText text={activity.title} />
+                                      </p>
                                       <p class="adopt-activity-meta">
                                         {activityKindOf(activity)} ·{" "}
                                         <span class="adopt-requirement" data-requirement={requirement}>

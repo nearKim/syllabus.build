@@ -6,6 +6,7 @@ import {
 } from "../../../../packages/ui/src/index.ts";
 import { formatMinorCurrency } from "../billingAndSharing.ts";
 import { SfIcon, StatusGlyph, UnitMarker, type SfIconName } from "./Icons.tsx";
+import { MathText } from "./MathText.tsx";
 import {
   ActivityGlyph,
   TRACK_LABELS,
@@ -156,7 +157,7 @@ export function InspectorDrawer({
             Unit {unitNumber} of {modules.length} · Row Accumulation Summary
           </p>
           <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
-            {displayUnitTitle(mod.title)}
+            <MathText text={displayUnitTitle(mod.title)} />
           </h2>
           <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">
             <SfIcon name="close" />
@@ -204,7 +205,9 @@ export function InspectorDrawer({
 
           <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-overview`}>
             <h3 id={`${INSPECTOR_ID}-unit-overview`}>Unit overview</h3>
-            <p class="prose">{mod.summary}</p>
+            <p class="prose">
+              <MathText text={mod.summary} />
+            </p>
             <ul class="spec-chips">
               {unitSpecs.map(([icon, text], idx) => (
                 <li key={idx}>
@@ -235,8 +238,12 @@ export function InspectorDrawer({
                         <span class="unit-row-activity-time">{effortWords(act.durationTriplet)}</span>
                         {act.required ? null : <span class="node-optional">Optional</span>}
                       </span>
-                      <strong class="unit-row-activity-title">{act.title}</strong>
-                      <span class="unit-row-activity-summary">{act.promptSummary}</span>
+                      <strong class="unit-row-activity-title">
+                        <MathText text={act.title} />
+                      </strong>
+                      <span class="unit-row-activity-summary">
+                        <MathText text={act.promptSummary} />
+                      </span>
                     </button>
                   </li>
                 );
@@ -255,10 +262,17 @@ export function InspectorDrawer({
                     size={16}
                   />
                   <div>
-                    <strong>{obj.title}</strong>
+                    <strong>
+                      <MathText text={obj.title} />
+                    </strong>
                     <span class="meta-text" style="display:block">
                       {humanize(obj.proficiencyStatus)}
-                      {obj.successCriterion ? ` · ${obj.successCriterion}` : ""}
+                      {obj.successCriterion ? (
+                        <>
+                          {" · "}
+                          <MathText text={obj.successCriterion} />
+                        </>
+                      ) : null}
                     </span>
                   </div>
                 </li>
@@ -303,7 +317,7 @@ export function InspectorDrawer({
               data-module-id={mod.moduleId}
             >
               <span class="next-step-text">
-                {isClosed(nextUnitActivity.executionStatus) ? "Inspect activity" : "Open next in unit"}: {nextUnitActivity.title}
+                {isClosed(nextUnitActivity.executionStatus) ? "Inspect activity" : "Open next in unit"}: <MathText text={nextUnitActivity.title} />
               </span>
               <span aria-hidden="true">→</span>
             </button>
@@ -361,7 +375,7 @@ export function InspectorDrawer({
           Unit {unitNumber} · {TRACK_LABELS[track].badge}
         </p>
         <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
-          {activity.title}
+          <MathText text={activity.title} />
         </h2>
         <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">
           <SfIcon name="close" />
@@ -409,7 +423,9 @@ export function InspectorDrawer({
                 data-module-id={prev.moduleId}
               >
                 <span aria-hidden="true">←</span>
-                <span class="step-nav-text">Prev: {prev.title}</span>
+                <span class="step-nav-text">
+                  Prev: <MathText text={prev.title} />
+                </span>
               </button>
             ) : null}
             {next ? (
@@ -420,7 +436,9 @@ export function InspectorDrawer({
                 data-activity-id={next.activityId}
                 data-module-id={next.moduleId}
               >
-                <span class="step-nav-text">Next: {next.title}</span>
+                <span class="step-nav-text">
+                  Next: <MathText text={next.title} />
+                </span>
                 <span aria-hidden="true">→</span>
               </button>
             ) : null}
@@ -442,11 +460,22 @@ export function InspectorDrawer({
                 data-module-id={step.moduleId}
               >
                 <ActivityGlyph activity={step} size={16} />
-                <span>{step.title}</span>
+                <span>
+                  <MathText text={step.title} />
+                </span>
                 <span aria-hidden="true">→</span>
               </button>
             ))}
           </div>
+        ) : null}
+
+        {!isLab && activity.promptSummary && activity.promptSummary !== activity.title ? (
+          <section class="inspector-section study-guide-prompt" aria-labelledby={`${INSPECTOR_ID}-prompt`}>
+            <h3 id={`${INSPECTOR_ID}-prompt`}>Study focus</h3>
+            <p class="prose">
+              <MathText text={activity.promptSummary} />
+            </p>
+          </section>
         ) : null}
 
         {rubric ? (
@@ -454,13 +483,17 @@ export function InspectorDrawer({
             <h3 id={`${INSPECTOR_ID}-rubric`}>Synthesis &amp; Self-Check Rubric</h3>
             <p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>
             <p class="rubric-label">Guiding synthesis prompt</p>
-            <p class="rubric-prompt">{rubric.prompt}</p>
+            <p class="rubric-prompt">
+              <MathText text={rubric.prompt} />
+            </p>
             <p class="rubric-label">Check your synthesis against each criterion before you mark this Done</p>
             <ul class="lab-checklist">
               {rubric.criteria.map((criterion, idx) => (
                 <li key={idx}>
                   <StatusGlyph type="module" tone="todo" size={16} />
-                  <span>{criterion}</span>
+                  <span>
+                    <MathText text={criterion} />
+                  </span>
                 </li>
               ))}
             </ul>
@@ -472,11 +505,15 @@ export function InspectorDrawer({
           <>
             <section class="inspector-section lab-brief" aria-labelledby={`${INSPECTOR_ID}-brief`}>
               <h3 id={`${INSPECTOR_ID}-brief`}>Deliverable brief</h3>
-              <p>{activity.promptSummary}</p>
+              <p>
+                <MathText text={activity.promptSummary} />
+              </p>
               {deliverables.length > 0 ? (
                 <ul class="lab-deliverables">
                   {deliverables.map((item, idx) => (
-                    <li key={idx}>{item}</li>
+                    <li key={idx}>
+                      <MathText text={item} />
+                    </li>
                   ))}
                 </ul>
               ) : null}
@@ -499,7 +536,9 @@ export function InspectorDrawer({
                   criteriaObjectives.map((objective) => (
                     <li key={objective.objectiveId}>
                       <StatusGlyph type="module" tone="todo" size={16} />
-                      <span>{objective.successCriterion}</span>
+                      <span>
+                        <MathText text={objective.successCriterion} />
+                      </span>
                     </li>
                   ))
                 ) : (
@@ -542,7 +581,7 @@ export function InspectorDrawer({
               ) : null}
               {sections.map((section, secIdx) => (
                 <p key={secIdx} class="source-section">
-                  {section}
+                  <MathText text={section} />
                 </p>
               ))}
               <ul class="source-tags">
@@ -575,7 +614,9 @@ export function InspectorDrawer({
               dangerouslySetInnerHTML={{ __html: renderAccessibleMathFormula(check.formula, { displayMode: "block" }).mathml }}
             />
             <fieldset class="choice-group">
-              <legend>{check.question}</legend>
+              <legend>
+                <MathText text={check.question} />
+              </legend>
               {check.choices.map(({ value, label }) => (
                 <label key={value} class="choice-option" for={`practice-choice-${value}`}>
                   <input
@@ -585,7 +626,9 @@ export function InspectorDrawer({
                     value={value}
                     checked={value === practice.choice}
                   />
-                  <span>{label}</span>
+                  <span>
+                    <MathText text={label} />
+                  </span>
                 </label>
               ))}
             </fieldset>
@@ -602,19 +645,23 @@ export function InspectorDrawer({
             </div>
             {practice.submitted ? (
               <p class="meta-text practice-feedback" role="status">
-                {chosen
-                  ? `Answer submitted: ${chosen.label}. Practice answers do not change the objective's proficiency status.`
-                  : "Choose an answer, then select Submit."}
+                {chosen ? (
+                  <>
+                    Answer submitted: <MathText text={chosen.label} />. Practice answers do not change the objective's proficiency status.
+                  </>
+                ) : (
+                  "Choose an answer, then select Submit."
+                )}
               </p>
             ) : null}
             {practice.hintRequested ? (
               <p class="practice-note" role="status">
-                <strong>Hint.</strong> {check.hint} Hints carry no penalty.
+                <strong>Hint.</strong> <MathText text={check.hint} /> Hints carry no penalty.
               </p>
             ) : null}
             {practice.workedSolutionRevealed ? (
               <p class="practice-note" role="status">
-                <strong>Worked solution.</strong> {check.solution} This counts as solution-assisted study, not an
+                <strong>Worked solution.</strong> <MathText text={check.solution} /> This counts as solution-assisted study, not an
                 independent attempt.
               </p>
             ) : null}
@@ -625,7 +672,11 @@ export function InspectorDrawer({
           <h3 id={`${INSPECTOR_ID}-focus`}>{isGate ? "What this checks" : "What this builds"}</h3>
           <ul class="focus-list">
             {mine.length > 0 ? (
-              mine.map((objective) => <li key={objective.objectiveId}>{objective.title}</li>)
+              mine.map((objective) => (
+                <li key={objective.objectiveId}>
+                  <MathText text={objective.title} />
+                </li>
+              ))
             ) : (
               <li>No objective is mapped to this activity.</li>
             )}
@@ -700,7 +751,9 @@ export function InspectorDrawer({
             data-activity-id={next.activityId}
             data-module-id={next.moduleId}
           >
-            <span class="next-step-text">Go to next step: {next.title}</span>
+            <span class="next-step-text">
+              Go to next step: <MathText text={next.title} />
+            </span>
             <span aria-hidden="true">→</span>
           </button>
         ) : null}
