@@ -141,6 +141,12 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
       '<dialog id="dialog-publication-preview" closedby="any" aria-labelledby="dialog-publication-preview-title"'
     )
   );
+  // Every dialog header closes with one icon button, not a text button.
+  assert.equal(html.includes(">Close</button>"), false);
+  assert.equal(
+    html.match(/<button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close"><svg/g)?.length,
+    html.match(/<header class="dialog-header">/g)?.length,
+  );
 
   // 8. Settings View: theme selector, BYOK providers, Hosted Wallet & 4-Bucket Cost Breakdown, Reminders, Account Deletion modal
   for (const theme of ["light", "dark", "system"]) {
@@ -871,25 +877,55 @@ test("Explore keeps a long topic list short: six topics by count, a toggle for t
   assert.equal(optionsOf(root.innerHTML, "topic").length, 7);
 });
 
-test("Details closes prerequisites, then adds a private draft that activates on the Plan page", () => {
+test("Details shows the whole curriculum with every unit selected, closes prerequisites, then adds a private draft that activates on the Plan page", () => {
   const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"')));
+  const allUnits = ["rs-module-futures", "rs-module-scheduling"];
   click({ action: "open-adopt-dialog", publicationId: "publication-rust-async-001" });
   assert.ok(dialog().includes('aria-labelledby="dialog-partial-adoption-title" data-open="true"'));
-  assert.match(dialog(), /U2 · Reactors, Timers, and Work Stealing<\/span><span class="adopt-unit-meta">4 activities · 110 min \(87–164 min\) · Requires U1</);
-  assert.ok(dialog().includes('<p class="adopt-total">2 of 2 units · 205 min (161–303 min)</p>'));
 
-  // Choosing units: nothing is chosen at first, and adopting needs at least one unit.
-  click({ action: "set-adopt-scope", scope: "units" });
-  assert.ok(dialog().includes("Select at least one unit.") && /data-action="confirm-adopt-curriculum"[^>]*disabled/.test(dialog()));
+  // An icon button closes the dialog. There is no scope switch, and every unit starts selected.
+  assert.ok(dialog().includes('<button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close"><svg'));
+  assert.equal(dialog().includes("set-adopt-scope"), false);
+  assert.deepEqual(app.getState().adoptModuleIds, allUnits);
+  assert.ok(dialog().includes('data-action="select-all-adopt-modules" disabled>Select all</button>'));
+
+  // The goal and its scope come first. Then each unit lists every activity in order, with its kind,
+  // requirement, linked resources, and minutes.
+  assert.ok(dialog().includes('<p class="prose adopt-summary">Build a small async executor from the Future trait up, then add a reactor, a timer wheel, and work stealing.</p>'));
+  assert.ok(dialog().includes('<dt>Covers</dt><dd><span class="badge">futures and polling</span><span class="badge">wakers</span><span class="badge">reactors</span><span class="badge">work stealing</span></dd>'));
+  assert.ok(dialog().includes("<dt>Not covered</dt><dd>production tuning of tokio</dd>"));
+  assert.match(dialog(), /U2 · Reactors, Timers, and Work Stealing<\/span><span class="adopt-unit-meta"><span>110 min \(87–164 min\)<\/span><span class="requires-badge">Requires U1<\/span><\/span>/);
+  assert.deepEqual([...dialog().matchAll(/<span class="adopt-step">([\d.]+)<\/span>/g)].map((step) => step[1]), ["1.1", "1.2", "1.3", "2.1", "2.2", "2.3", "2.4"]);
+  assert.match(dialog(), /<span class="adopt-step">1\.3<\/span><div class="adopt-activity-body"><p class="adopt-activity-title">Gate Lab: Build a Single-Threaded Executor<\/p><p class="adopt-activity-meta">Code lab · <span class="adopt-requirement" data-requirement="gate">Mastery gate<\/span><\/p><ul class="adopt-resources" aria-label="Study resources"><li><svg[\s\S]*?<\/svg><span><a href="https:\/\/example\.invalid\/catalog\/executor-lab" target="_blank" rel="noopener noreferrer">Executor Lab: Test Harness and Reference Solutions<span class="st-sr"> \(opens in a new tab\)<\/span><\/a><span class="adopt-publisher">Open Systems Press \(Curator Verified\) <span class="badge">Free access<\/span><\/span><\/span><\/li><\/ul><\/div><span class="adopt-minutes">45 min<\/span>/);
+  assert.ok(dialog().includes('Worked Example: Work-Stealing Task Queues</p><p class="adopt-activity-meta">Worked example · <span class="adopt-requirement" data-requirement="optional">Optional</span>'));
+  // The footer holds the selection total, then the adopt action.
+  assert.match(dialog(), /<footer class="dialog-footer"><p class="adopt-total">2 of 2 units · 205 min \(161–303 min\)<\/p><button type="button" class="btn-primary" data-action="confirm-adopt-curriculum" data-publication-id="publication-rust-async-001">Adopt into My Plans/);
+
+  // Unchecking unit 1 also drops unit 2, which needs it. With nothing left, adopting waits for a unit.
   click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
+  assert.deepEqual(app.getState().adoptModuleIds, []);
+  assert.ok(dialog().includes("Select at least one unit.") && /data-action="confirm-adopt-curriculum"[^>]*disabled/.test(dialog()));
+  click({ action: "select-all-adopt-modules" });
+  assert.deepEqual(app.getState().adoptModuleIds, allUnits);
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
   assert.ok(dialog().includes('<p class="adopt-total">1 of 2 units · 95 min (74–139 min)</p>'));
+  assert.ok(dialog().includes('data-action="select-all-adopt-modules">Select all</button>'));
+
+  // Unit 2 alone needs unit 1, so unit 1 is checked and marked as an automatic prerequisite.
   click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
   click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
-  // Unit 2 needs unit 1, so unit 1 is checked and marked as an automatic prerequisite.
   assert.match(dialog(), /role="checkbox" aria-checked="true" data-action="toggle-adopt-module" data-module-id="rs-module-futures">[\s\S]*?<span class="auto-badge">Auto-included prerequisite<\/span>/);
+  assert.ok(dialog().includes('data-action="select-all-adopt-modules" disabled>'), "the prerequisite completes the curriculum");
+  // Unchecking the automatic prerequisite drops unit 2 with it. Checking unit 2 again brings both back.
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
+  assert.deepEqual(app.getState().adoptModuleIds, []);
+  click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
   click({ action: "toggle-adopt-module", moduleId: "rs-module-unknown" });
   assert.deepEqual(app.getState().adoptModuleIds, ["rs-module-scheduling"]);
+  // The selection belongs to the open listing, so a confirm for another listing adopts nothing.
+  click({ action: "confirm-adopt-curriculum", publicationId: "publication-statmech-001" });
+  assert.equal(app.getState().adoptions.length, 0);
 
   click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
   const state = app.getState();
@@ -913,6 +949,36 @@ test("Details closes prerequisites, then adds a private draft that activates on 
   assert.equal(app.getState().adoptions.length, 1, "a listing is adopted once per account");
   app.navigateTopLevel("Explore");
   assert.match(root.innerHTML, /data-publication-id="publication-rust-async-001"[\s\S]*?· 65 adopted[\s\S]*?<span class="owned-badge">In your plans<\/span>/);
+});
+
+test("Dialogs pin an icon close button and a right-aligned footer, and a re-render keeps an open dialog's scroll position", () => {
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /\.dialog-close-btn \{[^}]*width: 36px;[^}]*height: 36px;[^}]*border-radius: 999px;/s);
+  assert.match(css, /\.dialog-footer \{[^}]*position: sticky;[^}]*bottom: calc\(-1 \* var\(--space-6\)\);[^}]*justify-content: flex-end;/s);
+  assert.match(css, /\.dialog-surface > \.action-row \{\s*justify-content: flex-end;/);
+  assert.match(css, /#dialog-partial-adoption \{\s*max-width: min\(760px, calc\(100vw - 32px\)\);/);
+
+  // Checking a unit renders a new dialog element. It opens at the place the learner scrolled to.
+  let shown = null;
+  const next = { id: "dialog-partial-adoption", open: false, scrollTop: 0, showModal() { this.open = true; } };
+  const listeners = {};
+  const root = {
+    innerHTML: "",
+    addEventListener: (type, listener) => { listeners[type] = listener; },
+    querySelector: (selector) => (selector === "dialog[open]" ? shown : selector === 'dialog[data-open="true"]' ? next : null),
+  };
+  mountCurriculumWebApp(root, { topLevel: "Explore", openDialogId: "dialog-partial-adoption", adoptPublicationId: "publication-rust-async-001" });
+  shown = { id: "dialog-partial-adoption", scrollTop: 480 };
+  next.open = false;
+  listeners.click({ target: { closest: () => ({ dataset: { action: "toggle-adopt-module", moduleId: "rs-module-scheduling" } }) } });
+  assert.deepEqual([next.open, next.scrollTop], [true, 480]);
+
+  // Another dialog that opens starts at its top.
+  shown = { id: "dialog-auth", scrollTop: 300 };
+  next.open = false;
+  next.scrollTop = 0;
+  listeners.click({ target: { closest: () => ({ dataset: { action: "select-all-adopt-modules" } }) } });
+  assert.deepEqual([next.open, next.scrollTop], [true, 0]);
 });
 
 test("Share to Marketplace previews the public projection, then publishes it to Explore and My Publications", () => {
@@ -1027,6 +1093,7 @@ test("the header shows the account, signing out purges private state, and guests
   const back = app.getState();
   assert.deepEqual([back.authStatus, back.topLevel, back.openDialogId, back.adoptPublicationId, back.adoptions.length, back.votes.length],
     ["authenticated", "Explore", "dialog-partial-adoption", "publication-statmech-001", 0, 0]);
+  assert.deepEqual(back.adoptModuleIds, ["sm-module-ensembles", "sm-module-phase"], "the restored Details starts with every unit selected");
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'), "the purged completion stays gone");
 
   // A guest who asks for Learn returns there after sign-in.
@@ -1233,6 +1300,7 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
   };
 
   const mounted = mountCurriculumWebApp(fakeRoot);
+  mounted.applyUiAction("open-adopt-dialog", { publicationId: "publication-rust-async-001" });
   mounted.applyUiAction("confirm-adopt-curriculum", {
     publicationId: "publication-rust-async-001",
   });
