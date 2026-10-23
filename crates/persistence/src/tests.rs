@@ -5,7 +5,9 @@ use serde_json::json;
 
     #[test]
     fn baseline_and_t01_migrations_are_embedded_and_valid() {
-        assert_eq!(MIGRATIONS.len(), 6);
+        assert_eq!(MIGRATIONS.len(), 7);
+        assert!(POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL
+            .contains("ADD COLUMN IF NOT EXISTS index_descriptor JSONB"));
         assert!(BASELINE_MIGRATION_SQL.contains("SELECT 1;"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
             .contains("CREATE EXTENSION IF NOT EXISTS vector;"));

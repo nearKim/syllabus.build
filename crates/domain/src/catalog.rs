@@ -229,3 +229,368 @@ pub fn validate_outbound_egress_url(
 
     Ok(host)
 }
+
+/// Chapter or section entry inside a Book's indexed Table of Contents (`Step 4`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BookTocChapter {
+    pub segment_id: String,
+    pub chapter_number: String,
+    pub title: String,
+    pub subtopics: Vec<String>,
+    pub page_range: Option<String>,
+}
+
+/// Video item inside a YouTube Playlist's indexed syllabus (`Step 4`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct YoutubeSyllabusItem {
+    pub segment_id: String,
+    pub video_id: String,
+    pub index: u32,
+    pub title: String,
+    pub duration_minutes: u32,
+    pub key_concepts: Vec<String>,
+}
+
+/// Unit/week inside an Online Course's indexed syllabus (`Step 4`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CourseSyllabusUnit {
+    pub segment_id: String,
+    pub week_or_unit: String,
+    pub title: String,
+    pub lecture_topics: Vec<String>,
+    pub problem_sets: Vec<String>,
+}
+
+/// Exercise inside a Code Lab / Repository's indexed structure (`Step 4`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RepositoryLabExercise {
+    pub segment_id: String,
+    pub path: String,
+    pub title: String,
+    pub verification_command: String,
+    pub deliverable_summary: String,
+}
+
+/// Polymorphic resource index descriptor stored per `resource_version` (`Step 4`).
+/// Preserves type-specific structures (Book TOC + blurb, YouTube playlist syllabus + transcript outline,
+/// Course syllabus units, and Repository lab exercises) while respecting `AcquisitionPermission`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "index_kind", rename_all = "snake_case")]
+pub enum ResourceIndexDescriptor {
+    BookIndex {
+        authors: Vec<String>,
+        publisher: String,
+        edition: Option<String>,
+        brief_summary: String,
+        table_of_contents: Vec<BookTocChapter>,
+        content_excerpts: Option<Vec<String>>,
+    },
+    YoutubePlaylistIndex {
+        channel_title: String,
+        playlist_id: String,
+        total_videos: u32,
+        syllabus_items: Vec<YoutubeSyllabusItem>,
+        transcript_outline: Option<String>,
+    },
+    CourseIndex {
+        platform: String,
+        instructors: Vec<String>,
+        syllabus_units: Vec<CourseSyllabusUnit>,
+    },
+    RepositoryLabIndex {
+        repo_full_name: String,
+        programming_language: String,
+        license_spdx: String,
+        lab_exercises: Vec<RepositoryLabExercise>,
+    },
+}
+
+/// Normalizes a canonical resource URL and optional external identifier (`isbn:...`, `yt:playlist:...`, `gh:...`)
+/// for deterministic deduplication across DB retrieval and web search (`Step 1` & `Step 2`).
+#[must_use]
+pub fn normalize_canonical_resource_identity(
+    canonical_url: &str,
+    external_id: Option<&str>,
+) -> (String, Option<String>) {
+    let trimmed = canonical_url.trim();
+    let without_fragment = trimmed.split('#').next().unwrap_or(trimmed);
+    let normalized_url = without_fragment.trim_end_matches('/').to_ascii_lowercase();
+    let normalized_ext = external_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_ascii_lowercase());
+    (normalized_url, normalized_ext)
+}
+
+/// Evidence-backed topic coverage state for Step 1.5 ("Review existing fit").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TopicCoverageStatus {
+    Covered,
+    Partial,
+    NotVerified,
+}
+
+/// Coverage breakdown for a single requested topic tag at the learner's required `math_depth`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopicCoverageItem {
+    pub topic_tag: String,
+    pub status: TopicCoverageStatus,
+    pub supporting_resource_version_ids: Vec<String>,
+    pub has_instruction: bool,
+    pub has_practice: bool,
+    pub gap_note: Option<String>,
+}
+
+/// Candidate indexed material evaluated for Step 1.5 ("Review existing fit").
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IndexedMaterialCandidate {
+    pub resource_version_id: String,
+    pub resource_id: String,
+    pub title: String,
+    pub resource_type: String,
+    pub subject: String,
+    pub topic_tags: Vec<String>,
+    pub supported_math_depths: Vec<String>,
+    pub supported_roles: Vec<String>,
+    pub access_model: CatalogAccessModel,
+    pub price_minor_units: Option<u64>,
+    pub review_status: ResourceReviewStatus,
+    pub quarantined: bool,
+    pub index_descriptor: Option<ResourceIndexDescriptor>,
+}
+
+/// Learner's execution mode choice in Step 1.5 ("Review existing fit").
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResourceFitDecisionMode {
+    DirectPlanAdoption,
+    UseSelectedOnly,
+    FillGaps,
+    SearchAllTopics,
+}
+
+/// Output of evaluating existing indexed material fit and accepted coverage (`Step 1` & `Step 1.5`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResourceFitEvaluation {
+    pub ranked_materials: Vec<IndexedMaterialCandidate>,
+    pub topic_coverage: Vec<TopicCoverageItem>,
+    pub covered_topics: Vec<String>,
+    pub partial_topics: Vec<String>,
+    pub missing_topics_for_search: Vec<String>,
+    pub recommended_mode: ResourceFitDecisionMode,
+    pub web_search_bypassed: bool,
+    pub cost_badge_label: String,
+}
+
+/// Evaluates eligible indexed materials, ranks them deterministically, and computes
+/// evidence-backed topic coverage over the learner's accepted (`selected_resource_version_ids`)
+/// and rejected (`skipped_resource_version_ids`) choices (`Step 1` & `Step 1.5`).
+#[must_use]
+pub fn evaluate_resource_fit_and_coverage(
+    requested_subject: &str,
+    requested_topics: &[String],
+    required_math_depth: &str,
+    free_only: bool,
+    candidates: &[IndexedMaterialCandidate],
+    selected_resource_version_ids: &[String],
+    skipped_resource_version_ids: &[String],
+    requested_mode: Option<ResourceFitDecisionMode>,
+) -> ResourceFitEvaluation {
+    let norm_depth = required_math_depth.trim().to_ascii_lowercase();
+    let req_topics_norm: Vec<(String, String)> = requested_topics
+        .iter()
+        .map(|t| (t.trim().to_string(), t.trim().to_ascii_lowercase()))
+        .filter(|(orig, _)| !orig.is_empty())
+        .collect();
+
+    // 1. Eligibility precedes ranking: filter out unapproved, quarantined, or budget-ineligible resources
+    let mut eligible: Vec<IndexedMaterialCandidate> = candidates
+        .iter()
+        .filter(|c| {
+            if c.review_status != ResourceReviewStatus::Approved || c.quarantined {
+                return false;
+            }
+            if free_only && c.access_model != CatalogAccessModel::FreePublic {
+                return false;
+            }
+            let depth_ok = c.supported_math_depths.is_empty()
+                || c.supported_math_depths
+                    .iter()
+                    .any(|d| d.eq_ignore_ascii_case(&norm_depth));
+            let matches_subject = c.subject.eq_ignore_ascii_case(requested_subject.trim());
+            let matches_any_topic = req_topics_norm.iter().any(|(_, t_norm)| {
+                c.topic_tags
+                    .iter()
+                    .any(|ct| ct.trim().to_ascii_lowercase() == *t_norm)
+            });
+            depth_ok && (matches_subject || matches_any_topic)
+        })
+        .cloned()
+        .collect();
+
+    // 2. Deterministic ranking:
+    //    (a) Number of requested topics supported at required depth
+    //    (b) Supports both instruction and practice roles
+    //    (c) Lower known acquisition cost
+    //    (d) Stable resource_version_id tie-breaker
+    eligible.sort_by(|a, b| {
+        let count_a = req_topics_norm
+            .iter()
+            .filter(|(_, t_norm)| {
+                a.topic_tags
+                    .iter()
+                    .any(|ct| ct.trim().to_ascii_lowercase() == *t_norm)
+            })
+            .count();
+        let count_b = req_topics_norm
+            .iter()
+            .filter(|(_, t_norm)| {
+                b.topic_tags
+                    .iter()
+                    .any(|ct| ct.trim().to_ascii_lowercase() == *t_norm)
+            })
+            .count();
+        count_b
+            .cmp(&count_a)
+            .then_with(|| b.supported_roles.len().cmp(&a.supported_roles.len()))
+            .then_with(|| {
+                a.price_minor_units
+                    .unwrap_or(0)
+                    .cmp(&b.price_minor_units.unwrap_or(0))
+            })
+            .then_with(|| a.resource_version_id.cmp(&b.resource_version_id))
+    });
+
+    // 3. Compute coverage strictly over accepted (selected and not skipped) eligible resources
+    let accepted: Vec<&IndexedMaterialCandidate> = eligible
+        .iter()
+        .filter(|c| {
+            selected_resource_version_ids
+                .iter()
+                .any(|id| id == &c.resource_version_id)
+                && !skipped_resource_version_ids
+                    .iter()
+                    .any(|id| id == &c.resource_version_id)
+        })
+        .collect();
+
+    let mut topic_coverage = Vec::with_capacity(req_topics_norm.len());
+    let mut covered_topics = Vec::new();
+    let mut partial_topics = Vec::new();
+    let mut missing_topics_for_search = Vec::new();
+
+    for (orig_topic, norm_topic) in &req_topics_norm {
+        let mut supporting_ids = Vec::new();
+        let mut has_instruction = false;
+        let mut has_practice = false;
+
+        for res in &accepted {
+            if res
+                .topic_tags
+                .iter()
+                .any(|ct| ct.trim().to_ascii_lowercase() == *norm_topic)
+            {
+                supporting_ids.push(res.resource_version_id.clone());
+                if res.supported_roles.is_empty()
+                    || res
+                        .supported_roles
+                        .iter()
+                        .any(|r| r.eq_ignore_ascii_case("instruction"))
+                {
+                    has_instruction = true;
+                }
+                if res
+                    .supported_roles
+                    .iter()
+                    .any(|r| r.eq_ignore_ascii_case("practice") || r.eq_ignore_ascii_case("assessment"))
+                    || matches!(res.resource_type.as_str(), "repository" | "project")
+                {
+                    has_practice = true;
+                }
+            }
+        }
+
+        let (status, gap_note) = if supporting_ids.is_empty() {
+            missing_topics_for_search.push(orig_topic.clone());
+            (
+                TopicCoverageStatus::NotVerified,
+                Some("No selected indexed resource covers this topic yet.".to_string()),
+            )
+        } else if has_instruction && has_practice {
+            covered_topics.push(orig_topic.clone());
+            (TopicCoverageStatus::Covered, None)
+        } else if has_instruction {
+            // Covered for instruction; if formal depth requires practice, note the practice gap or mark covered if single-source
+            covered_topics.push(orig_topic.clone());
+            (TopicCoverageStatus::Covered, None)
+        } else {
+            partial_topics.push(orig_topic.clone());
+            missing_topics_for_search.push(orig_topic.clone());
+            (
+                TopicCoverageStatus::Partial,
+                Some("Practice covered, but core instruction segment is missing.".to_string()),
+            )
+        };
+
+        topic_coverage.push(TopicCoverageItem {
+            topic_tag: orig_topic.clone(),
+            status,
+            supporting_resource_version_ids: supporting_ids,
+            has_instruction,
+            has_practice,
+            gap_note,
+        });
+    }
+
+    let default_mode = if accepted.is_empty() {
+        ResourceFitDecisionMode::SearchAllTopics
+    } else if missing_topics_for_search.is_empty() && !req_topics_norm.is_empty() {
+        ResourceFitDecisionMode::UseSelectedOnly
+    } else {
+        ResourceFitDecisionMode::FillGaps
+    };
+    let effective_mode = requested_mode.unwrap_or(default_mode);
+
+    let (web_search_bypassed, cost_badge_label) = match effective_mode {
+        ResourceFitDecisionMode::DirectPlanAdoption => (
+            true,
+            "No AI generation · No web search".to_string(),
+        ),
+        ResourceFitDecisionMode::UseSelectedOnly => (
+            true,
+            "No web search · AI synthesis required".to_string(),
+        ),
+        ResourceFitDecisionMode::FillGaps => {
+            if missing_topics_for_search.is_empty() {
+                (true, "No web search · AI synthesis required".to_string())
+            } else {
+                let n = missing_topics_for_search.len();
+                let noun = if n == 1 { "missing topic" } else { "missing topics" };
+                (
+                    false,
+                    format!("Search {n} {noun} · AI synthesis required"),
+                )
+            }
+        }
+        ResourceFitDecisionMode::SearchAllTopics => {
+            let n = req_topics_norm.len().max(1);
+            let noun = if n == 1 { "requested topic" } else { "requested topics" };
+            (
+                false,
+                format!("Search {n} {noun} · AI synthesis required"),
+            )
+        }
+    };
+
+    ResourceFitEvaluation {
+        ranked_materials: eligible,
+        topic_coverage,
+        covered_topics,
+        partial_topics,
+        missing_topics_for_search,
+        recommended_mode: effective_mode,
+        web_search_bypassed,
+        cost_badge_label,
+    }
+}

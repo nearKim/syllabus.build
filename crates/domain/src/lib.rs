@@ -627,4 +627,101 @@ mod tests {
             AlarmCapabilityEvaluation::UnsupportedWebPwaExactAlarm { .. }
         ));
     }
+
+    #[test]
+    fn step_1_5_resource_fit_evaluation_and_polymorphic_index_descriptors() {
+        let (norm_url, norm_ext) = normalize_canonical_resource_identity(
+            "HTTPS://Example.Invalid/Catalog/Tokenization-Monograph/#section-2",
+            Some(" ISBN:978-0-262-03561-3 "),
+        );
+        assert_eq!(norm_url, "https://example.invalid/catalog/tokenization-monograph");
+        assert_eq!(norm_ext.as_deref(), Some("isbn:978-0-262-03561-3"));
+
+        let book_idx = ResourceIndexDescriptor::BookIndex {
+            authors: vec!["A. Vaswani".to_string()],
+            publisher: "Open ML Press".to_string(),
+            edition: Some("2nd Edition".to_string()),
+            brief_summary: "Covers BPE merge tables and scaled dot-product attention.".to_string(),
+            table_of_contents: vec![BookTocChapter {
+                segment_id: "seg-bpe-overview".to_string(),
+                chapter_number: "2.1".to_string(),
+                title: "Byte-Pair Encoding Merge Tables".to_string(),
+                subtopics: vec!["Tokenization".to_string()],
+                page_range: Some("42-58".to_string()),
+            }],
+            content_excerpts: None,
+        };
+
+        let candidates = vec![
+            IndexedMaterialCandidate {
+                resource_version_id: "res-v1-book".to_string(),
+                resource_id: "res-book".to_string(),
+                title: "Subword Tokenization & Attention Monograph".to_string(),
+                resource_type: "book".to_string(),
+                subject: "Engineering".to_string(),
+                topic_tags: vec!["Tokenization".to_string(), "Attention".to_string(), "Matrix Calculus".to_string()],
+                supported_math_depths: vec!["formal".to_string()],
+                supported_roles: vec!["instruction".to_string()],
+                access_model: CatalogAccessModel::FreePublic,
+                price_minor_units: Some(0),
+                review_status: ResourceReviewStatus::Approved,
+                quarantined: false,
+                index_descriptor: Some(book_idx),
+            },
+            IndexedMaterialCandidate {
+                resource_version_id: "res-v2-paid".to_string(),
+                resource_id: "res-paid".to_string(),
+                title: "Paid FlashAttention Course".to_string(),
+                resource_type: "course".to_string(),
+                subject: "Engineering".to_string(),
+                topic_tags: vec!["FlashAttention".to_string()],
+                supported_math_depths: vec!["formal".to_string()],
+                supported_roles: vec!["instruction".to_string(), "practice".to_string()],
+                access_model: CatalogAccessModel::PaidPurchase,
+                price_minor_units: Some(4900),
+                review_status: ResourceReviewStatus::Approved,
+                quarantined: false,
+                index_descriptor: None,
+            },
+        ];
+
+        let topics = vec![
+            "Tokenization".to_string(),
+            "Attention".to_string(),
+            "Matrix Calculus".to_string(),
+            "FlashAttention".to_string(),
+        ];
+
+        // 1. Free-only filters out paid course; accepting res-v1-book covers 3/4 topics and leaves 1 missing topic for delta search (Path B)
+        let eval_partial = evaluate_resource_fit_and_coverage(
+            "Engineering",
+            &topics,
+            "formal",
+            true,
+            &candidates,
+            &["res-v1-book".to_string()],
+            &[],
+            None,
+        );
+        assert_eq!(eval_partial.ranked_materials.len(), 1);
+        assert_eq!(eval_partial.covered_topics.len(), 3);
+        assert_eq!(eval_partial.missing_topics_for_search, vec!["FlashAttention".to_string()]);
+        assert_eq!(eval_partial.recommended_mode, ResourceFitDecisionMode::FillGaps);
+        assert!(!eval_partial.web_search_bypassed);
+        assert_eq!(eval_partial.cost_badge_label, "Search 1 missing topic · AI synthesis required");
+
+        // 2. Path A (UseSelectedOnly) bypasses web search completely
+        let eval_selected_only = evaluate_resource_fit_and_coverage(
+            "Engineering",
+            &topics[..3],
+            "formal",
+            true,
+            &candidates,
+            &["res-v1-book".to_string()],
+            &[],
+            Some(ResourceFitDecisionMode::UseSelectedOnly),
+        );
+        assert!(eval_selected_only.web_search_bypassed);
+        assert_eq!(eval_selected_only.cost_badge_label, "No web search · AI synthesis required");
+    }
 }

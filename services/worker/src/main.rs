@@ -17,7 +17,7 @@ pub fn verify_worker_bootstrap() -> OutboxQueueConfig {
     assert!(migration_bundle.contains("CREATE TABLE IF NOT EXISTS outbox_jobs"));
     assert!(PostgresTransactionalStatements::claim_next_outbox_job_sql()
         .contains("FOR UPDATE SKIP LOCKED"));
-    assert_eq!(MIGRATIONS.len(), 6);
+    assert_eq!(MIGRATIONS.len(), 7);
     OutboxQueueConfig::default()
 }
 

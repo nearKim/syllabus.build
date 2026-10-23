@@ -13,6 +13,8 @@ pub const ASSESSMENTS_ADAPTATION_BYOK_AND_REMINDERS_MIGRATION_SQL: &str =
     include_str!("../migrations/0004_assessments_adaptation_byok_and_reminders.sql");
 pub const HOSTED_LEDGER_SHARING_AND_RELEASE_OPS_MIGRATION_SQL: &str =
     include_str!("../migrations/0005_hosted_ledger_sharing_and_release_ops.sql");
+pub const POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL: &str =
+    include_str!("../migrations/0006_polymorphic_resource_indices_and_tags.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,8 +24,8 @@ pub struct SqlMigration {
     pub sql: &'static str,
 }
 
-/// Ordered registry of embedded PostgreSQL migrations (`T00`–`T13`).
-pub const MIGRATIONS: [SqlMigration; 6] = [
+/// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
+pub const MIGRATIONS: [SqlMigration; 7] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -53,6 +55,11 @@ pub const MIGRATIONS: [SqlMigration; 6] = [
         version: 5,
         name: "0005_hosted_ledger_sharing_and_release_ops.sql",
         sql: HOSTED_LEDGER_SHARING_AND_RELEASE_OPS_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 6,
+        name: "0006_polymorphic_resource_indices_and_tags.sql",
+        sql: POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL,
     },
 ];
 
