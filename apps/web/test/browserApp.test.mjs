@@ -1429,32 +1429,25 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
     assert.equal(plan.includes(removed), false, `Plan must not render shaded box clutter: ${removed}`);
   }
 
-  // 3. Plan does not repeat Today's Study Flow table; it renders the 4 editorial sections with <dl class="plan-facts">
+  // 3. Plan focuses on the syllabus Map/Outline (#plan-outcomes-prerequisites) without duplicating Today's sessions, flow controls, or unapplied adaptation text walls
   assert.equal(plan.includes('id="flow-plan-title"'), false, "Plan must not duplicate Today's Study Flow execution matrix");
-  for (const sectionId of [
-    'id="plan-outcomes-prerequisites"',
+  assert.ok(plan.includes('id="plan-outcomes-prerequisites"'), "Plan must render the outcomes & unit order section");
+  for (const removedSection of [
     'id="plan-pacing-review"',
     'id="plan-learning-approach"',
     'id="plan-status-sharing"',
+    "Your study sessions",
+    "Tailor how this curriculum is taught",
+    "Recommended syllabus adjustments",
+    "Activate or share your syllabus",
   ]) {
-    assert.ok(plan.includes(sectionId), `Plan is missing section ${sectionId}`);
+    assert.equal(plan.includes(removedSection), false, `Plan must not render redundant text-wall section: ${removedSection}`);
   }
   assert.ok(plan.includes("What you'll learn &amp; unit order"));
-  assert.ok(plan.includes("Your study sessions"));
-  assert.ok(plan.includes("Each session is one sitting. Move a session if the time does not work for you."));
-  assert.ok(plan.includes("Tailor how this curriculum is taught"));
-  assert.ok(plan.includes("Activate or share your syllabus"));
-  assert.ok(plan.includes("Read Subword Tokenization &amp; Sequence Packing Notes"));
-  assert.ok(plan.includes("Targeted Bridge: Matrix Calculus &amp; Softmax Jacobians"));
-  assert.ok(plan.includes('<dl class="plan-facts">'));
-  assert.ok(plan.includes("<dt>Total time</dt>"));
-  assert.ok(plan.includes("<strong>Session 1</strong> <span class=\"badge\">Core study</span>"));
-  assert.ok(plan.includes("<strong>Session 3</strong> <span class=\"badge\">Spaced review</span>"));
-  assert.ok(plan.includes('class="session-activity-list"'));
-  assert.ok(plan.includes('data-datepicker="true"'));
   assert.ok(plan.includes('class="plan-architecture-outline"'));
   assert.ok(plan.includes('interestfor="plan-relationship-legend" popovertarget="plan-relationship-legend"'));
   assert.ok(plan.includes('<figure id="plan-relationship-legend" popover="hint" class="relationship-legend" data-opaque-surface="true">'));
+  assert.ok(plan.includes('data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>'));
   assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
   for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds", "Preview rebalanced schedule"]) {
     assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);

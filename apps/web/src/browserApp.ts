@@ -1760,7 +1760,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <p class="prose meta-text">${adaptationChoiceCopy}</p>`;
 
   const timezoneLabel = reminderState.timezone === "America/New_York" ? "Eastern Time" : reminderState.timezone;
-  const weeklyMinutes = todayState.weeklyMinutes || 120;
   const renderScheduleRowsHtml = (idPrefix: "plan" | "settings"): string =>
     todayState.todayCards.map((card, idx) => {
       const sessionNum = idx + 1;
@@ -1887,7 +1886,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </nav>`}
             <div class="plan-title-row">
               <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(curriculum))}</h1>
-              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
+              <div class="plan-toolbar">
+                ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : `<button type="button" class="btn-secondary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" hidden>Activate plan</button>`}
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
+                <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
+              </div>
             </div>
             ${selectedTagStripHtml}
             ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
@@ -1925,83 +1928,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   ${renderMapControl("reset_focus", "Focus Neighborhood", "Reset focus", "focus")}
                 </div>
                 ${renderPlanDagSvgHtml(basePlanModel)}
-                <p class="meta-text">Arrow keys move between modules. Selecting a module does not require pinch, drag, or hover.</p>
               </div>
               <div class="plan-outline-container" data-plan-surface="Outline" data-active="${activePlanView === "Outline"}">${planArchitectureOutlineHtml}</div>
               ${relationshipLegend}
-            </section>
-
-            <section class="plan-science-section" id="plan-pacing-review" aria-labelledby="plan-pacing-heading" data-opaque-surface="true">
-              <div class="section-header">
-                <div>
-                  <h2 id="plan-pacing-heading">Your study sessions</h2>
-                  <p class="meta-text">Each session is one sitting. Move a session if the time does not work for you.</p>
-                </div>
-              </div>
-              <dl class="plan-facts">
-                <div>
-                  <dt>Total time</dt>
-                  <dd>${totalEffort.point} min typical (${totalEffort.min}–${totalEffort.max} min range)</dd>
-                </div>
-                <div>
-                  <dt>Weekly pace</dt>
-                  <dd>${weeklyMinutes} min a week · about ${Math.max(1, Math.ceil(totalEffort.max / weeklyMinutes))} wk to finish</dd>
-                </div>
-                <div>
-                  <dt>Spaced review</dt>
-                  <dd>${reviewsDue} due · scheduled after initial checkpoint</dd>
-                </div>
-              </dl>
-              <ul class="schedule-list">${renderScheduleRowsHtml("plan")}</ul>
-            </section>
-
-            <section class="plan-science-section" id="plan-learning-approach" aria-labelledby="plan-approach-heading" data-opaque-surface="true">
-              <div class="section-header">
-                <div>
-                  <h2 id="plan-approach-heading">Tailor how this curriculum is taught</h2>
-                </div>
-              </div>
-              <dl class="plan-facts">
-                <div>
-                  <dt>Prior knowledge &amp; checkpoints</dt>
-                  <dd>${evidenceSummary}. Diagnostic checks verify what can be skipped safely.</dd>
-                </div>
-                <div>
-                  <dt>Mathematical depth</dt>
-                  <dd>${escapeHtml(humanize(mathDepthFor(curriculum, [])))} (${depthOverrideReset ? "Topic overrides reset to global default" : "Override: Matrix calculus · Formal"})</dd>
-                </div>
-                <div>
-                  <dt>Instructional order</dt>
-                  <dd>
-                    <div class="segmented" role="group" aria-label="Instructional order">
-                      ${FLOW_ORDERS.map((order) => `<button type="button" class="seg-btn" data-action="set-flow-order" data-flow-order="${order}" aria-pressed="${flowView.order === order}">${order === "theory_first" ? "Theory" : order === "application_first" ? "Code first" : "Balanced"}</button>`).join("")}
-                    </div>
-                  </dd>
-                </div>
-                <div>
-                  <dt>Familiar material</dt>
-                  <dd>Skip only when demonstrated (after a passed checkpoint)</dd>
-                </div>
-              </dl>
-              <div class="plan-adaptation-box">
-                <h3>Recommended syllabus adjustments</h3>
-                ${adaptationBody}
-              </div>
-            </section>
-
-            <section class="plan-science-section" id="plan-status-sharing" aria-labelledby="plan-status-heading" data-opaque-surface="true">
-              <div class="section-header">
-                <div>
-                  <h2 id="plan-status-heading">Activate or share your syllabus</h2>
-                  <p class="meta-text">${selectedPlan.draft ? "Private draft" : "Active plan"}, revision ${escapeHtml(String(curriculum["revision_number"] ?? 1))}</p>
-                </div>
-              </div>
-              <p class="prose meta-text">Activating a draft makes it your live study plan in Today. Sharing publishes a clean syllabus template to the Marketplace without your personal progress, schedule dates, or API keys.</p>
-              <div class="action-row">
-                <button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>
-                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
-                <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Explore">My publications</button>
-              </div>
             </section>
           </div>
         </section>
