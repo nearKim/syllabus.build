@@ -1558,7 +1558,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       const unitsCount = rawListOf(plan.curriculum, "modules").length;
       return `<option value="${escapeHtml(plan.curriculumId)}" data-domain="${escapeHtml(planTags.subject)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`;
     }),
-    `<option value="__edit_plan__" data-action-option="edit-plan" data-domain="Plan &amp; Pacing" data-progress="Schedule, waivers &amp; approach">Edit Plan &amp; Pacing →</option>`,
+    `<option value="__new_curriculum__" data-action-option="new-curriculum">+ New Curriculum</option>`,
   ].join("");
   const selectedTagStripHtml = renderToString(
     h(CurriculumTagStrip, {
@@ -1845,7 +1845,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   ${selectedTagStripHtml}
                 </div>
                 <div class="plan-toolbar plan-command-picker">
-                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label">Plan</span>
+                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Curriculum</span>
                     <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
                 </div>
@@ -2733,7 +2733,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         if (listing) adopt(listing);
       } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
       else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
-      else if (action === "select-curriculum" && data["curriculumId"] === "__edit_plan__") {
+      else if (action === "select-curriculum" && data["curriculumId"] === "__new_curriculum__") {
+        openDialogId = "dialog-new-curriculum";
+      } else if (action === "select-curriculum" && data["curriculumId"] === "__edit_plan__") {
         topLevel = "Learn";
         learnSubDestination = "Plan";
         studyDetailOpen = false;

@@ -1804,7 +1804,8 @@ textarea {
 }
 
 .plan-command-field {
-  min-width: min(100%, 24rem);
+  min-width: 0;
+  width: auto;
 }
 
 .plan-command-label {
@@ -1816,22 +1817,24 @@ textarea {
 }
 
 .ts-wrapper.plan-command-select {
-  width: 100%;
-  min-width: min(100%, 22rem);
+  position: relative;
+  width: auto;
+  min-width: 0;
 }
 
 .ts-wrapper.plan-command-select .ts-control {
   position: relative;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 46px;
-  padding: 6px 10px 6px 14px;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--color-border-control);
   border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: none;
   cursor: pointer;
   transition:
     border-color 160ms ease,
@@ -1845,6 +1848,7 @@ textarea {
 
 .ts-wrapper.plan-command-select .ts-control:hover {
   border-color: var(--color-accent);
+  background: var(--tint-4);
 }
 
 .ts-wrapper.plan-command-select.focus .ts-control,
@@ -1855,42 +1859,34 @@ textarea {
 }
 
 .ts-plan-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  min-width: 0;
-}
-
-.ts-plan-chevron {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: 6px;
-  background: var(--color-surface-secondary);
-  color: var(--color-text-secondary);
-  transition:
-    transform 160ms ease,
-    background-color 160ms ease,
-    color 160ms ease;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.ts-wrapper.plan-command-select:hover .ts-plan-chevron {
+.ts-plan-item-label {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
   color: var(--color-text-primary);
 }
 
-.ts-wrapper.plan-command-select.dropdown-active .ts-plan-chevron {
+.ts-plan-chevron-icon {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  transition: transform 160ms ease, color 160ms ease;
+}
+
+.ts-wrapper.plan-command-select.dropdown-active .ts-plan-chevron-icon {
   transform: rotate(180deg);
-  background: var(--color-accent-surface);
   color: var(--color-accent);
 }
 
 .ts-wrapper.plan-command-select .ts-dropdown {
+  right: 0;
+  left: auto;
+  min-width: 22rem;
   margin-top: 6px;
   padding: 6px;
   border: 1px solid var(--color-border-control);
@@ -1899,6 +1895,10 @@ textarea {
   color: var(--color-text-primary);
   box-shadow: 0 14px 36px rgba(15, 23, 42, 0.16);
   z-index: 40;
+}
+
+.ts-wrapper.plan-command-select .ts-dropdown-content {
+  max-height: 280px;
 }
 
 .ts-wrapper.plan-command-select .ts-dropdown .option {

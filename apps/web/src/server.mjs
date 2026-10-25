@@ -149,25 +149,17 @@ ${fallbackScript}
         controlInput: null,
         allowEmptyOption: false,
         render: {
-          item: function (data, escape) {
-            const m = metaByVal[data.value] || {};
-            const metaText = [m.domain, m.progress].filter(Boolean).join(" · ");
+          item: function () {
             return '<div class="ts-plan-item">' +
-              '<span class="ts-plan-item-main">' +
-                '<span class="ts-plan-item-title">' + escape(data.text) + '</span>' +
-                (metaText ? '<span class="ts-plan-item-meta">' + escape(metaText) + '</span>' : '') +
-              '</span>' +
-              '<span class="ts-plan-chevron" aria-hidden="true">' +
-                '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg>' +
-              '</span>' +
+              '<span class="ts-plan-item-label">Switch curriculum</span>' +
+              '<svg class="ts-plan-chevron-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>' +
             '</div>';
           },
           option: function (data, escape) {
             const m = metaByVal[data.value] || {};
-            if (m.actionOption === "edit-plan" || data.value === "__edit_plan__") {
+            if (m.actionOption === "new-curriculum" || data.value === "__new_curriculum__") {
               return '<div class="ts-plan-option ts-plan-action-option">' +
-                '<span class="ts-plan-action-title">Edit Plan &amp; Pacing</span>' +
-                '<span class="ts-plan-action-sub">Schedule, waivers &amp; approach →</span>' +
+                '<span class="ts-plan-action-title">+ New Curriculum</span>' +
               '</div>';
             }
             const metaParts = [m.domain, m.units, m.progress].filter(Boolean).join(" · ");

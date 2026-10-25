@@ -1571,7 +1571,7 @@ export function NewCurriculumDialog({
 
             {fitEvaluation.existingPlans.length > 0 ? (
               <div class="intake-fit-group intake-existing-plans-block">
-                <h4 class="intake-fit-group-title">Existing plans ({fitEvaluation.existingPlans.length})</h4>
+                <h4 class="intake-fit-group-title">Existing curricula ({fitEvaluation.existingPlans.length})</h4>
                 <ul class="intake-fit-list intake-existing-plans-list">
                   {fitEvaluation.existingPlans.map((plan) => (
                     <li

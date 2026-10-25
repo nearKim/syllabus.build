@@ -361,7 +361,7 @@ test("Today opens with the active curricula queue, then the focused curriculum h
     '<h2 class="today-selected-title">Build and Evaluate RAG Systems in Python</h2>',
     '<span class="today-selected-progress">0/5 completed · 83m left</span>',
     '<select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">',
-    '<option value="__edit_plan__" data-action-option="edit-plan"',
+    '<option value="__new_curriculum__" data-action-option="new-curriculum"',
   ]) {
     assert.ok(card.includes(part), `the header card is missing ${part}`);
   }
@@ -605,7 +605,7 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   const ids = ["curriculum-rag-python-001", "curriculum-linear-algebra-002", "curriculum-tolstoy-lit-003"];
   const html = renderCurriculumWebAppHtml();
   const select = html.match(/<select id="selected-plan-control"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
-  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), [...ids, "__edit_plan__"]);
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), [...ids, "__new_curriculum__"]);
   assert.match(select, /<option value="curriculum-rag-python-001"[^>]*selected>Build and Evaluate RAG Systems in Python<\/option>/);
 
   const cardsOf = (page) => [...(page.match(/<section class="today-curricula-grid"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "").matchAll(/<article class="curriculum-card" data-curriculum-id="([^"]+)"[\s\S]*?<\/article>/g)];
@@ -1405,7 +1405,7 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
 
   // 1. Today's Focused curriculum header consolidates Selected plan + Edit Plan & Pacing in TomSelect and omits the text-heavy Unit Map overview
   assert.ok(today.includes('data-tom-select="plan"'));
-  assert.ok(today.includes('<option value="__edit_plan__" data-action-option="edit-plan"'));
+  assert.ok(today.includes('<option value="__new_curriculum__" data-action-option="new-curriculum"'));
   assert.equal(today.includes('<details class="today-curriculum-overview">'), false);
 
   // Clicking a Unit cell opens the InspectorDrawer in Unit mode (data-inspector-mode="unit") without verbose "Row summary" labels
