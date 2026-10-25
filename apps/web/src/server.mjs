@@ -135,7 +135,7 @@ ${fallbackScript}
   function initPlanSelects() {
     if (typeof window.TomSelect !== "function") return;
     root.querySelectorAll('[data-tom-select="plan"]').forEach((el) => {
-      if (el.tomselect) return;
+      if (el.tomselect || el.closest("[hidden]")) return;
       const metaByVal = {};
       Array.from(el.options).forEach((opt) => {
         metaByVal[opt.value] = {

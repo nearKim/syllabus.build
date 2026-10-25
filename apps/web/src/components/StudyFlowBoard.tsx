@@ -236,11 +236,13 @@ export function GateDiamond({
   gate,
   selectedActivityId,
   nextUpActivityId,
+  nextUnitNumber,
 }: {
   readonly mod: StudyModule;
   readonly gate: StudyActivity | null;
   readonly selectedActivityId: string | null;
   readonly nextUpActivityId?: string | null | undefined;
+  readonly nextUnitNumber?: number | undefined;
 }): VNode {
   const status = gate
     ? gateStatus(gate.objectiveProficiencyBadges.map((badge) => badge.status))
@@ -270,6 +272,11 @@ export function GateDiamond({
         {gateCriteria(status)}
         {gate ? ` · ${gate.durationTriplet.point}m` : ""}
       </span>
+      {nextUnitNumber !== undefined ? (
+        <span class="gate-unlocks-badge" data-unlocked={String(status.passed)}>
+          {status.passed ? `↓ Unlocks U${nextUnitNumber}` : `↓ Locks U${nextUnitNumber}`}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -338,8 +345,11 @@ export function UnitRow({
   const progress = unitProgress(mod.activities);
   const tone = unitTone(progress);
   const previous = units[index - 1];
-  const spineIn = previous ? (unitTone(unitProgress(previous.mod.activities)) === "done" ? "done" : "todo") : "none";
-  const spineOut = index < units.length - 1 ? (tone === "done" ? "done" : "todo") : "none";
+  const prevGatePassed = previous ? unitGate(previous.mod).passed : true;
+  const currentGatePassed = unitGate(mod).passed;
+  const spineIn = previous ? (prevGatePassed || unitTone(unitProgress(previous.mod.activities)) === "done" ? "done" : "todo") : "none";
+  const spineOut = index < units.length - 1 ? (currentGatePassed || tone === "done" ? "done" : "todo") : "none";
+  const nextUnitNumber = index < units.length - 1 ? index + 2 : undefined;
   const onChain = (activity: StudyActivity): boolean => trackOf(activity) !== "review";
 
   const chain = columns.flatMap((track, column) =>
@@ -354,6 +364,15 @@ export function UnitRow({
   const segments = new Map<number, VNode[]>();
   const crossed = new Set<number>();
   const addSegment = (column: number, svg: VNode) => segments.set(column, [...(segments.get(column) ?? []), svg]);
+  const firstChainCol = chain[0];
+  const leadStyle: SegmentStyle = firstChainCol !== undefined && optionalAt(firstChainCol) ? "dashed" : "solid";
+  if (firstChainCol !== undefined) {
+    for (let column = 0; column < firstChainCol; column++) {
+      addSegment(column, <ConnectorSvg kind="lead-through" style={leadStyle} />);
+      crossed.add(column);
+    }
+    addSegment(firstChainCol, <ConnectorSvg kind="lead-in" style={leadStyle} />);
+  }
   chain.forEach((to, k) => {
     const from = chain[k - 1];
     if (from === undefined) return;
@@ -388,7 +407,14 @@ export function UnitRow({
           aria-pressed={selected}
         >
           <UnitMarker tone={tone} />
-          <span class="unit-badge">U{index + 1}</span>
+          <span class="unit-head-row">
+            <span class="unit-badge">U{index + 1}</span>
+            {previous ? (
+              <span class="unit-prereq-pill" data-met={String(prevGatePassed)}>
+                {prevGatePassed ? `✓ U${index} Gate` : `Requires U${index}`}
+              </span>
+            ) : null}
+          </span>
           <span class="unit-title">
             <MathText text={displayUnitTitle(mod.title)} />
           </span>
@@ -397,6 +423,7 @@ export function UnitRow({
             {selected ? "Selected" : "Select"} unit {index + 1}. {progress.done} of {progress.total} required activities done. {mod.required ? "Required" : "Optional"}. {mod.summary}
           </span>
         </button>
+        {firstChainCol !== undefined ? <ConnectorSvg kind="unit-out" style={leadStyle} /> : null}
       </th>
       {columns.map((track, column) => {
         const items = cells.get(track) ?? [];
@@ -422,9 +449,10 @@ export function UnitRow({
                       gate={gate}
                       selectedActivityId={selectedActivityId}
                       nextUpActivityId={nextUpActivityId}
+                      nextUnitNumber={nextUnitNumber}
                     />
                   ))
-                : <GateDiamond mod={mod} gate={null} selectedActivityId={selectedActivityId} nextUpActivityId={nextUpActivityId} />
+                : <GateDiamond mod={mod} gate={null} selectedActivityId={selectedActivityId} nextUpActivityId={nextUpActivityId} nextUnitNumber={nextUnitNumber} />
               : null}
             {cards.map((activity) => (
               <NodeCard

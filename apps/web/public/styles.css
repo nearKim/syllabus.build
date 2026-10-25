@@ -1244,6 +1244,21 @@ textarea {
   width: 100%;
 }
 
+.matrix-svg[data-seg="lead-in"] {
+  left: 0;
+  width: var(--pad-x);
+}
+
+.matrix-svg[data-seg="lead-through"] {
+  left: 0;
+  width: 100%;
+}
+
+.matrix-svg[data-seg="unit-out"] {
+  right: 0;
+  width: var(--pad-x);
+}
+
 .flow-cell[data-track="gate"] > .matrix-svg[data-seg="in"] {
   width: calc(50% - 38px);
 }
@@ -1363,6 +1378,32 @@ textarea {
 
 .unit-hit[aria-pressed="true"] .unit-title {
   color: var(--color-accent);
+}
+
+.unit-head-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.unit-prereq-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.unit-prereq-pill[data-met="true"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
 }
 
 /* Node cards: title, duration, optional mark, and check. At the default text size every card is 96px:
@@ -1624,6 +1665,24 @@ textarea {
   color: var(--color-text-secondary);
 }
 
+.gate-unlocks-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.gate-unlocks-badge[data-unlocked="true"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
 .flow-cell[data-track="gate"] .node-card {
   text-align: left;
 }
@@ -1784,6 +1843,27 @@ textarea {
 .today-unified-header > .section-header,
 .today-unified-header > .status-banner {
   margin: 0;
+}
+
+.today-curriculum-brief {
+  padding-top: var(--space-3);
+  border-top: var(--hairline);
+}
+
+.today-curriculum-brief .plan-goal {
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--color-text-primary);
+}
+
+.today-curriculum-brief .plan-scope-list {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.curriculum-card[data-action="select-curriculum"] {
+  cursor: pointer;
 }
 
 /* Consolidated Plan Command Picker: progressive appearance: base-select + TomSelect rich dropdown */

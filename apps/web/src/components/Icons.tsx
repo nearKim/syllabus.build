@@ -394,7 +394,7 @@ export function ArrowSvg({ className, style = "solid" }: ArrowSvgProps): VNode {
 }
 
 export interface ConnectorSvgProps {
-  readonly kind: "in" | "out" | "through";
+  readonly kind: "in" | "out" | "through" | "lead-in" | "lead-through" | "unit-out";
   readonly style: SegmentStyle;
 }
 
@@ -402,7 +402,7 @@ export function ConnectorSvg({ kind, style }: ConnectorSvgProps): VNode {
   return (
     <svg class="matrix-svg" data-seg={kind} data-style={style} aria-hidden="true">
       <line x1="0" y1="6" x2="100%" y2="6" />
-      {kind === "in" ? (
+      {kind === "in" || kind === "lead-in" ? (
         <svg x="100%" overflow="visible">
           <path class="arrow-head" d="M-8 2 L0 6 L-8 10 Z" />
         </svg>

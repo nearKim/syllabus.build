@@ -1539,7 +1539,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     const next = open[0];
     const done = session.length - open.length;
     const minutesLeft = open.reduce((sum, act) => sum + act.durationTriplet.point, 0);
-    return `<article class="curriculum-card" data-curriculum-id="${id}" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+    return `<article class="curriculum-card" data-curriculum-id="${id}" data-action="select-curriculum" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
             <p class="domain-pill">${escapeHtml(`${planTags.subject} · ${planTags.gateStyle}`)}</p>
             <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
             <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
@@ -1844,11 +1844,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
                   ${selectedTagStripHtml}
                 </div>
-                <div class="plan-toolbar plan-command-picker">
+                <div class="plan-toolbar plan-command-picker" hidden>
                   <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Curriculum</span>
                     <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
                 </div>
+              </div>
+              <div class="plan-brief today-curriculum-brief">
+                <section class="plan-brief-goal" aria-labelledby="today-goal-label">
+                  <h3 id="today-goal-label" class="plan-brief-label">Goal</h3>
+                  <p class="plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
+                </section>
+                ${basePlanModel.goal.includedTopics.length > 0 ? `<section class="plan-brief-covers" aria-labelledby="today-covers-label">
+                  <h3 id="today-covers-label" class="plan-brief-label">Covers</h3>
+                  <ul class="plan-scope-list">${basePlanModel.goal.includedTopics.map((topic) => `<li>${escapeHtml(topic)}</li>`).join("")}</ul>
+                </section>` : ""}
               </div>
               ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
               ${recoveryBanner}
