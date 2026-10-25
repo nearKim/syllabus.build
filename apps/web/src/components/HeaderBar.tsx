@@ -1,6 +1,5 @@
 import type { VNode } from "preact";
 import {
-  LEARN_SUB_DESTINATIONS,
   TOP_LEVEL_DESTINATIONS,
   type LearnSubDestination,
   type TopLevelDestination,
@@ -157,6 +156,8 @@ export function SessionExpiredBanner({ authStatus }: { readonly authStatus: Auth
   );
 }
 
+const SIDEBAR_LEARN_DESTINATIONS: readonly LearnSubDestination[] = ["Today", "Progress", "Resources"];
+
 export function AppSidebar({
   signedOut,
   activeTopLevel,
@@ -170,6 +171,7 @@ export function AppSidebar({
   readonly goalTitle: string;
   readonly totalEffort: { readonly min: number; readonly point: number; readonly max: number };
 }): VNode {
+  const effectiveSub: LearnSubDestination = activeLearnSub === "Plan" ? "Today" : activeLearnSub;
   return (
     <aside class="app-sidebar" aria-label="Learn sections">
       {signedOut ? (
@@ -180,8 +182,8 @@ export function AppSidebar({
         <>
           <div class="sidebar-section">
             <nav class="learn-sub-nav" aria-label="Learn sub-navigation">
-              {LEARN_SUB_DESTINATIONS.map((sub) => (
-                <LearnSubButton key={sub} sub={sub} isCurrent={activeTopLevel === "Learn" && sub === activeLearnSub} />
+              {SIDEBAR_LEARN_DESTINATIONS.map((sub) => (
+                <LearnSubButton key={sub} sub={sub} isCurrent={activeTopLevel === "Learn" && sub === effectiveSub} />
               ))}
             </nav>
           </div>

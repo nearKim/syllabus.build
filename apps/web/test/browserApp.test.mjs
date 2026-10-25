@@ -77,12 +77,17 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
       `Missing top-level destination button for ${topDest}`
     );
   }
-  for (const subDest of ["Today", "Plan", "Progress", "Resources"]) {
+  for (const subDest of ["Today", "Progress", "Resources"]) {
     assert.ok(
       html.includes(`data-action="navigate-learn-sub" data-sub-destination="${subDest}"`),
       `Missing Learn sub-destination button for ${subDest}`
     );
   }
+  assert.equal(
+    html.includes('data-action="navigate-learn-sub" data-sub-destination="Plan"'),
+    false,
+    "Plan tab is removed from the sidebar and consolidated into Today"
+  );
 
   // 2. Today View: session cards, idempotent complete button, spaced-review separation
   assert.ok(html.includes('data-action="complete-activity"'));
@@ -586,7 +591,7 @@ test("Study flow, Review queue, and Completed work each sit in a white surface c
 
   // Both lists share one card. Each heading carries a count, and an empty list shows a quiet box with an icon.
   const html = renderCurriculumWebAppHtml();
-  const bottom = html.match(/<section class="today-bottom-grid"[^>]*>([\s\S]*)<\/section>\s*<div class="action-row">/)?.[1] ?? "";
+  const bottom = html.match(/<section class="today-bottom-grid"[^>]*>([\s\S]*?)<\/section>\s*<section class="today-curricula-grid"/)?.[1] ?? "";
   assert.ok(bottom.includes('<h2 id="review-queue-title">Review queue <span class="count-badge">1</span></h2>'));
   assert.ok(bottom.includes('<h2 id="completed-history-title">Completed work <span class="count-badge">0</span></h2>'));
   assert.ok(bottom.includes('<li class="today-activity-item step-row" data-activity-id="activity-review"'));
@@ -608,7 +613,7 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   const cards = cardsOf(html);
   assert.deepEqual(cards.map((match) => match[1]), ids);
   assert.deepEqual(cards.map(([card]) => card.match(/<p class="domain-pill">([^<]+)<\/p>/)?.[1]), ["Engineering · Reviewed Quiz", "Mathematics · Public Quiz Bank", "Literature · Self-Check Rubric"]);
-  assert.equal(text(cards[0][0]), "Engineering · Reviewed Quiz Build and Evaluate RAG Systems in Python Upcoming session: 0/3 completed · 65m left Read Subword Tokenization &amp; Sequence Packing Notes 15m Lecture Resume → Open Plan →");
+  assert.equal(text(cards[0][0]), "Engineering · Reviewed Quiz Build and Evaluate RAG Systems in Python Upcoming session: 0/3 completed · 65m left Read Subword Tokenization &amp; Sequence Packing Notes 15m Lecture Resume →");
   assert.ok(cards[0][0].includes('aria-current="true"') && !cards[1][0].includes("aria-current"), "only the selected plan's card is marked");
   assert.equal(cards[0][0].includes('class="macro-bar"'), false, "curriculum cards omit the redundant progress bar rule");
 
@@ -995,7 +1000,7 @@ test("Details shows the whole curriculum with every unit selected, closes prereq
   click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
   const state = app.getState();
   assert.equal(state.selectedCurriculumId, "adopted-publication-rust-async-001");
-  assert.deepEqual([state.topLevel, state.learnSubDestination, state.openDialogId], ["Learn", "Plan", null]);
+  assert.deepEqual([state.topLevel, state.learnSubDestination, state.openDialogId], ["Learn", "Today", null]);
   assert.deepEqual(state.adoptions, [{ accountId: "learner-default", publicationId: "publication-rust-async-001", moduleIds: ["rs-module-futures", "rs-module-scheduling"], active: false }]);
   assert.ok(root.innerHTML.includes("This plan is your private draft of @ferris_ops's template."));
   assert.ok(root.innerHTML.includes('<option value="adopted-publication-rust-async-001" selected>Rust Async Runtime Internals · Draft</option>'));
@@ -1717,7 +1722,7 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
 
   const afterGen = app.getState();
   assert.equal(afterGen.selectedCurriculumId, "curriculum-ai-generated-001");
-  assert.equal(afterGen.learnSubDestination, "Plan");
+  assert.equal(afterGen.learnSubDestination, "Today");
   assert.equal(afterGen.openDialogId, null);
   assert.ok(afterGen.lastPipelineReceipt);
   assert.equal(afterGen.lastPipelineReceipt.webSearchExecuted, true);

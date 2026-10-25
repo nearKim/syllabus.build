@@ -1546,7 +1546,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             ${next ? `<div class="queue-next"><p class="queue-next-title">${renderTextWithLatexHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
             <div class="queue-actions">
               ${next ? `<button type="button" class="btn-primary" data-action="resume-curriculum" data-curriculum-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}
-              <button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${id}">Open Plan<span aria-hidden="true">→</span></button>
             </div>
           </article>`;
   }).join("");
@@ -1832,6 +1831,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <div class="section-header today-page-header">
             <h1 class="page-title">Today</h1>
             <div class="plan-toolbar">
+              ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
               <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
           </div>
@@ -1849,6 +1850,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   </label>
                 </div>
               </div>
+              ${selectedPlan.draft ? `<p class="draft-notice" role="status">This plan is your private draft of ${originListing ? `${escapeHtml(originListing.handle)}'s template` : "a community template"}. Review it, then select Activate plan to add it to Today.</p>` : ""}
               ${recoveryBanner}
             </header>
             ${todayBoardHtml}
@@ -1866,10 +1868,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <section class="today-curricula-grid" aria-label="Active curricula">
           ${queueCardsHtml}
           </section>
-          <div class="action-row">
-            <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Plan</button>
-            <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Settings">Schedule</button>
-          </div>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"} data-opaque-surface="true">
@@ -1947,7 +1945,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
               </label>
               <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">View review in Today<span aria-hidden="true">→</span></button>
-              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Adjust plan<span aria-hidden="true">→</span></button>
             </div>
           </div>
 
@@ -2029,7 +2026,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
                 <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
                 <button type="button" class="btn-secondary" data-action="diagnostic-continue">Continue</button>
-                <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Adjust plan from evidence<span aria-hidden="true">→</span></button>
               </div>
             </section>
           </div>
@@ -2525,7 +2521,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     return true;
   }
 
-  // Adoption makes a private draft and opens it on the Plan page. Activation stays a separate, explicit step (@S59).
+  // Adoption makes a private draft and opens it in Today. Activation stays a separate, explicit step (@S59).
   function adopt(listing: MarketplaceListing): void {
     if (adoptModuleIds.length === 0) return;
     const moduleIds = adoptionScopeOf(listing, adoptModuleIds).resolvedModuleIds;
@@ -2535,7 +2531,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     openDialogId = null;
     selectCurriculum(`adopted-${listing.publicationId}`);
     topLevel = "Learn";
-    learnSubDestination = "Plan";
+    learnSubDestination = "Today";
   }
 
   function activateSelectedDraft(): void {
@@ -2871,7 +2867,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         selectCurriculum(data["curriculumId"]);
         openDialogId = null;
         topLevel = "Learn";
-        learnSubDestination = "Plan";
+        learnSubDestination = "Today";
       } else if (action === "intake-adopt-marketplace-plan" && data["publicationId"]) {
         const listing = adoptableListing(data["publicationId"]);
         if (listing) {
@@ -2884,7 +2880,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
             selectCurriculum(existing.curriculumId);
             openDialogId = null;
             topLevel = "Learn";
-            learnSubDestination = "Plan";
+            learnSubDestination = "Today";
           }
         }
       } else if (action === "review-generate") {
@@ -2934,7 +2930,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         openDialogId = null;
         selectCurriculum(pipelineResult.generatedPlan.curriculumId);
         topLevel = "Learn";
-        learnSubDestination = "Plan";
+        learnSubDestination = "Today";
       } else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
       else handled = false;
       return { handled, state: getState() };
