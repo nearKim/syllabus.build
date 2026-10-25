@@ -1836,9 +1836,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
           </div>
-          <section class="today-curricula-grid" aria-label="Active curricula">
-          ${queueCardsHtml}
-          </section>
           <div class="today-active-workspace">
             <header class="today-unified-header" data-opaque-surface="true">
               <div class="section-header">
@@ -1866,6 +1863,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <h2 id="completed-history-title">Completed work <span class="count-badge">${completedRows.length}</span></h2>
               ${listOrEmpty(completedRows, "check", "No self-reported completions yet.")}
             </section>
+          </section>
+          <section class="today-curricula-grid" aria-label="Active curricula">
+          ${queueCardsHtml}
           </section>
           <div class="action-row">
             <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Plan">Plan</button>

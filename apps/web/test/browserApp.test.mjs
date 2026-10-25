@@ -345,10 +345,10 @@ test("Today opens with the active curricula queue, then the focused curriculum h
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
 
-  // Today opens with the page header and active curricula cards, then the focused curriculum header directly above its Study flow board.
+  // Today opens directly with the page header and focused curriculum Study flow workspace above the fold, with the active curricula cards placed at the bottom.
   assert.match(
     today,
-    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<section class="today-curricula-grid" aria-label="Active curricula">/,
+    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula">/,
   );
   const card = today.match(/<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
   assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
