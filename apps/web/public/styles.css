@@ -1370,10 +1370,14 @@ textarea {
    A longer title stops after three lines. Larger text still grows the card, and words never split. */
 .node-card {
   position: relative;
+  width: 100%;
+  height: var(--node-min, 96px);
   min-height: var(--node-min, 96px);
+  max-height: var(--node-min, 96px);
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   background: var(--color-surface-secondary);
+  box-sizing: border-box;
 }
 
 .node-card + .node-card {
@@ -1457,19 +1461,24 @@ textarea {
   gap: 3px;
   width: 100%;
   min-width: 0;
+  height: calc(var(--node-min, 96px) - 2px);
   min-height: calc(var(--node-min, 96px) - 2px);
+  max-height: calc(var(--node-min, 96px) - 2px);
   padding: 9px 10px;
   border: 0;
   border-radius: inherit;
   background: transparent;
   color: inherit;
   text-align: left;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .node-title {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+  max-height: 56px;
   overflow: hidden;
   font-size: 14px;
   font-weight: 600;
@@ -1479,12 +1488,20 @@ textarea {
   hyphens: manual;
 }
 
+.node-title .math-inline,
+.node-title .math-inline math {
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: baseline;
+}
+
 .node-foot {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  flex-shrink: 0;
   gap: 6px;
-  min-height: 22px;
+  min-height: 18px;
   padding-right: 34px;
 }
 
@@ -1676,7 +1693,8 @@ textarea {
   /* Cells do not grow, so every wrapped card keeps the same 13rem width. */
   .flow-cell,
   .flow-cell[data-crossed="true"] {
-    flex: 0 1 13rem;
+    flex: 0 0 13rem;
+    width: 13rem;
     min-width: 0;
     padding: 0;
   }
@@ -1687,6 +1705,7 @@ textarea {
   }
 
   .flow-cell[data-track="gate"] .node-card {
+    width: 13rem;
     max-width: 13rem;
   }
 

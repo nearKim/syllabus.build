@@ -395,7 +395,8 @@ test("flowchart cards keep one shape in every order: title, duration, optional m
 
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   assert.match(css, /\.matrix-table\s*\{[^}]*--node-min:\s*96px;/s);
-  assert.match(css, /\.node-open\s*\{[^}]*flex-direction:\s*column;\s*justify-content:\s*space-between;/s);
+  assert.match(css, /\.node-card\s*\{[^}]*width:\s*100%;\s*height:\s*var\(--node-min,\s*96px\);\s*min-height:\s*var\(--node-min,\s*96px\);\s*max-height:\s*var\(--node-min,\s*96px\);/s);
+  assert.match(css, /\.node-open\s*\{[^}]*flex-direction:\s*column;\s*justify-content:\s*space-between;[^}]*height:\s*calc\(var\(--node-min,\s*96px\)\s*-\s*2px\);/s);
   assert.match(css, /\.node-title\s*\{[^}]*-webkit-line-clamp:\s*3;/s);
   assert.equal(/\.col-gate\s*\{/.test(css), false, "the gate column must be as wide as the track columns");
 });
