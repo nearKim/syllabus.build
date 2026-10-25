@@ -62,7 +62,7 @@ import {
 import {
   DEFAULT_SUBJECT_TOPICS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
   INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
-  evaluateIntakeResourceFit, executeIntakeGenerationPipeline, resolveDependentTopicToggle,
+  evaluateIntakeResourceFit, executeIntakeGenerationPipeline, inferIntakeSubjectFromGoal, resolveDependentTopicToggle,
   type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
   type IntakePipelineExecutionReceipt, type IntakeSubject,
 } from "./components/NewCurriculumDialog.tsx";
@@ -2864,6 +2864,18 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       } else if (action === "reset-depth-override") depthOverrideReset = true;
       else if (action === "set-intake-goal" && typeof data["intakeGoalTitle"] === "string") {
         intakeGoalTitle = data["intakeGoalTitle"];
+        const inferred = inferIntakeSubjectFromGoal(intakeGoalTitle, intakeSubject);
+        if (inferred !== intakeSubject) {
+          intakeSubject = inferred;
+          intakeTopics = [];
+          intakeSelectedResourceIds = buildIndexedMaterialCandidates(
+            catalogResources,
+            intakeSubject,
+            intakeTopics,
+            intakeMaterials,
+          ).map((m) => m.resourceVersionId);
+          intakeSkippedResourceIds = [];
+        }
       } else if (action === "set-intake-subject" && isOneOf(INTAKE_SUBJECTS, data["intakeSubject"])) {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeSubject = data["intakeSubject"];

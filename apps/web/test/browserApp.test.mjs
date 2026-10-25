@@ -1653,14 +1653,13 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
-  // 1. First-open onboarding: #intake-goal is a multi-line textarea with subject placeholder, and Suggested fit is hidden until Goal or Topics are entered
+  // 1. First-open onboarding: #intake-goal is an empty multi-line textarea with zero mock data (no Subject, Topics, or Suggested fit until query is entered)
   const initialDialog = dialogOf(root.innerHTML);
   assert.ok(initialDialog.includes('<textarea id="intake-goal"'));
-  assert.ok(initialDialog.includes('placeholder="e.g., Build and Evaluate RAG Systems in Python"'));
-  assert.equal(initialDialog.includes('value="Build and Evaluate RAG Systems in Python"'), false);
-  assert.ok(initialDialog.includes('id="intake-subject-select"'));
-  assert.ok(initialDialog.includes('id="intake-topic-select"'));
-  assert.ok(initialDialog.includes('data-dependent-on-subject="Engineering"'));
+  assert.ok(initialDialog.includes('placeholder="What do you want to learn?"'));
+  assert.equal(initialDialog.includes("Build and Evaluate RAG Systems in Python"), false);
+  assert.equal(initialDialog.includes('id="intake-subject-select"'), false, "Subject tags are hidden before a query is entered");
+  assert.equal(initialDialog.includes('id="intake-topic-select"'), false, "Topic tags are hidden before a query is entered");
   assert.equal(
     initialDialog.includes('id="intake-suggested-fit-tray"'),
     false,
@@ -1674,10 +1673,12 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   }
 
   // 1b. Dependent tag hierarchy: Subject -> Topics -> Sub-topics with prerequisite auto-inclusion and cascading deselect
-  assert.equal(initialDialog.includes('id="intake-subtopics-label"'), false, "Tier 3 sub-topics are hidden until a parent topic is selected");
   click({ action: "toggle-intake-topic", intakeTopic: "RAG" });
   assert.deepEqual(app.getState().intakeTopics, ["Python", "RAG"], "Selecting RAG automatically includes prerequisite Python");
   const afterRagDialog = dialogOf(root.innerHTML);
+  assert.ok(afterRagDialog.includes('id="intake-subject-select"'));
+  assert.ok(afterRagDialog.includes('id="intake-topic-select"'));
+  assert.ok(afterRagDialog.includes('data-dependent-on-subject="Engineering"'));
   assert.ok(afterRagDialog.includes('id="intake-suggested-fit-tray"'), "Selecting a topic reveals Suggested fit tray");
   assert.ok(afterRagDialog.includes("prereq"), "Auto-included prerequisite displays prereq badge");
   assert.ok(afterRagDialog.includes('id="intake-subtopics-label"'), "Selecting RAG progressively discloses Tier 3 Sub-topics");

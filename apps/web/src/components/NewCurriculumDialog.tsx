@@ -162,6 +162,30 @@ export const DEFAULT_SUBJECT_GOAL_PLACEHOLDERS: Readonly<Record<IntakeSubject, s
   Literature: "Comparative Close Reading of Tolstoy's Major Novels",
 };
 
+export function inferIntakeSubjectFromGoal(
+  goalTitle: string,
+  fallbackSubject: IntakeSubject = "Engineering",
+): IntakeSubject {
+  const lower = goalTitle.toLowerCase();
+  if (!lower.trim()) return fallbackSubject;
+  if (/\b(rag|python|attention|token|vector|llm|evaluation|embedding|transformer|engineering)\b/.test(lower)) {
+    return "Engineering";
+  }
+  if (/\b(rust|async|waker|executor|work[- ]stealing|concurrency|epoll|kernel)\b/.test(lower)) {
+    return "Systems";
+  }
+  if (/\b(math|mathematics|linear algebra|eigen|svd|singular value|spectral|matrix|calculus)\b/.test(lower)) {
+    return "Mathematics";
+  }
+  if (/\b(physics|thermodynamics|ensemble|phase transition|ising|statistical mechanics|boltzmann|quantum)\b/.test(lower)) {
+    return "Physics";
+  }
+  if (/\b(literature|tolstoy|realism|narrative|novel|war and peace|karenina|close reading)\b/.test(lower)) {
+    return "Literature";
+  }
+  return fallbackSubject;
+}
+
 export type PolymorphicResourceIndex =
   | {
       readonly kind: "book";
@@ -1296,9 +1320,9 @@ export function NewCurriculumDialog({
       closedby="any"
       aria-labelledby="dialog-new-curriculum-title"
       data-open={String(open)}
-      data-intake-subject={subject}
+      data-intake-subject={hasIntakeIntent ? subject : undefined}
       data-intake-fit-mode={fitMode}
-      data-web-search-required={String(fitEvaluation.webSearchRequired)}
+      data-web-search-required={hasIntakeIntent ? String(fitEvaluation.webSearchRequired) : undefined}
       data-opaque-surface="true"
     >
       <form method="dialog" class="dialog-surface intake-dialog-surface">
@@ -1318,128 +1342,130 @@ export function NewCurriculumDialog({
               rows={2}
               autocomplete="off"
               value={goalTitle}
-              placeholder={`e.g., ${DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject]}`}
+              placeholder="What do you want to learn?"
               autofocus
             />
           </label>
 
-          <div class="intake-taxonomy-tree" role="group" aria-label="Subject and dependent topic tags">
-            <div class="facet-row" data-tier="1" role="group" aria-labelledby="intake-subject-label">
-              <span class="facet-label" id="intake-subject-label">
-                Subject
-              </span>
-              <div class="facet-options" id="intake-subject-select">
-                {INTAKE_SUBJECTS.map((subj) => {
-                  const active = subj === subject;
-                  return (
-                    <button
-                      key={subj}
-                      type="button"
-                      class="tag intake-subject-tag"
-                      data-action="set-intake-subject"
-                      data-intake-subject={subj}
-                      data-subject={subj}
-                      aria-pressed={active}
-                    >
-                      <SfIcon name={subjectIcon(subj)} size={15} />
-                      <span>{subj === "Mathematics" ? "Math" : subj}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div class="facet-row" data-tier="2" role="group" aria-labelledby="intake-topics-label">
-              <span class="facet-label" id="intake-topics-label">
-                Topics
-              </span>
-              <div
-                class="facet-options"
-                id="intake-topic-select"
-                data-dependent-on-subject={subject}
-              >
-                {taxonomy.coreTopics.map((topic) => {
-                  const active = requestedTopics.includes(topic);
-                  const requiredBy = requestedTopics.filter(
-                    (other) => other !== topic && (taxonomy.prerequisitesByTopic[other] ?? []).includes(topic),
-                  );
-                  const childSubs = taxonomy.subtopicsByParent[topic] ?? [];
-                  const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
-                  const status = cov?.status ?? "covered";
-                  return (
-                    <button
-                      key={topic}
-                      type="button"
-                      class="tag intake-topic-tag"
-                      data-action="toggle-intake-topic"
-                      data-intake-topic={topic}
-                      data-topic-coverage={active ? status : undefined}
-                      data-topic-coverage-pill={active ? topic : undefined}
-                      data-coverage-state={active ? status : undefined}
-                      aria-pressed={active}
-                    >
-                      <span>{topic}</span>
-                      {active && requiredBy.length > 0 ? (
-                        <span
-                          class="tag-dep-badge"
-                          title={`Prerequisite for ${requiredBy.join(", ")}`}
-                        >
-                          prereq
-                        </span>
-                      ) : !active && childSubs.length > 0 ? (
-                        <span class="tag-count" title={`Unlocks ${childSubs.join(", ")}`}>
-                          +{childSubs.length}
-                        </span>
-                      ) : null}
-                      {active ? <SfIcon name="close" size={15} /> : null}
-                    </button>
-                  );
-                })}
-                {requestedTopics.length > 0 ? (
-                  <button
-                    type="button"
-                    class="clear-filters intake-clear-topics-btn"
-                    data-action="clear-intake-topics"
-                  >
-                    Reset
-                  </button>
-                ) : null}
-              </div>
-            </div>
-
-            {disclosedSubtopics.length > 0 ? (
-              <div class="facet-row" data-tier="3" role="group" aria-labelledby="intake-subtopics-label">
-                <span class="facet-label" id="intake-subtopics-label">
-                  Sub-topics
+          {hasIntakeIntent ? (
+            <div class="intake-taxonomy-tree" role="group" aria-label="Subject and dependent topic tags">
+              <div class="facet-row" data-tier="1" role="group" aria-labelledby="intake-subject-label">
+                <span class="facet-label" id="intake-subject-label">
+                  Subject
                 </span>
-                <div class="facet-options" data-dependent-subtopics-for={subject}>
-                  {disclosedSubtopics.map(({ topic, parentTopic }) => {
+                <div class="facet-options" id="intake-subject-select">
+                  {INTAKE_SUBJECTS.map((subj) => {
+                    const active = subj === subject;
+                    return (
+                      <button
+                        key={subj}
+                        type="button"
+                        class="tag intake-subject-tag"
+                        data-action="set-intake-subject"
+                        data-intake-subject={subj}
+                        data-subject={subj}
+                        aria-pressed={active}
+                      >
+                        <SfIcon name={subjectIcon(subj)} size={15} />
+                        <span>{subj === "Mathematics" ? "Math" : subj}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div class="facet-row" data-tier="2" role="group" aria-labelledby="intake-topics-label">
+                <span class="facet-label" id="intake-topics-label">
+                  Topics
+                </span>
+                <div
+                  class="facet-options"
+                  id="intake-topic-select"
+                  data-dependent-on-subject={subject}
+                >
+                  {taxonomy.coreTopics.map((topic) => {
                     const active = requestedTopics.includes(topic);
+                    const requiredBy = requestedTopics.filter(
+                      (other) => other !== topic && (taxonomy.prerequisitesByTopic[other] ?? []).includes(topic),
+                    );
+                    const childSubs = taxonomy.subtopicsByParent[topic] ?? [];
                     const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
                     const status = cov?.status ?? "covered";
                     return (
                       <button
                         key={topic}
                         type="button"
-                        class="tag intake-subtopic-tag"
+                        class="tag intake-topic-tag"
                         data-action="toggle-intake-topic"
                         data-intake-topic={topic}
-                        data-parent-topic={parentTopic}
                         data-topic-coverage={active ? status : undefined}
                         data-topic-coverage-pill={active ? topic : undefined}
                         data-coverage-state={active ? status : undefined}
                         aria-pressed={active}
                       >
                         <span>{topic}</span>
-                        <span class="tag-dep-badge">via {parentTopic}</span>
+                        {active && requiredBy.length > 0 ? (
+                          <span
+                            class="tag-dep-badge"
+                            title={`Prerequisite for ${requiredBy.join(", ")}`}
+                          >
+                            prereq
+                          </span>
+                        ) : !active && childSubs.length > 0 ? (
+                          <span class="tag-count" title={`Unlocks ${childSubs.join(", ")}`}>
+                            +{childSubs.length}
+                          </span>
+                        ) : null}
                         {active ? <SfIcon name="close" size={15} /> : null}
                       </button>
                     );
                   })}
+                  {requestedTopics.length > 0 ? (
+                    <button
+                      type="button"
+                      class="clear-filters intake-clear-topics-btn"
+                      data-action="clear-intake-topics"
+                    >
+                      Reset
+                    </button>
+                  ) : null}
                 </div>
               </div>
-            ) : null}
-          </div>
+
+              {disclosedSubtopics.length > 0 ? (
+                <div class="facet-row" data-tier="3" role="group" aria-labelledby="intake-subtopics-label">
+                  <span class="facet-label" id="intake-subtopics-label">
+                    Sub-topics
+                  </span>
+                  <div class="facet-options" data-dependent-subtopics-for={subject}>
+                    {disclosedSubtopics.map(({ topic, parentTopic }) => {
+                      const active = requestedTopics.includes(topic);
+                      const cov = fitEvaluation.topicCoverage.find((c) => c.topic === topic);
+                      const status = cov?.status ?? "covered";
+                      return (
+                        <button
+                          key={topic}
+                          type="button"
+                          class="tag intake-subtopic-tag"
+                          data-action="toggle-intake-topic"
+                          data-intake-topic={topic}
+                          data-parent-topic={parentTopic}
+                          data-topic-coverage={active ? status : undefined}
+                          data-topic-coverage-pill={active ? topic : undefined}
+                          data-coverage-state={active ? status : undefined}
+                          aria-pressed={active}
+                        >
+                          <span>{topic}</span>
+                          <span class="tag-dep-badge">via {parentTopic}</span>
+                          {active ? <SfIcon name="close" size={15} /> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div class="intake-controls-grid">
             <div class="intake-control-cell">
