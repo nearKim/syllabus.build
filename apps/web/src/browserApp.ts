@@ -2179,12 +2179,20 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-community-title">Your contributions</h2>
-                <p class="section-lede">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
               </div>
               ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
             </div>
             ${ownedListings.length > 0 ? `<div class="community-impact-banner">
-              <p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
+              <div class="impact-avatar-stack" aria-hidden="true">
+                <span class="impact-stack-avatar" data-tone="1">MD</span>
+                <span class="impact-stack-avatar" data-tone="2">KM</span>
+                <span class="impact-stack-avatar" data-tone="3">AL</span>
+                <span class="impact-stack-more">+${Math.max(1, totalLearnersReached - 3)}</span>
+              </div>
+              <div class="impact-copy-group">
+                <p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
+                <p class="row-meta">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
+              </div>
             </div>
             <ul class="contribution-list">
               ${ownedListings.map((listing) => {
