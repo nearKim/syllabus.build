@@ -1151,18 +1151,32 @@ test("My Publications thanks the author, totals what their shared plans gave, an
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button>'));
 });
 
-test("the header shows the account, signing out purges private state, and guests sign in to return where they were", () => {
+test("the header shows the navbar avatar menu, signing out purges private state, and guests sign in to return where they were", () => {
   const { app, root, click, submit } = mountWithClicks();
   const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));
-  assert.match(header(), /<span class="account-pill"><span class="account-email">alex@curriculum\.io<\/span><span class="role-pill">Learner<\/span><\/span>/);
-  assert.ok(header().includes('data-dialog-id="dialog-auth">Account / Switch</button>') && header().includes('data-action="sign-out">Sign out</button>'));
+  assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AR<\/span><span class="navbar-user-name">Alex Rivera<\/span>/);
+  assert.ok(
+    header().includes('<span class="account-email">alex@curriculum.io</span>') &&
+      header().includes('data-dialog-id="dialog-auth"') &&
+      header().includes('data-action="sign-out"'),
+  );
+
+  // Profile form in Profile & Settings updates display name and email live
+  submit("update-profile", {
+    "#profile-name-input": { value: "Alex R. Chen" },
+    "#profile-email-input": { value: "alex@curriculum.io" },
+  });
+  assert.ok(header().includes('<span class="navbar-user-name">Alex R. Chen</span>'));
 
   click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"'));
   click({ action: "sign-out" });
   const guest = app.getState();
   assert.deepEqual([guest.authStatus, guest.topLevel, guest.recordedProgressEvents.length], ["guest", "Explore", 0]);
-  assert.match(header(), /<span class="account-pill" data-auth-status="guest">Guest · Exploring<\/span>\s*<button type="button" class="btn-primary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">Sign in<\/button>/);
+  assert.match(
+    header(),
+    /<div class="navbar-guest-actions" data-auth-status="guest">[\s\S]*?data-dialog-id="dialog-auth">Log in<\/button>[\s\S]*?data-dialog-id="dialog-auth">Sign in<\/button>/,
+  );
   // No private content reaches a guest's page, not even hidden.
   for (const hidden of ['id="panel-learn"', 'id="panel-settings"', 'id="learn-detail-inspector"', 'id="dialog-new-curriculum"', "data-self-reported-count", "My Publications"]) {
     assert.equal(root.innerHTML.includes(hidden), false, `a guest page still contains ${hidden}`);
@@ -1187,7 +1201,7 @@ test("the header shows the account, signing out purges private state, and guests
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'), "the purged completion stays gone");
 
   // A guest who asks for Learn returns there after sign-in.
-  click({ action: "switch-persona", persona: "guest" });
+  click({ action: "sign-out" });
   app.navigateTopLevel("Learn");
   assert.equal(app.getState().returnTo.label, "Learn › Today");
   click({ action: "sign-in-passkey" });
@@ -1210,7 +1224,8 @@ test("an expired session keeps the view for the same account and starts clean fo
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
   click({ action: "simulate-session-expired" });
   click({ action: "switch-persona", persona: "curator" });
-  assert.ok(root.innerHTML.includes('<span class="account-email">ada@curriculum.io</span><span class="role-pill">Curator</span>'));
+  assert.ok(root.innerHTML.includes('<span class="account-email">ada@curriculum.io</span>'));
+  assert.ok(root.innerHTML.includes('<span class="navbar-user-name">Ada Lovelace</span>'));
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'));
 });
 

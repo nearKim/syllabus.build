@@ -232,6 +232,13 @@ ${fallbackScript}
   initDatepickers();
   initPlanSelects();
 
+  document.addEventListener("click", (event) => {
+    const openMenu = root.querySelector("details.navbar-user-menu[open]");
+    if (openMenu && event.target && !openMenu.contains(event.target)) {
+      openMenu.removeAttribute("open");
+    }
+  });
+
   root.addEventListener("click", (event) => {
     const target = event.target && event.target.closest ? event.target.closest("[data-action]") : null;
     // A click on a select only opens its list, and a click inside a form only focuses a field.

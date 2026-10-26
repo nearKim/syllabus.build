@@ -12,7 +12,37 @@ export type AuthStatus = "authenticated" | "guest" | "session_expired";
 export interface Account {
   readonly accountId: string;
   readonly email: string;
+  readonly displayName?: string | undefined;
   readonly role: PlatformRole;
+}
+
+const KNOWN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  "alex@curriculum.io": "Alex Rivera",
+  "ada@curriculum.io": "Ada Lovelace",
+  "mo@curriculum.io": "Mo Chen",
+};
+
+export function displayNameOf(account: Account): string {
+  if (account.displayName && account.displayName.trim().length > 0) {
+    return account.displayName.trim();
+  }
+  const email = account.email.trim().toLowerCase();
+  if (KNOWN_DISPLAY_NAMES[email]) return KNOWN_DISPLAY_NAMES[email];
+  const local = (email.split("@")[0] ?? "Learner").replace(/[._-]+/g, " ").trim();
+  return local
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ") || "Learner";
+}
+
+export function initialsOf(account: Account): string {
+  const name = displayNameOf(account);
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]?.charAt(0) ?? ""}${parts[parts.length - 1]?.charAt(0) ?? ""}`.toUpperCase();
+  }
+  return (name.slice(0, 2) || "U").toUpperCase();
 }
 
 export function TopDestButton({
@@ -115,27 +145,85 @@ export function HeaderBar({
           </>
         )}
         {authStatus === "authenticated" ? (
-          <>
-            <span class="account-pill">
-              <span class="account-email">{account.email}</span>
-              <span class="role-pill">{account.role}</span>
-            </span>
-            <button type="button" class="btn-secondary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">
-              Account / Switch
-            </button>
-            <button type="button" class="btn-secondary header-btn" data-action="sign-out">
-              Sign out
-            </button>
-          </>
+          <details class="navbar-user-menu">
+            <summary class="navbar-avatar-trigger" aria-label={`Account menu for ${displayNameOf(account)}`}>
+              <span class="user-avatar-circle" aria-hidden="true">
+                {initialsOf(account)}
+              </span>
+              <span class="navbar-user-name">{displayNameOf(account)}</span>
+              <svg
+                class="navbar-user-chevron"
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="m4 6 4 4 4-4" />
+              </svg>
+            </summary>
+            <div class="navbar-user-dropdown" data-opaque-surface="true">
+              <div class="navbar-dropdown-identity">
+                <span class="user-avatar-circle user-avatar-md" aria-hidden="true">
+                  {initialsOf(account)}
+                </span>
+                <div class="navbar-dropdown-meta">
+                  <span class="navbar-dropdown-name">{displayNameOf(account)}</span>
+                  <span class="account-email">{account.email}</span>
+                </div>
+              </div>
+              <div class="navbar-dropdown-actions">
+                <button
+                  type="button"
+                  class="navbar-dropdown-item"
+                  data-action="navigate-top"
+                  data-destination="Settings"
+                >
+                  <SfIcon name="settings" size={15} />
+                  <span>Profile &amp; Settings</span>
+                </button>
+                <button
+                  type="button"
+                  class="navbar-dropdown-item"
+                  data-action="open-dialog"
+                  data-dialog-id="dialog-auth"
+                >
+                  <SfIcon name="learn" size={15} />
+                  <span>Switch account</span>
+                </button>
+                <button
+                  type="button"
+                  class="navbar-dropdown-item navbar-dropdown-signout"
+                  data-action="sign-out"
+                >
+                  <span>Sign out</span>
+                </button>
+              </div>
+            </div>
+          </details>
         ) : (
-          <>
-            <span class="account-pill" data-auth-status={authStatus}>
-              {signedOut ? "Guest · Exploring" : "Session expired"}
-            </span>
-            <button type="button" class="btn-primary header-btn" data-action="open-dialog" data-dialog-id="dialog-auth">
+          <div class="navbar-guest-actions" data-auth-status="guest">
+            <button
+              type="button"
+              class="header-login-btn"
+              data-action="open-dialog"
+              data-dialog-id="dialog-auth"
+            >
+              Log in
+            </button>
+            <button
+              type="button"
+              class="btn-primary header-btn"
+              data-action="open-dialog"
+              data-dialog-id="dialog-auth"
+            >
               Sign in
             </button>
-          </>
+          </div>
         )}
       </div>
     </header>
@@ -186,8 +274,17 @@ export function AppSidebar({
   return (
     <aside class="app-sidebar" aria-label="Learn sections">
       {signedOut ? (
-        <div class="sidebar-section">
-          <p class="meta-text">Sign in to see your plans.</p>
+        <div class="sidebar-section sidebar-guest-card">
+          <p class="sidebar-section-label">Your curricula</p>
+          <p class="meta-text">Sign in to save curricula, track verified mastery, and build custom study flows.</p>
+          <button
+            type="button"
+            class="sidebar-new-curriculum-btn"
+            data-action="open-dialog"
+            data-dialog-id="dialog-auth"
+          >
+            <span>Sign in to get started</span>
+          </button>
         </div>
       ) : (
         <>

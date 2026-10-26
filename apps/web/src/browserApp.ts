@@ -41,7 +41,7 @@ import {
   type ConceptCheck, type InspectorMode, type SelfCheckRubric, type SettableStatus,
 } from "./components/InspectorDrawer.tsx";
 import {
-  AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner,
+  AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner, displayNameOf, initialsOf,
   type Account, type AuthStatus,
 } from "./components/HeaderBar.tsx";
 import {
@@ -123,7 +123,7 @@ export interface CurriculumWebAppStateInput {
   readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
   readonly selectedCurriculumId?: string;
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
-  readonly authNotice?: string | null;
+  readonly authNotice?: string | null; readonly profileNotice?: string | null;
   readonly marketplaceFilters?: Partial<MarketplaceFilters>; readonly marketplaceSort?: MarketplaceSort;
   readonly marketplaceTopicsExpanded?: boolean;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
@@ -2121,12 +2121,36 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       }))}
 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
-        <h1 class="page-title">Settings</h1>
+        <div class="section-header">
+          <div class="page-heading-group">
+            <h1 class="page-title">Profile &amp; Settings</h1>
+            <p class="page-description">Manage your learner profile, study schedule, AI provider keys, and privacy preferences.</p>
+          </div>
+        </div>
         <div class="settings-stack">
-          <section class="surface-panel settings-group" data-opaque-surface="true">
-            <h2>Account</h2>
-            <p>Signed-in learner <code>learner-default</code>.</p>
-            <p class="prose">Account-provider sign-in and payment checkout are not connected in this build. This screen does not invent a successful profile or payment response.</p>
+          <section class="surface-panel settings-group profile-section" data-opaque-surface="true">
+            <div class="profile-identity-row">
+              <span class="user-avatar-circle user-avatar-lg" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
+              <div class="profile-identity-meta">
+                <h2 class="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
+                <p class="profile-handle-line"><span class="profile-handle">${escapeHtml(handleOf(account))}</span> · <span class="account-email">${escapeHtml(account.email)}</span> · <span>${plans.length} active ${plans.length === 1 ? "curriculum" : "curricula"}</span></p>
+              </div>
+              <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
+            </div>
+            <form class="profile-edit-form" data-action="update-profile">
+              <div class="profile-fields-grid">
+                <label class="field" for="profile-name-input">Display name
+                  <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
+                </label>
+                <label class="field" for="profile-email-input">Email address
+                  <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
+                </label>
+              </div>
+              <div class="action-row">
+                <button type="submit" class="btn-secondary">Save profile</button>
+                ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
+              </div>
+            </form>
           </section>
           <section class="surface-panel settings-group" data-opaque-surface="true">
             <h2>Appearance</h2>
@@ -2317,6 +2341,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let account: Account = initialState.account ?? PERSONAS.learner;
   let returnTo: ReturnDestination | null = initialState.returnTo ?? null;
   let authNotice: string | null = initialState.authNotice ?? null;
+  let profileNotice: string | null = initialState.profileNotice ?? null;
   let marketplaceFilters: MarketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...initialState.marketplaceFilters };
   let marketplaceSort: MarketplaceSort = initialState.marketplaceSort ?? "top_upvoted";
   let marketplaceTopicsExpanded = initialState.marketplaceTopicsExpanded ?? false;
@@ -2500,6 +2525,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     loadMoreNote = null;
     intakeNote = null;
     keyActionNote = null;
+    profileNotice = null;
     snoozeNote = null;
     rescheduleSessionId = null;
     rescheduleValue = null;
@@ -2651,7 +2677,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      authStatus, account, returnTo, authNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
+      authStatus, account, returnTo, authNotice, profileNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptModuleIds: [...adoptModuleIds] as readonly string[],
@@ -2770,7 +2796,20 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       if (action === "close-study-detail") studyDetailOpen = false;
       else if (action === "submit-sign-in") signInWithEmail(value("email") ?? "");
       else if (action === "sign-in-passkey") signIn(account);
-      else if (action === "switch-persona" && isOneOf(PERSONA_CHOICES, data["persona"])) {
+      else if (action === "update-profile") {
+        const nextName = (value("displayName") ?? "").trim();
+        const nextEmail = (value("email") ?? "").trim().toLowerCase();
+        if (nextEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+          profileNotice = "Enter a valid email address.";
+        } else {
+          account = {
+            ...account,
+            displayName: nextName || displayNameOf(account),
+            email: nextEmail || account.email,
+          };
+          profileNotice = "Profile saved.";
+        }
+      } else if (action === "switch-persona" && isOneOf(PERSONA_CHOICES, data["persona"])) {
         if (data["persona"] === "guest") signOut();
         else signIn(PERSONAS[data["persona"]]);
       } else if (action === "simulate-session-expired" && signedIn()) expireSession();
@@ -3185,6 +3224,7 @@ export function mountCurriculumWebApp(
     const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
     const data =
       action === "submit-sign-in" ? { email: valueOf("#auth-email-input") }
+      : action === "update-profile" ? { displayName: valueOf("#profile-name-input"), email: valueOf("#profile-email-input") }
       : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
       : { query: valueOf("#marketplace-search") };
     if (controller.applyUiAction(action, data).handled) syncDom();

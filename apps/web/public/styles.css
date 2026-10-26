@@ -358,75 +358,198 @@ section[id] {
   min-inline-size: 0;
 }
 
-/* Account: clean inline identity and low-profile standard navbar actions */
-.account-pill {
+/* Account: de-facto standard navbar avatar trigger, dropdown menu, guest actions, and profile header */
+.navbar-user-menu {
+  position: relative;
+}
+
+.navbar-avatar-trigger {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 6px 0 0;
-  border-radius: 8px;
+  min-height: var(--layout-touch-target-min);
+  padding: 4px 10px 4px 6px;
+  border-radius: 999px;
   background: transparent;
+  color: var(--color-text-primary);
   font-size: 13.5px;
-  font-weight: 500;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 150ms var(--ease-out);
+}
+
+.navbar-avatar-trigger::-webkit-details-marker {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .navbar-avatar-trigger:hover {
+    background: var(--tint-8);
+  }
+}
+
+.navbar-user-menu[open] .navbar-avatar-trigger {
+  background: var(--tint-8);
+}
+
+.user-avatar-circle {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: var(--color-accent-surface);
+  color: var(--color-accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.user-avatar-md {
+  width: 38px;
+  height: 38px;
+  font-size: 13px;
+}
+
+.user-avatar-lg {
+  width: 56px;
+  height: 56px;
+  font-size: 18px;
+}
+
+.navbar-user-name {
+  max-inline-size: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-user-chevron {
   color: var(--color-text-secondary);
+  transition: transform 150ms var(--ease-out);
+}
+
+.navbar-user-menu[open] .navbar-user-chevron {
+  transform: rotate(180deg);
+}
+
+.navbar-user-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-inline-size: 248px;
+  padding: 10px;
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
+  display: grid;
+  gap: 8px;
+}
+
+.navbar-dropdown-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--color-swimlane);
+}
+
+.navbar-dropdown-meta {
+  display: grid;
+  gap: 2px;
+  min-inline-size: 0;
+}
+
+.navbar-dropdown-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .account-email {
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.account-pill[data-auth-status] {
-  padding: 0 8px;
-}
-
-.account-pill[data-auth-status="session_expired"] {
-  background: var(--color-warning-surface);
-  color: var(--color-warning-text);
-}
-
-.role-pill {
-  background: var(--tint-8);
+  font-size: 12.5px;
   color: var(--color-text-secondary);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.navbar-dropdown-actions {
+  display: grid;
+  gap: 2px;
+}
+
+.navbar-dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--layout-touch-target-min);
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
   font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .navbar-dropdown-item:hover {
+    background: var(--tint-8);
+  }
+}
+
+.navbar-dropdown-signout {
+  color: var(--color-danger-text);
+}
+
+.navbar-guest-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-login-btn {
+  min-width: 0;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .header-login-btn:hover {
+    background: var(--tint-8);
+  }
 }
 
 .header-btn {
   min-width: 0;
-  min-height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 500;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
   white-space: nowrap;
-}
-
-.header-btn.btn-secondary {
-  border-color: var(--color-border-subtle);
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-}
-
-.header-btn[data-action="sign-out"] {
-  border-color: transparent;
-  background: transparent;
-  color: var(--color-text-secondary);
-  padding: 0 10px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .header-btn.btn-secondary:hover {
-    border-color: var(--color-border-control);
-    background: var(--tint-4);
-  }
-
-  .header-btn[data-action="sign-out"]:hover {
-    border-color: transparent;
-    background: var(--tint-8);
-    color: var(--color-text-primary);
-  }
 }
 
 .session-banner {
@@ -444,15 +567,106 @@ section[id] {
   margin: 0;
 }
 
+/* Login Funnel Dialog */
+#dialog-auth {
+  max-width: min(26rem, calc(100vw - 32px));
+}
+
 .auth-surface {
-  max-width: 28rem;
+  width: 100%;
+  max-width: none;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.auth-surface > .dialog-header {
+  align-items: flex-start;
+}
+
+.auth-funnel-title-group {
+  display: grid;
+  gap: 4px;
+}
+
+.auth-funnel-subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
 }
 
 .auth-return {
+  margin: 0;
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-control);
   background: var(--color-accent-surface);
   font-size: 14px;
+  line-height: 1.5;
+}
+
+.auth-current-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  background: var(--color-swimlane);
+}
+
+.auth-current-profile-meta {
+  display: grid;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.auth-current-profile-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.auth-current-profile-email {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.auth-signout-inline {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.auth-funnel-stack {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.auth-funnel-stack .field {
+  margin: 0;
+}
+
+.auth-passkey-btn {
+  width: 100%;
+  justify-content: center;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.auth-funnel-divider-label {
+  margin: 2px 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.auth-submit-btn {
+  width: 100%;
+  justify-content: center;
+  margin-top: 2px;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .field-error {
@@ -461,28 +675,70 @@ section[id] {
   color: var(--color-danger-text);
 }
 
-.persona-switcher {
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: var(--hairline);
+/* Profile & Settings Header Section */
+.profile-section {
+  display: grid;
+  gap: var(--space-5);
 }
 
-.persona-grid {
+.profile-identity-row {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  align-items: center;
+  gap: var(--space-4);
+  padding: 20px 24px;
+  border-radius: var(--radius-surface);
+  background: var(--color-swimlane);
 }
 
-.persona-btn {
-  min-height: 36px;
-  padding: 4px 12px;
+.profile-identity-meta {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 16rem;
+  min-inline-size: 0;
+}
+
+.profile-display-name {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.profile-handle-line {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.profile-handle {
+  font-family: var(--font-mono);
   font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
-.persona-btn[aria-pressed="true"] {
-  border-color: var(--color-action-fill);
-  background: var(--color-action-fill);
-  color: var(--color-action-text);
+.profile-edit-form {
+  display: grid;
+  gap: var(--space-4);
+  max-inline-size: 42rem;
+}
+
+.profile-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-4);
+}
+
+.profile-fields-grid .field {
+  margin: 0;
+}
+
+.profile-save-status {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-success-text);
 }
 
 /* Controls. :where() keeps the base at zero specificity so every variant class wins. */
@@ -918,6 +1174,7 @@ section[id] {
 }
 
 input[type="text"],
+input[type="email"],
 input[type="search"],
 input[type="password"],
 input[type="datetime-local"],
