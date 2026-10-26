@@ -324,19 +324,21 @@ mod tests {
     }
 
     #[test]
-    fn s40_ops006_source_available_licensing_and_synthetic_catalog_boundaries() {
+    fn s40_ops006_open_source_licensing_and_synthetic_catalog_boundaries() {
         let root = workspace_root();
-        let license_text = std::fs::read_to_string(root.join("LICENSE-PERSONAL-USE.md"))
-            .expect("LICENSE-PERSONAL-USE.md must exist");
+        let license_text = std::fs::read_to_string(root.join("LICENSE"))
+            .expect("LICENSE must exist");
+        let legal_text = std::fs::read_to_string(root.join("LEGAL.md"))
+            .expect("LEGAL.md must exist");
 
-        // Must explicitly prohibit third-party organizational deployments including noncommercial institutions
-        assert!(license_text.contains("third-party organizational deployments are strictly prohibited"));
-        assert!(license_text.contains("Nonprofits, foundations, or noncommercial consortia"));
-        // Must explicitly state it is NOT OSI open source
-        assert!(license_text.contains("NOT"));
-        assert!(license_text.contains("OSI-approved open source"));
-        // Must keep D15 visible as a deferred release gate
-        assert!(license_text.contains("D15"));
+        // Must be licensed under the OSI-approved Apache License 2.0
+        assert!(license_text.contains("Apache License"));
+        assert!(license_text.contains("Version 2.0"));
+        // LEGAL.md must document BYOK direct provider responsibility, CC BY 4.0 shared curricula, and metadata/link-only third-party resource boundaries
+        assert!(legal_text.contains("Apache-2.0"));
+        assert!(legal_text.contains("Bring Your Own Key (BYOK)"));
+        assert!(legal_text.contains("CC BY 4.0"));
+        assert!(legal_text.contains("bibliographic metadata and canonical outbound links"));
 
         // Synthetic catalog must remain marked is_synthetic_fixture = true
         let synthetic_cat = read_json(

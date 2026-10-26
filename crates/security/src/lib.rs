@@ -200,7 +200,7 @@ pub struct ReleaseFeatureGates {
     pub d07_live_billing_enabled: bool,
     /// `D16`: Final public-curriculum content license text and retention windows approved.
     pub d16_public_sharing_enabled: bool,
-    /// `D15`: Final operative custom personal-use license and contributor agreement approved.
+    /// `D15`: OSI-approved Apache-2.0 open-source license and contributor terms approved.
     pub d15_operative_license_approved: bool,
 }
 
