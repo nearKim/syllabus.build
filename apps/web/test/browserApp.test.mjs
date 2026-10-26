@@ -158,22 +158,11 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
     html.match(/<header class="dialog-header">/g)?.length,
   );
 
-  // 8. Settings View: theme selector, BYOK providers, Hosted Wallet & 4-Bucket Cost Breakdown, Reminders, Account Deletion modal
-  for (const theme of ["light", "dark", "system"]) {
-    assert.ok(html.includes(`data-theme-value="${theme}"`));
-  }
+  // 8. Navbar theme toggle + Settings View: BYOK providers table, Reminders, Account Deletion modal
+  assert.ok(html.includes('class="navbar-theme-toggle" data-action="set-theme" data-theme-value="dark"'));
   for (const provider of ["openai", "anthropic", "google_gemini"]) {
     assert.ok(html.includes(`data-provider-id="${provider}"`));
   }
-  for (const bucketId of [
-    "app_service_access",
-    "ai_inference",
-    "learning_materials",
-    "certification_and_compute",
-  ]) {
-    assert.ok(html.includes(`data-bucket-id="${bucketId}"`));
-  }
-  assert.ok(html.includes("Price unknown (verify externally)"));
   assert.ok(
     html.includes(
       '<dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title"'
@@ -1156,7 +1145,8 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));
   assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AR<\/span><span class="navbar-user-name">Alex Rivera<\/span>/);
   assert.ok(
-    header().includes('<span class="account-email">alex@curriculum.io</span>') &&
+    header().includes('class="navbar-theme-toggle"') &&
+      header().includes('<span class="account-email">alex@curriculum.io</span>') &&
       header().includes('data-destination="Settings"') &&
       header().includes('data-action="sign-out"') &&
       !header().includes("Switch account"),
@@ -1164,6 +1154,8 @@ test("the header shows the navbar avatar menu, signing out purges private state,
 
   // Profile form in Profile & Settings updates display name and email live, and Profile & Settings renders Your contributions (upvotes, shared curricula status, learner comments) and BYOK AI providers with custody disclosure before #byok-key
   const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
+  assert.equal(settingsPanel.includes('id="settings-appearance"'), false);
+  assert.equal(settingsPanel.includes('id="settings-usage"'), false);
   assert.ok(settingsPanel.includes('<h2 id="settings-community-title">Your contributions</h2>'));
   assert.ok(settingsPanel.includes("Your shared plan reached <strong>142 learners</strong>"));
   assert.ok(settingsPanel.includes("<strong>14 people</strong> upvoted your work."));

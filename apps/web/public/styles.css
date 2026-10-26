@@ -363,6 +363,29 @@ section[id] {
   position: relative;
 }
 
+.navbar-theme-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: var(--layout-touch-target-min);
+  height: var(--layout-touch-target-min);
+  min-width: var(--layout-touch-target-min);
+  min-height: var(--layout-touch-target-min);
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out), color 150ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .navbar-theme-toggle:hover {
+    background: var(--tint-8);
+    color: var(--color-text-primary);
+  }
+}
+
 .navbar-avatar-trigger {
   display: inline-flex;
   align-items: center;

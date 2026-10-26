@@ -1904,10 +1904,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   ${renderToString(h(HeaderBar, {
     activeTopLevel,
     authStatus,
-    signedOut,
     account,
     studyMinutes,
     selfReportedCount,
+    resolvedThemeMode,
   }))}
   ${renderToString(h(SessionExpiredBanner, { authStatus }))}
   <div class="app-body-grid">
@@ -2319,39 +2319,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               </details>
             </div>
           </section>
-
-          <div class="settings-cards-grid">
-            <section class="settings-section settings-card" id="settings-appearance" data-opaque-surface="true">
-              <h2>Appearance</h2>
-              <div class="setting-row">
-                <span class="setting-label" id="theme-label">Color theme</span>
-                <div class="theme-selector-group segmented" role="group" aria-labelledby="theme-label">
-                  ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
-                </div>
-              </div>
-              <label class="switch-field"><span>Solid opaque surfaces</span><input type="checkbox" class="ui-switch" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}></label>
-              <label class="switch-field"><span>Reduce spatial motion</span><input type="checkbox" class="ui-switch" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}></label>
-            </section>
-
-            <section class="settings-section settings-card" id="settings-usage" data-opaque-surface="true">
-              <h2>Usage &amp; billing</h2>
-              <div class="wallet-metrics-row">
-                <div class="wallet-metric-block">
-                  <span class="row-meta">Available credit</span>
-                  <strong class="wallet-metric-value">${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>
-                </div>
-                <div class="wallet-metric-block">
-                  <span class="row-meta">Reserved for active jobs</span>
-                  <strong class="wallet-metric-value">${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong>
-                </div>
-              </div>
-              <details class="settings-disclosure">
-                <summary>Cost breakdown by category</summary>
-                ${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
-                <div class="four-bucket-grid">${fourBucketsHtml}</div>
-              </details>
-            </section>
-          </div>
 
           <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
             <div class="settings-section-head">
