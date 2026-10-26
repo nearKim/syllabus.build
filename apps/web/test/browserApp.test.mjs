@@ -1171,7 +1171,9 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.ok(settingsPanel.includes("<h3>Comments from learners</h3>"));
   assert.ok(settingsPanel.includes("<strong>@maya_dev</strong> on Build and Evaluate RAG Systems in Python"));
   assert.ok(settingsPanel.includes('class="comment-card"'));
+  assert.ok(settingsPanel.includes('class="providers-data-table"'));
   assert.ok(settingsPanel.includes('class="provider-brand-tile"'));
+  assert.ok(settingsPanel.includes('class="provider-logo-svg"'));
   assert.ok(settingsPanel.includes('class="ui-switch"'));
   assert.ok(settingsPanel.includes('class="btn-secondary" data-action="replace-key"'));
   assert.ok(settingsPanel.includes('class="btn-danger" data-action="delete-connection"'));

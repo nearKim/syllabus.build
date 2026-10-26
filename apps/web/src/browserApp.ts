@@ -2256,29 +2256,54 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <p class="section-lede">Connect your own API keys for curriculum synthesis and diagnostics. Keys are encrypted and billed directly by each provider.</p>
               </div>
             </div>
-            <ul class="provider-list">
-              ${byokState.credentials.map((cred) => {
-                const badgeCode = cred.provider_id === "openai" ? "OA" : cred.provider_id === "anthropic" ? "AN" : "GG";
-                const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
-                return `<li class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
-                <div class="provider-identity">
-                  <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${badgeCode}</span>
-                  <div class="provider-text">
-                    <div class="provider-title-row">
-                      <h3 class="provider-name">${escapeHtml(cred.label ?? providerTitle)}</h3>
-                      <span class="status-dot" data-status="${escapeHtml(cred.status)}" aria-hidden="true"></span>
-                      <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span>
-                    </div>
-                    <p class="row-meta"><code>${escapeHtml(cred.masked_hint)}</code> · ${escapeHtml(providerTitle)} · Updated <time datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time><span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span></p>
-                  </div>
-                </div>
-                <div class="row-actions">
-                  <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
-                  <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
-                </div>
-              </li>`;
-              }).join("\n")}
-            </ul>
+            <div tabindex="0" role="region" aria-labelledby="settings-ai-title" class="providers-table-wrapper">
+              <table class="providers-data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Provider</th>
+                    <th scope="col">Secret key</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Updated</th>
+                    <th scope="col" class="provider-actions-head">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${byokState.credentials.map((cred) => {
+                    const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
+                    const logoSvg = cred.provider_id === "openai"
+                      ? `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.75a4.75 4.75 0 0 1 4.46 3.12 4.75 4.75 0 0 1 4.1 6.72 4.75 4.75 0 0 1-2.56 6.46A4.75 4.75 0 0 1 12 21.25a4.75 4.75 0 0 1-6-2.2 4.75 4.75 0 0 1-2.56-6.46 4.75 4.75 0 0 1 4.1-6.72A4.75 4.75 0 0 1 12 2.75Z"/><polygon points="12 7.5 15.9 9.75 15.9 14.25 12 16.5 8.1 14.25 8.1 9.75"/></svg>`
+                      : cred.provider_id === "anthropic"
+                        ? `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 18.5 9.6 5.5h1.5l5.1 13"/><path d="M6.5 14.2h7.4"/><path d="M15.8 5.5 20 18.5"/></svg>`
+                        : `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.25c.62 4.92 4.83 9.13 9.75 9.75-4.92.62-9.13 4.83-9.75 9.75-.62-4.92-4.83-9.13-9.75-9.75 4.92-.62 9.13-4.83 9.75-9.75Z"/></svg>`;
+                    return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
+                    <th scope="row" class="provider-primary-cell">
+                      <div class="provider-identity">
+                        <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${logoSvg}</span>
+                        <div class="provider-text">
+                          <span class="provider-name">${escapeHtml(cred.label ?? providerTitle)}</span>
+                          <span class="row-meta">${escapeHtml(providerTitle)}</span>
+                        </div>
+                      </div>
+                    </th>
+                    <td class="provider-key-cell"><code>${escapeHtml(cred.masked_hint)}</code><span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span></td>
+                    <td class="provider-status-cell">
+                      <span class="provider-status-inline">
+                        <span class="status-dot" data-status="${escapeHtml(cred.status)}" aria-hidden="true"></span>
+                        <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span>
+                      </span>
+                    </td>
+                    <td class="provider-date-cell"><time class="row-meta" datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time></td>
+                    <td class="provider-actions-cell">
+                      <div class="row-actions">
+                        <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
+                        <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
+                      </div>
+                    </td>
+                  </tr>`;
+                  }).join("\n")}
+                </tbody>
+              </table>
+            </div>
             ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
             <div class="byok-add-card">
               <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
