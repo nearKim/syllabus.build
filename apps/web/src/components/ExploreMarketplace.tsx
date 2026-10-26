@@ -263,7 +263,7 @@ export function CurriculumTagStrip({
 }
 
 // A plan's estimated study time at 1x speed, in minutes.
-const studyMinutesOf = (curriculum: Record<string, unknown>): number =>
+export const studyMinutesOf = (curriculum: Record<string, unknown>): number =>
   rawListOf(curriculum, "activities").reduce(
     (sum, activity) => sum + computeActivityDurationTriplet(activity["duration_estimate"], 1).point,
     0,

@@ -1162,7 +1162,20 @@ test("the header shows the navbar avatar menu, signing out purges private state,
       !header().includes("Switch account"),
   );
 
-  // Profile form in Profile & Settings updates display name and email live
+  // Profile form in Profile & Settings updates display name and email live, and Profile & Settings renders Your contributions (upvotes, shared curricula status, learner comments) and BYOK AI providers with custody disclosure before #byok-key
+  const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
+  assert.ok(settingsPanel.includes('<h2 id="settings-community-title">Your contributions</h2>'));
+  assert.ok(settingsPanel.includes("Your shared plan reached <strong>142 learners</strong>"));
+  assert.ok(settingsPanel.includes("<strong>14 people</strong> upvoted your work."));
+  assert.ok(settingsPanel.includes('<span class="status-text" data-status="public">Public · Revision 1</span>'));
+  assert.ok(settingsPanel.includes("<h3>Comments from learners</h3>"));
+  assert.ok(settingsPanel.includes("@maya_dev on Build and Evaluate RAG Systems in Python"));
+  assert.ok(settingsPanel.includes('<h2 id="settings-ai-title">AI providers (BYOK)</h2>'));
+  assert.ok(
+    settingsPanel.indexOf("Encrypted server-custody") < settingsPanel.indexOf('id="byok-key"'),
+    "BYOK server custody disclosure must precede #byok-key input",
+  );
+
   submit("update-profile", {
     "#profile-name-input": { value: "Alex R. Chen" },
     "#profile-email-input": { value: "alex@curriculum.io" },

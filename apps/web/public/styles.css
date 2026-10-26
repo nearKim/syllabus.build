@@ -676,19 +676,17 @@ section[id] {
 }
 
 /* Profile & Settings Header Section */
-.profile-section {
-  display: grid;
-  gap: var(--space-5);
-}
-
 .profile-identity-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-4);
-  padding: 20px 24px;
-  border-radius: var(--radius-surface);
-  background: var(--color-swimlane);
+  gap: var(--space-4) var(--space-5);
+}
+
+.user-avatar-xl {
+  width: 72px;
+  height: 72px;
+  font-size: 24px;
 }
 
 .profile-identity-meta {
@@ -700,7 +698,7 @@ section[id] {
 
 .profile-display-name {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-text-primary);
@@ -6077,35 +6075,302 @@ ul.adopt-resources {
   font-size: 13px;
 }
 
-/* Settings */
-.settings-stack {
-  display: grid;
-  gap: var(--space-4);
+/* Settings: sections separate by whitespace, never by borders or card fills. */
+#panel-settings {
+  max-inline-size: 55rem;
 }
 
-.settings-stack .surface-panel {
+.settings-stack {
+  display: grid;
+  gap: var(--space-7);
+}
+
+.settings-section {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.settings-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.settings-section > h2,
+.settings-section-head > h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.settings-section h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* T4 description under a section heading. Same contract the gate enforces for .page-description. */
+.section-lede {
+  margin: 0 0 var(--space-2);
+  max-width: 65ch;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.row-meta {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Community */
+.impact-summary {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 19px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+
+.impact-summary strong {
+  font-weight: 600;
+  color: var(--color-success-text);
+}
+
+/* Contribution and provider rows share one flat row shape: text left, quiet actions right. */
+.contribution-list,
+.provider-list,
+.comment-list {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.contribution-row,
+.provider-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding-inline-start: var(--space-4);
+}
+
+.contribution-text,
+.provider-text {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 20rem;
+  min-inline-size: 0;
+}
+
+.contribution-title,
+.provider-name {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.status-text[data-status="public"],
+.status-text[data-status="active"] {
+  color: var(--color-success-text);
+  font-weight: 600;
+}
+
+.status-text[data-status="revoked"],
+.status-text[data-status="invalid"] {
+  color: var(--color-danger-text);
+  font-weight: 600;
+}
+
+.learner-comments,
+.derived-plans {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+/* Generalizes .unpublish-btn: a text button that meets the 44px target without a box. */
+.quiet-btn {
+  min-height: var(--layout-touch-target-min);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.quiet-btn-danger {
+  color: var(--color-danger-text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .quiet-btn:hover {
+    background: var(--tint-4);
+  }
+
+  .quiet-btn-danger:hover {
+    background: var(--color-danger-surface);
+  }
+}
+
+.quiet-btn:focus-visible,
+.settings-disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Disclosure: a text summary with a rotating chevron. No border, no fill. */
+.settings-disclosure {
   margin: 0;
 }
 
-.credential-list,
+.settings-disclosure > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--layout-touch-target-min);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  list-style: none;
+}
+
+.settings-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-disclosure > summary::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-inline-end: 1.5px solid currentColor;
+  border-block-end: 1.5px solid currentColor;
+  rotate: -45deg;
+  transition: rotate 200ms var(--ease-out);
+}
+
+.settings-disclosure[open] > summary::before {
+  rotate: 45deg;
+}
+
+/* Disclosed content indents under its summary so it reads as a child. */
+.settings-disclosure > :not(summary) {
+  margin-inline-start: var(--space-5);
+}
+
+.settings-disclosure[open] > summary {
+  margin-bottom: var(--space-2);
+}
+
+.key-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+
+.key-entry .field {
+  flex: 1 1 20rem;
+  margin: 0;
+}
+
+.setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.setting-label {
+  font-weight: 500;
+}
+
+/* Learner comments: a hanging quote mark, never a side border. */
+.comment-body {
+  position: relative;
+  margin: 0;
+  padding-inline-start: var(--space-5);
+  font-size: 16px;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+}
+
+.comment-body p {
+  margin: 0;
+}
+
+.comment-body::before {
+  content: "\201C";
+  position: absolute;
+  inset-inline-start: 0;
+  top: -0.1em;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--color-text-secondary);
+}
+
+.comment-body + .row-meta {
+  padding-inline-start: var(--space-5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-disclosure > summary::before {
+    transition: none;
+  }
+}
+
+@media (max-width: 639.98px) {
+  .contribution-row,
+  .provider-row {
+    padding-inline-start: 0;
+  }
+
+  .row-actions {
+    margin-inline-start: calc(-1 * var(--space-3));
+  }
+}
+
 .bucket-lines,
 .schedule-list,
 .knowledge-list {
   display: grid;
+  gap: var(--space-4);
   margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
 
-.credential-item,
 .schedule-row {
-  padding: var(--space-4) 0;
-}
-
-.credential-item + .credential-item,
-.schedule-row + .schedule-row,
-.bucket-lines > li + li {
-  border-top: var(--hairline);
+  padding: var(--space-2) 0;
 }
 
 .schedule-row {

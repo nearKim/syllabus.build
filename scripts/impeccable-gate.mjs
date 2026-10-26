@@ -40,6 +40,7 @@ function runBoxInBoxAudit(rawCss, views) {
   // 1. Outer section / wrapper selectors that MUST NOT be 4-sided bordered boxes wrapping inner cards/boxes
   const bannedOuterBoxSelectors = [
     ".surface-panel",
+    ".settings-section",
     "#progress-capability-portfolio",
     ".progress-portfolio-section",
     ".today-unified-header",
@@ -134,6 +135,7 @@ function runLineAndHierarchyAudit(rawCss, views) {
   // 1. Line-Component Abuse: selectors that MUST NOT use horizontal divider borders
   const bannedHorizontalLineSelectors = [
     ".surface-panel",
+    ".settings-section",
     ".sidebar-curricula",
     ".matrix-table tbody tr + tr > *",
     ".today-unified-header",
@@ -181,6 +183,7 @@ function runLineAndHierarchyAudit(rawCss, views) {
   // 2. Hierarchy Distinction: Descriptions must be regular weight (400) and secondary ink, never primary ink or medium/bold weight
   const descriptionSelectors = [
     ".page-description",
+    ".section-lede",
     ".plan-goal",
     ".today-curriculum-brief .plan-goal",
     ".today-curriculum-brief .plan-scope-list",

@@ -51,7 +51,7 @@ import {
 import {
   AdoptCurriculumDialog, CurriculumTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
   PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, curriculumTagsOf, facetValuesOf, goalTitleOf, mathDepthFor,
-  rawListOf, unitIdsOf, withMarketplaceFilter,
+  rawListOf, studyMinutesOf, unitIdsOf, withMarketplaceFilter,
   type ActiveCurriculum, type Adoption, type CurriculumTagDescriptor, type MarketplaceFilters, type MarketplaceListing,
   type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
@@ -1887,6 +1887,18 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const openDialogId = inputState.openDialogId ?? null;
   const dialogOpen = (id: string) => ` data-open="${openDialogId === id}"`;
 
+  const ownedListings = signedOut ? [] : listings.filter((listing) => listing.ownerAccountId === account.accountId);
+  const upvotesOfListing = (listing: MarketplaceListing): number =>
+    listing.upvotes + votes.filter((vote) => vote.revisionId === listing.revisionId).length;
+  const adoptionsOfListing = (listing: MarketplaceListing): number =>
+    listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
+  const studyHoursOfListing = (listing: MarketplaceListing): number =>
+    Math.round((studyMinutesOf(listing.curriculum) * adoptionsOfListing(listing)) / 60);
+  const totalLearnersReached = ownedListings.reduce((sum, listing) => sum + adoptionsOfListing(listing), 0);
+  const totalStudyHoursGifted = ownedListings.reduce((sum, listing) => sum + studyHoursOfListing(listing), 0);
+  const totalUpvotesReceived = ownedListings.reduce((sum, listing) => sum + upvotesOfListing(listing), 0);
+  const derivedListings = listings.filter((listing) => listing.basedOn === handleOf(account));
+
   return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   ${renderToString(h(HeaderBar, {
@@ -2124,50 +2136,139 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         <div class="section-header">
           <div class="page-heading-group">
             <h1 class="page-title">Profile &amp; Settings</h1>
-            <p class="page-description">Manage your learner profile, study schedule, AI provider keys, and privacy preferences.</p>
+            <p class="page-description">Your learner profile, what your shared plans give back, and how the app runs for you.</p>
           </div>
         </div>
         <div class="settings-stack">
-          <section class="surface-panel settings-group profile-section" data-opaque-surface="true">
+          <section class="settings-section profile-identity" aria-labelledby="profile-display-name" data-opaque-surface="true">
             <div class="profile-identity-row">
-              <span class="user-avatar-circle user-avatar-lg" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
+              <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
               <div class="profile-identity-meta">
-                <h2 class="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
-                <p class="profile-handle-line"><span class="profile-handle">${escapeHtml(handleOf(account))}</span> · <span class="account-email">${escapeHtml(account.email)}</span> · <span>${plans.length} active ${plans.length === 1 ? "curriculum" : "curricula"}</span></p>
+                <h2 class="profile-display-name" id="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
+                <p class="profile-handle-line"><span class="profile-handle">${escapeHtml(handleOf(account))}</span> · <span class="account-email">${escapeHtml(account.email)}</span></p>
+                <p class="row-meta">Studying ${plans.length} ${plans.length === 1 ? "curriculum" : "curricula"} · Sharing ${ownedListings.length} with the community</p>
               </div>
               <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
             </div>
-            <form class="profile-edit-form" data-action="update-profile">
-              <div class="profile-fields-grid">
-                <label class="field" for="profile-name-input">Display name
-                  <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
-                </label>
-                <label class="field" for="profile-email-input">Email address
-                  <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
-                </label>
-              </div>
-              <div class="action-row">
-                <button type="submit" class="btn-secondary">Save profile</button>
-                ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
-              </div>
-            </form>
+            <details class="settings-disclosure"${inputState.profileNotice ? " open" : ""}>
+              <summary>Edit profile</summary>
+              <form class="profile-edit-form" data-action="update-profile">
+                <div class="profile-fields-grid">
+                  <label class="field" for="profile-name-input">Display name
+                    <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
+                  </label>
+                  <label class="field" for="profile-email-input">Email address
+                    <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
+                  </label>
+                </div>
+                <div class="action-row">
+                  <button type="submit" class="btn-secondary">Save profile</button>
+                  ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
+                </div>
+              </form>
+            </details>
           </section>
-          <section class="surface-panel settings-group" data-opaque-surface="true">
+
+          <section class="settings-section" id="settings-community" aria-labelledby="settings-community-title" data-opaque-surface="true">
+            <div class="settings-section-head">
+              <h2 id="settings-community-title">Your contributions</h2>
+              ${ownedListings.length > 0 ? `<button type="button" class="quiet-btn" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
+            </div>
+            ${ownedListings.length > 0 ? `<p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
+            <p class="section-lede">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
+            <ul class="contribution-list">
+              ${ownedListings.map((listing) => {
+                const title = goalTitleOf(listing.curriculum);
+                const myPlan = plans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
+                const adoptCount = adoptionsOfListing(listing);
+                const upvoteCount = upvotesOfListing(listing);
+                const hoursCount = studyHoursOfListing(listing);
+                return `<li class="contribution-row" data-publication-id="${escapeHtml(listing.publicationId)}">
+                <div class="contribution-text">
+                  <h3 class="contribution-title">${escapeHtml(title)}</h3>
+                  <p class="row-meta"><span class="status-text" data-status="public">Public · Revision 1</span> · ${adoptCount > 0 ? `${adoptCount} ${adoptCount === 1 ? "adoption" : "adoptions"} · ${upvoteCount} ${upvoteCount === 1 ? "upvote" : "upvotes"} · ${hoursCount} ${hoursCount === 1 ? "study hour" : "study hours"}` : "Live in Explore and ready for its first learner"}</p>
+                </div>
+                <div class="row-actions">
+                  ${myPlan ? `<button type="button" class="quiet-btn" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open</button>` : ""}
+                  <button type="button" class="quiet-btn" data-action="navigate-top" data-destination="Explore">Manage in Explore</button>
+                </div>
+              </li>`;
+              }).join("\n")}
+            </ul>
+            <div class="learner-comments">
+              <h3>Comments from learners</h3>
+              <ul class="comment-list">
+                <li>
+                  <blockquote class="comment-body"><p>The BPE and scaled dot-product attention progression finally made variance scaling click before writing the retrieval pipeline.</p></blockquote>
+                  <p class="row-meta">@maya_dev on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))} · <time datetime="2026-10-24">2 days ago</time></p>
+                </li>
+                <li>
+                  <blockquote class="comment-body"><p>Cleanest self-study syllabus I have found for RAG evaluation metrics. It saved me weeks of piecing together scattered blog posts.</p></blockquote>
+                  <p class="row-meta">@kenji_ml on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))} · <time datetime="2026-10-21">5 days ago</time></p>
+                </li>
+              </ul>
+            </div>
+            <div class="derived-plans">
+              <h3>Plans built on yours</h3>
+              ${derivedListings.length > 0
+                ? `<p class="section-lede"><strong>${derivedListings.length} ${derivedListings.length === 1 ? "learner" : "learners"}</strong> published ${derivedListings.length === 1 ? "a plan" : "plans"} based on yours: ${derivedListings.map((d) => `${escapeHtml(goalTitleOf(d.curriculum))} by ${escapeHtml(d.handle)}`).join(", ")}.</p>`
+                : `<p class="section-lede">When someone publishes a plan based on yours, it appears here with credit to you.</p>`}
+            </div>` : `<p class="section-lede">Share a plan and any self-learner can adopt it for free. Your progress, notes, keys, billing, and session dates stay private.</p>
+            <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button></div>`}
+          </section>
+
+          <section class="settings-section" id="settings-ai" aria-labelledby="settings-ai-title" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
+            <h2 id="settings-ai-title">AI providers (BYOK)</h2>
+            <p class="section-lede">Your own provider keys run AI features, and each provider bills you directly. Hosted fallback is off.</p>
+            <ul class="provider-list">
+              ${byokState.credentials.map((cred) => `<li class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
+                <div class="provider-text">
+                  <h3 class="provider-name">${escapeHtml(cred.label ?? cred.provider_id)}</h3>
+                  <p class="row-meta"><code>${escapeHtml(cred.masked_hint)}</code> · <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span> · Updated <time datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time> · <code>${escapeHtml(cred.etag ?? "")}</code></p>
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="quiet-btn" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
+                  <button type="button" class="quiet-btn quiet-btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
+                </div>
+              </li>`).join("\n")}
+            </ul>
+            ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
+            <details class="settings-disclosure" id="byok-add"${keyVisible || keyActionNote ? " open" : ""}>
+              <summary>Add or replace a key</summary>
+              <p class="disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
+              <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
+              <div class="key-entry">
+                <label class="field" for="byok-key">Provider key
+                  <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
+                </label>
+                <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
+              </div>
+              <p class="row-meta">Saving a key does not run a chargeable test. The service stores it encrypted and does not show it again.</p>
+            </details>
+            <details class="settings-disclosure">
+              <summary>What Replace and Delete do</summary>
+              <p class="disclosure-text">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
+            </details>
+          </section>
+
+          <section class="settings-section" id="settings-appearance" data-opaque-surface="true">
             <h2>Appearance</h2>
-            <div class="theme-selector-group segmented" role="group" aria-label="Theme">
-              ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+            <div class="setting-row">
+              <span class="setting-label" id="theme-label">Theme</span>
+              <div class="theme-selector-group segmented" role="group" aria-labelledby="theme-label">
+                ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+              </div>
             </div>
             <label class="switch-field"><input type="checkbox" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}> Solid surfaces</label>
             <label class="switch-field"><input type="checkbox" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}> Reduce motion</label>
-            <p class="meta-text">System reduced transparency, contrast, and motion preferences take precedence over effects.</p>
+            <p class="row-meta">System transparency, contrast, and motion preferences take precedence.</p>
           </section>
-          <section class="surface-panel settings-group" id="settings-schedule" data-opaque-surface="true">
-            <h2>Reminders &amp; Schedule</h2>
+
+          <section class="settings-section" id="settings-schedule" data-opaque-surface="true">
+            <h2>Reminders &amp; schedule</h2>
             <label class="switch-field"><input type="checkbox" data-action="toggle-reminders"${remindersOn ? " checked" : ""}> Enable reminders</label>
-            <p class="prose">Browser notification permission is requested only after Enable reminders. A denied or unsupported permission leaves Today and the schedule usable. Initial notification copy stays generic.</p>
-            <p>Timezone: <code>${escapeHtml(reminderState.timezone)}</code> (${escapeHtml(timezoneLabel)}).</p>
-            <p>Quiet hours: ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}. Lead time ${reminderState.lead_time_minutes} min. Reminders are ${remindersPaused ? "paused" : "not paused"}.</p>
-            <div class="schedule-edit">
+            <p class="section-lede">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>). Quiet hours ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}. Reminders arrive ${reminderState.lead_time_minutes} min early and are ${remindersPaused ? "paused" : "on"}.</p>
+            <div class="key-entry">
               <label class="field" for="snooze-minutes">Snooze
                 <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
               </label>
@@ -2176,52 +2277,40 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <button type="button" class="btn-secondary" data-action="pause-reminders">${remindersPaused ? "Resume reminders" : "Pause"}</button>
               </div>
             </div>
-            ${snoozeNote ? `<p class="prose" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
-            <p class="prose disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
-            <h3>Schedule</h3>
-            <ul class="schedule-list">${renderScheduleRowsHtml("settings")}</ul>
+            ${snoozeNote ? `<p class="section-lede" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
+            <details class="settings-disclosure">
+              <summary>Upcoming sessions (${todayState.todayCards.length})</summary>
+              <ul class="schedule-list">${renderScheduleRowsHtml("settings")}</ul>
+            </details>
+            <details class="settings-disclosure">
+              <summary>How reminders are delivered</summary>
+              <p class="disclosure-text">Browser notification permission is requested only after Enable reminders. A denied or unsupported permission leaves Today and the schedule usable. Initial notification copy stays generic. ${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
+            </details>
           </section>
-          <section class="surface-panel settings-group" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
-            <h2>AI Connections</h2>
-            <p class="prose">Mode: ${escapeHtml(byokState.mode)}. Hosted fallback is off. Saving a key does not authorize a chargeable model test. The service stores the key encrypted, identifies the provider, and the provider bills inference.</p>
-            <p class="prose disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
-            <p class="prose disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
-            <div class="schedule-edit">
-              <label class="field" for="byok-key">Provider key <span class="meta-text">Transient and optional until you replace a key</span>
-                <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
-              </label>
-              <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
+
+          <section class="settings-section" id="settings-usage" data-opaque-surface="true">
+            <h2>Usage &amp; billing</h2>
+            <p class="section-lede">Hosted balance <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>, with <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong> held for running jobs.</p>
+            ${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
+            <details class="settings-disclosure">
+              <summary>Cost breakdown by category</summary>
+              <div class="four-bucket-grid">${fourBucketsHtml}</div>
+            </details>
+          </section>
+
+          <section class="settings-section" id="settings-privacy" data-opaque-surface="true">
+            <h2>Privacy &amp; account</h2>
+            <p class="section-lede">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
+            <p class="warning-copy">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
+            <p class="warning-copy">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
+            <details class="settings-disclosure">
+              <summary>Record retention</summary>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)}</p>
+            </details>
+            <div class="action-row">
+              <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
             </div>
-            <ul class="credential-list">
-              ${byokState.credentials.map((cred) => `<li class="credential-item" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
-                <p><strong>${escapeHtml(cred.label ?? cred.provider_id)}</strong> <code>${escapeHtml(cred.masked_hint)}</code> <span class="badge">${escapeHtml(cred.status)}</span></p>
-                <p class="meta-text">Provider <code>${escapeHtml(cred.provider_id)}</code>. Version <code>${escapeHtml(cred.etag ?? "")}</code>. Updated ${escapeHtml(cred.updated_at ?? "unknown")}. The saved secret is not shown again.</p>
-                <div class="action-row">
-                  <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
-                  <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}">Delete connection</button>
-                </div>
-                <p class="prose meta-text">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
-              </li>`).join("\n")}
-            </ul>
-            ${keyActionNote ? `<p class="prose" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
-          </section>
-          <section class="surface-panel settings-group" data-opaque-surface="true">
-            <h2>Usage &amp; Billing</h2>
-            ${costBreakdown.byokEstimateDisclaimer ? `<p class="prose disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
-            <p>Available hosted balance: <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>. Reserved ceiling hold: <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong>.</p>
-            <div class="four-bucket-grid">${fourBucketsHtml}</div>
-          </section>
-          <section class="surface-panel settings-group" data-opaque-surface="true">
-            <h2>Privacy</h2>
-            <p class="prose">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. Export excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
-            <p class="prose warning-copy">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
-            <p class="prose warning-copy">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
-            <p class="prose">${escapeHtml(privacyState.disclosures.financialAuditRetention)}</p>
-            <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
-          </section>
-          <section class="surface-panel settings-group" data-opaque-surface="true">
-            <h2>About / Terms</h2>
-            <p class="prose">This software is source-available. An individual may self-host it for personal use. Organizational deployment is not permitted. This screen does not offer an organization switcher, classroom dashboard, or enterprise plan.</p>
+            <p class="row-meta settings-terms">Source-available for personal self-hosting. Organizational deployment is not permitted.</p>
           </section>
         </div>
       </section>`}
