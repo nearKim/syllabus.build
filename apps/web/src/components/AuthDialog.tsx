@@ -1,6 +1,6 @@
 import type { VNode } from "preact";
 import type { LearnSubDestination, TopLevelDestination } from "../index.ts";
-import { displayNameOf, initialsOf, type Account, type AuthStatus } from "./HeaderBar.tsx";
+import type { Account, AuthStatus } from "./HeaderBar.tsx";
 import { SfIcon } from "./Icons.tsx";
 
 export const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
@@ -32,8 +32,7 @@ export interface AuthDialogProps {
   readonly authNotice: string | null;
 }
 
-export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: AuthDialogProps): VNode {
-  const isAuthenticated = authStatus === "authenticated";
+export function AuthDialog({ open, account, returnTo, authNotice }: AuthDialogProps): VNode {
   return (
     <dialog
       id="dialog-auth"
@@ -45,11 +44,9 @@ export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: 
       <form method="dialog" class="dialog-surface auth-surface" data-action="submit-sign-in">
         <header class="dialog-header">
           <div class="auth-funnel-title-group">
-            <h2 id="dialog-auth-title">{isAuthenticated ? "Your account" : "Sign in to Curriculum.io"}</h2>
+            <h2 id="dialog-auth-title">Sign in to Curriculum.io</h2>
             <p class="auth-funnel-subtitle">
-              {isAuthenticated
-                ? "Manage your active session or sign in with a different email address."
-                : "Save your progress, build custom curricula, and track verified mastery."}
+              Save your progress, build custom curricula, and track verified mastery.
             </p>
           </div>
           <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
@@ -61,23 +58,6 @@ export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: 
           <p class="auth-return" role="status">
             After you sign in, you return to <strong>{returnTo.label}</strong>. Nothing is voted, published, adopted, or bought on your behalf.
           </p>
-        ) : null}
-
-        {isAuthenticated ? (
-          <div class="auth-current-profile">
-            <span class="user-avatar-circle user-avatar-md" aria-hidden="true">
-              {initialsOf(account)}
-            </span>
-            <div class="auth-current-profile-meta">
-              <strong class="auth-current-profile-name">{displayNameOf(account)}</strong>
-              <span class="auth-current-profile-email">
-                {handleOf(account)} · {account.email}
-              </span>
-            </div>
-            <button type="button" class="btn-secondary auth-signout-inline" data-action="sign-out">
-              Sign out
-            </button>
-          </div>
         ) : null}
 
         <div class="auth-funnel-stack">
@@ -135,7 +115,7 @@ export function AuthDialog({ open, authStatus, account, returnTo, authNotice }: 
           ) : null}
 
           <button type="submit" class="btn-primary auth-submit-btn">
-            {isAuthenticated ? "Switch account" : "Sign in"}
+            Sign in
           </button>
         </div>
       </form>

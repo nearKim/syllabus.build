@@ -1157,8 +1157,9 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AR<\/span><span class="navbar-user-name">Alex Rivera<\/span>/);
   assert.ok(
     header().includes('<span class="account-email">alex@curriculum.io</span>') &&
-      header().includes('data-dialog-id="dialog-auth"') &&
-      header().includes('data-action="sign-out"'),
+      header().includes('data-destination="Settings"') &&
+      header().includes('data-action="sign-out"') &&
+      !header().includes("Switch account"),
   );
 
   // Profile form in Profile & Settings updates display name and email live

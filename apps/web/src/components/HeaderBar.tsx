@@ -188,15 +188,6 @@ export function HeaderBar({
                 </button>
                 <button
                   type="button"
-                  class="navbar-dropdown-item"
-                  data-action="open-dialog"
-                  data-dialog-id="dialog-auth"
-                >
-                  <SfIcon name="learn" size={15} />
-                  <span>Switch account</span>
-                </button>
-                <button
-                  type="button"
                   class="navbar-dropdown-item navbar-dropdown-signout"
                   data-action="sign-out"
                 >
