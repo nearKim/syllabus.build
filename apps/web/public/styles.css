@@ -6631,24 +6631,68 @@ ul.adopt-resources {
 }
 
 .provider-key-cell {
-  min-inline-size: 210px;
+  min-inline-size: 220px;
 }
 
-.provider-key-input {
+.provider-key-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
-  max-inline-size: 16.5rem;
-  min-height: var(--layout-touch-target-min);
-  padding: 8px 12px;
+  max-inline-size: 17.5rem;
+}
+
+.providers-data-table input.provider-key-input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
   border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-control);
+  border-radius: 7px;
   background: var(--color-surface);
   color: var(--color-text-primary);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12.5px;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
-.provider-key-input::placeholder {
+.provider-key-group[data-primary="true"] input.provider-key-input {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent-surface) 38%, var(--color-surface));
+}
+
+.providers-data-table input.provider-key-input:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgb(11 92 173 / 14%);
+}
+
+.providers-data-table input.provider-key-input::placeholder {
   color: var(--color-text-secondary);
+}
+
+.provider-key-apply-btn {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-control);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.provider-key-apply-btn:hover {
+  border-color: var(--color-action-fill);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
 }
 
 .provider-identity {
@@ -6676,6 +6720,12 @@ ul.adopt-resources {
   color: var(--color-text-primary);
 }
 
+.provider-brand-tile[data-primary="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent-surface);
+  box-shadow: 0 0 0 2px rgb(11 92 173 / 12%);
+}
+
 .provider-brand-tile[data-provider="openai"] {
   color: var(--color-success-text);
 }
@@ -6701,11 +6751,81 @@ ul.adopt-resources {
   color: var(--color-text-primary);
 }
 
+.provider-row[data-primary="true"] .provider-name {
+  font-weight: 700;
+}
+
 .provider-status-inline {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   white-space: nowrap;
+}
+
+.provider-status-inline[data-primary="true"] {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-accent-surface);
+  color: var(--color-accent);
+}
+
+.provider-star-icon {
+  color: var(--color-accent);
+}
+
+.provider-status-inline[data-primary="true"] .status-text {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.provider-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.provider-compact-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  min-height: 30px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid var(--color-border-control);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.provider-compact-btn:hover {
+  border-color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+}
+
+.provider-icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.provider-remove-btn:hover {
+  border-color: color-mix(in srgb, var(--color-danger-text) 25%, transparent);
+  background: var(--color-danger-surface);
+  color: var(--color-danger-text);
 }
 
 .status-text {

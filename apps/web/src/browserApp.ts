@@ -2288,7 +2288,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                     return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}">
                     <th scope="row" class="provider-primary-cell">
                       <div class="provider-identity">
-                        <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${logoSvg}</span>
+                        <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}" aria-hidden="true">${logoSvg}</span>
                         <div class="provider-text">
                           <span class="provider-name">${escapeHtml(providerTitle)}</span>
                           <span class="row-meta">${escapeHtml(modelSubtitle)}</span>
@@ -2296,20 +2296,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                       </div>
                     </th>
                     <td class="provider-key-cell">
-                      <input id="${escapeHtml(inputId)}" class="provider-key-input" name="provider-key-${escapeHtml(cred.provider_id)}" type="${keyVisible ? "text" : "password"}" aria-label="${escapeHtml(providerTitle)} API key" placeholder="${escapeHtml(`${keyPrefix}••••••••${cred.masked_suffix}`)}" autocomplete="off" spellcheck="false" data-transient-key="true" data-provider-id="${escapeHtml(cred.provider_id)}" value="">
+                      <div class="provider-key-group" data-primary="${isPrimary}">
+                        <input id="${escapeHtml(inputId)}" class="provider-key-input" name="provider-key-${escapeHtml(cred.provider_id)}" type="${keyVisible ? "text" : "password"}" aria-label="${escapeHtml(providerTitle)} API key" placeholder="${escapeHtml(`${keyPrefix}••••••••${cred.masked_suffix}`)}" autocomplete="off" spellcheck="false" data-transient-key="true" data-provider-id="${escapeHtml(cred.provider_id)}" value="">
+                        <button type="button" class="provider-key-apply-btn" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Apply ${escapeHtml(providerTitle)} API key" title="Apply API key">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                      </div>
                       <span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span>
                     </td>
                     <td class="provider-status-cell">
-                      <span class="provider-status-inline">
-                        <span class="status-dot" data-status="${escapeHtml(statusTone)}" aria-hidden="true"></span>
+                      <span class="provider-status-inline" data-primary="${isPrimary}">
+                        ${isPrimary
+                          ? `<svg class="provider-star-icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2.4 14.88 8.23l6.44.94-4.66 4.54 1.1 6.41L12 17.09l-5.76 3.03 1.1-6.41L2.68 9.17l6.44-.94L12 2.4Z"/></svg>`
+                          : `<span class="status-dot" data-status="${escapeHtml(statusTone)}" aria-hidden="true"></span>`}
                         <span class="status-text" data-status="${escapeHtml(statusTone)}">${escapeHtml(statusLabel)}</span>
                       </span>
                     </td>
                     <td class="provider-actions-cell">
-                      <div class="row-actions">
-                        ${!isPrimary && cred.status === "active" ? `<button type="button" class="btn-secondary" data-action="set-primary-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Set as primary</button>` : ""}
-                        <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Save key</button>
-                        <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Remove ${escapeHtml(providerTitle)} key">Remove</button>
+                      <div class="row-actions provider-row-actions">
+                        ${!isPrimary && cred.status === "active" ? `<button type="button" class="provider-compact-btn" data-action="set-primary-key" data-credential-ref="${escapeHtml(cred.credential_ref)}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>Set primary</span></button>` : ""}
+                        <button type="button" class="provider-icon-btn provider-remove-btn" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Remove ${escapeHtml(providerTitle)} key" title="Remove key">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
                       </div>
                     </td>
                   </tr>`;
