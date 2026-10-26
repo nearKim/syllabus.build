@@ -63,7 +63,6 @@ function runBoxInBoxAudit(rawCss, views) {
 
   // 2. Row / inner item selectors that MUST remain flat hairline rows or inline text (not nested boxes)
   const bannedInnerBoxSelectors = [
-    ".progress-unit-row",
     ".progress-capability-row",
     ".progress-act-chip",
     ".progress-check-btn",
@@ -96,11 +95,11 @@ function runBoxInBoxAudit(rawCss, views) {
     }
   }
 
-  // 3. Matrix selected row must not paint a tinted box behind .node-card boxes
-  const selectedRowBlock = extractCssBlock(rawCss, ".matrix-table tr.is-selected > *");
-  if (/background-color\s*:\s*var\(--selected-row\)/m.test(selectedRowBlock)) {
+  // 3. Unit swimlanes (.progress-unit-row, .matrix-table tbody tr.study-card > *) must be borderless tonal swimlanes, never 4-sided bordered boxes
+  const unitSwimlaneBlock = extractCssBlock(rawCss, ".progress-unit-row");
+  if (/(?:^|;|\s)border\s*:\s*(?:var\(--hairline\)|1px\s+solid)/m.test(unitSwimlaneBlock)) {
     violations.push(
-      "[box-in-box] '.matrix-table tr.is-selected > *' paints a tinted box background behind bordered .node-card elements."
+      "[box-in-box] '.progress-unit-row' must be a borderless unit swimlane without a 4-sided border."
     );
   }
 

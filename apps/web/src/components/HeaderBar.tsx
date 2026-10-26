@@ -218,6 +218,28 @@ export function AppSidebar({
                     </span>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  class="sidebar-new-curriculum-btn"
+                  data-action="open-dialog"
+                  data-dialog-id="dialog-new-curriculum"
+                >
+                  <svg
+                    class="sf-icon"
+                    width="15"
+                    height="15"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M8 3v10M3 8h10" />
+                  </svg>
+                  <span>New curriculum</span>
+                </button>
               </nav>
             </div>
           ) : (
@@ -226,6 +248,28 @@ export function AppSidebar({
               <p class="meta-text">
                 About {totalEffort.point} min planned ({totalEffort.min}–{totalEffort.max})
               </p>
+              <button
+                type="button"
+                class="sidebar-new-curriculum-btn"
+                data-action="open-dialog"
+                data-dialog-id="dialog-new-curriculum"
+              >
+                <svg
+                  class="sf-icon"
+                  width="15"
+                  height="15"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M8 3v10M3 8h10" />
+                </svg>
+                <span>New curriculum</span>
+              </button>
             </div>
           )}
         </>

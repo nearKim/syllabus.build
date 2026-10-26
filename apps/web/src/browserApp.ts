@@ -1910,21 +1910,17 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
         <section class="learn-sub-panel" id="panel-learn-today" data-learn-panel="Today" data-active="${isLearn && activeLearnSub === "Today"}"${isLearn && activeLearnSub === "Today" ? "" : " hidden"}>
-          <div class="section-header today-page-header">
-            <h1 class="page-title">Today</h1>
-            <div class="plan-toolbar">
-              ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
-              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>
-              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
-            </div>
-          </div>
           <div class="today-active-workspace">
             <header class="today-unified-header" data-opaque-surface="true">
               <div class="section-header">
                 <div class="today-selected-heading">
+                  <h1 class="page-title today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h1>
                   <span class="today-selected-eyebrow"><span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
-                  <h2 class="today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h2>
                   ${selectedTagStripHtml}
+                </div>
+                <div class="plan-toolbar today-curriculum-actions">
+                  ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
+                  <button type="button" class="btn-ghost-share" data-action="open-dialog" data-dialog-id="dialog-publication-preview"><svg class="sf-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5h3v3"/><path d="M6.5 9.5 13.5 2.5"/><path d="M13 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/></svg><span>Share with Community</span></button>
                 </div>
                 <div class="plan-toolbar plan-command-picker" hidden>
                   <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Curriculum</span>
@@ -1934,11 +1930,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               </div>
               <div class="plan-brief today-curriculum-brief">
                 <section class="plan-brief-goal" aria-labelledby="today-goal-label">
-                  <h3 id="today-goal-label" class="plan-brief-label">Goal</h3>
+                  <h2 id="today-goal-label" class="plan-brief-label">Goal</h2>
                   <p class="plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
                 </section>
                 ${basePlanModel.goal.includedTopics.length > 0 ? `<section class="plan-brief-covers" aria-labelledby="today-covers-label">
-                  <h3 id="today-covers-label" class="plan-brief-label">Covers</h3>
+                  <h2 id="today-covers-label" class="plan-brief-label">Covers</h2>
                   <ul class="plan-scope-list">${basePlanModel.goal.includedTopics.map((topic) => `<li>${escapeHtml(topic)}</li>`).join("")}</ul>
                 </section>` : ""}
               </div>

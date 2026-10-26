@@ -351,16 +351,19 @@ test("Today opens with the active curricula queue, then the focused curriculum h
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
 
-  // Today opens directly with the page header and focused curriculum Study flow workspace above the fold, with the active curricula cards placed at the bottom.
+  // Today opens directly with the focused curriculum Study flow workspace above the fold (no redundant Today heading in the body), with New curriculum in the sidebar and Share with Community in the curriculum header.
   assert.match(
     today,
-    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula"[^>]*>/,
+    /^id="panel-learn-today"[^>]*>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula"[^>]*>/,
   );
+  assert.equal(today.includes('<h1 class="page-title">Today</h1>'), false, "Today body should not repeat the redundant Today heading");
+  assert.match(html, /class="sidebar-new-curriculum-btn"[^>]*data-dialog-id="dialog-new-curriculum"/);
   const card = today.match(/<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
   assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
   for (const part of [
-    '<h2 class="today-selected-title">Build and Evaluate RAG Systems in Python</h2>',
+    '<h1 class="page-title today-selected-title">Build and Evaluate RAG Systems in Python</h1>',
     '<span class="today-selected-progress">0/5 completed · 83m left</span>',
+    'class="btn-ghost-share" data-action="open-dialog" data-dialog-id="dialog-publication-preview"',
     '<select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">',
     '<option value="__new_curriculum__" data-action-option="new-curriculum"',
   ]) {
