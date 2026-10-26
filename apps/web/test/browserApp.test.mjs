@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1746,4 +1747,41 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   app.navigateLearnSubDestination("Today");
   assert.ok(root.innerHTML.includes('data-latex="\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}"'));
 });
+
+test("Impeccable audit guardrails: zero anti-patterns in detector and flat hairline Progress layout without side-tab borders or nested cards", () => {
+  const repoRoot = path.resolve(__dirname, "../../..");
+  const detectorBin = path.join(repoRoot, ".claude/skills/impeccable/scripts/impeccable");
+  const stylesPath = path.join(PUBLIC_DIR, "styles.css");
+  const browserAppPath = path.resolve(__dirname, "../src/browserApp.ts");
+  const componentsDir = path.resolve(__dirname, "../src/components");
+
+  // 1. Run deterministic Impeccable detector across web styles & components (exits 2 if any [side-tab] or anti-pattern is detected)
+  const detectorOutput = execFileSync(
+    detectorBin,
+    ["detect", "--no-config", stylesPath, browserAppPath, componentsDir],
+    { encoding: "utf8" }
+  );
+  assert.equal(detectorOutput.trim(), "");
+
+  // 2. Assert no thick colored side-tab borders or nested KPI stat cards in CSS
+  const css = fs.readFileSync(stylesPath, "utf8");
+  assert.doesNotMatch(css, /border-(?:left|right)\s*:\s*[2-9]\d*px\s+solid/i);
+  assert.equal(css.includes(".progress-kpi-card"), false);
+  assert.equal(css.includes(".progress-capability-card"), false);
+
+  // 3. Assert Progress panel uses flat hairline-separated summary strip and flat capability rows without eyebrow kicker above h1
+  const html = renderCurriculumWebAppHtml({ topLevel: "Learn", learnSubDestination: "Progress" });
+  const progressPanel = html.slice(
+    html.indexOf('id="panel-learn-progress"'),
+    html.indexOf('id="panel-learn-resources"')
+  );
+  assert.ok(progressPanel.includes('class="progress-overview-strip"'));
+  assert.ok(progressPanel.includes('class="progress-unit-row"'));
+  assert.ok(progressPanel.includes('class="progress-capability-row"'));
+  assert.equal(progressPanel.includes("progress-kpi-card"), false);
+  assert.equal(progressPanel.includes("progress-unit-group"), false);
+  assert.equal(progressPanel.includes("progress-capability-card"), false);
+  assert.doesNotMatch(progressPanel, /class="today-selected-eyebrow"[^>]*>[\s\S]*?<h1 class="page-title">Your learning evidence<\/h1>/);
+});
+
 

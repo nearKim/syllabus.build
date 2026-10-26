@@ -1739,28 +1739,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         const track = trackOf(act);
         const done = isClosed(act.executionStatus);
         return `<button type="button" class="progress-act-chip" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-done="${done}">
-          ${statusGlyph(track === "gate" ? "gate" : "module", executionTone(act.executionStatus), 14)}
+          ${statusGlyph(track === "gate" ? "gate" : "module", executionTone(act.executionStatus), 16)}
           <span class="progress-act-track">${escapeHtml(TRACK_LABELS[track].badge)}</span>
           <span class="progress-act-duration">${act.durationTriplet.point}m</span>
         </button>`;
       }).join("");
       const shortConclusion = obj.proficiencyStatus === "demonstrated" ? "Demonstrated" : conclusionLabel(obj.proficiencyStatus);
-      return `<article class="progress-capability-card" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
+      return `<article class="progress-capability-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
         <div class="progress-cap-main">
-          <div class="progress-cap-Identity">
+          <div class="progress-cap-identity">
             <div class="progress-cap-badges">
               ${proficiencyGlyph(obj.proficiencyStatus)}
               <span class="badge">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
               <span class="progress-status-pill" data-status="${escapeHtml(obj.proficiencyStatus)}">${escapeHtml(shortConclusion)}<span class="st-sr"> (${escapeHtml(conclusionLabel(obj.proficiencyStatus))})</span></span>
             </div>
-            <h4 class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</h4>
+            <p class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</p>
           </div>
           <div class="plan-objective-actions">
             <button type="button" class="btn-secondary progress-check-btn" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding</button>
           </div>
         </div>
         <div class="progress-cap-activities" aria-label="Linked unit activities">
-          <span class="progress-cap-activities-label">Flow steps:</span>
+          <span class="progress-cap-activities-label">Study flow</span>
           ${activityChipsHtml}
         </div>
         <details class="progress-cap-evidence">
@@ -1773,7 +1773,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       </article>`;
     }).join("\n");
 
-    return `<section class="progress-unit-group" data-module-id="${escapeHtml(mod.moduleId)}">
+    return `<section class="progress-unit-row" data-module-id="${escapeHtml(mod.moduleId)}">
       <header class="progress-unit-header">
         <div class="progress-unit-title-row">
           <span class="unit-badge">U${idx + 1}</span>
@@ -1784,7 +1784,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <span class="progress-unit-gate" data-passed="${gate.passed}">${gate.passed ? "✓ Gate passed" : "◇ Gate open"}</span>
         </div>
       </header>
-      <div class="progress-unit-cards">
+      <div class="progress-unit-capabilities">
         ${cardsHtml}
       </div>
     </section>`;
@@ -2031,10 +2031,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
           <div class="section-header">
-            <div>
-              <span class="today-selected-eyebrow">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</span>
-              <h1 class="page-title">Your learning evidence</h1>
-            </div>
+            <h1 class="page-title">Your learning evidence</h1>
             <div class="plan-toolbar">
               <label class="field field-inline" for="progress-curriculum-control" hidden><span>Curriculum</span>
                 <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
@@ -2043,57 +2040,50 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
           </div>
 
-          <div class="progress-kpi-grid" aria-label="Progress overview">
-            <article class="progress-kpi-card" data-opaque-surface="true">
-              <div class="progress-kpi-head">
-                <span class="progress-kpi-label">Verified Mastery</span>
-                <span class="progress-kpi-pct" data-tone="success">${masteryPct}%</span>
-              </div>
-              <p class="progress-kpi-value"><strong>${demonstratedObjectives} / ${totalObjectives}</strong> <span>objectives demonstrated</span></p>
-              <div class="progress-kpi-bar" aria-hidden="true">
-                <span class="progress-kpi-fill" data-tone="success" style="width: ${masteryPct}%" />
-              </div>
-              <p class="progress-kpi-caption">Verified independently via unit gates</p>
-            </article>
-
-            <article class="progress-kpi-card" data-opaque-surface="true">
-              <div class="progress-kpi-head">
-                <span class="progress-kpi-label">Study Effort</span>
-                <span class="progress-kpi-pct" data-tone="accent">${planProgress.left > 0 ? `${planProgress.left}m left` : `${effortPct}%`}</span>
-              </div>
-              <p class="progress-kpi-value"><strong>${requiredCompleted} / ${requiredActivities.length}</strong> <span>required activities</span></p>
-              <div class="progress-kpi-bar" aria-hidden="true">
-                <span class="progress-kpi-fill" data-tone="accent" style="width: ${effortPct}%" />
-              </div>
-              <p class="progress-kpi-caption">${reviewSummary} in Study flow</p>
-            </article>
-
-            <article class="progress-kpi-card diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
-              <div class="progress-kpi-head">
-                <span class="progress-kpi-label">Retention &amp; Checks</span>
-                <span class="badge">Session ${escapeHtml(diagnosticControl)}</span>
-              </div>
-              <p class="progress-kpi-value"><strong>${assessedCount} / ${sampledCount}</strong> <span>sampled capabilities</span></p>
-              <div class="progress-kpi-bar" aria-hidden="true">
-                <span class="progress-kpi-fill" data-tone="accent" style="width: ${checkPct}%" />
-              </div>
-              <div class="progress-kpi-actions">
-                <button type="button" class="btn-primary progress-kpi-btn" data-action="diagnostic-continue">Continue ~5m check</button>
-                <button type="button" class="btn-secondary progress-kpi-btn" data-action="diagnostic-pause">Pause</button>
-                <button type="button" class="btn-secondary progress-kpi-btn" data-action="diagnostic-stop-early">Stop</button>
-              </div>
-            </article>
-          </div>
-
           <div class="plan-sections-stack">
             <section class="surface-panel" id="progress-capability-portfolio" aria-labelledby="progress-portfolio-heading" data-opaque-surface="true">
-              <div class="section-header progress-portfolio-header">
-                <div>
-                  <h2 id="progress-portfolio-heading">Capabilities by unit</h2>
+              <div class="progress-overview-strip" aria-label="Progress overview">
+                <div class="progress-overview-col">
+                  <div class="progress-overview-head">
+                    <span class="progress-overview-label">Verified mastery</span>
+                    <span class="progress-overview-meta">${masteryPct}%</span>
+                  </div>
+                  <p class="progress-overview-value">${demonstratedObjectives} of ${totalObjectives} objectives demonstrated</p>
+                  <div class="progress-overview-bar" aria-hidden="true">
+                    <span class="progress-overview-fill" data-tone="success" style="width: ${masteryPct}%"></span>
+                  </div>
                 </div>
+
+                <div class="progress-overview-col">
+                  <div class="progress-overview-head">
+                    <span class="progress-overview-label">Study effort</span>
+                    <span class="progress-overview-meta">${planProgress.left > 0 ? `${planProgress.left}m left` : "Complete"}</span>
+                  </div>
+                  <p class="progress-overview-value">${requiredCompleted} of ${requiredActivities.length} required activities · ${reviewSummary}</p>
+                  <div class="progress-overview-bar" aria-hidden="true">
+                    <span class="progress-overview-fill" data-tone="accent" style="width: ${effortPct}%"></span>
+                  </div>
+                </div>
+
+                <div class="progress-overview-col diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}">
+                  <div class="progress-overview-head">
+                    <span class="progress-overview-label">Understanding check</span>
+                    <span class="progress-overview-meta">Session ${escapeHtml(diagnosticControl)}</span>
+                  </div>
+                  <p class="progress-overview-value">${assessedCount} of ${sampledCount} sampled capabilities checked</p>
+                  <div class="progress-overview-actions">
+                    <button type="button" class="btn-primary" data-action="diagnostic-continue">Continue ~5m check</button>
+                    <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
+                    <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section-header progress-portfolio-header">
+                <h2 id="progress-portfolio-heading">Capabilities by unit</h2>
                 <span class="badge">${evidenceSummary}</span>
               </div>
-              <div class="progress-units-stack">
+              <div class="progress-units-list">
                 ${progressUnitCardsHtml}
               </div>
             </section>

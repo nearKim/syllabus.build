@@ -3058,96 +3058,90 @@ button[interestfor="plan-relationship-legend"] {
   margin-top: var(--space-2);
 }
 
-/* Visual Progress KPI Cards + Unit-grouped Capability Cards */
-.progress-kpi-grid {
+/* Progress: quiet hairline-separated summary strip + flat unit/capability rows (no stat cards, no nested cards, no side-tab borders) */
+#progress-capability-portfolio {
+  border: var(--hairline);
+}
+
+.progress-overview-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-4);
   margin: 0 0 var(--space-5);
+  padding-bottom: var(--space-5);
+  border-bottom: var(--hairline);
 }
 
-@media (max-width: 899.98px) {
-  .progress-kpi-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.progress-kpi-card {
+.progress-overview-col {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 18px 20px;
-  border: var(--hairline);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
+  gap: 8px;
+  padding-right: var(--space-5);
   min-inline-size: 0;
 }
 
-.progress-kpi-head {
+.progress-overview-col + .progress-overview-col {
+  padding-left: var(--space-5);
+  border-left: var(--hairline);
+}
+
+@media (max-width: 899.98px) {
+  .progress-overview-strip {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .progress-overview-col {
+    padding-right: 0;
+  }
+
+  .progress-overview-col + .progress-overview-col {
+    padding-top: var(--space-4);
+    padding-left: 0;
+    border-top: var(--hairline);
+    border-left: 0;
+  }
+}
+
+.progress-overview-head {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
-.progress-kpi-label {
-  font-size: 12px;
+.progress-overview-label {
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--color-text-secondary);
 }
 
-.progress-kpi-pct {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
+.progress-overview-meta {
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
 }
 
-.progress-kpi-pct[data-tone="success"] {
-  background: var(--color-success-surface);
-  color: var(--color-success-text);
-}
-
-.progress-kpi-pct[data-tone="accent"] {
-  background: var(--color-accent-surface);
-  color: var(--color-accent);
-}
-
-.progress-kpi-value {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+.progress-overview-value {
   margin: 0;
-  font-size: 14px;
-  color: var(--color-text-secondary);
-}
-
-.progress-kpi-value strong {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  font-weight: 700;
-  line-height: 1.1;
+  font-size: 15px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1.35;
   color: var(--color-text-primary);
 }
 
-.progress-kpi-bar {
+.progress-overview-bar {
   display: block;
-  height: 6px;
+  height: 4px;
   border-radius: 999px;
   background: var(--tint-8);
   overflow: clip;
 }
 
-.progress-kpi-fill {
+.progress-overview-fill {
   display: block;
   height: 100%;
   border-radius: inherit;
@@ -3155,17 +3149,17 @@ button[interestfor="plan-relationship-legend"] {
   transition: width 200ms ease;
 }
 
-.progress-kpi-fill[data-tone="success"] {
+.progress-overview-fill[data-tone="success"] {
   background: var(--color-success-text);
 }
 
-.progress-kpi-caption {
+.progress-overview-caption {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
-.progress-kpi-actions {
+.progress-overview-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3173,32 +3167,33 @@ button[interestfor="plan-relationship-legend"] {
   margin-top: 2px;
 }
 
-.progress-kpi-btn {
-  min-height: 30px;
-  padding: 4px 10px;
-  font-size: 12.5px;
-}
-
-#progress-capability-portfolio {
-  border: var(--hairline);
+.progress-overview-actions .btn-primary,
+.progress-overview-actions .btn-secondary {
+  min-height: var(--layout-touch-target-min);
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .progress-portfolio-header {
-  margin-bottom: var(--space-4);
+  margin-bottom: var(--space-3);
 }
 
-.progress-units-stack {
+.progress-units-list {
   display: grid;
-  gap: var(--space-4);
+  gap: 0;
 }
 
-.progress-unit-group {
+.progress-unit-row {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-4);
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
+  padding: var(--space-5) 0;
+  border-top: var(--hairline);
+  background: none;
+  border-radius: 0;
+}
+
+.progress-unit-row:last-child {
+  padding-bottom: 0;
 }
 
 .progress-unit-header {
@@ -3218,7 +3213,7 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-unit-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.3;
 }
@@ -3226,9 +3221,10 @@ button[interestfor="plan-relationship-legend"] {
 .progress-unit-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-family: var(--font-mono);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
@@ -3248,22 +3244,22 @@ button[interestfor="plan-relationship-legend"] {
   color: var(--color-success-text);
 }
 
-.progress-unit-cards {
+.progress-unit-capabilities {
   display: grid;
-  gap: var(--space-3);
+  gap: 0;
 }
 
-.progress-capability-card {
+.progress-capability-row {
   display: grid;
-  gap: 12px;
-  padding: 16px;
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  gap: 10px;
+  padding: var(--space-4) 0;
+  border-top: var(--hairline);
+  background: none;
+  border-radius: 0;
 }
 
-.progress-capability-card[data-proficiency-status="demonstrated"] {
-  border-left: 3px solid var(--color-success-text);
+.progress-capability-row:last-child {
+  padding-bottom: 0;
 }
 
 .progress-cap-main {
@@ -3274,7 +3270,7 @@ button[interestfor="plan-relationship-legend"] {
   gap: var(--space-3);
 }
 
-.progress-cap-Identity {
+.progress-cap-identity {
   display: grid;
   gap: 6px;
   min-inline-size: 0;
@@ -3305,14 +3301,14 @@ button[interestfor="plan-relationship-legend"] {
   color: var(--color-success-text);
 }
 
-.progress-capability-card .capability-title {
+.progress-capability-row .capability-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
 }
 
 .progress-check-btn {
-  min-height: 34px;
-  padding: 6px 12px;
+  min-height: var(--layout-touch-target-min);
+  padding: 8px 14px;
   font-size: 13px;
 }
 
@@ -3320,14 +3316,12 @@ button[interestfor="plan-relationship-legend"] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  padding-top: 10px;
-  border-top: var(--hairline);
+  gap: 8px;
 }
 
 .progress-cap-activities-label {
   margin-right: 4px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
@@ -3336,13 +3330,13 @@ button[interestfor="plan-relationship-legend"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
-  padding: 3px 10px;
+  min-height: var(--layout-touch-target-min);
+  padding: 6px 12px;
   border: var(--hairline);
-  border-radius: 8px;
-  background: var(--color-surface-secondary);
+  border-radius: var(--radius-control);
+  background: transparent;
   color: var(--color-text-primary);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
 }
@@ -3354,7 +3348,8 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-act-duration {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
@@ -3367,6 +3362,8 @@ button[interestfor="plan-relationship-legend"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-height: var(--layout-touch-target-min);
+  padding: 4px 0;
   color: var(--color-text-secondary);
   font-size: 12.5px;
   font-weight: 500;
@@ -3376,10 +3373,10 @@ button[interestfor="plan-relationship-legend"] {
 .progress-cap-evidence-body {
   display: grid;
   gap: 4px;
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--color-surface-secondary);
+  padding: 8px 0 4px 12px;
+  border-left: var(--hairline);
+  background: none;
+  border-radius: 0;
 }
 
 /* Resources: Filterable Data Table + Category Pill Bar (responsive-table container query pattern) */

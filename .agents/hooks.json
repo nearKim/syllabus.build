@@ -1,0 +1,11 @@
+{
+  "impeccable-detector-gate": {
+    "Stop": [
+      {
+        "type": "command",
+        "command": "sh -c 'OUT=$(.claude/skills/impeccable/scripts/impeccable detect --no-config apps/web/public/styles.css apps/web/src/browserApp.ts apps/web/src/components 2>&1); CODE=$?; if [ $CODE -ne 0 ]; then printf \"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"Impeccable UI detector blocked stop: %s\\\"}\" \"$(echo \"$OUT\" | tr \"\\n\" \" \" | sed \"s/\\\"/\\\\\\\"/g\")\"; else printf \"{\\\"decision\\\":\\\"allow\\\"}\"; fi'",
+        "timeout": 15
+      }
+    ]
+  }
+}

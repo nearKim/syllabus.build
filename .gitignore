@@ -22,3 +22,8 @@ coverage/
 __pycache__/
 *.py[cod]
 .venv/
+
+# Local Impeccable / Claude runtime caches
+.impeccable/config.local.json
+.impeccable/hook.cache.json
+.claude/settings.local.json
