@@ -49,7 +49,7 @@
   --tint-12: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
   --selected-row: color-mix(in srgb, var(--color-accent) 5%, transparent);
   --scrim: rgb(16 18 22 / 0.28);
-  --shadow-sheet: 0 1px 2px rgb(23 25 28 / 0.06), 0 18px 48px -12px rgb(23 25 28 / 0.22);
+  --shadow-sheet: 0 1px 2px rgb(23 25 28 / 0.06), 0 12px 24px -8px rgb(23 25 28 / 0.18);
   --subject-engineering: #2259D4;
   --subject-mathematics: #0F766E;
   --subject-physics: #B45309;
@@ -77,7 +77,7 @@
   --color-warning-text: #F3CD7A;
   --selected-row: color-mix(in srgb, var(--color-accent) 8%, transparent);
   --scrim: rgb(0 0 0 / 0.5);
-  --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.5), 0 18px 48px -12px rgb(0 0 0 / 0.7);
+  --shadow-sheet: 0 1px 2px rgb(0 0 0 / 0.5), 0 12px 24px -8px rgb(0 0 0 / 0.65);
   --subject-engineering: #9DBAFF;
   --subject-mathematics: #5EEAD4;
   --subject-physics: #FBBF24;
@@ -525,8 +525,9 @@ section[id] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .btn-secondary:hover {
+  .btn-secondary:not([aria-pressed="true"]):hover {
     background-color: color-mix(in srgb, var(--color-surface) 88%, var(--color-text-primary));
+    color: var(--color-text-primary);
   }
 
   .btn-primary:hover {
@@ -626,6 +627,7 @@ section[id] {
   .seg-btn:not([aria-pressed="true"]):hover,
   .flow-switch:hover {
     background: var(--tint-8);
+    color: var(--color-text-primary);
   }
 
   .nav-top-btn:not(.is-active):hover {
@@ -668,6 +670,7 @@ section[id] {
 @media (hover: hover) and (pointer: fine) {
   .nav-sub-btn:not(.is-active):hover {
     background: var(--tint-8);
+    color: var(--color-text-primary);
   }
 }
 
@@ -683,17 +686,16 @@ section[id] {
 .sidebar-section-label {
   margin: 0 0 var(--space-2);
   padding-inline: var(--space-3);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
   color: var(--color-text-secondary);
 }
 
 .sidebar-curricula-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar-curriculum-btn {
@@ -702,7 +704,7 @@ section[id] {
   gap: 2px;
   width: 100%;
   padding: 8px var(--space-3);
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 10px;
   background: transparent;
   color: var(--color-text-primary);
@@ -711,13 +713,13 @@ section[id] {
 }
 
 .sidebar-curriculum-btn.is-active {
-  border-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
   background: var(--color-accent-surface);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .sidebar-curriculum-btn:not(.is-active):hover {
     background: var(--tint-8);
+    color: var(--color-text-primary);
   }
 }
 
@@ -828,9 +830,10 @@ section[id] {
 
 .surface-panel {
   margin: 0 0 var(--space-6);
-  padding: 20px;
-  border-radius: var(--radius-surface);
-  background-color: var(--color-surface);
+  padding: var(--space-5) 0 0;
+  border-top: var(--hairline);
+  border-radius: 0;
+  background-color: transparent;
 }
 
 .surface-panel > h2 {
@@ -1103,23 +1106,23 @@ textarea {
 .unit-badge {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 7px;
-  border-radius: 6px;
-  background: var(--tint-8);
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 600;
 }
 
-/* Flow board: toolbar, notes, matrix, key */
-/* The Study flow is a white card. Its header bar holds the heading and the layout controls. */
+/* Flow board: toolbar, notes, matrix, key (flat section — no outer box wrapping node cards) */
 .flow-board {
   margin: 0 0 var(--space-6);
-  padding: var(--space-5);
-  border: var(--hairline);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
+  padding: var(--space-5) 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   min-inline-size: 0;
 }
 
@@ -1276,8 +1279,12 @@ textarea {
   text-align: center;
 }
 
+.matrix-table tbody tr + tr > * {
+  border-top: var(--hairline);
+}
+
 .matrix-table tr.is-selected > * {
-  background-color: var(--selected-row);
+  background-color: transparent;
 }
 
 .matrix-svg {
@@ -1450,10 +1457,10 @@ textarea {
 .unit-prereq-pill {
   display: inline-flex;
   align-items: center;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 5px;
-  background: var(--tint-8);
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1462,7 +1469,7 @@ textarea {
 }
 
 .unit-prereq-pill[data-met="true"] {
-  background: var(--color-success-surface);
+  background: transparent;
   color: var(--color-success-text);
 }
 
@@ -1583,7 +1590,7 @@ textarea {
   overflow: hidden;
   font-size: 14px;
   font-weight: 600;
-  line-height: 17px;
+  line-height: 1.3;
   overflow-wrap: break-word;
   word-break: normal;
   hyphens: manual;
@@ -1614,9 +1621,9 @@ textarea {
 }
 
 .node-optional {
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--tint-8);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   font-size: 11px;
   font-weight: 600;
   line-height: 18px;
@@ -1729,9 +1736,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   margin-top: 2px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--tint-8);
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1739,7 +1746,7 @@ textarea {
 }
 
 .gate-unlocks-badge[data-unlocked="true"] {
-  background: var(--color-success-surface);
+  background: transparent;
   color: var(--color-success-text);
 }
 
@@ -1791,7 +1798,7 @@ textarea {
   }
 
   .matrix-table tr.is-selected {
-    background-color: var(--selected-row);
+    background-color: transparent;
   }
 
   .flow-rail {
@@ -1859,17 +1866,19 @@ textarea {
   display: grid;
   gap: var(--space-4);
   margin: 0;
-  padding: var(--space-5);
-  border: var(--hairline);
-  border-bottom: 0;
-  border-radius: var(--radius-surface) var(--radius-surface) 0 0;
-  background-color: var(--color-surface);
+  padding: 0 0 var(--space-5);
+  border: 0;
+  border-bottom: var(--hairline);
+  border-radius: 0;
+  background-color: transparent;
 }
 
 .today-active-workspace > .flow-board {
   margin: 0;
-  border-top: 0;
-  border-radius: 0 0 var(--radius-surface) var(--radius-surface);
+  padding: var(--space-5) 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .today-active-workspace .flow-head h2 {
@@ -2246,33 +2255,35 @@ math {
 }
 
 .math-inline {
-  display: inline-block;
-  padding: 1px 4px;
+  display: inline;
+  padding: 0;
   margin: 0 1px;
-  border-radius: 5px;
-  background-color: var(--color-surface-secondary);
+  border-radius: 0;
+  background-color: transparent;
   vertical-align: middle;
-  line-height: 1.25;
+  line-height: 1.5;
   overflow-wrap: normal;
 }
 
 .math-inline math {
-  font-size: 1.02em;
+  font-size: 1em;
+  line-height: 1.5;
 }
 
 .study-guide-prompt {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-  background-color: var(--color-surface-secondary);
-  border: var(--hairline);
+  padding: var(--space-3) 0;
+  border-radius: 0;
+  background-color: transparent;
+  border: 0;
+  border-block: var(--hairline);
 }
 
 .study-guide-prompt h3 {
   margin: 0 0 var(--space-1);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-text-secondary);
 }
 
@@ -2337,15 +2348,15 @@ math {
 .count-badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 999px;
-  background: var(--tint-8);
+  border-radius: 0;
+  background: transparent;
   font-size: 12px;
   font-weight: 600;
 }
 
 .domain-pill {
   justify-self: start;
-  padding: 2px 10px;
+  padding: 0;
   color: var(--color-text-secondary);
 }
 
@@ -2383,8 +2394,13 @@ math {
 }
 
 .track-badge {
-  padding: 1px 8px;
-  color: var(--color-text-primary);
+  padding: 0;
+  color: var(--color-text-secondary);
+}
+
+.track-badge::before {
+  content: "·";
+  margin-right: 6px;
 }
 
 .queue-actions {
@@ -2441,9 +2457,18 @@ math {
 
 /* Plan & Today Curriculum Overview */
 .today-curriculum-overview {
-  margin-top: var(--space-3);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
+  margin-top: var(--space-4);
+  border-top: var(--hairline);
+  border-radius: 0;
+  background: transparent;
+}
+
+.today-curriculum-overview .badge {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
+  font-weight: 600;
 }
 
 .today-overview-summary {
@@ -2452,7 +2477,8 @@ math {
   justify-content: space-between;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-4);
+  min-height: var(--layout-touch-target-min);
+  padding: var(--space-3) 0;
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
@@ -2461,7 +2487,7 @@ math {
 .today-overview-body {
   display: grid;
   gap: var(--space-3);
-  padding: 0 var(--space-4) var(--space-4);
+  padding: 0 0 var(--space-4);
 }
 
 .today-overview-list {
@@ -2614,15 +2640,15 @@ math {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 28px;
-  padding: 2px 10px 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--color-accent) 26%, var(--color-border-control));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface));
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.35;
 }
 
 .learn-tag-icon {
@@ -2649,22 +2675,22 @@ math {
 .learn-tag-facet {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 2px 10px;
-  border: var(--hairline);
-  border-radius: 999px;
-  background: var(--color-surface-secondary);
-  color: var(--color-text-primary);
-  font-size: 12px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .learn-topic-tags {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2673,15 +2699,21 @@ math {
 .learn-topic-chip {
   display: inline-flex;
   align-items: center;
-  min-height: 26px;
-  padding: 2px 9px;
-  border: var(--hairline);
-  border-radius: 6px;
-  background: var(--color-surface);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 1.25;
+  line-height: 1.35;
+}
+
+.learn-topic-chip::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--color-text-secondary);
 }
 
 .plan-brief {
@@ -3058,47 +3090,34 @@ button[interestfor="plan-relationship-legend"] {
   margin-top: var(--space-2);
 }
 
-/* Progress: quiet hairline-separated summary strip + flat unit/capability rows (no stat cards, no nested cards, no side-tab borders) */
-#progress-capability-portfolio {
-  border: var(--hairline);
+/* Progress: quiet hairline-separated summary strip + flat unit/capability rows (no stat cards, no nested cards, no side-tab borders, no box-in-box) */
+#progress-capability-portfolio,
+.progress-portfolio-section {
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .progress-overview-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
   margin: 0 0 var(--space-5);
-  padding-bottom: var(--space-5);
-  border-bottom: var(--hairline);
+  padding: var(--space-4) 0;
+  border-block: var(--hairline);
 }
 
 .progress-overview-col {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding-right: var(--space-5);
   min-inline-size: 0;
-}
-
-.progress-overview-col + .progress-overview-col {
-  padding-left: var(--space-5);
-  border-left: var(--hairline);
 }
 
 @media (max-width: 899.98px) {
   .progress-overview-strip {
     grid-template-columns: 1fr;
     gap: var(--space-4);
-  }
-
-  .progress-overview-col {
-    padding-right: 0;
-  }
-
-  .progress-overview-col + .progress-overview-col {
-    padding-top: var(--space-4);
-    padding-left: 0;
-    border-top: var(--hairline);
-    border-left: 0;
   }
 }
 
@@ -3211,6 +3230,13 @@ button[interestfor="plan-relationship-legend"] {
   min-inline-size: 0;
 }
 
+.progress-unit-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
 .progress-unit-title {
   margin: 0;
   font-size: 16px;
@@ -3231,16 +3257,16 @@ button[interestfor="plan-relationship-legend"] {
 .progress-unit-gate {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--tint-8);
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
   font-weight: 600;
 }
 
 .progress-unit-gate[data-passed="true"] {
-  background: var(--color-success-surface);
+  background: transparent;
   color: var(--color-success-text);
 }
 
@@ -3284,20 +3310,26 @@ button[interestfor="plan-relationship-legend"] {
   gap: 8px;
 }
 
+.progress-cap-topic {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
 .progress-status-pill {
   display: inline-flex;
   align-items: center;
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 999px;
-  background: var(--tint-8);
+  height: auto;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
 .progress-status-pill[data-status="demonstrated"] {
-  background: var(--color-success-surface);
+  background: transparent;
   color: var(--color-success-text);
 }
 
@@ -3307,16 +3339,29 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .progress-check-btn {
+  display: inline-flex;
+  align-items: center;
   min-height: var(--layout-touch-target-min);
-  padding: 8px 14px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-accent);
   font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.progress-check-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .progress-cap-activities {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .progress-cap-activities-label {
@@ -3326,14 +3371,19 @@ button[interestfor="plan-relationship-legend"] {
   color: var(--color-text-secondary);
 }
 
+.progress-act-sep {
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
 .progress-act-chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-height: var(--layout-touch-target-min);
-  padding: 6px 12px;
-  border: var(--hairline);
-  border-radius: var(--radius-control);
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--color-text-primary);
   font-size: 13px;
@@ -3341,9 +3391,20 @@ button[interestfor="plan-relationship-legend"] {
   cursor: pointer;
 }
 
+.progress-act-chip .progress-act-track {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.progress-act-chip[data-completed="true"] .progress-act-track {
+  color: var(--color-success-text);
+}
+
 .progress-act-chip:hover {
-  border-color: var(--color-accent);
-  background: var(--color-accent-surface);
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-accent);
 }
 
 .progress-act-duration {
@@ -3418,9 +3479,9 @@ button[interestfor="plan-relationship-legend"] {
   max-inline-size: 100%;
   max-block-size: min(640px, 78vh);
   container-type: inline-size;
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .resources-data-table {
@@ -3437,12 +3498,12 @@ button[interestfor="plan-relationship-legend"] {
   position: sticky;
   inset-block-start: 0;
   z-index: 2;
-  background: var(--color-surface-secondary);
+  background: var(--color-canvas);
 }
 
 .resources-data-table th,
 .resources-data-table td {
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-3) var(--space-4) 0;
   border-block-end: var(--hairline);
   text-align: left;
   vertical-align: top;
@@ -3450,12 +3511,13 @@ button[interestfor="plan-relationship-legend"] {
 
 .resources-data-table thead th {
   padding-block: var(--space-3);
-  font-size: 12px;
+  border-block-start: var(--hairline);
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-text-secondary);
-  background: var(--color-surface-secondary);
+  background: var(--color-canvas);
 }
 
 .resources-data-table tbody th.resource-primary-cell {
@@ -3465,7 +3527,7 @@ button[interestfor="plan-relationship-legend"] {
   min-inline-size: 16rem;
   max-inline-size: 24rem;
   font-weight: 400;
-  background: var(--color-surface);
+  background: var(--color-canvas);
 }
 
 .resources-data-table tbody tr:last-child th,
@@ -3497,15 +3559,18 @@ button[interestfor="plan-relationship-legend"] {
 .resource-category-stack {
   display: grid;
   justify-items: start;
-  gap: 6px;
+  gap: 4px;
 }
 
 .resource-category-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
-  background: var(--color-accent-surface);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  background-color: transparent;
   color: var(--color-text-primary);
   font-weight: 600;
   white-space: nowrap;
@@ -3514,13 +3579,32 @@ button[interestfor="plan-relationship-legend"] {
 
 .resource-curriculum-pill {
   margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.resource-access-cell .badge {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.resource-access-cell .badge + .badge::before {
+  content: "·";
+  margin-right: 6px;
   color: var(--color-text-secondary);
 }
 
 .resource-usage-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3531,14 +3615,23 @@ button[interestfor="plan-relationship-legend"] {
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  min-height: 34px;
-  padding: 4px 10px;
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
+  min-height: var(--layout-touch-target-min);
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-accent);
   font-size: 13px;
   font-weight: 500;
   text-align: left;
+  cursor: pointer;
+}
+
+.resource-usage-unit {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
 }
 
 .resource-usage-title {
@@ -3546,6 +3639,8 @@ button[interestfor="plan-relationship-legend"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .resource-action-cell {
@@ -3640,10 +3735,11 @@ button[interestfor="plan-relationship-legend"] {
   display: grid;
   gap: var(--space-3);
   margin: 0 0 var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  border: var(--hairline);
-  border-radius: var(--radius-surface);
-  background: var(--color-surface);
+  padding: var(--space-4) 0;
+  border: 0;
+  border-block: var(--hairline);
+  border-radius: 0;
+  background: transparent;
 }
 
 .facet-row {
@@ -4003,14 +4099,14 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .marketplace-card-icon {
-  display: grid;
+  display: inline-grid;
   place-items: center;
   flex: none;
-  width: 40px;
-  height: 40px;
-  margin-inline-end: 6px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--subject, var(--color-text-secondary)) 13%, var(--color-surface));
+  width: auto;
+  height: auto;
+  margin-inline-end: 4px;
+  border-radius: 0;
+  background: transparent;
   color: var(--subject, var(--color-text-secondary));
 }
 
@@ -4143,22 +4239,27 @@ button[interestfor="plan-relationship-legend"] {
   .upvote-btn:not([aria-pressed="true"]):hover {
     border-color: var(--color-border-control);
     background: var(--tint-4);
+    color: var(--color-text-primary);
   }
 
   .trail-chip:hover {
     background: var(--tint-12);
+    color: var(--color-text-primary);
   }
 
   .trail-tiers .trail-chip:hover {
     background: color-mix(in srgb, var(--color-accent-surface) 80%, var(--color-accent));
+    color: var(--color-text-primary);
   }
 
   :is(.clear-filters, .facet-more, .select-all-btn:enabled):hover {
     background: var(--tint-4);
+    color: var(--color-text-primary);
   }
 
   .adopt-unit-toggle:hover {
     background: var(--tint-4);
+    color: var(--color-text-primary);
   }
 
   .marketplace-card-head .tag:not([aria-pressed="true"]):hover {
@@ -5661,17 +5762,20 @@ ul.adopt-resources {
 
 .session-reschedule-panel {
   margin-top: var(--space-2);
-  padding: var(--space-3);
-  border: var(--hairline);
-  border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
+  padding: var(--space-3) 0 0;
+  border: 0;
+  border-top: var(--hairline);
+  border-radius: 0;
+  background: transparent;
 }
 
 .session-reschedule-note {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-control);
-  background: var(--color-accent-surface);
+  padding: var(--space-2) 0 0;
+  border: 0;
+  border-top: var(--hairline);
+  border-radius: 0;
+  background: transparent;
   font-size: 14px;
 }
 
@@ -6450,7 +6554,7 @@ dialog.inspector::backdrop {
 
   /* On a phone each tier's label sits above its tags, and the elbow still joins it to the tier above. */
   .marketplace-filters {
-    padding: var(--space-4);
+    padding: var(--space-4) 0;
   }
 
   .facet-row {
@@ -6515,7 +6619,7 @@ dialog.inspector::backdrop {
   }
 
   .surface-panel {
-    padding: var(--space-5);
+    padding: var(--space-5) 0 0;
   }
 }
 
@@ -6555,17 +6659,17 @@ dialog.inspector::backdrop {
 }
 
 @media (forced-colors: active) {
-  dialog,
+  dialog {
+    outline: 1px solid CanvasText;
+    box-shadow: none;
+  }
+
   .node-card,
   .macro-node,
-  .surface-panel,
   .philanthropy-impact > div,
   .publish-invite,
-  .today-unified-header,
-  .badge,
   .proficiency-pill,
   .first-steps,
-  .account-pill,
   .draft-notice,
   .auth-return,
   .seg-btn[aria-pressed="true"],

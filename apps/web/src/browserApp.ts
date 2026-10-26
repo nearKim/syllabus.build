@@ -1671,7 +1671,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   };
   const calibrationSummary = (obj: (typeof basePlanModel.objectiveTracks)[number]): string => {
     if (obj.proficiencyStatus === "demonstrated") {
-      return "Reviewed check on a recorded date. No in-app help recorded. Outside help was not verified.";
+      return "Reviewed check on a recorded date; in-app help was not used and outside help was not verified.";
     }
     if (obj.executionStatus === "self_reported_completed" || obj.proficiencyStatus === "self_reported") {
       return "You marked this familiar or completed its study activity. It has not been checked independently.";
@@ -1683,7 +1683,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       return "A refresh is recommended by the review policy (not proof of skill loss).";
     }
     if (obj.proficiencyStatus === "demonstrated") {
-      return "No delayed check recorded.";
+      return "Delayed retention check has not been recorded yet.";
     }
     return "History unavailable until an initial independent check is recorded.";
   };
@@ -1739,28 +1739,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         const track = trackOf(act);
         const done = isClosed(act.executionStatus);
         return `<button type="button" class="progress-act-chip" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-done="${done}">
-          ${statusGlyph(track === "gate" ? "gate" : "module", executionTone(act.executionStatus), 16)}
           <span class="progress-act-track">${escapeHtml(TRACK_LABELS[track].badge)}</span>
           <span class="progress-act-duration">${act.durationTriplet.point}m</span>
         </button>`;
-      }).join("");
+      }).join('<span class="progress-act-sep" aria-hidden="true">·</span>');
       const shortConclusion = obj.proficiencyStatus === "demonstrated" ? "Demonstrated" : conclusionLabel(obj.proficiencyStatus);
       return `<article class="progress-capability-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
         <div class="progress-cap-main">
           <div class="progress-cap-identity">
             <div class="progress-cap-badges">
               ${proficiencyGlyph(obj.proficiencyStatus)}
-              <span class="badge">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
+              <span class="progress-cap-topic">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
+              <span aria-hidden="true">·</span>
               <span class="progress-status-pill" data-status="${escapeHtml(obj.proficiencyStatus)}">${escapeHtml(shortConclusion)}<span class="st-sr"> (${escapeHtml(conclusionLabel(obj.proficiencyStatus))})</span></span>
             </div>
             <p class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</p>
           </div>
           <div class="plan-objective-actions">
-            <button type="button" class="btn-secondary progress-check-btn" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding</button>
+            <button type="button" class="progress-check-btn" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding <span aria-hidden="true">→</span></button>
           </div>
         </div>
         <div class="progress-cap-activities" aria-label="Linked unit activities">
-          <span class="progress-cap-activities-label">Study flow</span>
+          <span class="progress-cap-activities-label">Study flow:</span>
           ${activityChipsHtml}
         </div>
         <details class="progress-cap-evidence">
@@ -1776,11 +1776,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     return `<section class="progress-unit-row" data-module-id="${escapeHtml(mod.moduleId)}">
       <header class="progress-unit-header">
         <div class="progress-unit-title-row">
-          <span class="unit-badge">U${idx + 1}</span>
+          <span class="progress-unit-code">U${idx + 1}</span>
           <h3 class="progress-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</h3>
         </div>
         <div class="progress-unit-meta">
           <span class="progress-unit-effort">${unitProg.done}/${unitProg.total} required done</span>
+          <span aria-hidden="true">·</span>
           <span class="progress-unit-gate" data-passed="${gate.passed}">${gate.passed ? "✓ Gate passed" : "◇ Gate open"}</span>
         </div>
       </header>
@@ -2041,7 +2042,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           </div>
 
           <div class="plan-sections-stack">
-            <section class="surface-panel" id="progress-capability-portfolio" aria-labelledby="progress-portfolio-heading" data-opaque-surface="true">
+            <section class="progress-portfolio-section" id="progress-capability-portfolio" aria-labelledby="progress-portfolio-heading" data-opaque-surface="true">
               <div class="progress-overview-strip" aria-label="Progress overview">
                 <div class="progress-overview-col">
                   <div class="progress-overview-head">
@@ -2081,7 +2082,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
               <div class="section-header progress-portfolio-header">
                 <h2 id="progress-portfolio-heading">Capabilities by unit</h2>
-                <span class="badge">${evidenceSummary}</span>
+                <span class="meta-text">${evidenceSummary}</span>
               </div>
               <div class="progress-units-list">
                 ${progressUnitCardsHtml}

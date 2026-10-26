@@ -575,11 +575,13 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   assert.equal(rigor(overridden), "Formal");
 });
 
-test("Study flow, Review queue, and Completed work each sit in a white surface card", () => {
+test("Study flow is a flat unboxed workspace while curriculumswitcher cards use clean surface cards", () => {
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   // Every declaration block whose selector list ends with this selector.
   const rule = (selector) => [...css.matchAll(new RegExp(`\\n${selector.replace(/\./g, "\\.")} \\{([^}]*)\\}`, "g"))].map((match) => match[1]).join("");
-  for (const selector of [".flow-board", ".today-bottom-grid", ".curriculum-card"]) {
+  assert.ok(rule(".flow-board").includes("border: 0;"), ".flow-board must not have an outer border box");
+  assert.ok(rule(".flow-board").includes("background: transparent;"), ".flow-board must have a transparent background");
+  for (const selector of [".today-bottom-grid", ".curriculum-card"]) {
     for (const declaration of ["padding: var(--space-5);", "border: var(--hairline);", "border-radius: var(--radius-surface);", "background: var(--color-surface);"]) {
       assert.ok(rule(selector).includes(declaration), `${selector} is missing ${declaration}`);
     }
@@ -1748,20 +1750,18 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.ok(root.innerHTML.includes('data-latex="\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}"'));
 });
 
-test("Impeccable audit guardrails: zero anti-patterns in detector and flat hairline Progress layout without side-tab borders or nested cards", () => {
+test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector and zero Box-in-Box containers across all views", () => {
   const repoRoot = path.resolve(__dirname, "../../..");
-  const detectorBin = path.join(repoRoot, ".claude/skills/impeccable/scripts/impeccable");
+  const gateScript = path.join(repoRoot, "scripts/impeccable-gate.mjs");
   const stylesPath = path.join(PUBLIC_DIR, "styles.css");
-  const browserAppPath = path.resolve(__dirname, "../src/browserApp.ts");
-  const componentsDir = path.resolve(__dirname, "../src/components");
 
-  // 1. Run deterministic Impeccable detector across web styles & components (exits 2 if any [side-tab] or anti-pattern is detected)
-  const detectorOutput = execFileSync(
-    detectorBin,
-    ["detect", "--no-config", stylesPath, browserAppPath, componentsDir],
-    { encoding: "utf8" }
+  // 1. Run rendered-HTML Impeccable detector + Box-in-Box structural audit across all 5 views (Today, Progress, Resources, Explore, Settings)
+  const gateOutput = execFileSync(
+    process.execPath,
+    ["--import", "tsx", gateScript],
+    { cwd: path.resolve(__dirname, ".."), encoding: "utf8" }
   );
-  assert.equal(detectorOutput.trim(), "");
+  assert.ok(gateOutput.includes("0 anti-patterns, 0 advisories, 0 box-in-box violations"));
 
   // 2. Assert no thick colored side-tab borders or nested KPI stat cards in CSS
   const css = fs.readFileSync(stylesPath, "utf8");
@@ -1769,12 +1769,14 @@ test("Impeccable audit guardrails: zero anti-patterns in detector and flat hairl
   assert.equal(css.includes(".progress-kpi-card"), false);
   assert.equal(css.includes(".progress-capability-card"), false);
 
-  // 3. Assert Progress panel uses flat hairline-separated summary strip and flat capability rows without eyebrow kicker above h1
+  // 3. Assert Progress panel uses flat hairline-separated summary strip and flat capability rows without outer surface-panel box or nested chip boxes
   const html = renderCurriculumWebAppHtml({ topLevel: "Learn", learnSubDestination: "Progress" });
   const progressPanel = html.slice(
     html.indexOf('id="panel-learn-progress"'),
     html.indexOf('id="panel-learn-resources"')
   );
+  assert.ok(progressPanel.includes('class="progress-portfolio-section" id="progress-capability-portfolio"'));
+  assert.equal(progressPanel.includes('class="surface-panel" id="progress-capability-portfolio"'), false);
   assert.ok(progressPanel.includes('class="progress-overview-strip"'));
   assert.ok(progressPanel.includes('class="progress-unit-row"'));
   assert.ok(progressPanel.includes('class="progress-capability-row"'));

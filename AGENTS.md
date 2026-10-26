@@ -3,9 +3,12 @@
 AI-generated interfaces converge on a recognizable default aesthetic. Refrain from EVERY prohibited pattern below unless the user explicitly directs otherwise. This file outranks every design skill.
 
 ## Prohibited — Layout & Components (Strict Ban)
+- **Box-in-Box (`[box-in-box]`)**: NEVER place bordered or tinted-background boxes inside an outer bordered or surface-filled container box:
+  - Page sections and workspaces (`.surface-panel`, `#progress-capability-portfolio`, `.today-unified-header`, `.flow-board`, `.resources-table-wrapper`, `.marketplace-filters`, `.today-curriculum-overview`) must NEVER use 4-sided borders (`border: var(--hairline)`) or card surface fills (`background: var(--color-surface)`). Separate page sections and rows strictly with `1px` hairlines (`border-top: var(--hairline)` or `border-block: var(--hairline)`).
+  - Table/matrix rows (`.matrix-table tr.is-selected > *`, `.progress-unit-row`, `.progress-capability-row`) must NEVER use tinted row boxes or 4-sided borders around inner cards or controls.
+  - Inline row links, actions, and metadata (`.progress-act-chip`, `.progress-check-btn`, `.resource-usage-chip`, `.unit-badge`, `.progress-unit-gate`, `.progress-status-pill`, `.learn-tag-primary`, `.learn-topic-chip`, `.domain-pill`, `.track-badge`) must NEVER be rendered as bordered/tinted pill boxes inside rows or cards, and buttons/chips must NEVER contain nested `.badge` or checkbox boxes.
 - **Thick colored left/side accent borders on cards (`[side-tab]`)**: NEVER use `border-left` or `border-right` above `1px` on cards, list items, callouts, or alerts (e.g., `border-left: 3px solid ...` on a rounded card creates tapered crescent corner artifacts and is the #1 AI-slop tell).
-- **Cards nested inside cards**: Cards are the lazy container; nested cards (e.g., a white rounded card inside a tinted rounded card inside a white `.surface-panel`) are always wrong. Use flat `1px` hairline row dividers (`border-top: var(--hairline)`) inside a single surface container.
-- **Stat-card banner rows / Hero-metric templates**: NEVER build 3- or 4-column KPI stat card banners (big number, small uppercase label, supporting caption, accent progress bar). For summaries, use quiet inline hairline-separated summaries (`progress-summaries`), never boxed stat cards.
+- **Stat-card banner rows / Hero-metric templates**: NEVER build 3- or 4-column KPI stat card banners (big number, small uppercase label, supporting caption, accent progress bar). For summaries, use quiet inline hairline-separated summaries (`.progress-overview-strip`), never boxed stat cards.
 - **Kicker / eyebrow labels above headings**: NEVER place tracked-uppercase or muted eyebrow/kicker labels above an `<h1>` or section heading. Let the heading carry its own weight.
 - **All-caps section labels as the default hierarchy device**: Do not default to `text-transform: uppercase; letter-spacing: 0.04em` for section/metric labels.
 - **Sub-44px interactive touch targets**: Every interactive button, chip, or `<summary>` control must meet the `44px` minimum touch target (`var(--layout-touch-target-min)`), or use intentional hit-area padding.
@@ -15,9 +18,9 @@ AI-generated interfaces converge on a recognizable default aesthetic. Refrain fr
 - Hairline border paired with a wide diffuse shadow on the same element.
 - Global `0.01ms !important` transition/animation kills for `prefers-reduced-motion` that destroy state-change feedback instead of disabling spatial motion cleanly.
 
-## Mandatory Pre-Delivery Check (`impeccable detect`)
-Before finishing any turn that touches CSS, HTML, or UI components (`apps/web/public/styles.css`, `apps/web/src/**/*.ts`, `apps/web/src/**/*.tsx`), run:
+## Mandatory Pre-Delivery Check (`scripts/impeccable-gate.mjs`)
+Running `impeccable detect` on raw `.ts` or `.css` files alone is insufficient because CSS variables (`var(--hairline)`) and rendered DOM nesting are not resolved. Before finishing any turn that touches CSS, HTML, or UI components (`apps/web/public/styles.css`, `apps/web/src/**/*.ts`, `apps/web/src/**/*.tsx`), you MUST run the full rendered-HTML + Box-in-Box gate:
 ```bash
-.claude/skills/impeccable/scripts/impeccable detect --no-config apps/web/public/styles.css apps/web/src/browserApp.ts apps/web/src/components
+pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs
 ```
-Zero anti-patterns must be reported before completing the turn.
+Zero anti-patterns, zero advisories, and zero `[box-in-box]` violations must be reported before completing the turn.

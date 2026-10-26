@@ -259,7 +259,8 @@ export function ResourcesView({
         </div>
       </div>
 
-      <section class="surface-panel resources-library-panel" data-opaque-surface="true">
+      <section class="resources-library-panel" aria-labelledby="resources-library-heading" data-opaque-surface="true">
+        <h2 id="resources-library-heading" class="st-sr">Resource catalog</h2>
         <div class="resources-toolbar-row">
           <div class="segmented resources-category-bar" role="group" aria-label="Filter resources by category">
             {RESOURCE_CATEGORIES.map((cat) => (
@@ -341,14 +342,14 @@ export function ResourcesView({
                       </th>
                       <td class="resource-category-cell">
                         <div class="resource-category-stack">
-                          <span class="badge resource-category-badge" data-category={row.category}>
+                          <span class="resource-category-badge" data-category={row.category}>
                             <SfIcon name={categoryIcon(row.category)} size={15} />
                             <span>{row.category}</span>
                           </span>
                           {row.curricula.map((curr) => (
                             <span
                               key={curr.curriculumId}
-                              class="domain-pill resource-curriculum-pill"
+                              class="resource-curriculum-pill"
                               data-curriculum-id={curr.curriculumId}
                             >
                               {curr.curriculumTitle}
@@ -368,7 +369,7 @@ export function ResourcesView({
                                 data-activity-id={usage.activityId}
                                 data-module-id={usage.moduleId}
                               >
-                                <span class="badge">U{usage.unitIndex}</span>
+                                <span class="resource-usage-unit">U{usage.unitIndex}</span>
                                 <span class="resource-usage-title">
                                   <MathText text={usage.activityTitle} />
                                 </span>
@@ -394,8 +395,7 @@ export function ResourcesView({
                             </p>
                           ) : (
                             <p class="prose meta-text">
-                              No paid certification is required for core access ({formatMinorCurrency(0, "USD")}).
-                              Opening the source does not mark the activity complete.
+                              Core access is free ({formatMinorCurrency(0, "USD")}); opening the source does not mark the activity complete.
                             </p>
                           )}
                         </div>

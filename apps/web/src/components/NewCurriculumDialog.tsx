@@ -1634,7 +1634,7 @@ export function NewCurriculumDialog({
                       data-fit-resource-skipped={String(isSkipped)}
                     >
                       <div class="intake-material-badge-col">
-                        <span class="badge resource-category-badge" data-category={mat.category}>
+                        <span class="resource-category-badge" data-category={mat.category}>
                           <SfIcon name={categoryIcon(mat.category)} size={15} />
                           <span>{mat.category}</span>
                         </span>
