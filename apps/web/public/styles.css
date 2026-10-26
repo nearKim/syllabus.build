@@ -3058,6 +3058,330 @@ button[interestfor="plan-relationship-legend"] {
   margin-top: var(--space-2);
 }
 
+/* Visual Progress KPI Cards + Unit-grouped Capability Cards */
+.progress-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0 0 var(--space-5);
+}
+
+@media (max-width: 899.98px) {
+  .progress-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.progress-kpi-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 18px 20px;
+  border: var(--hairline);
+  border-radius: var(--radius-surface);
+  background: var(--color-surface);
+  min-inline-size: 0;
+}
+
+.progress-kpi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.progress-kpi-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.progress-kpi-pct {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-kpi-pct[data-tone="success"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
+.progress-kpi-pct[data-tone="accent"] {
+  background: var(--color-accent-surface);
+  color: var(--color-accent);
+}
+
+.progress-kpi-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.progress-kpi-value strong {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-primary);
+}
+
+.progress-kpi-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  overflow: clip;
+}
+
+.progress-kpi-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-accent);
+  transition: width 200ms ease;
+}
+
+.progress-kpi-fill[data-tone="success"] {
+  background: var(--color-success-text);
+}
+
+.progress-kpi-caption {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-secondary);
+}
+
+.progress-kpi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.progress-kpi-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+
+#progress-capability-portfolio {
+  border: var(--hairline);
+}
+
+.progress-portfolio-header {
+  margin-bottom: var(--space-4);
+}
+
+.progress-units-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.progress-unit-group {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface-secondary);
+}
+
+.progress-unit-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.progress-unit-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+}
+
+.progress-unit-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.progress-unit-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.progress-unit-gate {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.progress-unit-gate[data-passed="true"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
+.progress-unit-cards {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.progress-capability-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.progress-capability-card[data-proficiency-status="demonstrated"] {
+  border-left: 3px solid var(--color-success-text);
+}
+
+.progress-cap-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.progress-cap-Identity {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+  flex: 1 1 20rem;
+}
+
+.progress-cap-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-status-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.progress-status-pill[data-status="demonstrated"] {
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+}
+
+.progress-capability-card .capability-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.progress-check-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.progress-cap-activities {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: var(--hairline);
+}
+
+.progress-cap-activities-label {
+  margin-right: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.progress-act-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: var(--hairline);
+  border-radius: 8px;
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.progress-act-chip:hover {
+  border-color: var(--color-accent);
+  background: var(--color-accent-surface);
+}
+
+.progress-act-duration {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
+.progress-cap-evidence {
+  margin: 0;
+  font-size: 13px;
+}
+
+.progress-cap-evidence summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.progress-cap-evidence-body {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--color-surface-secondary);
+}
+
 /* Resources: Filterable Data Table + Category Pill Bar (responsive-table container query pattern) */
 .resources-library-panel {
   display: grid;

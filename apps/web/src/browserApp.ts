@@ -33,7 +33,7 @@ import { SfIcon, StatusGlyph, type SegmentStyle, type SfIconName } from "./compo
 import {
   DEEP_DIVE_MODES, FLOW_ORDERS, SPACED_REVIEW_MODES, TRACK_LABELS, TRACK_OF_TYPE,
   StepRow, StudyFlowBoard, displayUnitTitle, effortWords, executionTone,
-  executionWords, fit, humanize, isClosed, isOneOf, plannedFlowOrder, rightsWords, unitProgress,
+  executionWords, fit, humanize, isClosed, isOneOf, plannedFlowOrder, rightsWords, trackOf, unitGate, unitProgress,
   type DeepDiveMode, type FlowOrder, type FlowView, type SpacedReviewMode, type StudyActivity, type StudyModule,
 } from "./components/StudyFlowBoard.tsx";
 import {
@@ -1719,6 +1719,76 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     return match ? match.title : humanize(verId.replace(/^objective-|-v\d+$/g, ""));
   });
 
+  const totalObjectives = basePlanModel.objectiveTracks.length;
+  const masteryPct = totalObjectives > 0 ? Math.round((demonstratedObjectives / totalObjectives) * 100) : 0;
+  const effortPct = requiredActivities.length > 0 ? Math.round((requiredCompleted / requiredActivities.length) * 100) : 0;
+  const assessedCount = assessedCapabilityTitles.length;
+  const sampledCount = sampledCapabilityTitles.length || totalObjectives;
+  const checkPct = sampledCount > 0 ? Math.round((assessedCount / sampledCount) * 100) : 0;
+
+  const progressUnitCardsHtml = modules.map((mod, idx) => {
+    const gate = unitGate(mod);
+    const unitProg = unitProgress(mod.activities);
+    const unitObjectives = mod.objectiveIds
+      .map((id) => objectiveById.get(id))
+      .filter((obj): obj is NonNullable<typeof obj> => Boolean(obj));
+    const cardsHtml = unitObjectives.map((obj) => {
+      const linked = mod.activities.filter((act) => act.objectiveIds.includes(obj.objectiveId));
+      const activitiesForObj = linked.length > 0 ? linked : mod.activities;
+      const activityChipsHtml = activitiesForObj.map((act) => {
+        const track = trackOf(act);
+        const done = isClosed(act.executionStatus);
+        return `<button type="button" class="progress-act-chip" data-action="select-outline-activity" data-activity-id="${escapeHtml(act.activityId)}" data-module-id="${escapeHtml(mod.moduleId)}" data-done="${done}">
+          ${statusGlyph(track === "gate" ? "gate" : "module", executionTone(act.executionStatus), 14)}
+          <span class="progress-act-track">${escapeHtml(TRACK_LABELS[track].badge)}</span>
+          <span class="progress-act-duration">${act.durationTriplet.point}m</span>
+        </button>`;
+      }).join("");
+      const shortConclusion = obj.proficiencyStatus === "demonstrated" ? "Demonstrated" : conclusionLabel(obj.proficiencyStatus);
+      return `<article class="progress-capability-card" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
+        <div class="progress-cap-main">
+          <div class="progress-cap-Identity">
+            <div class="progress-cap-badges">
+              ${proficiencyGlyph(obj.proficiencyStatus)}
+              <span class="badge">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
+              <span class="progress-status-pill" data-status="${escapeHtml(obj.proficiencyStatus)}">${escapeHtml(shortConclusion)}<span class="st-sr"> (${escapeHtml(conclusionLabel(obj.proficiencyStatus))})</span></span>
+            </div>
+            <h4 class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</h4>
+          </div>
+          <div class="plan-objective-actions">
+            <button type="button" class="btn-secondary progress-check-btn" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding</button>
+          </div>
+        </div>
+        <div class="progress-cap-activities" aria-label="Linked unit activities">
+          <span class="progress-cap-activities-label">Flow steps:</span>
+          ${activityChipsHtml}
+        </div>
+        <details class="progress-cap-evidence">
+          <summary>Evidence &amp; retention details</summary>
+          <div class="progress-cap-evidence-body">
+            <p class="prose capability-support">${escapeHtml(calibrationSummary(obj))}</p>
+            <p class="meta-text">${escapeHtml(retentionSummary(obj))}</p>
+          </div>
+        </details>
+      </article>`;
+    }).join("\n");
+
+    return `<section class="progress-unit-group" data-module-id="${escapeHtml(mod.moduleId)}">
+      <header class="progress-unit-header">
+        <div class="progress-unit-title-row">
+          <span class="unit-badge">U${idx + 1}</span>
+          <h3 class="progress-unit-title">${escapeHtml(displayUnitTitle(mod.title))}</h3>
+        </div>
+        <div class="progress-unit-meta">
+          <span class="progress-unit-effort">${unitProg.done}/${unitProg.total} required done</span>
+          <span class="progress-unit-gate" data-passed="${gate.passed}">${gate.passed ? "✓ Gate passed" : "◇ Gate open"}</span>
+        </div>
+      </header>
+      <div class="progress-unit-cards">
+        ${cardsHtml}
+      </div>
+    </section>`;
+  }).join("\n");
   const resourceScope: ResourceScope = inputState.resourceScope ?? "selected";
   const resourceCategory: ResourceCategory = inputState.resourceCategory ?? "All";
 
@@ -1962,97 +2032,86 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
           <div class="section-header">
             <div>
-              <span class="today-selected-eyebrow">Competency &amp; Evidence Portfolio</span>
+              <span class="today-selected-eyebrow">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</span>
               <h1 class="page-title">Your learning evidence</h1>
-              <p class="prose meta-text">See what you have demonstrated and what still needs checking.</p>
             </div>
             <div class="plan-toolbar">
-              <label class="field field-inline" for="progress-curriculum-control"><span>Curriculum</span>
+              <label class="field field-inline" for="progress-curriculum-control" hidden><span>Curriculum</span>
                 <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
               </label>
-              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">View review in Today<span aria-hidden="true">→</span></button>
+              <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Open Study Flow<span aria-hidden="true">→</span></button>
             </div>
+          </div>
+
+          <div class="progress-kpi-grid" aria-label="Progress overview">
+            <article class="progress-kpi-card" data-opaque-surface="true">
+              <div class="progress-kpi-head">
+                <span class="progress-kpi-label">Verified Mastery</span>
+                <span class="progress-kpi-pct" data-tone="success">${masteryPct}%</span>
+              </div>
+              <p class="progress-kpi-value"><strong>${demonstratedObjectives} / ${totalObjectives}</strong> <span>objectives demonstrated</span></p>
+              <div class="progress-kpi-bar" aria-hidden="true">
+                <span class="progress-kpi-fill" data-tone="success" style="width: ${masteryPct}%" />
+              </div>
+              <p class="progress-kpi-caption">Verified independently via unit gates</p>
+            </article>
+
+            <article class="progress-kpi-card" data-opaque-surface="true">
+              <div class="progress-kpi-head">
+                <span class="progress-kpi-label">Study Effort</span>
+                <span class="progress-kpi-pct" data-tone="accent">${planProgress.left > 0 ? `${planProgress.left}m left` : `${effortPct}%`}</span>
+              </div>
+              <p class="progress-kpi-value"><strong>${requiredCompleted} / ${requiredActivities.length}</strong> <span>required activities</span></p>
+              <div class="progress-kpi-bar" aria-hidden="true">
+                <span class="progress-kpi-fill" data-tone="accent" style="width: ${effortPct}%" />
+              </div>
+              <p class="progress-kpi-caption">${reviewSummary} in Study flow</p>
+            </article>
+
+            <article class="progress-kpi-card diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
+              <div class="progress-kpi-head">
+                <span class="progress-kpi-label">Retention &amp; Checks</span>
+                <span class="badge">Session ${escapeHtml(diagnosticControl)}</span>
+              </div>
+              <p class="progress-kpi-value"><strong>${assessedCount} / ${sampledCount}</strong> <span>sampled capabilities</span></p>
+              <div class="progress-kpi-bar" aria-hidden="true">
+                <span class="progress-kpi-fill" data-tone="accent" style="width: ${checkPct}%" />
+              </div>
+              <div class="progress-kpi-actions">
+                <button type="button" class="btn-primary progress-kpi-btn" data-action="diagnostic-continue">Continue ~5m check</button>
+                <button type="button" class="btn-secondary progress-kpi-btn" data-action="diagnostic-pause">Pause</button>
+                <button type="button" class="btn-secondary progress-kpi-btn" data-action="diagnostic-stop-early">Stop</button>
+              </div>
+            </article>
           </div>
 
           <div class="plan-sections-stack">
             <section class="surface-panel" id="progress-capability-portfolio" aria-labelledby="progress-portfolio-heading" data-opaque-surface="true">
-              <div class="section-header">
+              <div class="section-header progress-portfolio-header">
                 <div>
-                  <span class="today-selected-eyebrow">Learning vs. Performance · Capability Space</span>
-                  <h2 id="progress-portfolio-heading">Capability portfolio &amp; retention checks</h2>
+                  <h2 id="progress-portfolio-heading">Capabilities by unit</h2>
                 </div>
                 <span class="badge">${evidenceSummary}</span>
               </div>
-              <p class="prose meta-text">Completing a study activity in Today records effort, not demonstrated capability. Each capability below separates self-reported familiarity and supported practice from independent evidence and delayed retrieval checks.</p>
-              <div class="table-responsive">
-                <table class="proficiency-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Capability</th>
-                      <th scope="col">Evidence conclusion</th>
-                      <th scope="col">What the record supports &amp; retention</th>
-                      <th scope="col">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>${proficiencyRowsHtml}</tbody>
-                </table>
+              <div class="progress-units-stack">
+                ${progressUnitCardsHtml}
               </div>
             </section>
 
-            <section class="surface-panel" id="progress-evidence-detail" aria-labelledby="progress-evidence-detail-heading" data-opaque-surface="true">
-              <div class="section-header">
-                <div>
-                  <span class="today-selected-eyebrow">Selected capability audit trail</span>
-                  <h2 id="progress-evidence-detail-heading">${escapeHtml(inspectedObjective?.title ?? "Capability evidence detail")}</h2>
-                </div>
-                <span class="badge">${escapeHtml(conclusionLabel(inspectedObjective?.proficiencyStatus ?? "unassessed"))}</span>
-              </div>
-              <div class="plan-pacing-metrics">
-                <div class="plan-metric-box">
-                  <span class="meta-text">What the evidence supports</span>
-                  <strong>${escapeHtml(inspectedObjective ? calibrationSummary(inspectedObjective) : "No qualifying check is recorded.")}</strong>
-                </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">What remains unassessed</span>
-                  <strong>Demonstrating introductory matrix operations does not establish matrix calculus or unassessed downstream objectives.</strong>
-                </div>
-                <div class="plan-metric-box">
-                  <span class="meta-text">Later checks &amp; corrections</span>
-                  <strong>${escapeHtml(inspectedObjective ? retentionSummary(inspectedObjective) : "No delayed check recorded.")}</strong>
-                </div>
-              </div>
+            <section class="surface-panel" id="progress-evidence-detail" aria-labelledby="progress-evidence-detail-heading" data-opaque-surface="true" hidden>
+              <h2 id="progress-evidence-detail-heading">${escapeHtml(inspectedObjective?.title ?? "Capability evidence detail")}</h2>
+              <p>${escapeHtml(inspectedObjective ? calibrationSummary(inspectedObjective) : "No qualifying check is recorded.")}</p>
+              <p>Demonstrating introductory matrix operations does not establish matrix calculus or unassessed downstream objectives.</p>
+              <p>${escapeHtml(inspectedObjective ? retentionSummary(inspectedObjective) : "No delayed check recorded.")}</p>
               <details class="today-curriculum-overview evidence-technical-details">
-                <summary class="today-overview-summary">
-                  <span>Technical audit metadata &amp; canonical state reference</span>
-                  <span class="meta-text">Versions, evidence refs, and schema states</span>
-                </summary>
+                <summary class="today-overview-summary"><span>Technical audit metadata</span></summary>
                 <div class="today-overview-body">
-                  <p class="meta-text">Objective version: <code>${escapeHtml(inspectedObjective?.objectiveVersionId ?? "unavailable")}</code> · Evidence support: <code>${escapeHtml(inspectedObjective?.proficiencyBadge.evidenceSupport ?? "none")}</code>${inspectedObjective && inspectedObjective.proficiencyBadge.evidenceRefs.length > 0 ? ` · Refs: <code>${escapeHtml(inspectedObjective.proficiencyBadge.evidenceRefs.join(", "))}</code>` : ""}</p>
                   <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
                   <div class="honest-two-layer-summary">
                     <h3>Honest Two-Layer Status Summary</h3>
-                    <p class="prose">Self-reporting an activity as completed records study effort idempotently (<code>self_reported_completed</code>) but never upgrades objective proficiency to <code>demonstrated</code> without reviewed assessment evidence.</p>
                   </div>
                 </div>
               </details>
-            </section>
-
-            <section class="surface-panel diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}" data-opaque-surface="true">
-              <div class="section-header">
-                <div>
-                  <span class="today-selected-eyebrow">Verification without speed penalties · ~5 min target</span>
-                  <h2>Check understanding</h2>
-                </div>
-                <span class="badge">Session ${escapeHtml(diagnosticControl)}</span>
-              </div>
-              <p class="prose">Sampled capabilities: <strong>${escapeHtml(sampledCapabilityTitles.join("; ") || "None")}</strong>.</p>
-              <p class="prose meta-text">Assessed so far: ${escapeHtml(assessedCapabilityTitles.join("; ") || "None")}. Still unassessed: ${escapeHtml(unassessedCapabilityTitles.join("; ") || "None")}.</p>
-              <p class="prose meta-text">The 5-minute effort target selects the sample and limits learner burden. It is not a speed score: reaching it never locks or marks a response wrong. Pause suspends this task view; Stop leaves unassessed capabilities unknown; Continue resumes the same session.</p>
-              <div class="action-row">
-                <button type="button" class="btn-secondary" data-action="diagnostic-pause">Pause</button>
-                <button type="button" class="btn-secondary" data-action="diagnostic-stop-early">Stop</button>
-                <button type="button" class="btn-secondary" data-action="diagnostic-continue">Continue</button>
-              </div>
             </section>
           </div>
         </section>
