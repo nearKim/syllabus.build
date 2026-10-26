@@ -113,7 +113,7 @@ export interface CurriculumWebAppStateInput {
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
   readonly skippedActivityIds?: readonly string[];
-  readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly keyVisible?: boolean;
+  readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly reminderTimezone?: string; readonly keyVisible?: boolean;
   readonly diagnosticControl?: "active" | "paused" | "stopped";
   readonly adaptationChoice?: "pending" | "accept_reviewed" | "keep_current";
   readonly loadMoreNote?: string | null; readonly intakeNote?: string | null;
@@ -1468,9 +1468,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     certificationAndComputeMinor: 4900, currency: "USD",
   });
 
+  const selectedTimezone = inputState.reminderTimezone ?? "America/New_York";
   const reminderState = createReminderPreferenceController(
     {
-      enabled: true, channels: ["email", "web_push"], timezone: "America/New_York",
+      enabled: true, channels: ["email", "web_push"], timezone: selectedTimezone,
       quiet_hours: { start_local_time: "22:00", end_local_time: "07:30" }, lead_time_minutes: 15, version: 1, etag: '"notification-prefs-v1"',
     },
     [{ occurrence_id: "reminder-occ-001", session_id: "session-today-1", scheduled_for: "2026-10-26T17:45:00-04:00", status: "scheduled" }],
@@ -1826,7 +1827,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <div class="action-row"><button type="button" class="btn-secondary" data-action="keep-current-plan">Keep current plan</button><button type="button" class="btn-primary" data-action="accept-revision">Accept revision</button></div>
     <p class="prose meta-text">${adaptationChoiceCopy}</p>`;
 
-  const timezoneLabel = reminderState.timezone === "America/New_York" ? "Eastern Time" : reminderState.timezone;
+  const REMINDER_TIMEZONES: ReadonlyArray<{ readonly id: string; readonly label: string }> = [
+    { id: "America/New_York", label: "Eastern Time" },
+    { id: "America/Chicago", label: "Central Time" },
+    { id: "America/Denver", label: "Mountain Time" },
+    { id: "America/Los_Angeles", label: "Pacific Time" },
+    { id: "UTC", label: "UTC" },
+    { id: "Europe/London", label: "British Time" },
+    { id: "Europe/Berlin", label: "Central European Time" },
+    { id: "Asia/Seoul", label: "Korea Standard Time" },
+    { id: "Asia/Tokyo", label: "Japan Standard Time" },
+    { id: "Asia/Singapore", label: "Singapore Time" },
+    { id: "Australia/Sydney", label: "Australian Eastern Time" },
+  ];
+  const timezoneLabel =
+    REMINDER_TIMEZONES.find((tz) => tz.id === reminderState.timezone)?.label ?? reminderState.timezone;
   const renderScheduleRowsHtml = (idPrefix: "plan" | "settings"): string =>
     todayState.todayCards.map((card, idx) => {
       const sessionNum = idx + 1;
@@ -2341,6 +2356,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <label class="switch-field switch-field-inline"><span>Enable reminders</span><input type="checkbox" class="ui-switch" data-action="toggle-reminders"${remindersOn ? " checked" : ""}></label>
             </div>
             <div class="reminder-gcal-bar">
+              <label class="field" for="reminder-timezone">Time zone
+                <select id="reminder-timezone" name="reminder-timezone" data-action="set-reminder-timezone">
+                  ${REMINDER_TIMEZONES.map((tz) => `<option value="${escapeHtml(tz.id)}"${tz.id === reminderState.timezone ? " selected" : ""}>${escapeHtml(tz.label)} (${escapeHtml(tz.id)})</option>`).join("")}
+                </select>
+              </label>
               <label class="field" for="reminder-weekday-time">Weekdays (Mon–Fri)
                 <input id="reminder-weekday-time" type="time" name="weekday-time" value="19:00">
               </label>
@@ -2565,6 +2585,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
+  let reminderTimezone = initialState.reminderTimezone ?? "America/New_York";
   let keyVisible = initialState.keyVisible ?? false;
   let primaryCredentialRef = initialState.primaryCredentialRef ?? (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)[0]?.credential_ref ?? "cred-openai-1";
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
@@ -2870,7 +2891,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       resourceScope, resourceCategory,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
-      remindersEnabled, remindersPaused, keyVisible, primaryCredentialRef, diagnosticControl, adaptationChoice,
+      remindersEnabled, remindersPaused, reminderTimezone, keyVisible, primaryCredentialRef, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
       depthOverrideReset, studyDetailOpen, inspectorMode, flowOrder, deepDive, spacedReview,
       catalogResources, intakeGoalTitle, intakeSubject,
@@ -3076,6 +3097,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "keep-current-plan") adaptationChoice = "keep_current";
       else if (action === "toggle-reminders") remindersEnabled = !remindersEnabled;
       else if (action === "pause-reminders") remindersPaused = !remindersPaused;
+      else if (action === "set-reminder-timezone" && (data["reminderTimezone"] || data["value"])) {
+        reminderTimezone = (data["reminderTimezone"] ?? data["value"] ?? "America/New_York").trim();
+      }
       else if (action === "snooze-reminder") snoozeNote = "Snooze does not change assessed proficiency. Delivery stays best effort.";
       else if (action === "toggle-key-visibility") keyVisible = !keyVisible;
       else if (action === "set-primary-key" && data["credentialRef"]) {
