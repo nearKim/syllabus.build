@@ -1169,7 +1169,12 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.ok(settingsPanel.includes("<strong>14 people</strong> upvoted your work."));
   assert.ok(settingsPanel.includes('<span class="status-text" data-status="public">Public · Revision 1</span>'));
   assert.ok(settingsPanel.includes("<h3>Comments from learners</h3>"));
-  assert.ok(settingsPanel.includes("@maya_dev on Build and Evaluate RAG Systems in Python"));
+  assert.ok(settingsPanel.includes("<strong>@maya_dev</strong> on Build and Evaluate RAG Systems in Python"));
+  assert.ok(settingsPanel.includes('class="comment-card"'));
+  assert.ok(settingsPanel.includes('class="provider-brand-tile"'));
+  assert.ok(settingsPanel.includes('class="ui-switch"'));
+  assert.ok(settingsPanel.includes('class="btn-secondary" data-action="replace-key"'));
+  assert.ok(settingsPanel.includes('class="btn-danger" data-action="delete-connection"'));
   assert.ok(settingsPanel.includes('<h2 id="settings-ai-title">AI providers (BYOK)</h2>'));
   assert.ok(
     settingsPanel.indexOf("Encrypted server-custody") < settingsPanel.indexOf('id="byok-key"'),

@@ -676,6 +676,14 @@ section[id] {
 }
 
 /* Profile & Settings Header Section */
+.profile-identity-card {
+  display: grid;
+  gap: var(--space-4);
+  padding: 24px 28px;
+  border-radius: var(--radius-panel);
+  background: var(--color-swimlane);
+}
+
 .profile-identity-row {
   display: flex;
   flex-wrap: wrap;
@@ -684,16 +692,23 @@ section[id] {
 }
 
 .user-avatar-xl {
-  width: 72px;
-  height: 72px;
-  font-size: 24px;
+  width: 68px;
+  height: 68px;
+  font-size: 22px;
 }
 
 .profile-identity-meta {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   flex: 1 1 16rem;
   min-inline-size: 0;
+}
+
+.profile-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
 }
 
 .profile-display-name {
@@ -714,7 +729,7 @@ section[id] {
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--color-accent);
 }
 
 .profile-edit-form {
@@ -6075,9 +6090,9 @@ ul.adopt-resources {
   font-size: 13px;
 }
 
-/* Settings: sections separate by whitespace, never by borders or card fills. */
+/* Settings: visual tonal cards and real controls, separated by generous whitespace. */
 #panel-settings {
-  max-inline-size: 55rem;
+  max-inline-size: 62rem;
 }
 
 .settings-stack {
@@ -6087,7 +6102,7 @@ ul.adopt-resources {
 
 .settings-section {
   display: grid;
-  gap: var(--space-3);
+  gap: var(--space-4);
   margin: 0;
   min-inline-size: 0;
 }
@@ -6095,13 +6110,13 @@ ul.adopt-resources {
 .settings-section-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
 .settings-section > h2,
-.settings-section-head > h2 {
+.settings-section-head h2 {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
@@ -6117,9 +6132,9 @@ ul.adopt-resources {
 
 /* T4 description under a section heading. Same contract the gate enforces for .page-description. */
 .section-lede {
-  margin: 0 0 var(--space-2);
+  margin: 4px 0 0;
   max-width: 65ch;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   line-height: 1.55;
   color: var(--color-text-secondary);
@@ -6127,37 +6142,41 @@ ul.adopt-resources {
 
 .row-meta {
   margin: 0;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 400;
   line-height: 1.5;
   color: var(--color-text-secondary);
   font-variant-numeric: tabular-nums;
 }
 
-/* Community */
+/* Community impact banner and shared curriculum cards */
+.community-impact-banner {
+  padding: 20px 24px;
+  border-radius: var(--radius-surface);
+  background: var(--color-success-surface);
+}
+
 .impact-summary {
   margin: 0;
-  max-width: 52ch;
-  font-size: 19px;
+  max-width: 60ch;
+  font-size: 18px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--color-text-secondary);
+  color: var(--color-text-primary);
   font-variant-numeric: tabular-nums;
   text-wrap: pretty;
 }
 
 .impact-summary strong {
-  font-weight: 600;
+  font-weight: 700;
   color: var(--color-success-text);
 }
 
-/* Contribution and provider rows share one flat row shape: text left, quiet actions right. */
 .contribution-list,
-.provider-list,
-.comment-list {
+.provider-list {
   display: grid;
-  gap: var(--space-5);
-  margin: var(--space-2) 0 0;
+  gap: var(--space-3);
+  margin: 0;
   padding: 0;
   list-style: none;
 }
@@ -6168,23 +6187,196 @@ ul.adopt-resources {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2) var(--space-4);
-  padding-inline-start: var(--space-4);
+  gap: var(--space-3) var(--space-4);
+  padding: 20px 24px;
+  border-radius: var(--radius-surface);
+  background: var(--color-swimlane);
 }
 
 .contribution-text,
 .provider-text {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   flex: 1 1 20rem;
   min-inline-size: 0;
 }
 
-.contribution-title,
+.contribution-status-line,
+.provider-title-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-text-secondary);
+}
+
+.status-dot[data-status="public"],
+.status-dot[data-status="active"] {
+  background: var(--color-success-text);
+}
+
+.status-dot[data-status="revoked"],
+.status-dot[data-status="invalid"] {
+  background: var(--color-danger-text);
+}
+
+.contribution-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+}
+
+.contribution-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: 2px;
+}
+
+.contribution-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.contribution-metric strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.contribution-metric .sf-icon {
+  color: var(--color-accent);
+}
+
+/* Learner Comments 2-column visual quote cards */
+.learner-comments {
+  display: grid;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.learner-comments-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.comment-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.comment-card {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: var(--space-3);
+  padding: 20px 22px;
+  border-radius: var(--radius-surface);
+  background: var(--color-swimlane);
+}
+
+.comment-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.comment-upvote-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-success-text);
+}
+
+.comment-body {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-text-primary);
+}
+
+.comment-body p {
+  margin: 0;
+}
+
+.comment-author-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.comment-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+}
+
+/* BYOK Provider Cards */
+.provider-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex: 1 1 20rem;
+  min-inline-size: 0;
+}
+
+.provider-brand-tile {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.provider-brand-tile[data-provider="openai"] {
+  color: var(--color-success-text);
+}
+
+.provider-brand-tile[data-provider="anthropic"] {
+  color: var(--color-warning-text);
+}
+
+.provider-brand-tile[data-provider="google_gemini"] {
+  color: var(--color-accent);
+}
+
 .provider-name {
+  margin: 0;
   font-size: 16px;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.status-text {
+  font-size: 13px;
 }
 
 .status-text[data-status="public"],
@@ -6199,54 +6391,116 @@ ul.adopt-resources {
   font-weight: 600;
 }
 
-.learner-comments,
-.derived-plans {
+.byok-add-card,
+.settings-card {
   display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-4);
+  gap: var(--space-4);
+  padding: 20px 24px;
+  border-radius: var(--radius-surface);
+  background: var(--color-swimlane);
+}
+
+.settings-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: var(--space-4);
+  align-items: start;
+}
+
+.wallet-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.wallet-metric-block {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.wallet-metric-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-privacy-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .row-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
-/* Generalizes .unpublish-btn: a text button that meets the 44px target without a box. */
-.quiet-btn {
+/* Pill Toggle Switch (.ui-switch) */
+.switch-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
   min-height: var(--layout-touch-target-min);
-  padding: 0 var(--space-3);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: transparent;
-  color: var(--color-text-primary);
-  font: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 500;
+  color: var(--color-text-primary);
   cursor: pointer;
 }
 
-.quiet-btn-danger {
-  color: var(--color-danger-text);
+.switch-field-inline {
+  justify-content: flex-end;
 }
 
-@media (hover: hover) and (pointer: fine) {
-  .quiet-btn:hover {
-    background: var(--tint-4);
-  }
-
-  .quiet-btn-danger:hover {
-    background: var(--color-danger-surface);
-  }
+input[type="checkbox"].ui-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--tint-18, rgba(23, 25, 28, 0.22));
+  cursor: pointer;
+  transition: background-color 160ms var(--ease-out);
 }
 
-.quiet-btn:focus-visible,
-.settings-disclosure > summary:focus-visible {
+input[type="checkbox"].ui-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: transform 160ms var(--ease-out);
+}
+
+input[type="checkbox"].ui-switch:checked {
+  background: var(--color-accent);
+}
+
+input[type="checkbox"].ui-switch:checked::after {
+  transform: translateX(20px);
+}
+
+input[type="checkbox"].ui-switch:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
-/* Disclosure: a text summary with a rotating chevron. No border, no fill. */
+/* Disclosure: a text summary with a rotating chevron. */
 .settings-disclosure {
   margin: 0;
 }
@@ -6255,12 +6509,21 @@ ul.adopt-resources {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--layout-touch-target-min);
+  min-height: 36px;
   cursor: pointer;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   list-style: none;
+}
+
+.settings-disclosure > summary:hover {
+  color: var(--color-text-primary);
+}
+
+.settings-disclosure > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .settings-disclosure > summary::-webkit-details-marker {
@@ -6281,13 +6544,8 @@ ul.adopt-resources {
   rotate: 45deg;
 }
 
-/* Disclosed content indents under its summary so it reads as a child. */
 .settings-disclosure > :not(summary) {
-  margin-inline-start: var(--space-5);
-}
-
-.settings-disclosure[open] > summary {
-  margin-bottom: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .key-entry {
@@ -6314,48 +6572,11 @@ ul.adopt-resources {
   font-weight: 500;
 }
 
-/* Learner comments: a hanging quote mark, never a side border. */
-.comment-body {
-  position: relative;
-  margin: 0;
-  padding-inline-start: var(--space-5);
-  font-size: 16px;
-  line-height: 1.55;
-  color: var(--color-text-primary);
-}
-
-.comment-body p {
-  margin: 0;
-}
-
-.comment-body::before {
-  content: "\201C";
-  position: absolute;
-  inset-inline-start: 0;
-  top: -0.1em;
-  font-size: 28px;
-  line-height: 1;
-  color: var(--color-text-secondary);
-}
-
-.comment-body + .row-meta {
-  padding-inline-start: var(--space-5);
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .settings-disclosure > summary::before {
+  .settings-disclosure > summary::before,
+  input[type="checkbox"].ui-switch,
+  input[type="checkbox"].ui-switch::after {
     transition: none;
-  }
-}
-
-@media (max-width: 639.98px) {
-  .contribution-row,
-  .provider-row {
-    padding-inline-start: 0;
-  }
-
-  .row-actions {
-    margin-inline-start: calc(-1 * var(--space-3));
   }
 }
 

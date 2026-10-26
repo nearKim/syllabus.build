@@ -2136,46 +2136,56 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         <div class="section-header">
           <div class="page-heading-group">
             <h1 class="page-title">Profile &amp; Settings</h1>
-            <p class="page-description">Your learner profile, what your shared plans give back, and how the app runs for you.</p>
+            <p class="page-description">Your learner profile, community contributions, AI provider keys, and workspace preferences.</p>
           </div>
         </div>
         <div class="settings-stack">
           <section class="settings-section profile-identity" aria-labelledby="profile-display-name" data-opaque-surface="true">
-            <div class="profile-identity-row">
-              <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
-              <div class="profile-identity-meta">
-                <h2 class="profile-display-name" id="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
-                <p class="profile-handle-line"><span class="profile-handle">${escapeHtml(handleOf(account))}</span> · <span class="account-email">${escapeHtml(account.email)}</span></p>
-                <p class="row-meta">Studying ${plans.length} ${plans.length === 1 ? "curriculum" : "curricula"} · Sharing ${ownedListings.length} with the community</p>
+            <div class="profile-identity-card">
+              <div class="profile-identity-row">
+                <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
+                <div class="profile-identity-meta">
+                  <div class="profile-name-row">
+                    <h2 class="profile-display-name" id="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
+                    <span class="profile-handle">${escapeHtml(handleOf(account))}</span>
+                  </div>
+                  <p class="profile-handle-line"><span class="account-email">${escapeHtml(account.email)}</span> · Studying ${plans.length} ${plans.length === 1 ? "curriculum" : "curricula"} · Sharing ${ownedListings.length} publicly</p>
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
+                </div>
               </div>
-              <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
+              <details class="settings-disclosure profile-edit-disclosure"${inputState.profileNotice ? " open" : ""}>
+                <summary>Edit profile</summary>
+                <form class="profile-edit-form" data-action="update-profile">
+                  <div class="profile-fields-grid">
+                    <label class="field" for="profile-name-input">Display name
+                      <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
+                    </label>
+                    <label class="field" for="profile-email-input">Email address
+                      <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
+                    </label>
+                  </div>
+                  <div class="action-row">
+                    <button type="submit" class="btn-primary">Save profile</button>
+                    ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
+                  </div>
+                </form>
+              </details>
             </div>
-            <details class="settings-disclosure"${inputState.profileNotice ? " open" : ""}>
-              <summary>Edit profile</summary>
-              <form class="profile-edit-form" data-action="update-profile">
-                <div class="profile-fields-grid">
-                  <label class="field" for="profile-name-input">Display name
-                    <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
-                  </label>
-                  <label class="field" for="profile-email-input">Email address
-                    <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
-                  </label>
-                </div>
-                <div class="action-row">
-                  <button type="submit" class="btn-secondary">Save profile</button>
-                  ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
-                </div>
-              </form>
-            </details>
           </section>
 
           <section class="settings-section" id="settings-community" aria-labelledby="settings-community-title" data-opaque-surface="true">
             <div class="settings-section-head">
-              <h2 id="settings-community-title">Your contributions</h2>
-              ${ownedListings.length > 0 ? `<button type="button" class="quiet-btn" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
+              <div>
+                <h2 id="settings-community-title">Your contributions</h2>
+                <p class="section-lede">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
+              </div>
+              ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
             </div>
-            ${ownedListings.length > 0 ? `<p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
-            <p class="section-lede">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
+            ${ownedListings.length > 0 ? `<div class="community-impact-banner">
+              <p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
+            </div>
             <ul class="contribution-list">
               ${ownedListings.map((listing) => {
                 const title = goalTitleOf(listing.curriculum);
@@ -2185,91 +2195,149 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 const hoursCount = studyHoursOfListing(listing);
                 return `<li class="contribution-row" data-publication-id="${escapeHtml(listing.publicationId)}">
                 <div class="contribution-text">
+                  <div class="contribution-status-line">
+                    <span class="status-dot" data-status="public" aria-hidden="true"></span>
+                    <span class="status-text" data-status="public">Public · Revision 1</span>
+                    <span class="row-meta">· CC BY 4.0</span>
+                  </div>
                   <h3 class="contribution-title">${escapeHtml(title)}</h3>
-                  <p class="row-meta"><span class="status-text" data-status="public">Public · Revision 1</span> · ${adoptCount > 0 ? `${adoptCount} ${adoptCount === 1 ? "adoption" : "adoptions"} · ${upvoteCount} ${upvoteCount === 1 ? "upvote" : "upvotes"} · ${hoursCount} ${hoursCount === 1 ? "study hour" : "study hours"}` : "Live in Explore and ready for its first learner"}</p>
+                  <div class="contribution-metrics">
+                    ${adoptCount > 0 ? `<span class="contribution-metric">${sfIcon("course", 15)}<span><strong>${adoptCount}</strong> ${adoptCount === 1 ? "adoption" : "adoptions"}</span></span>
+                    <span class="contribution-metric">${sfIcon("upvote", 15)}<span><strong>${upvoteCount}</strong> ${upvoteCount === 1 ? "upvote" : "upvotes"}</span></span>
+                    <span class="contribution-metric">${sfIcon("clock", 15)}<span><strong>${hoursCount}</strong> ${hoursCount === 1 ? "study hour" : "study hours"}</span></span>` : `<span class="row-meta">Live in Explore and ready for its first learner</span>`}
+                  </div>
                 </div>
                 <div class="row-actions">
-                  ${myPlan ? `<button type="button" class="quiet-btn" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open</button>` : ""}
-                  <button type="button" class="quiet-btn" data-action="navigate-top" data-destination="Explore">Manage in Explore</button>
+                  ${myPlan ? `<button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open plan</button>` : ""}
+                  <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Explore">View in Explore</button>
                 </div>
               </li>`;
               }).join("\n")}
             </ul>
             <div class="learner-comments">
-              <h3>Comments from learners</h3>
+              <div class="learner-comments-head">
+                <h3>Comments from learners</h3>
+                <span class="row-meta">${derivedListings.length > 0 ? `${derivedListings.length} community remix${derivedListings.length === 1 ? "" : "es"}` : "Community notes on your shared syllabus"}</span>
+              </div>
               <ul class="comment-list">
-                <li>
+                <li class="comment-card">
+                  <div class="comment-card-top">
+                    <span class="comment-upvote-tag">${sfIcon("upvote", 15)}<span>Upvoted &amp; adopted</span></span>
+                    <time class="row-meta" datetime="2026-10-24">2 days ago</time>
+                  </div>
                   <blockquote class="comment-body"><p>The BPE and scaled dot-product attention progression finally made variance scaling click before writing the retrieval pipeline.</p></blockquote>
-                  <p class="row-meta">@maya_dev on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))} · <time datetime="2026-10-24">2 days ago</time></p>
+                  <div class="comment-author-row">
+                    <span class="user-avatar-circle comment-avatar" aria-hidden="true">MD</span>
+                    <p class="row-meta"><strong>@maya_dev</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))}</p>
+                  </div>
                 </li>
-                <li>
+                <li class="comment-card">
+                  <div class="comment-card-top">
+                    <span class="comment-upvote-tag">${sfIcon("upvote", 15)}<span>Upvoted &amp; adopted</span></span>
+                    <time class="row-meta" datetime="2026-10-21">5 days ago</time>
+                  </div>
                   <blockquote class="comment-body"><p>Cleanest self-study syllabus I have found for RAG evaluation metrics. It saved me weeks of piecing together scattered blog posts.</p></blockquote>
-                  <p class="row-meta">@kenji_ml on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))} · <time datetime="2026-10-21">5 days ago</time></p>
+                  <div class="comment-author-row">
+                    <span class="user-avatar-circle comment-avatar" aria-hidden="true">KM</span>
+                    <p class="row-meta"><strong>@kenji_ml</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))}</p>
+                  </div>
                 </li>
               </ul>
-            </div>
-            <div class="derived-plans">
-              <h3>Plans built on yours</h3>
-              ${derivedListings.length > 0
-                ? `<p class="section-lede"><strong>${derivedListings.length} ${derivedListings.length === 1 ? "learner" : "learners"}</strong> published ${derivedListings.length === 1 ? "a plan" : "plans"} based on yours: ${derivedListings.map((d) => `${escapeHtml(goalTitleOf(d.curriculum))} by ${escapeHtml(d.handle)}`).join(", ")}.</p>`
-                : `<p class="section-lede">When someone publishes a plan based on yours, it appears here with credit to you.</p>`}
-            </div>` : `<p class="section-lede">Share a plan and any self-learner can adopt it for free. Your progress, notes, keys, billing, and session dates stay private.</p>
-            <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button></div>`}
+            </div>` : `<div class="settings-card">
+              <p class="section-lede">Share a plan and any self-learner can adopt it for free. Your progress, notes, keys, billing, and session dates stay private.</p>
+              <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button></div>
+            </div>`}
           </section>
 
           <section class="settings-section" id="settings-ai" aria-labelledby="settings-ai-title" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
-            <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-            <p class="section-lede">Your own provider keys run AI features, and each provider bills you directly. Hosted fallback is off.</p>
-            <ul class="provider-list">
-              ${byokState.credentials.map((cred) => `<li class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
-                <div class="provider-text">
-                  <h3 class="provider-name">${escapeHtml(cred.label ?? cred.provider_id)}</h3>
-                  <p class="row-meta"><code>${escapeHtml(cred.masked_hint)}</code> · <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span> · Updated <time datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time> · <code>${escapeHtml(cred.etag ?? "")}</code></p>
-                </div>
-                <div class="row-actions">
-                  <button type="button" class="quiet-btn" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
-                  <button type="button" class="quiet-btn quiet-btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
-                </div>
-              </li>`).join("\n")}
-            </ul>
-            ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
-            <details class="settings-disclosure" id="byok-add"${keyVisible || keyActionNote ? " open" : ""}>
-              <summary>Add or replace a key</summary>
-              <p class="disclosure-text">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
-              <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)}</p>
-              <div class="key-entry">
-                <label class="field" for="byok-key">Provider key
-                  <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
-                </label>
-                <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide" : "Show"}</button>
-              </div>
-              <p class="row-meta">Saving a key does not run a chargeable test. The service stores it encrypted and does not show it again.</p>
-            </details>
-            <details class="settings-disclosure">
-              <summary>What Replace and Delete do</summary>
-              <p class="disclosure-text">Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy. It does not revoke the key at the issuer.</p>
-            </details>
-          </section>
-
-          <section class="settings-section" id="settings-appearance" data-opaque-surface="true">
-            <h2>Appearance</h2>
-            <div class="setting-row">
-              <span class="setting-label" id="theme-label">Theme</span>
-              <div class="theme-selector-group segmented" role="group" aria-labelledby="theme-label">
-                ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+            <div class="settings-section-head">
+              <div>
+                <h2 id="settings-ai-title">AI providers (BYOK)</h2>
+                <p class="section-lede">Connect your own API keys for curriculum synthesis and diagnostics. Keys are encrypted and billed directly by each provider.</p>
               </div>
             </div>
-            <label class="switch-field"><input type="checkbox" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}> Solid surfaces</label>
-            <label class="switch-field"><input type="checkbox" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}> Reduce motion</label>
-            <p class="row-meta">System transparency, contrast, and motion preferences take precedence.</p>
+            <ul class="provider-list">
+              ${byokState.credentials.map((cred) => {
+                const badgeCode = cred.provider_id === "openai" ? "OA" : cred.provider_id === "anthropic" ? "AN" : "GG";
+                const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
+                return `<li class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
+                <div class="provider-identity">
+                  <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${badgeCode}</span>
+                  <div class="provider-text">
+                    <div class="provider-title-row">
+                      <h3 class="provider-name">${escapeHtml(cred.label ?? providerTitle)}</h3>
+                      <span class="status-dot" data-status="${escapeHtml(cred.status)}" aria-hidden="true"></span>
+                      <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span>
+                    </div>
+                    <p class="row-meta"><code>${escapeHtml(cred.masked_hint)}</code> · ${escapeHtml(providerTitle)} · Updated <time datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time><span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span></p>
+                  </div>
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
+                  <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
+                </div>
+              </li>`;
+              }).join("\n")}
+            </ul>
+            ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
+            <div class="byok-add-card">
+              <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
+              <div class="key-entry">
+                <label class="field" for="byok-key">Add or replace provider API key
+                  <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" placeholder="Paste sk-... or provider secret key" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
+                </label>
+                <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide key" : "Show key"}</button>
+              </div>
+              <details class="settings-disclosure" id="byok-add">
+                <summary>Custody, rotation &amp; billing details</summary>
+                <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} Saving a key does not run a chargeable test. Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy and does not revoke the key at the issuer.</p>
+              </details>
+            </div>
           </section>
 
-          <section class="settings-section" id="settings-schedule" data-opaque-surface="true">
-            <h2>Reminders &amp; schedule</h2>
-            <label class="switch-field"><input type="checkbox" data-action="toggle-reminders"${remindersOn ? " checked" : ""}> Enable reminders</label>
-            <p class="section-lede">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>). Quiet hours ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)}. Reminders arrive ${reminderState.lead_time_minutes} min early and are ${remindersPaused ? "paused" : "on"}.</p>
+          <div class="settings-cards-grid">
+            <section class="settings-section settings-card" id="settings-appearance" data-opaque-surface="true">
+              <h2>Appearance</h2>
+              <div class="setting-row">
+                <span class="setting-label" id="theme-label">Color theme</span>
+                <div class="theme-selector-group segmented" role="group" aria-labelledby="theme-label">
+                  ${(["light", "dark", "system"] as const).map((mode) => `<button type="button" class="seg-btn" data-action="set-theme" data-theme-value="${mode}" aria-pressed="${themePreference === mode}">${mode === "light" ? "Light" : mode === "dark" ? "Dark" : "System"}</button>`).join("\n")}
+                </div>
+              </div>
+              <label class="switch-field"><span>Solid opaque surfaces</span><input type="checkbox" class="ui-switch" data-action="toggle-solid-surfaces"${solidSurfaces ? " checked" : ""}></label>
+              <label class="switch-field"><span>Reduce spatial motion</span><input type="checkbox" class="ui-switch" data-action="toggle-reduce-motion"${reduceMotion ? " checked" : ""}></label>
+            </section>
+
+            <section class="settings-section settings-card" id="settings-usage" data-opaque-surface="true">
+              <h2>Usage &amp; billing</h2>
+              <div class="wallet-metrics-row">
+                <div class="wallet-metric-block">
+                  <span class="row-meta">Available credit</span>
+                  <strong class="wallet-metric-value">${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>
+                </div>
+                <div class="wallet-metric-block">
+                  <span class="row-meta">Reserved for active jobs</span>
+                  <strong class="wallet-metric-value">${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong>
+                </div>
+              </div>
+              <details class="settings-disclosure">
+                <summary>Cost breakdown by category</summary>
+                ${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
+                <div class="four-bucket-grid">${fourBucketsHtml}</div>
+              </details>
+            </section>
+          </div>
+
+          <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
+            <div class="settings-section-head">
+              <div>
+                <h2>Reminders &amp; schedule</h2>
+                <p class="row-meta">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>) · Quiet hours ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)} · ${reminderState.lead_time_minutes} min lead time</p>
+              </div>
+              <label class="switch-field switch-field-inline"><span>Enable reminders</span><input type="checkbox" class="ui-switch" data-action="toggle-reminders"${remindersOn ? " checked" : ""}></label>
+            </div>
             <div class="key-entry">
-              <label class="field" for="snooze-minutes">Snooze
+              <label class="field" for="snooze-minutes">Snooze active reminder
                 <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
               </label>
               <div class="action-row">
@@ -2281,36 +2349,25 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <details class="settings-disclosure">
               <summary>Upcoming sessions (${todayState.todayCards.length})</summary>
               <ul class="schedule-list">${renderScheduleRowsHtml("settings")}</ul>
-            </details>
-            <details class="settings-disclosure">
-              <summary>How reminders are delivered</summary>
-              <p class="disclosure-text">Browser notification permission is requested only after Enable reminders. A denied or unsupported permission leaves Today and the schedule usable. Initial notification copy stays generic. ${escapeHtml(reminderState.bestEffortDeliveryDisclosure)} Snoozing or missing a session does not change assessed proficiency.</p>
+              <p class="disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)}</p>
             </details>
           </section>
 
-          <section class="settings-section" id="settings-usage" data-opaque-surface="true">
-            <h2>Usage &amp; billing</h2>
-            <p class="section-lede">Hosted balance <strong>${formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency)}</strong>, with <strong>${formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency)}</strong> held for running jobs.</p>
-            ${costBreakdown.byokEstimateDisclaimer ? `<p class="disclosure-text">${escapeHtml(costBreakdown.byokEstimateDisclaimer)}</p>` : ""}
-            <details class="settings-disclosure">
-              <summary>Cost breakdown by category</summary>
-              <div class="four-bucket-grid">${fourBucketsHtml}</div>
-            </details>
-          </section>
-
-          <section class="settings-section" id="settings-privacy" data-opaque-surface="true">
-            <h2>Privacy &amp; account</h2>
-            <p class="section-lede">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
-            <p class="warning-copy">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
-            <p class="warning-copy">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
-            <details class="settings-disclosure">
-              <summary>Record retention</summary>
-              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)}</p>
-            </details>
-            <div class="action-row">
+          <section class="settings-section settings-card" id="settings-privacy" data-opaque-surface="true">
+            <div class="settings-privacy-row">
+              <div>
+                <h2>Privacy &amp; account</h2>
+                <p class="row-meta">Download a portable archive of your curricula and study history, or permanently delete your account.</p>
+              </div>
               <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
             </div>
-            <p class="row-meta settings-terms">Source-available for personal self-hosting. Organizational deployment is not permitted.</p>
+            <details class="settings-disclosure">
+              <summary>Export scope, retention &amp; license terms</summary>
+              <p class="disclosure-text">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Source-available for personal self-hosting; organizational deployment is not permitted.</p>
+            </details>
           </section>
         </div>
       </section>`}
