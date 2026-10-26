@@ -698,42 +698,25 @@ section[id] {
   color: var(--color-danger-text);
 }
 
-/* Profile & Settings Centered Form Section */
-.profile-centered-card {
+/* Profile & Settings Left-Aligned Master-Detail Layout */
+.profile-identity {
   display: grid;
-  gap: var(--space-5);
+  gap: var(--space-4);
   width: 100%;
-  max-inline-size: 29rem;
-  margin-inline: auto;
-  padding: var(--space-2) 0 var(--space-3);
 }
 
-.profile-centered-head {
+.profile-layout-grid {
   display: grid;
-  gap: 6px;
-  text-align: center;
-  justify-items: center;
-}
-
-.profile-display-name,
-h1.profile-display-name {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--color-text-primary);
-}
-
-.profile-centered-head .page-description {
-  margin: 0;
-  text-align: center;
+  grid-template-columns: 164px minmax(0, 34rem);
+  gap: var(--space-6);
+  align-items: start;
 }
 
 .profile-photo-stack {
   display: grid;
-  justify-items: center;
-  gap: 12px;
-  text-align: center;
+  justify-items: start;
+  text-align: left;
+  gap: 10px;
 }
 
 .user-avatar-xl {
@@ -743,15 +726,14 @@ h1.profile-display-name {
 }
 
 .profile-photo-btn {
-  min-height: 38px;
-  padding: 6px 16px;
+  padding: 6px 14px;
   font-size: 13.5px;
   font-weight: 600;
 }
 
 .profile-photo-caption {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 12px;
   line-height: 1.45;
   color: var(--color-text-secondary);
 }
@@ -780,17 +762,49 @@ h1.profile-display-name {
   align-items: end;
 }
 
-.profile-save-btn {
-  width: 100%;
+.profile-form-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   margin-top: var(--space-1);
+}
+
+.profile-save-btn {
+  width: auto;
+  min-inline-size: 148px;
 }
 
 .profile-save-status {
   margin: 0;
-  text-align: center;
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--color-success-text);
+}
+
+@media (max-width: 720px) {
+  .profile-layout-grid {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+
+  .profile-photo-stack {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .profile-photo-caption {
+    flex-basis: 100%;
+  }
+
+  .profile-fields-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-email-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Controls. :where() keeps the base at zero specificity so every variant class wins. */

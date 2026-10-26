@@ -2136,12 +2136,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
         <div class="settings-stack">
-          <section class="settings-section profile-identity" aria-labelledby="profile-display-name" data-opaque-surface="true">
-            <div class="profile-centered-card">
-              <div class="profile-centered-head">
-                <h1 class="page-title profile-display-name" id="profile-display-name">Profile Settings</h1>
-                <p class="page-description">Update your account details and preferences</p>
-              </div>
+          <section class="settings-section profile-identity" aria-labelledby="settings-profile-title" data-opaque-surface="true">
+            <h1 class="st-sr" id="settings-profile-title">Profile</h1>
+            <div class="profile-layout-grid">
               <div class="profile-photo-stack">
                 <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
                 <button type="button" class="btn-secondary profile-photo-btn">Choose photo</button>
@@ -2162,8 +2159,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   </label>
                   <button type="submit" class="btn-secondary">Update email</button>
                 </div>
-                <button type="submit" class="btn-primary profile-save-btn">Save changes</button>
-                ${inputState.profileNotice ? `<p class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</p>` : ""}
+                <div class="profile-form-actions">
+                  <button type="submit" class="btn-primary profile-save-btn">Save changes</button>
+                  ${inputState.profileNotice ? `<p class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</p>` : ""}
+                </div>
               </form>
             </div>
           </section>
