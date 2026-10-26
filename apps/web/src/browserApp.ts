@@ -2323,26 +2323,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
-                <h2>Reminders &amp; schedule</h2>
-                <p class="row-meta">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>) · Quiet hours ${escapeHtml(reminderState.quiet_hours.start_local_time)}–${escapeHtml(reminderState.quiet_hours.end_local_time)} · ${reminderState.lead_time_minutes} min lead time</p>
+                <h2>Reminders</h2>
+                <p class="row-meta">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>)</p>
               </div>
               <label class="switch-field switch-field-inline"><span>Enable reminders</span><input type="checkbox" class="ui-switch" data-action="toggle-reminders"${remindersOn ? " checked" : ""}></label>
             </div>
-            <div class="key-entry">
-              <label class="field" for="snooze-minutes">Snooze active reminder
-                <select id="snooze-minutes" name="snooze"><option>15 minutes</option><option>30 minutes</option><option>60 minutes</option></select>
+            <div class="reminder-gcal-bar">
+              <label class="field" for="reminder-weekday-time">Weekdays (Mon–Fri)
+                <input id="reminder-weekday-time" type="time" name="weekday-time" value="19:00">
               </label>
-              <div class="action-row">
-                <button type="button" class="btn-secondary" data-action="snooze-reminder">Snooze</button>
-                <button type="button" class="btn-secondary" data-action="pause-reminders">${remindersPaused ? "Resume reminders" : "Pause"}</button>
-              </div>
+              <label class="field" for="reminder-weekend-time">Weekends (Sat–Sun)
+                <input id="reminder-weekend-time" type="time" name="weekend-time" value="10:00">
+              </label>
+              <label class="field" for="reminder-lead-time">Notify me
+                <select id="reminder-lead-time" name="lead-time">
+                  <option value="0">At start time</option>
+                  <option value="10">10 minutes before</option>
+                  <option value="15" selected>15 minutes before</option>
+                  <option value="30">30 minutes before</option>
+                  <option value="60">1 hour before</option>
+                </select>
+              </label>
             </div>
-            ${snoozeNote ? `<p class="section-lede" role="status">${escapeHtml(snoozeNote)}</p>` : ""}
-            <details class="settings-disclosure">
-              <summary>Upcoming sessions (${todayState.todayCards.length})</summary>
-              <ul class="schedule-list">${renderScheduleRowsHtml("settings")}</ul>
-              <p class="disclosure-text">${escapeHtml(reminderState.bestEffortDeliveryDisclosure)}</p>
-            </details>
           </section>
 
           <section class="settings-section settings-card" id="settings-privacy" data-opaque-surface="true">
