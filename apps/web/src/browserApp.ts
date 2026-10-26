@@ -2133,45 +2133,36 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       }))}
 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
-        <div class="section-header">
-          <div class="page-heading-group">
-            <h1 class="page-title">Profile &amp; Settings</h1>
-            <p class="page-description">Your learner profile, community contributions, AI provider keys, and workspace preferences.</p>
-          </div>
-        </div>
         <div class="settings-stack">
           <section class="settings-section profile-identity" aria-labelledby="profile-display-name" data-opaque-surface="true">
-            <div class="profile-identity-card">
-              <div class="profile-identity-row">
-                <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
-                <div class="profile-identity-meta">
-                  <div class="profile-name-row">
-                    <h2 class="profile-display-name" id="profile-display-name">${escapeHtml(displayNameOf(account))}</h2>
-                    <span class="profile-handle">${escapeHtml(handleOf(account))}</span>
-                  </div>
-                  <p class="profile-handle-line"><span class="account-email">${escapeHtml(account.email)}</span> · Studying ${plans.length} ${plans.length === 1 ? "curriculum" : "curricula"} · Sharing ${ownedListings.length} publicly</p>
-                </div>
-                <div class="row-actions">
-                  <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
-                </div>
+            <div class="profile-centered-card">
+              <div class="profile-centered-head">
+                <h1 class="page-title profile-display-name" id="profile-display-name">Profile Settings</h1>
+                <p class="page-description">Update your account details and preferences</p>
               </div>
-              <details class="settings-disclosure profile-edit-disclosure"${inputState.profileNotice ? " open" : ""}>
-                <summary>Edit profile</summary>
-                <form class="profile-edit-form" data-action="update-profile">
-                  <div class="profile-fields-grid">
-                    <label class="field" for="profile-name-input">Display name
-                      <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
-                    </label>
-                    <label class="field" for="profile-email-input">Email address
-                      <input id="profile-email-input" type="email" name="email" autocomplete="username" spellcheck="false" value="${escapeHtml(account.email)}" required>
-                    </label>
-                  </div>
-                  <div class="action-row">
-                    <button type="submit" class="btn-primary">Save profile</button>
-                    ${inputState.profileNotice ? `<span class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</span>` : ""}
-                  </div>
-                </form>
-              </details>
+              <div class="profile-photo-stack">
+                <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
+                <button type="button" class="btn-secondary profile-photo-btn">Choose photo</button>
+                <p class="profile-photo-caption">Supported formats: PNG, JPG, WEBP<br>Maximum file size: 5MB</p>
+              </div>
+              <form class="profile-edit-form" data-action="update-profile">
+                <div class="profile-fields-grid">
+                  <label class="field" for="profile-name-input">Display name
+                    <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
+                  </label>
+                  <label class="field" for="profile-handle-input">Username
+                    <input id="profile-handle-input" type="text" name="username" autocomplete="username" spellcheck="false" value="${escapeHtml(handleOf(account))}">
+                  </label>
+                </div>
+                <div class="profile-email-row">
+                  <label class="field" for="profile-email-input">Email address
+                    <input id="profile-email-input" type="email" name="email" autocomplete="email" spellcheck="false" value="${escapeHtml(account.email)}" required>
+                  </label>
+                  <button type="submit" class="btn-secondary">Update email</button>
+                </div>
+                <button type="submit" class="btn-primary profile-save-btn">Save changes</button>
+                ${inputState.profileNotice ? `<p class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</p>` : ""}
+              </form>
             </div>
           </section>
 

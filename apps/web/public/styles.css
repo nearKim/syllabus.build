@@ -698,43 +698,25 @@ section[id] {
   color: var(--color-danger-text);
 }
 
-/* Profile & Settings Header Section */
-.profile-identity-card {
+/* Profile & Settings Centered Form Section */
+.profile-centered-card {
   display: grid;
-  gap: var(--space-3);
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
+  gap: var(--space-5);
+  width: 100%;
+  max-inline-size: 29rem;
+  margin-inline: auto;
+  padding: var(--space-2) 0 var(--space-3);
 }
 
-.profile-identity-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4) var(--space-5);
-}
-
-.user-avatar-xl {
-  width: 68px;
-  height: 68px;
-  font-size: 22px;
-}
-
-.profile-identity-meta {
+.profile-centered-head {
   display: grid;
   gap: 6px;
-  flex: 1 1 16rem;
-  min-inline-size: 0;
+  text-align: center;
+  justify-items: center;
 }
 
-.profile-name-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2);
-}
-
-.profile-display-name {
+.profile-display-name,
+h1.profile-display-name {
   margin: 0;
   font-size: 24px;
   font-weight: 700;
@@ -742,36 +724,70 @@ section[id] {
   color: var(--color-text-primary);
 }
 
-.profile-handle-line {
+.profile-centered-head .page-description {
   margin: 0;
-  font-size: 14px;
-  color: var(--color-text-secondary);
+  text-align: center;
 }
 
-.profile-handle {
-  font-family: var(--font-mono);
-  font-size: 13px;
+.profile-photo-stack {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.user-avatar-xl {
+  width: 84px;
+  height: 84px;
+  font-size: 26px;
+}
+
+.profile-photo-btn {
+  min-height: 38px;
+  padding: 6px 16px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--color-accent);
+}
+
+.profile-photo-caption {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
 }
 
 .profile-edit-form {
   display: grid;
   gap: var(--space-4);
-  max-inline-size: 42rem;
+  width: 100%;
 }
 
 .profile-fields-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
-  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
 }
 
-.profile-fields-grid .field {
+.profile-fields-grid .field,
+.profile-email-row .field {
   margin: 0;
 }
 
+.profile-email-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.profile-save-btn {
+  width: 100%;
+  margin-top: var(--space-1);
+}
+
 .profile-save-status {
+  margin: 0;
+  text-align: center;
   font-size: 14px;
   font-weight: 600;
   color: var(--color-success-text);
