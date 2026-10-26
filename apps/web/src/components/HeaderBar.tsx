@@ -158,18 +158,29 @@ export function SessionExpiredBanner({ authStatus }: { readonly authStatus: Auth
 
 const SIDEBAR_LEARN_DESTINATIONS: readonly LearnSubDestination[] = ["Today", "Progress", "Resources"];
 
+export interface SidebarCurriculumItem {
+  readonly curriculumId: string;
+  readonly title: string;
+  readonly subject: string;
+  readonly progressLabel: string;
+  readonly isSelected: boolean;
+  readonly isDraft?: boolean | undefined;
+}
+
 export function AppSidebar({
   signedOut,
   activeTopLevel,
   activeLearnSub,
   goalTitle,
   totalEffort,
+  curricula = [],
 }: {
   readonly signedOut: boolean;
   readonly activeTopLevel: TopLevelDestination;
   readonly activeLearnSub: LearnSubDestination;
   readonly goalTitle: string;
   readonly totalEffort: { readonly min: number; readonly point: number; readonly max: number };
+  readonly curricula?: readonly SidebarCurriculumItem[] | undefined;
 }): VNode {
   const effectiveSub: LearnSubDestination = activeLearnSub === "Plan" ? "Today" : activeLearnSub;
   return (
@@ -187,12 +198,36 @@ export function AppSidebar({
               ))}
             </nav>
           </div>
-          <div class="sidebar-section sidebar-goal">
-            <p class="meta-text">{goalTitle}</p>
-            <p class="meta-text">
-              About {totalEffort.point} min planned ({totalEffort.min}–{totalEffort.max})
-            </p>
-          </div>
+          {curricula.length > 0 ? (
+            <div class="sidebar-section sidebar-curricula">
+              <p class="sidebar-section-label">Your curricula</p>
+              <nav class="sidebar-curricula-list" aria-label="Your curricula">
+                {curricula.map((item) => (
+                  <button
+                    key={item.curriculumId}
+                    type="button"
+                    class={`sidebar-curriculum-btn${item.isSelected ? " is-active" : ""}`}
+                    data-action="select-curriculum"
+                    data-curriculum-id={item.curriculumId}
+                    aria-current={item.isSelected ? "true" : undefined}
+                  >
+                    <span class="sidebar-curriculum-title">{item.title}</span>
+                    <span class="sidebar-curriculum-meta">
+                      {item.subject} · {item.progressLabel}
+                      {item.isDraft ? " · Draft" : ""}
+                    </span>
+                  </button>
+                ))}
+              </nav>
+            </div>
+          ) : (
+            <div class="sidebar-section sidebar-goal">
+              <p class="meta-text">{goalTitle}</p>
+              <p class="meta-text">
+                About {totalEffort.point} min planned ({totalEffort.min}–{totalEffort.max})
+              </p>
+            </div>
+          )}
         </>
       )}
     </aside>

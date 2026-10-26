@@ -353,7 +353,7 @@ test("Today opens with the active curricula queue, then the focused curriculum h
   // Today opens directly with the page header and focused curriculum Study flow workspace above the fold, with the active curricula cards placed at the bottom.
   assert.match(
     today,
-    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula">/,
+    /^id="panel-learn-today"[^>]*>\s*<div class="section-header today-page-header">[\s\S]*?<h1 class="page-title">Today<\/h1>[\s\S]*?data-dialog-id="dialog-new-curriculum">New Curriculum<\/button>[\s\S]*?<\/div>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula"[^>]*>/,
   );
   const card = today.match(/<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
   assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
@@ -1051,12 +1051,12 @@ test("Dialogs pin an icon close button and a right-aligned footer, and a re-rend
   assert.deepEqual([next.open, next.scrollTop], [true, 0]);
 });
 
-test("Share to Marketplace previews the public projection, then publishes it to Explore and My Publications", () => {
+test("Share with Community previews the public projection, then publishes it to Explore and My Publications", () => {
   const { app, root, click } = mountWithClicks();
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-publication-preview"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-publication-preview"')));
   // The default plan is already the learner's listing, so it cannot be published twice.
   app.openDialog("dialog-publication-preview");
-  assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1.") && !dialog().includes("confirm-publish-curriculum"));
+  assert.ok(dialog().includes("This plan is already shared with the Community as revision 1.") && !dialog().includes("confirm-publish-curriculum"));
 
   click({ action: "select-curriculum", curriculumId: "curriculum-tolstoy-lit-003" });
   app.openDialog("dialog-publication-preview");
@@ -1084,7 +1084,7 @@ test("Share to Marketplace previews the public projection, then publishes it to 
   assert.ok(fresh.includes('</strong><span class="publication-revision">Public · Revision 1</span>'));
   assert.match(fresh, /<p class="publication-impact"><span class="impact-pill"><svg[\s\S]*?<\/svg><span>Live in Explore and ready for its first learner<\/span><\/span><\/p>/);
   app.openDialog("dialog-publication-preview");
-  assert.ok(dialog().includes("This plan is already in the Marketplace as revision 1."));
+  assert.ok(dialog().includes("This plan is already shared with the Community as revision 1."));
 });
 
 test("My Publications thanks the author, totals what their shared plans gave, and invites a first share", () => {
@@ -1452,7 +1452,7 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
   assert.ok(plan.includes('class="plan-architecture-outline"'));
   assert.ok(plan.includes('interestfor="plan-relationship-legend" popovertarget="plan-relationship-legend"'));
   assert.ok(plan.includes('<figure id="plan-relationship-legend" popover="hint" class="relationship-legend" data-opaque-surface="true">'));
-  assert.ok(plan.includes('data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>'));
+  assert.ok(plan.includes('data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>'));
   assert.ok(plan.includes('data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>'));
   for (const jargon of ["This synthetic plan", "If-Match concurrency validation", "Backward Design", "Expertise Reversal", "Declared effort bounds", "Preview rebalanced schedule"]) {
     assert.equal(plan.includes(jargon), false, `Plan should not expose internal/academic jargon: ${jargon}`);

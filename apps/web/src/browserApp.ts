@@ -1800,6 +1800,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       </li>`;
     }).join("\n");
 
+  const sidebarCurricula = planToday.map(({ plan, today }) => {
+    const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
+    const session = today.nextSession?.activityBreakdown ?? [];
+    const open = session.filter((act) => !isClosed(act.executionStatus));
+    const done = session.length - open.length;
+    return {
+      curriculumId: plan.curriculumId,
+      title: goalTitleOf(plan.curriculum),
+      subject: planTags.subject,
+      progressLabel: `${done}/${session.length} done`,
+      isSelected: plan.curriculumId === selectedPlan.curriculumId,
+      isDraft: Boolean(plan.draft),
+    };
+  });
+
   // The ready state needs no banner. Any other state still shows above the Next-up bar.
   const recoveryBanner = todayState.asyncRecoveryBanner.state === "ready" ? "" : `<p class="status-banner" role="${todayState.asyncRecoveryBanner.role}"><strong>${escapeHtml(todayState.asyncRecoveryBanner.title)}:</strong> ${escapeHtml(todayState.asyncRecoveryBanner.message)} ${escapeHtml(todayState.asyncRecoveryBanner.actionableNextStep)}</p>`;
 
@@ -1824,6 +1839,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       activeLearnSub,
       goalTitle: basePlanModel.goal.title,
       totalEffort,
+      curricula: sidebarCurricula,
     }))}
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
@@ -1832,7 +1848,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <h1 class="page-title">Today</h1>
             <div class="plan-toolbar">
               ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
-              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>
               <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-new-curriculum">New Curriculum</button>
             </div>
           </div>
@@ -1865,7 +1881,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </header>
             ${todayBoardHtml}
           </div>
-          <section class="today-bottom-grid" aria-label="Reviews and completed work" data-opaque-surface="true">
+          <section class="today-bottom-grid" aria-label="Reviews and completed work" data-opaque-surface="true" hidden>
             <section class="review-queue" data-review-separation-valid="${todayState.reviewSeparationValid}" aria-labelledby="review-queue-title">
               <h2 id="review-queue-title">Review queue <span class="count-badge">${reviewRows.length}</span></h2>
               ${listOrEmpty(reviewRows, "today", "No reviews are due.")}
@@ -1875,7 +1891,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               ${listOrEmpty(completedRows, "check", "No self-reported completions yet.")}
             </section>
           </section>
-          <section class="today-curricula-grid" aria-label="Active curricula">
+          <section class="today-curricula-grid" aria-label="Active curricula" hidden>
           ${queueCardsHtml}
           </section>
         </section>
@@ -1896,7 +1912,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(curriculum))}</h1>
               <div class="plan-toolbar">
                 ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : `<button type="button" class="btn-secondary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" hidden>Activate plan</button>`}
-                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share to Marketplace</button>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>
                 <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
               </div>
             </div>
@@ -2690,7 +2706,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     openDialog(dialogId: string) {
       if (dialogId !== "dialog-auth" && !signedIn()) {
-        const label = dialogId === "dialog-publication-preview" ? "Share to Marketplace" : undefined;
+        const label = dialogId === "dialog-publication-preview" ? "Share with Community" : undefined;
         return requireSignIn(placeOf(topLevel, learnSubDestination, dialogId, null, label));
       }
       openDialogId = dialogId;

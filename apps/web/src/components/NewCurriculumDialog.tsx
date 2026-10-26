@@ -1586,7 +1586,7 @@ export function NewCurriculumDialog({
                         <div class="intake-existing-plan-inner">
                           <strong class="intake-plan-title">{plan.title}</strong>
                           <p class="meta-text">
-                            {plan.kind === "my_plan" ? "Your plan" : "Marketplace"} · {plan.subject} ·{" "}
+                            {plan.kind === "my_plan" ? "Your plan" : "Community"} · {plan.subject} ·{" "}
                             {plan.matchedTopics.length}/{plan.totalRequestedTopics} topics matched
                           </p>
                         </div>

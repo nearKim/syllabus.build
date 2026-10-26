@@ -598,13 +598,13 @@ export function ExploreMarketplace({
             data-action="open-dialog"
             data-dialog-id="dialog-publication-preview"
           >
-            Share to Marketplace
+            Share with Community
           </button>
         </div>
       </div>
       <form class="marketplace-search" role="search" data-action="set-marketplace-query">
         <label class="st-sr" for="marketplace-search">
-          Search the Marketplace
+          Search Community Curricula
         </label>
         <input
           id="marketplace-search"
@@ -1246,7 +1246,7 @@ export function PublicationPreviewDialog({
     >
       <form method="dialog" class="dialog-surface">
         <header class="dialog-header">
-          <h2 id="dialog-publication-preview-title">Share to Marketplace</h2>
+          <h2 id="dialog-publication-preview-title">Share with Community</h2>
           <button type="submit" class="dialog-close-btn" data-action="close-dialog" aria-label="Close">
             <SfIcon name="close" />
           </button>
@@ -1285,12 +1285,12 @@ export function PublicationPreviewDialog({
         ) : null}
         {publishedFromHere ? (
           <p class="prose" role="status">
-            This plan is already in the Marketplace as revision 1.
+            This plan is already shared with the Community as revision 1.
           </p>
         ) : (
           <footer class="dialog-footer">
             <button type="button" class="btn-primary" data-action="confirm-publish-curriculum">
-              Publish to Marketplace
+              Publish to Community
               <span aria-hidden="true">→</span>
             </button>
           </footer>
