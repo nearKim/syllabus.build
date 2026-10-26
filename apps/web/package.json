@@ -12,6 +12,7 @@
     "@curriculum/api-client": "workspace:*",
     "@curriculum/ui": "workspace:*",
     "@preact/signals": "^2.11.3",
+    "cropperjs": "^1.7.0",
     "esbuild": "^0.28.2",
     "flatpickr": "^4.6.13",
     "preact": "^11.0.1",

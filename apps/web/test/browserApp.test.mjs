@@ -1156,6 +1156,13 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
   assert.equal(settingsPanel.includes('id="settings-appearance"'), false);
   assert.equal(settingsPanel.includes('id="settings-usage"'), false);
+  assert.equal(settingsPanel.includes("Profile Settings"), false);
+  assert.ok(settingsPanel.includes('class="profile-avatar-trigger" data-action="open-dialog" data-dialog-id="dialog-avatar-cropper"'));
+  assert.ok(settingsPanel.includes('class="profile-avatar-edit-badge"'));
+  assert.ok(root.innerHTML.includes('id="dialog-avatar-cropper"'));
+  assert.ok(root.innerHTML.includes("Supported formats: PNG, JPG, WEBP<br>Maximum file size: 5MB"));
+  click({ action: "save-avatar-crop", avatarUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" });
+  assert.ok(root.innerHTML.includes('class="user-avatar-img"'));
   assert.ok(settingsPanel.includes('<h2 id="settings-community-title">Your contributions</h2>'));
   assert.ok(settingsPanel.includes("Your shared plan reached <strong>142 learners</strong>"));
   assert.ok(settingsPanel.includes("<strong>14 people</strong> upvoted your work."));
@@ -1299,6 +1306,10 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(fpCssRes.status, 200);
     const fpJsRes = await fetch(`${baseUrl}/vendor/flatpickr.min.js`);
     assert.equal(fpJsRes.status, 200);
+    const cropperCssRes = await fetch(`${baseUrl}/vendor/cropper.min.css`);
+    assert.equal(cropperCssRes.status, 200);
+    const cropperJsRes = await fetch(`${baseUrl}/vendor/cropper.min.js`);
+    assert.equal(cropperJsRes.status, 200);
 
     const stateRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",

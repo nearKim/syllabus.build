@@ -19,6 +19,9 @@ importers:
       '@preact/signals':
         specifier: ^2.11.3
         version: 2.11.3(preact@11.0.1)
+      cropperjs:
+        specifier: ^1.7.0
+        version: 1.7.0
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -214,6 +217,9 @@ packages:
     peerDependencies:
       preact: '>= 10.25.0 || >=11.0.0-0'
 
+  cropperjs@1.7.0:
+    resolution: {integrity: sha512-AkGnZxr7xAJBa63ObXq5ZKLkh9c8wisC+Ym8VzIDn3KZ+6qRTbBnOl2w2dFOTMzLP5IcfOpEK9PICDywNXhncg==}
+
   esbuild@0.28.2:
     resolution: {integrity: sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==}
     engines: {node: '>=18'}
@@ -340,6 +346,8 @@ snapshots:
     dependencies:
       '@preact/signals-core': 1.14.4
       preact: 11.0.1(preact-render-to-string@6.8.1)
+
+  cropperjs@1.7.0: {}
 
   esbuild@0.28.2:
     optionalDependencies:

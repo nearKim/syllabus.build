@@ -2140,9 +2140,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <h1 class="st-sr" id="settings-profile-title">Profile</h1>
             <div class="profile-layout-grid">
               <div class="profile-photo-stack">
-                <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${escapeHtml(initialsOf(account))}</span>
-                <button type="button" class="btn-secondary profile-photo-btn">Choose photo</button>
-                <p class="profile-photo-caption">Supported formats: PNG, JPG, WEBP<br>Maximum file size: 5MB</p>
+                <button type="button" class="profile-avatar-trigger" data-action="open-dialog" data-dialog-id="dialog-avatar-cropper" aria-label="Edit profile photo">
+                  <span class="user-avatar-circle user-avatar-xl" aria-hidden="true">${account.avatarUrl ? `<img class="user-avatar-img" src="${escapeHtml(account.avatarUrl)}" alt="">` : escapeHtml(initialsOf(account))}</span>
+                  <span class="profile-avatar-edit-badge" aria-hidden="true">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </span>
+                </button>
               </div>
               <form class="profile-edit-form" data-action="update-profile">
                 <div class="profile-fields-grid">
@@ -2459,6 +2462,39 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Deletion does not promise immediate removal from every backup.</p>
     </form>
+  </dialog>
+
+  <dialog id="dialog-avatar-cropper" class="modal-dialog modal-dialog-sm avatar-cropper-dialog" closedby="any" aria-labelledby="dialog-avatar-cropper-title"${dialogOpen("dialog-avatar-cropper")} data-opaque-surface="true">
+    <div class="dialog-surface avatar-cropper-surface">
+      <header class="dialog-header">
+        <div>
+          <h2 id="dialog-avatar-cropper-title">Edit profile photo</h2>
+          <p class="row-meta">Drag to reposition and use the slider to resize inside the circular frame.</p>
+        </div>
+        <form method="dialog">${DIALOG_CLOSE_BUTTON}</form>
+      </header>
+      <div class="avatar-cropper-body">
+        <div class="avatar-cropper-stage">
+          <img id="avatar-cropper-source" class="avatar-cropper-source" src="${escapeHtml(account.avatarUrl ?? `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320"><rect width="320" height="320" fill="#DDE6F9"/><circle cx="160" cy="160" r="118" fill="#C7D7F7"/><text x="160" y="184" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,sans-serif" font-size="76" font-weight="700" fill="#0B5CAD">${initialsOf(account)}</text></svg>`)}`)}" alt="Profile photo crop preview" data-cropper-target="avatar">
+        </div>
+        <div class="avatar-cropper-controls">
+          <label class="btn-secondary avatar-upload-btn" for="avatar-file-input">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span>Upload photo</span>
+            <input id="avatar-file-input" type="file" accept="image/png,image/jpeg,image/webp" class="st-sr">
+          </label>
+          <label class="field avatar-zoom-field" for="avatar-zoom-range">
+            <span>Zoom</span>
+            <input id="avatar-zoom-range" type="range" min="1" max="3" step="0.05" value="1" data-cropper-zoom="true">
+          </label>
+        </div>
+        <p class="profile-photo-caption avatar-cropper-meta">Supported formats: PNG, JPG, WEBP<br>Maximum file size: 5MB</p>
+      </div>
+      <footer class="dialog-footer">
+        <form method="dialog"><button type="submit" class="btn-secondary" data-action="close-dialog">Cancel</button></form>
+        <button type="button" class="btn-primary" data-action="save-avatar-crop">Apply photo</button>
+      </footer>
+    </div>
   </dialog>`}
 
   ${renderToString(h(AuthDialog, {
@@ -2951,6 +2987,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           };
           profileNotice = "Profile saved.";
         }
+      } else if (action === "save-avatar-crop") {
+        const avatarUrl = (value("avatarUrl") ?? "").trim();
+        if (avatarUrl) {
+          account = { ...account, avatarUrl };
+        }
+        profileNotice = "Profile photo updated.";
+        openDialogId = null;
       } else if (action === "switch-persona" && isOneOf(PERSONA_CHOICES, data["persona"])) {
         if (data["persona"] === "guest") signOut();
         else signIn(PERSONAS[data["persona"]]);

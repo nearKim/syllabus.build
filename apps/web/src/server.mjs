@@ -23,6 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 const FLATPICKR_DIST_DIR = path.resolve(__dirname, "../node_modules/flatpickr/dist");
 const TOM_SELECT_DIST_DIR = path.resolve(__dirname, "../node_modules/tom-select/dist");
+const CROPPER_DIST_DIR = path.resolve(__dirname, "../node_modules/cropperjs/dist");
 const EXAMPLES_DIR = path.resolve(
   __dirname,
   "../../../specs/001-curriculum-platform/examples"
@@ -177,6 +178,57 @@ ${fallbackScript}
     });
   }
 
+  function destroyAvatarCropper() {
+    const img = root.querySelector("#avatar-cropper-source");
+    if (img && img._cropper && typeof img._cropper.destroy === "function") {
+      img._cropper.destroy();
+      img._cropper = null;
+    }
+  }
+
+  function initAvatarCropper() {
+    if (typeof window.Cropper !== "function") return;
+    const dialog = root.querySelector("#dialog-avatar-cropper");
+    if (!dialog || (!dialog.open && dialog.dataset.open !== "true")) return;
+    const img = dialog.querySelector("#avatar-cropper-source");
+    if (!img || img._cropper) return;
+    const cropper = new window.Cropper(img, {
+      aspectRatio: 1,
+      viewMode: 1,
+      dragMode: "move",
+      autoCropArea: 0.85,
+      guides: false,
+      center: true,
+      highlight: false,
+      cropBoxMovable: false,
+      cropBoxResizable: false,
+      toggleDragModeOnDblclick: false,
+    });
+    img._cropper = cropper;
+    const fileInput = dialog.querySelector("#avatar-file-input");
+    if (fileInput && !fileInput.dataset.bound) {
+      fileInput.dataset.bound = "true";
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file || file.size > 5 * 1024 * 1024) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === "string" && img._cropper) {
+            img._cropper.replace(reader.result);
+          }
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+    const zoomRange = dialog.querySelector("#avatar-zoom-range");
+    if (zoomRange && !zoomRange.dataset.bound) {
+      zoomRange.dataset.bound = "true";
+      zoomRange.addEventListener("input", () => {
+        if (img._cropper) img._cropper.zoomTo(Number(zoomRange.value) || 1);
+      });
+    }
+  }
+
   async function dispatchServerRender(patch) {
     let payload;
     try {
@@ -203,6 +255,7 @@ ${fallbackScript}
     const railLeft = rail ? rail.scrollLeft : 0;
     destroyDatepickers();
     destroyPlanSelects();
+    destroyAvatarCropper();
     root.innerHTML = payload.html;
     const nextRail = root.querySelector(".today-curricula-grid");
     if (nextRail) nextRail.scrollLeft = railLeft;
@@ -214,6 +267,7 @@ ${fallbackScript}
     openMarkedDialogs(previous);
     initDatepickers();
     initPlanSelects();
+    initAvatarCropper();
     if (!focusKey(focusedKey) && patch.action === "close-study-detail") focusKey(inspectorOpenerKey);
     if (isGoalFocused) {
       const nextGoal = root.querySelector("#intake-goal");
@@ -231,6 +285,7 @@ ${fallbackScript}
   openMarkedDialogs(new Map());
   initDatepickers();
   initPlanSelects();
+  initAvatarCropper();
 
   document.addEventListener("click", (event) => {
     const openMenu = root.querySelector("details.navbar-user-menu[open]");
@@ -315,6 +370,13 @@ ${fallbackScript}
         const row = target.closest(".schedule-row") || root;
         const input = row.querySelector('[data-reschedule-for="' + CSS.escape(target.dataset.sessionId) + '"]');
         patch.rescheduleValue = input ? input.value : "";
+      }
+      if (action === "save-avatar-crop") {
+        const img = root.querySelector("#avatar-cropper-source");
+        if (img && img._cropper && typeof img._cropper.getCroppedCanvas === "function") {
+          const canvas = img._cropper.getCroppedCanvas({ width: 256, height: 256, imageSmoothingQuality: "high" });
+          if (canvas) patch.avatarUrl = canvas.toDataURL("image/png");
+        }
       }
       dispatchServerRender(patch);
     }
@@ -523,6 +585,26 @@ export function createWebAppServer(options = {}) {
 
     if (pathname === "/vendor/tom-select.complete.min.js") {
       const js = fs.readFileSync(path.join(TOM_SELECT_DIST_DIR, "js/tom-select.complete.min.js"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(js);
+      return;
+    }
+
+    if (pathname === "/vendor/cropper.min.css") {
+      const css = fs.readFileSync(path.join(CROPPER_DIST_DIR, "cropper.min.css"), "utf8");
+      res.writeHead(200, {
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "public, max-age=86400",
+      });
+      res.end(css);
+      return;
+    }
+
+    if (pathname === "/vendor/cropper.min.js") {
+      const js = fs.readFileSync(path.join(CROPPER_DIST_DIR, "cropper.min.js"), "utf8");
       res.writeHead(200, {
         "Content-Type": "application/javascript; charset=utf-8",
         "Cache-Control": "public, max-age=86400",

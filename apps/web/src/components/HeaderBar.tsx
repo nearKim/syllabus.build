@@ -13,6 +13,7 @@ export interface Account {
   readonly accountId: string;
   readonly email: string;
   readonly displayName?: string | undefined;
+  readonly avatarUrl?: string | undefined;
   readonly role: PlatformRole;
 }
 
@@ -199,7 +200,7 @@ export function HeaderBar({
           <details class="navbar-user-menu">
             <summary class="navbar-avatar-trigger" aria-label={`Account menu for ${displayNameOf(account)}`}>
               <span class="user-avatar-circle" aria-hidden="true">
-                {initialsOf(account)}
+                {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
               </span>
               <span class="navbar-user-name">{displayNameOf(account)}</span>
               <svg
@@ -220,7 +221,7 @@ export function HeaderBar({
             <div class="navbar-user-dropdown" data-opaque-surface="true">
               <div class="navbar-dropdown-identity">
                 <span class="user-avatar-circle user-avatar-md" aria-hidden="true">
-                  {initialsOf(account)}
+                  {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
                 </span>
                 <div class="navbar-dropdown-meta">
                   <span class="navbar-dropdown-name">{displayNameOf(account)}</span>
