@@ -1,0 +1,3 @@
+#!/bin/sh
+cd /Users/garfield/dev/curriculum.io || exit 1
+pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs >/dev/null
