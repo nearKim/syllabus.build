@@ -6320,6 +6320,10 @@ ul.adopt-resources {
   background: var(--color-success-text);
 }
 
+.status-dot[data-status="standby"] {
+  background: var(--color-border-control);
+}
+
 .status-dot[data-status="revoked"],
 .status-dot[data-status="invalid"] {
   background: var(--color-danger-text);
@@ -6574,6 +6578,11 @@ ul.adopt-resources {
 .status-text[data-status="active"] {
   color: var(--color-success-text);
   font-weight: 600;
+}
+
+.status-text[data-status="standby"] {
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 .status-text[data-status="revoked"],

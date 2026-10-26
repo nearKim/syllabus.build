@@ -108,6 +108,7 @@ export interface CurriculumWebAppStateInput {
   readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly diagnosticSession?: DiagnosticSessionFixture; readonly adaptationProposal?: AdaptationProposalFixture;
   readonly byokMode?: InferenceMode; readonly byokCredentials?: readonly MaskedCredentialRecord[];
+  readonly primaryCredentialRef?: string;
   readonly wallet?: HostedCreditWalletSnapshot; readonly openDialogId?: string | null;
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
@@ -1445,6 +1446,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const byokState = createByokCustodyController({
     initialMode: inputState.byokMode ?? "byok",
     initialCredentials: [...(inputState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)],
+    ...(inputState.primaryCredentialRef ? { selectedCredentialRef: inputState.primaryCredentialRef } : {}),
     themeMode: resolvedThemeMode,
   }).getState();
 
@@ -2248,11 +2250,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>`}
           </section>
 
-          <section class="settings-section" id="settings-ai" aria-labelledby="settings-ai-title" data-byok-mode="${escapeHtml(byokState.mode)}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
+          <section class="settings-section" id="settings-ai" aria-labelledby="settings-ai-title" data-byok-mode="${escapeHtml(byokState.mode)}" data-primary-credential="${escapeHtml(byokState.selectedCredentialRef ?? "")}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-                <p class="section-lede">Connect your own API keys for curriculum synthesis and diagnostics. Keys are encrypted and billed directly by each provider.</p>
+                <p class="section-lede">Connect keys across providers and choose one Primary provider for curriculum synthesis and diagnostics. Standby keys let you switch model families anytime without re-pasting secrets.</p>
               </div>
             </div>
             <div tabindex="0" role="region" aria-labelledby="settings-ai-title" class="providers-table-wrapper">
@@ -2268,32 +2270,37 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 </thead>
                 <tbody>
                   ${byokState.credentials.map((cred) => {
+                    const primaryRef = byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref;
+                    const isPrimary = cred.credential_ref === primaryRef && cred.status === "active";
                     const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
+                    const statusTone = cred.status !== "active" ? cred.status : isPrimary ? "active" : "standby";
+                    const statusLabel = cred.status !== "active" ? humanize(cred.status) : isPrimary ? "Primary" : "Standby";
                     const logoSvg = cred.provider_id === "openai"
                       ? `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.75a4.75 4.75 0 0 1 4.46 3.12 4.75 4.75 0 0 1 4.1 6.72 4.75 4.75 0 0 1-2.56 6.46A4.75 4.75 0 0 1 12 21.25a4.75 4.75 0 0 1-6-2.2 4.75 4.75 0 0 1-2.56-6.46 4.75 4.75 0 0 1 4.1-6.72A4.75 4.75 0 0 1 12 2.75Z"/><polygon points="12 7.5 15.9 9.75 15.9 14.25 12 16.5 8.1 14.25 8.1 9.75"/></svg>`
                       : cred.provider_id === "anthropic"
                         ? `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 18.5 9.6 5.5h1.5l5.1 13"/><path d="M6.5 14.2h7.4"/><path d="M15.8 5.5 20 18.5"/></svg>`
                         : `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.25c.62 4.92 4.83 9.13 9.75 9.75-4.92.62-9.13 4.83-9.75 9.75-.62-4.92-4.83-9.13-9.75-9.75 4.92-.62 9.13-4.83 9.75-9.75Z"/></svg>`;
-                    return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}">
+                    return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}">
                     <th scope="row" class="provider-primary-cell">
                       <div class="provider-identity">
                         <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${logoSvg}</span>
                         <div class="provider-text">
                           <span class="provider-name">${escapeHtml(cred.label ?? providerTitle)}</span>
-                          <span class="row-meta">${escapeHtml(providerTitle)}</span>
+                          <span class="row-meta">${escapeHtml(providerTitle)}${isPrimary ? " · Default for synthesis" : ""}</span>
                         </div>
                       </div>
                     </th>
                     <td class="provider-key-cell"><code>${escapeHtml(cred.masked_hint)}</code><span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span></td>
                     <td class="provider-status-cell">
                       <span class="provider-status-inline">
-                        <span class="status-dot" data-status="${escapeHtml(cred.status)}" aria-hidden="true"></span>
-                        <span class="status-text" data-status="${escapeHtml(cred.status)}">${escapeHtml(humanize(cred.status))}</span>
+                        <span class="status-dot" data-status="${escapeHtml(statusTone)}" aria-hidden="true"></span>
+                        <span class="status-text" data-status="${escapeHtml(statusTone)}">${escapeHtml(statusLabel)}</span>
                       </span>
                     </td>
                     <td class="provider-date-cell"><time class="row-meta" datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time></td>
                     <td class="provider-actions-cell">
                       <div class="row-actions">
+                        ${!isPrimary && cred.status === "active" ? `<button type="button" class="btn-secondary" data-action="set-primary-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Set as primary</button>` : ""}
                         <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
                         <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
                       </div>
@@ -2520,6 +2527,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
   let keyVisible = initialState.keyVisible ?? false;
+  let primaryCredentialRef = initialState.primaryCredentialRef ?? (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)[0]?.credential_ref ?? "cred-openai-1";
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
   let adaptationChoice: "pending" | "accept_reviewed" | "keep_current" = initialState.adaptationChoice ?? "pending";
   let loadMoreNote: string | null = initialState.loadMoreNote ?? null;
@@ -2823,7 +2831,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       resourceScope, resourceCategory,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
-      remindersEnabled, remindersPaused, keyVisible, diagnosticControl, adaptationChoice,
+      remindersEnabled, remindersPaused, keyVisible, primaryCredentialRef, diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
       depthOverrideReset, studyDetailOpen, inspectorMode, flowOrder, deepDive, spacedReview,
       catalogResources, intakeGoalTitle, intakeSubject,
@@ -3024,7 +3032,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       else if (action === "pause-reminders") remindersPaused = !remindersPaused;
       else if (action === "snooze-reminder") snoozeNote = "Snooze does not change assessed proficiency. Delivery stays best effort.";
       else if (action === "toggle-key-visibility") keyVisible = !keyVisible;
-      else if (action === "replace-key") keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
+      else if (action === "set-primary-key" && data["credentialRef"]) {
+        primaryCredentialRef = data["credentialRef"];
+        const matchedCred = (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS).find((c) => c.credential_ref === primaryCredentialRef);
+        keyActionNote = `${matchedCred?.label ?? primaryCredentialRef} is now set as your primary AI provider for curriculum synthesis and diagnostics.`;
+      } else if (action === "replace-key") keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
       else if (action === "delete-connection") keyActionNote = "Delete connection would remove this app's encrypted copy only. It would not revoke the key at the issuer. No live delete was sent.";
       else if (action === "load-more") loadMoreNote = "No further public revisions are available in this preview.";
       else if (action === "reschedule-session" && data["sessionId"]) {
