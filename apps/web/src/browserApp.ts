@@ -2254,7 +2254,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-                <p class="section-lede">Connect keys across providers and choose one Primary provider for curriculum synthesis and diagnostics. Standby keys let you switch model families anytime without re-pasting secrets.</p>
+                <p class="section-lede">Enter your API key directly in each provider's row and choose one Primary provider for curriculum synthesis and diagnostics.</p>
+                <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
               </div>
             </div>
             <div tabindex="0" role="region" aria-labelledby="settings-ai-title" class="providers-table-wrapper">
@@ -2262,9 +2263,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <thead>
                   <tr>
                     <th scope="col">Provider</th>
-                    <th scope="col">Secret key</th>
+                    <th scope="col">API key</th>
                     <th scope="col">Status</th>
-                    <th scope="col">Updated</th>
                     <th scope="col" class="provider-actions-head">Actions</th>
                   </tr>
                 </thead>
@@ -2273,6 +2273,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                     const primaryRef = byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref;
                     const isPrimary = cred.credential_ref === primaryRef && cred.status === "active";
                     const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
+                    const modelSubtitle = cred.provider_id === "openai" ? "GPT-4o · o3-mini" : cred.provider_id === "anthropic" ? "Claude 3.7 Sonnet" : "Gemini 2.5 Pro";
+                    const keyPrefix = cred.provider_id === "openai" ? "sk-proj-" : cred.provider_id === "anthropic" ? "sk-ant-" : "AIzaSy-";
+                    const inputId = cred.provider_id === "openai" ? "byok-key" : `byok-key-${cred.provider_id}`;
                     const statusTone = cred.status !== "active" ? cred.status : isPrimary ? "active" : "standby";
                     const statusLabel = cred.status !== "active" ? humanize(cred.status) : isPrimary ? "Primary" : "Standby";
                     const logoSvg = cred.provider_id === "openai"
@@ -2285,24 +2288,26 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                       <div class="provider-identity">
                         <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" aria-hidden="true">${logoSvg}</span>
                         <div class="provider-text">
-                          <span class="provider-name">${escapeHtml(cred.label ?? providerTitle)}</span>
-                          <span class="row-meta">${escapeHtml(providerTitle)}${isPrimary ? " · Default for synthesis" : ""}</span>
+                          <span class="provider-name">${escapeHtml(providerTitle)}</span>
+                          <span class="row-meta">${escapeHtml(modelSubtitle)}</span>
                         </div>
                       </div>
                     </th>
-                    <td class="provider-key-cell"><code>${escapeHtml(cred.masked_hint)}</code><span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span></td>
+                    <td class="provider-key-cell">
+                      <input id="${escapeHtml(inputId)}" class="provider-key-input" name="provider-key-${escapeHtml(cred.provider_id)}" type="${keyVisible ? "text" : "password"}" aria-label="${escapeHtml(providerTitle)} API key" placeholder="${escapeHtml(`${keyPrefix}••••••••${cred.masked_suffix}`)}" autocomplete="off" spellcheck="false" data-transient-key="true" data-provider-id="${escapeHtml(cred.provider_id)}" value="">
+                      <span class="st-sr"> · ${escapeHtml(cred.etag ?? "")}</span>
+                    </td>
                     <td class="provider-status-cell">
                       <span class="provider-status-inline">
                         <span class="status-dot" data-status="${escapeHtml(statusTone)}" aria-hidden="true"></span>
                         <span class="status-text" data-status="${escapeHtml(statusTone)}">${escapeHtml(statusLabel)}</span>
                       </span>
                     </td>
-                    <td class="provider-date-cell"><time class="row-meta" datetime="${escapeHtml(cred.updated_at ?? "")}">${escapeHtml((cred.updated_at ?? "unknown").slice(0, 10))}</time></td>
                     <td class="provider-actions-cell">
                       <div class="row-actions">
                         ${!isPrimary && cred.status === "active" ? `<button type="button" class="btn-secondary" data-action="set-primary-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Set as primary</button>` : ""}
-                        <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Replace key</button>
-                        <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Delete connection ${escapeHtml(cred.label ?? cred.provider_id)}">Delete connection</button>
+                        <button type="button" class="btn-secondary" data-action="replace-key" data-credential-ref="${escapeHtml(cred.credential_ref)}">Save key</button>
+                        <button type="button" class="btn-danger" data-action="delete-connection" data-credential-ref="${escapeHtml(cred.credential_ref)}" aria-label="Remove ${escapeHtml(providerTitle)} key">Remove</button>
                       </div>
                     </td>
                   </tr>`;
@@ -2311,19 +2316,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               </table>
             </div>
             ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
-            <div class="byok-add-card">
-              <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
-              <div class="key-entry">
-                <label class="field" for="byok-key">Add or replace provider API key
-                  <input id="byok-key" name="provider-key" type="${keyVisible ? "text" : "password"}" placeholder="Paste sk-... or provider secret key" autocomplete="off" spellcheck="false" data-transient-key="true" value="">
-                </label>
-                <button type="button" class="btn-secondary" data-action="toggle-key-visibility">${keyVisible ? "Hide key" : "Show key"}</button>
-              </div>
-              <details class="settings-disclosure" id="byok-add">
-                <summary>Custody, rotation &amp; billing details</summary>
-                <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} Saving a key does not run a chargeable test. Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy and does not revoke the key at the issuer.</p>
-              </details>
-            </div>
+            <details class="settings-disclosure" id="byok-add">
+              <summary>Custody, rotation &amp; billing details</summary>
+              <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} Saving a key does not run a chargeable test. Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy and does not revoke the key at the issuer.</p>
+            </details>
           </section>
 
           <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
