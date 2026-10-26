@@ -2,7 +2,7 @@
   "name": "curriculum-io",
   "version": "0.1.0",
   "private": true,
-  "license": "SEE LICENSE IN LICENSE-PERSONAL-USE.md",
+  "license": "Apache-2.0",
   "packageManager": "pnpm@10.26.2",
   "scripts": {
     "spec:extract": "python3 scripts/extract_spec.py --force specs/product.md .",
