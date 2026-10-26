@@ -2343,7 +2343,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             ${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
             <details class="settings-disclosure" id="byok-add">
               <summary>Custody, rotation &amp; billing details</summary>
-              <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} Saving a key does not run a chargeable test. Replace key submits a new transient value and does not move queued jobs to another account. Delete connection removes this app's encrypted copy and does not revoke the key at the issuer.</p>
+              <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} You act directly as the API account holder with your chosen provider (OpenAI, Anthropic, or Google) under their respective Terms of Service and direct billing. Saving a key does not run a chargeable test. Applying a new key updates future jobs while queued jobs stay on their active key version. Removing a key deletes this app's encrypted copy and does not revoke the key at the issuer.</p>
             </details>
           </section>
 
@@ -2392,7 +2392,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <p class="disclosure-text">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
-              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Source-available for personal self-hosting; organizational deployment is not permitted.</p>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Open-source software licensed under Apache-2.0. Shared curriculum structures in Explore are licensed under CC BY 4.0, while linked books, papers, and videos remain governed by their original publishers.</p>
             </details>
           </section>
         </div>

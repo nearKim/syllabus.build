@@ -1188,6 +1188,8 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.ok(settingsPanel.includes('id="reminder-timezone" name="reminder-timezone" data-action="set-reminder-timezone"'));
   click({ action: "set-reminder-timezone", reminderTimezone: "Asia/Seoul" });
   assert.ok(root.innerHTML.includes("Korea Standard Time (<code>Asia/Seoul</code>)"));
+  assert.ok(root.innerHTML.includes("Open-source software licensed under Apache-2.0."));
+  assert.equal(root.innerHTML.includes("organizational deployment is not permitted"), false);
 
   submit("update-profile", {
     "#profile-name-input": { value: "Alex R. Chen" },
