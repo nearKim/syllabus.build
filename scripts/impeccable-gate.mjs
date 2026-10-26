@@ -129,6 +129,101 @@ function runBoxInBoxAudit(rawCss, views) {
   return violations;
 }
 
+function runLineAndHierarchyAudit(rawCss, views) {
+  const violations = [];
+
+  // 1. Line-Component Abuse: selectors that MUST NOT use horizontal divider borders
+  const bannedHorizontalLineSelectors = [
+    ".surface-panel",
+    ".sidebar-curricula",
+    ".matrix-table tbody tr + tr > *",
+    ".today-unified-header",
+    ".today-curriculum-brief",
+    ".study-guide-prompt",
+    ".today-curriculum-overview",
+    ".progress-overview-strip",
+    ".progress-unit-row",
+    ".progress-capability-row",
+    ".marketplace-filters",
+    ".facet-pair",
+    ".marketplace-card-foot",
+    ".intake-fit-tray",
+    ".intake-controls-grid",
+    ".intake-existing-plans-block"
+  ];
+
+  for (const sel of bannedHorizontalLineSelectors) {
+    const block = extractCssBlock(rawCss, sel);
+    if (!block) continue;
+    const hasHorizontalLine =
+      /border-(?:top|bottom|block|block-start|block-end)\s*:\s*(?:var\(--hairline\)|1px\s+solid)/m.test(block);
+    if (hasHorizontalLine) {
+      violations.push(
+        `[line-abuse] '${sel}' uses a horizontal divider border instead of whitespace and spatial grouping.`
+      );
+    }
+  }
+
+  // Resources table header must not have a top border (only a single bottom baseline)
+  const resourcesTheadBlock = extractCssBlock(rawCss, ".resources-data-table thead th");
+  if (/border-block-start\s*:\s*(?:var\(--hairline\)|1px\s+solid)/m.test(resourcesTheadBlock)) {
+    violations.push(
+      "[line-abuse] '.resources-data-table thead th' has a top border ('border-block-start'), creating double horizontal lines."
+    );
+  }
+
+  // Progress overview must not render horizontal progress bar lines
+  if (/progress-overview-bar/.test(views.progress)) {
+    violations.push(
+      "[line-abuse] Progress DOM contains '.progress-overview-bar' horizontal bar lines."
+    );
+  }
+
+  // 2. Hierarchy Distinction: Descriptions must be regular weight (400) and secondary ink, never primary ink or medium/bold weight
+  const descriptionSelectors = [
+    ".page-description",
+    ".plan-goal",
+    ".today-curriculum-brief .plan-goal",
+    ".today-curriculum-brief .plan-scope-list",
+    ".progress-cap-description",
+    ".resource-row-rationale"
+  ];
+
+  for (const sel of descriptionSelectors) {
+    const block = extractCssBlock(rawCss, sel);
+    if (!block) {
+      violations.push(`[hierarchy-blur] Missing CSS rule for description selector '${sel}'.`);
+      continue;
+    }
+    if (/color\s*:\s*var\(--color-text-primary\)/m.test(block) || !/color\s*:\s*var\(--color-text-secondary\)/m.test(block)) {
+      violations.push(
+        `[hierarchy-blur] Description '${sel}' must use 'color: var(--color-text-secondary)' so it does not compete with titles.`
+      );
+    }
+    if (/font-weight\s*:\s*[567]00/m.test(block) || !/font-weight\s*:\s*400/m.test(block)) {
+      violations.push(
+        `[hierarchy-blur] Description '${sel}' must use 'font-weight: 400' so it is visually distinct from headings and titles.`
+      );
+    }
+  }
+
+  // 3. Structural indentation of Actual Contents under Unit Titles in Progress
+  const unitCapBlock = extractCssBlock(rawCss, ".progress-unit-capabilities");
+  if (!/padding-inline-start\s*:\s*(?:2[4-9]|3[0-9])px/m.test(unitCapBlock)) {
+    violations.push(
+      "[hierarchy-blur] '.progress-unit-capabilities' must use 'padding-inline-start' indentation so capabilities read as child contents of their Unit Title."
+    );
+  }
+
+  if (!/class="page-description"/.test(views.progress) || !/class="[^"]*progress-cap-description/.test(views.progress)) {
+    violations.push(
+      "[hierarchy-blur] Progress DOM is missing explicit '.page-description' or '.progress-cap-description' elements."
+    );
+  }
+
+  return violations;
+}
+
 function main() {
   const rawCss = fs.readFileSync(stylesPath, "utf8");
   const resolvedCss = resolveCssVariables(rawCss);
@@ -194,22 +289,24 @@ function main() {
     const parsed = JSON.parse(detectRaw);
     const findings = Array.isArray(parsed) ? parsed : [];
     const boxViolations = runBoxInBoxAudit(rawCss, views);
+    const hierarchyViolations = runLineAndHierarchyAudit(rawCss, views);
+    const customViolations = [...boxViolations, ...hierarchyViolations];
 
-    if (findings.length > 0 || boxViolations.length > 0) {
-      console.error("❌ Impeccable + Box-in-Box Gate Failed:");
+    if (findings.length > 0 || customViolations.length > 0) {
+      console.error("❌ Impeccable + Craft Gate Failed:");
       for (const f of findings) {
         console.error(
           `  [${f.severity}:${f.antipattern}] (${path.basename(f.file)}:${f.line}) ${f.snippet || f.name}`
         );
       }
-      for (const v of boxViolations) {
+      for (const v of customViolations) {
         console.error(`  ${v}`);
       }
       process.exit(1);
     }
 
     console.log(
-      `✅ Impeccable + Box-in-Box Gate Passed: 5 rendered screens + source files scanned, 0 anti-patterns, 0 advisories, 0 box-in-box violations.`
+      `✅ Impeccable + Craft Gate Passed: 5 rendered screens + source files scanned, 0 anti-patterns, 0 advisories, 0 box-in-box / line-abuse / hierarchy-blur violations.`
     );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -1747,29 +1747,24 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       return `<article class="progress-capability-row" data-objective-id="${escapeHtml(obj.objectiveId)}" data-proficiency-status="${escapeHtml(obj.proficiencyStatus)}">
         <div class="progress-cap-main">
           <div class="progress-cap-identity">
-            <div class="progress-cap-badges">
+            <div class="progress-cap-title-row">
               ${proficiencyGlyph(obj.proficiencyStatus)}
+              <p class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</p>
+            </div>
+            <p class="prose capability-support progress-cap-description">${escapeHtml(calibrationSummary(obj))} ${escapeHtml(retentionSummary(obj))}</p>
+            <div class="progress-cap-activities" aria-label="Linked unit activities">
               <span class="progress-cap-topic">${escapeHtml(humanize(obj.topicId.replace(/^topic-/, "")))}</span>
               <span aria-hidden="true">·</span>
               <span class="progress-status-pill" data-status="${escapeHtml(obj.proficiencyStatus)}">${escapeHtml(shortConclusion)}<span class="st-sr"> (${escapeHtml(conclusionLabel(obj.proficiencyStatus))})</span></span>
+              <span aria-hidden="true">·</span>
+              <span class="progress-cap-activities-label">Study flow:</span>
+              ${activityChipsHtml}
             </div>
-            <p class="capability-title">${escapeHtml(obj.title || "Learning objective: title unavailable")}</p>
           </div>
           <div class="plan-objective-actions">
             <button type="button" class="progress-check-btn" data-action="diagnostic-continue" data-objective-id="${escapeHtml(obj.objectiveId)}">Check understanding <span aria-hidden="true">→</span></button>
           </div>
         </div>
-        <div class="progress-cap-activities" aria-label="Linked unit activities">
-          <span class="progress-cap-activities-label">Study flow:</span>
-          ${activityChipsHtml}
-        </div>
-        <details class="progress-cap-evidence">
-          <summary>Evidence &amp; retention details</summary>
-          <div class="progress-cap-evidence-body">
-            <p class="prose capability-support">${escapeHtml(calibrationSummary(obj))}</p>
-            <p class="meta-text">${escapeHtml(retentionSummary(obj))}</p>
-          </div>
-        </details>
       </article>`;
     }).join("\n");
 
@@ -2032,7 +2027,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
         <section class="learn-sub-panel" id="panel-learn-progress" data-learn-panel="Progress" data-active="${isLearn && activeLearnSub === "Progress"}"${isLearn && activeLearnSub === "Progress" ? "" : " hidden"}>
           <div class="section-header">
-            <h1 class="page-title">Your learning evidence</h1>
+            <div class="page-heading-group">
+              <h1 class="page-title">Your learning evidence</h1>
+              <p class="page-description">${escapeHtml(goalTitleOf(selectedPlan.curriculum))} — verified objective checks alongside self-reported study activities.</p>
+            </div>
             <div class="plan-toolbar">
               <label class="field field-inline" for="progress-curriculum-control" hidden><span>Curriculum</span>
                 <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
@@ -2050,9 +2048,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                     <span class="progress-overview-meta">${masteryPct}%</span>
                   </div>
                   <p class="progress-overview-value">${demonstratedObjectives} of ${totalObjectives} objectives demonstrated</p>
-                  <div class="progress-overview-bar" aria-hidden="true">
-                    <span class="progress-overview-fill" data-tone="success" style="width: ${masteryPct}%"></span>
-                  </div>
                 </div>
 
                 <div class="progress-overview-col">
@@ -2061,9 +2056,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                     <span class="progress-overview-meta">${planProgress.left > 0 ? `${planProgress.left}m left` : "Complete"}</span>
                   </div>
                   <p class="progress-overview-value">${requiredCompleted} of ${requiredActivities.length} required activities · ${reviewSummary}</p>
-                  <div class="progress-overview-bar" aria-hidden="true">
-                    <span class="progress-overview-fill" data-tone="accent" style="width: ${effortPct}%"></span>
-                  </div>
                 </div>
 
                 <div class="progress-overview-col diagnostic-panel" id="progress-diagnostic-verification" data-diagnostic-session-id="${escapeHtml(diagnosticState.diagnostic_session_id)}" data-diagnostic-state="${escapeHtml(diagnosticState.state)}">

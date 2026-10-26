@@ -1750,26 +1750,27 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.ok(root.innerHTML.includes('data-latex="\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}"'));
 });
 
-test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector and zero Box-in-Box containers across all views", () => {
+test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector and zero Box-in-Box, Line-Abuse, or Hierarchy-Blur violations across all views", () => {
   const repoRoot = path.resolve(__dirname, "../../..");
   const gateScript = path.join(repoRoot, "scripts/impeccable-gate.mjs");
   const stylesPath = path.join(PUBLIC_DIR, "styles.css");
 
-  // 1. Run rendered-HTML Impeccable detector + Box-in-Box structural audit across all 5 views (Today, Progress, Resources, Explore, Settings)
+  // 1. Run rendered-HTML Impeccable detector + Box-in-Box + Line-Abuse + Hierarchy-Blur structural audit across all 5 views
   const gateOutput = execFileSync(
     process.execPath,
     ["--import", "tsx", gateScript],
     { cwd: path.resolve(__dirname, ".."), encoding: "utf8" }
   );
-  assert.ok(gateOutput.includes("0 anti-patterns, 0 advisories, 0 box-in-box violations"));
+  assert.ok(gateOutput.includes("0 anti-patterns, 0 advisories, 0 box-in-box / line-abuse / hierarchy-blur violations"));
 
   // 2. Assert no thick colored side-tab borders or nested KPI stat cards in CSS
   const css = fs.readFileSync(stylesPath, "utf8");
   assert.doesNotMatch(css, /border-(?:left|right)\s*:\s*[2-9]\d*px\s+solid/i);
   assert.equal(css.includes(".progress-kpi-card"), false);
   assert.equal(css.includes(".progress-capability-card"), false);
+  assert.equal(css.includes(".progress-overview-bar"), false);
 
-  // 3. Assert Progress panel uses flat hairline-separated summary strip and flat capability rows without outer surface-panel box or nested chip boxes
+  // 3. Assert Progress panel uses borderless summary strip, explicit page-description + progress-cap-description, and indented capability contents
   const html = renderCurriculumWebAppHtml({ topLevel: "Learn", learnSubDestination: "Progress" });
   const progressPanel = html.slice(
     html.indexOf('id="panel-learn-progress"'),
@@ -1777,9 +1778,13 @@ test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector 
   );
   assert.ok(progressPanel.includes('class="progress-portfolio-section" id="progress-capability-portfolio"'));
   assert.equal(progressPanel.includes('class="surface-panel" id="progress-capability-portfolio"'), false);
+  assert.ok(progressPanel.includes('class="page-description"'));
   assert.ok(progressPanel.includes('class="progress-overview-strip"'));
   assert.ok(progressPanel.includes('class="progress-unit-row"'));
   assert.ok(progressPanel.includes('class="progress-capability-row"'));
+  assert.ok(progressPanel.includes('class="progress-cap-title-row"'));
+  assert.ok(progressPanel.includes('progress-cap-description'));
+  assert.equal(progressPanel.includes("progress-overview-bar"), false);
   assert.equal(progressPanel.includes("progress-kpi-card"), false);
   assert.equal(progressPanel.includes("progress-unit-group"), false);
   assert.equal(progressPanel.includes("progress-capability-card"), false);

@@ -679,8 +679,8 @@ section[id] {
 }
 
 .sidebar-curricula {
-  padding-top: var(--space-4);
-  border-top: var(--hairline);
+  padding-top: var(--space-3);
+  border-top: 0;
 }
 
 .sidebar-section-label {
@@ -725,8 +725,13 @@ section[id] {
 
 .sidebar-curriculum-title {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.3;
+  color: var(--color-text-secondary);
+}
+
+.sidebar-curriculum-btn.is-active .sidebar-curriculum-title {
+  font-weight: 600;
   color: var(--color-text-primary);
 }
 
@@ -815,6 +820,21 @@ section[id] {
   margin-bottom: var(--space-5);
 }
 
+.page-heading-group {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+.page-description {
+  margin: 0;
+  max-width: 65ch;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
 .learn-sub-panel > .page-title,
 .top-level-panel > .page-title {
   margin-bottom: var(--space-5);
@@ -829,9 +849,9 @@ section[id] {
 }
 
 .surface-panel {
-  margin: 0 0 var(--space-6);
-  padding: var(--space-5) 0 0;
-  border-top: var(--hairline);
+  margin: 0 0 var(--space-7);
+  padding: 0;
+  border: 0;
   border-radius: 0;
   background-color: transparent;
 }
@@ -1280,7 +1300,7 @@ textarea {
 }
 
 .matrix-table tbody tr + tr > * {
-  border-top: var(--hairline);
+  border-top: 0;
 }
 
 .matrix-table tr.is-selected > * {
@@ -1866,28 +1886,29 @@ textarea {
   display: grid;
   gap: var(--space-4);
   margin: 0;
-  padding: 0 0 var(--space-5);
+  padding: 0 0 var(--space-6);
   border: 0;
-  border-bottom: var(--hairline);
   border-radius: 0;
   background-color: transparent;
 }
 
 .today-active-workspace > .flow-board {
   margin: 0;
-  padding: var(--space-5) 0 0;
+  padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .today-active-workspace .flow-head h2 {
-  font-size: 18px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .today-selected-heading {
   display: grid;
-  gap: 2px;
+  gap: 4px;
   min-inline-size: 0;
 }
 
@@ -1900,13 +1921,16 @@ textarea {
 .today-selected-progress {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: var(--color-text-primary);
+  font-weight: 500;
+  color: var(--color-text-secondary);
 }
 
 .today-selected-title {
-  font-size: 20px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   line-height: 1.25;
+  color: var(--color-text-primary);
 }
 
 .today-unified-header > .section-header,
@@ -1915,19 +1939,21 @@ textarea {
 }
 
 .today-curriculum-brief {
-  padding-top: var(--space-3);
-  border-top: var(--hairline);
+  padding-top: var(--space-2);
+  border: 0;
 }
 
 .today-curriculum-brief .plan-goal {
   font-size: 15px;
-  line-height: 1.45;
-  color: var(--color-text-primary);
+  font-weight: 400;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
 }
 
 .today-curriculum-brief .plan-scope-list {
   font-size: 14px;
-  line-height: 1.4;
+  font-weight: 400;
+  line-height: 1.55;
   color: var(--color-text-secondary);
 }
 
@@ -2271,11 +2297,10 @@ math {
 }
 
 .study-guide-prompt {
-  padding: var(--space-3) 0;
+  padding: var(--space-2) 0;
   border-radius: 0;
   background-color: transparent;
   border: 0;
-  border-block: var(--hairline);
 }
 
 .study-guide-prompt h3 {
@@ -2457,8 +2482,8 @@ math {
 
 /* Plan & Today Curriculum Overview */
 .today-curriculum-overview {
-  margin-top: var(--space-4);
-  border-top: var(--hairline);
+  margin-top: var(--space-5);
+  border: 0;
   border-radius: 0;
   background: transparent;
 }
@@ -2645,9 +2670,9 @@ math {
   border: 0;
   border-radius: 0;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.35;
 }
 
@@ -2669,7 +2694,8 @@ math {
 }
 
 .learn-tag-subject {
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 .learn-tag-facet {
@@ -2682,7 +2708,7 @@ math {
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0;
 }
 
@@ -2734,20 +2760,21 @@ math {
 }
 
 .plan-brief-label {
-  margin: 0 0 var(--space-2);
-  font-size: 14px;
+  margin: 0 0 4px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   color: var(--color-text-secondary);
 }
 
 .plan-goal {
-  max-inline-size: 52ch;
+  max-inline-size: 60ch;
   margin: 0;
-  font-size: 21px;
-  font-weight: 500;
-  line-height: 1.45;
-  letter-spacing: -0.01em;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: var(--color-text-secondary);
   text-wrap: pretty;
 }
 
@@ -3101,16 +3128,16 @@ button[interestfor="plan-relationship-legend"] {
 .progress-overview-strip {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-5);
-  margin: 0 0 var(--space-5);
-  padding: var(--space-4) 0;
-  border-block: var(--hairline);
+  gap: var(--space-6);
+  margin: 0 0 var(--space-7);
+  padding: var(--space-2) 0;
+  border: 0;
 }
 
 .progress-overview-col {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   min-inline-size: 0;
 }
 
@@ -3129,7 +3156,7 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .progress-overview-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0;
   color: var(--color-text-secondary);
@@ -3138,43 +3165,26 @@ button[interestfor="plan-relationship-legend"] {
 .progress-overview-meta {
   font-family: var(--font-mono);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
 .progress-overview-value {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
-  line-height: 1.35;
+  line-height: 1.3;
   color: var(--color-text-primary);
-}
-
-.progress-overview-bar {
-  display: block;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--tint-8);
-  overflow: clip;
-}
-
-.progress-overview-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: var(--color-accent);
-  transition: width 200ms ease;
-}
-
-.progress-overview-fill[data-tone="success"] {
-  background: var(--color-success-text);
 }
 
 .progress-overview-caption {
   margin: 0;
   font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
   color: var(--color-text-secondary);
 }
 
@@ -3183,7 +3193,7 @@ button[interestfor="plan-relationship-legend"] {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .progress-overview-actions .btn-primary,
@@ -3194,25 +3204,27 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .progress-portfolio-header {
-  margin-bottom: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+#progress-portfolio-heading {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .progress-units-list {
   display: grid;
-  gap: 0;
+  gap: var(--space-7);
 }
 
 .progress-unit-row {
   display: grid;
-  gap: var(--space-3);
-  padding: var(--space-5) 0;
-  border-top: var(--hairline);
+  gap: var(--space-4);
+  padding: 0;
+  border: 0;
   background: none;
   border-radius: 0;
-}
-
-.progress-unit-row:last-child {
-  padding-bottom: 0;
 }
 
 .progress-unit-header {
@@ -3239,9 +3251,11 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-unit-title {
   margin: 0;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
   line-height: 1.3;
+  color: var(--color-text-primary);
 }
 
 .progress-unit-meta {
@@ -3272,20 +3286,17 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-unit-capabilities {
   display: grid;
-  gap: 0;
+  gap: var(--space-5);
+  padding-inline-start: 30px;
 }
 
 .progress-capability-row {
   display: grid;
-  gap: 10px;
-  padding: var(--space-4) 0;
-  border-top: var(--hairline);
+  gap: 6px;
+  padding: 0;
+  border: 0;
   background: none;
   border-radius: 0;
-}
-
-.progress-capability-row:last-child {
-  padding-bottom: 0;
 }
 
 .progress-cap-main {
@@ -3298,13 +3309,30 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-cap-identity {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   min-inline-size: 0;
   flex: 1 1 20rem;
 }
 
-.progress-cap-badges {
+.progress-cap-title-row {
   display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+}
+
+.progress-cap-description {
+  margin: 0;
+  padding-inline-start: 28px;
+  max-width: 68ch;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.progress-cap-badges {
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
@@ -3312,7 +3340,7 @@ button[interestfor="plan-relationship-legend"] {
 
 .progress-cap-topic {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text-secondary);
 }
 
@@ -3325,17 +3353,21 @@ button[interestfor="plan-relationship-legend"] {
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .progress-status-pill[data-status="demonstrated"] {
   background: transparent;
   color: var(--color-success-text);
+  font-weight: 600;
 }
 
 .progress-capability-row .capability-title {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--color-text-primary);
 }
 
 .progress-check-btn {
@@ -3362,6 +3394,7 @@ button[interestfor="plan-relationship-legend"] {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  padding-inline-start: 28px;
 }
 
 .progress-cap-activities-label {
@@ -3511,7 +3544,7 @@ button[interestfor="plan-relationship-legend"] {
 
 .resources-data-table thead th {
   padding-block: var(--space-3);
-  border-block-start: var(--hairline);
+  border-block-start: 0;
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0;
@@ -3537,7 +3570,7 @@ button[interestfor="plan-relationship-legend"] {
 
 .resource-main {
   display: grid;
-  gap: var(--space-2);
+  gap: 6px;
   min-inline-size: 0;
 }
 
@@ -3546,13 +3579,16 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .resource-row-title {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   line-height: 1.35;
+  color: var(--color-text-primary);
 }
 
 .resource-row-rationale {
-  font-size: 13.5px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
   color: var(--color-text-secondary);
 }
 
@@ -3571,8 +3607,9 @@ button[interestfor="plan-relationship-legend"] {
   border-radius: 0;
   background: transparent;
   background-color: transparent;
-  color: var(--color-text-primary);
-  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -3735,9 +3772,8 @@ button[interestfor="plan-relationship-legend"] {
   display: grid;
   gap: var(--space-3);
   margin: 0 0 var(--space-5);
-  padding: var(--space-4) 0;
+  padding: var(--space-2) 0 var(--space-4);
   border: 0;
-  border-block: var(--hairline);
   border-radius: 0;
   background: transparent;
 }
@@ -3835,8 +3871,8 @@ button[interestfor="plan-relationship-legend"] {
 .facet-pair {
   display: grid;
   gap: var(--space-3);
-  padding-block-start: var(--space-3);
-  border-block-start: var(--hairline);
+  padding-block-start: var(--space-1);
+  border-block-start: 0;
 }
 
 /* Tier 1 carries the most weight. Tier 2 and the facets use the standard tag, and tier 3 is one step smaller. */
@@ -4188,8 +4224,8 @@ button[interestfor="plan-relationship-legend"] {
   align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: var(--hairline);
+  padding-top: var(--space-2);
+  border-top: 0;
 }
 
 .marketplace-card-foot :is(.btn-primary, .btn-secondary),
@@ -5154,9 +5190,8 @@ ul.adopt-resources {
 .intake-fit-tray {
   display: grid;
   gap: var(--space-3);
-  padding: var(--space-3) 0 0;
+  padding: var(--space-2) 0 0;
   border: 0;
-  border-top: var(--hairline);
   border-radius: 0;
   background: transparent;
 }
@@ -5357,8 +5392,8 @@ ul.adopt-resources {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2) var(--space-4);
-  padding-top: var(--space-3);
-  border-top: var(--hairline);
+  padding-top: var(--space-2);
+  border-top: 0;
 }
 
 .intake-control-cell {
@@ -5428,8 +5463,8 @@ ul.adopt-resources {
 
 /* 1. Existing Plans: Unboxed shortcut row separated from materials by section rhythm (zero box-in-box) */
 .intake-existing-plans-block {
-  padding-bottom: var(--space-4);
-  border-bottom: var(--hairline);
+  padding-bottom: var(--space-3);
+  border-bottom: 0;
 }
 
 .intake-existing-plan-card {
@@ -6619,7 +6654,7 @@ dialog.inspector::backdrop {
   }
 
   .surface-panel {
-    padding: var(--space-5) 0 0;
+    padding: 0;
   }
 }
 
