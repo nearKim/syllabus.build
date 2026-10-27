@@ -282,15 +282,44 @@ export interface MapOutlineEquivalenceSummary {
   readonly requiresPointerDragging: false;
 }
 
+export interface CatalogResourceVectorIndexMetadata {
+  readonly status?: "indexed" | "pending_reindex" | "quarantined" | string | undefined;
+  readonly embedding_model?: string | undefined;
+  readonly dimensions?: number | undefined;
+  readonly index_type?: string | undefined;
+  readonly chunk_count?: number | undefined;
+  readonly discovered_by?: "Curator Verified" | "AI Web Search" | "Community Published" | string | undefined;
+  readonly discovered_by_handle?: string | undefined;
+  readonly last_indexed_at?: string | undefined;
+}
+
 export interface CatalogResourceMetadataInput {
-  readonly resource_version_id?: string;
-  readonly title?: string;
-  readonly canonical_url?: string;
-  readonly captured_at?: string;
-  readonly provider?: { readonly provider_id?: string; readonly display_name?: string };
-  readonly access?: { readonly model?: string; readonly certificate_included?: boolean; readonly access_verified_at?: string };
-  readonly ingestion_permissions?: { readonly basis?: string; readonly permissions?: { readonly display_excerpts?: string } };
-  readonly segments?: readonly { readonly segment_id?: string; readonly title?: string; readonly verified?: boolean }[];
+  readonly resource_version_id?: string | undefined;
+  readonly title?: string | undefined;
+  readonly canonical_url?: string | undefined;
+  readonly captured_at?: string | undefined;
+  readonly category?: "Book" | "Course" | "YouTube" | "Code Lab" | "Problem Set" | string | undefined;
+  readonly subject?: string | undefined;
+  readonly provider?: { readonly provider_id?: string | undefined; readonly display_name?: string | undefined } | undefined;
+  readonly access?: {
+    readonly model?: string | undefined;
+    readonly tier_label?: string | undefined;
+    readonly cost_label?: string | undefined;
+    readonly rights_label?: string | undefined;
+    readonly certificate_included?: boolean | undefined;
+    readonly optional_certificate_price_minor?: number | null | undefined;
+    readonly access_verified_at?: string | undefined;
+  } | undefined;
+  readonly ingestion_permissions?: {
+    readonly basis?: string | undefined;
+    readonly permissions?: { readonly display_excerpts?: string | undefined } | undefined;
+  } | undefined;
+  readonly vector_index?: CatalogResourceVectorIndexMetadata | undefined;
+  readonly segments?: readonly {
+    readonly segment_id?: string | undefined;
+    readonly title?: string | undefined;
+    readonly verified?: boolean | undefined;
+  }[] | undefined;
 }
 
 export interface PlanMapAndOutlineBuildOptions {

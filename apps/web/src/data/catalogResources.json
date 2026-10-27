@@ -1,0 +1,848 @@
+{
+  "schema_version": "0.3.0",
+  "vector_db_config": {
+    "engine": "pgvector",
+    "index_type": "HNSW",
+    "distance_metric": "cosine",
+    "embedding_model": "text-embedding-3-large",
+    "dimensions": 1536,
+    "hybrid_lexical_index": "PostgreSQL FTS (BM25)"
+  },
+  "resources": {
+    "synthetic-resource-tokenization-v1": {
+      "resource_version_id": "synthetic-resource-tokenization-v1",
+      "title": "Reviewed Open Monograph: Subword Tokenization & Sequence Packing",
+      "canonical_url": "https://example.invalid/catalog/tokenization-monograph",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "open-ml-press",
+        "display_name": "Open ML Press (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 42,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-bpe-overview",
+          "title": "Section 2.1: Byte-Pair Encoding Merge Tables",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-cert-prep-v1": {
+      "resource_version_id": "synthetic-resource-cert-prep-v1",
+      "title": "Applied Sequence Modeling Lab & Optional Certification Track",
+      "canonical_url": "https://example.invalid/catalog/sequence-lab-cert",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Course",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "systems-ai-institute",
+        "display_name": "Systems AI Institute"
+      },
+      "access": {
+        "model": "freemium_optional_certificate",
+        "tier_label": "Freemium",
+        "cost_label": "Core $0 · Cert $49",
+        "rights_label": "Link & metadata",
+        "certificate_included": true,
+        "optional_certificate_price_minor": 4900,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 28,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
+      },
+      "segments": []
+    },
+    "synthetic-resource-attention-youtube-v1": {
+      "resource_version_id": "synthetic-resource-attention-youtube-v1",
+      "title": "YouTube Lecture: Scaled Dot-Product Attention & Softmax Variance Walkthrough",
+      "canonical_url": "https://example.invalid/catalog/youtube-attention-walkthrough",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "YouTube",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "ai-engineering-youtube",
+        "display_name": "AI Engineering Channel · YouTube (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 19,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-yt-attention",
+          "title": "04:15 — Why unscaled dot products grow with $d_k$",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-rag-lab-repo-v1": {
+      "resource_version_id": "synthetic-resource-rag-lab-repo-v1",
+      "title": "Code Lab Repository: FlashAttention & Tokenizer Benchmarks",
+      "canonical_url": "https://example.invalid/catalog/rag-benchmark-lab-repo",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Code Lab",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "open-ml-press",
+        "display_name": "Open ML Press (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 31,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
+      },
+      "segments": []
+    },
+    "synthetic-resource-strang-youtube-v1": {
+      "resource_version_id": "synthetic-resource-strang-youtube-v1",
+      "title": "MIT OCW YouTube Lecture: Projection Matrices and Least Squares",
+      "canonical_url": "https://example.invalid/catalog/youtube-mit-projections",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "YouTube",
+      "subject": "Mathematics",
+      "provider": {
+        "provider_id": "mit-ocw-youtube",
+        "display_name": "MIT OpenCourseWare · YouTube (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 24,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@spectral_sam",
+        "last_indexed_at": "2026-10-12T15:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-yt-projection",
+          "title": "12:40 — Deriving $P = A(A^T A)^{-1}A^T$",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-la-notes-v1": {
+      "resource_version_id": "synthetic-resource-la-notes-v1",
+      "title": "Open Linear Algebra Notes: Spectral Theory and Projections",
+      "canonical_url": "https://example.invalid/catalog/linear-algebra-notes",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Mathematics",
+      "provider": {
+        "provider_id": "open-math-commons",
+        "display_name": "Open Math Commons (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 64,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@spectral_sam",
+        "last_indexed_at": "2026-10-12T15:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-la-eigen",
+          "title": "Chapter 6: Eigenvalues and Eigenvectors",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-la-svd",
+          "title": "Chapter 7: The Singular Value Decomposition",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-la-problem-sets-v1": {
+      "resource_version_id": "synthetic-resource-la-problem-sets-v1",
+      "title": "Public Problem Sets with Worked Solutions: Linear Algebra",
+      "canonical_url": "https://example.invalid/catalog/linear-algebra-problem-sets",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Problem Set",
+      "subject": "Mathematics",
+      "provider": {
+        "provider_id": "open-course-problem-bank",
+        "display_name": "Open Course Problem Bank"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 18,
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@spectral_sam",
+        "last_indexed_at": "2026-10-12T15:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-la-ps1",
+          "title": "Problem Set 1: Eigenvalues and Projections",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-la-ps2",
+          "title": "Problem Set 2: The SVD and Low-Rank Approximation",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-la-lab-v1": {
+      "resource_version_id": "synthetic-resource-la-lab-v1",
+      "title": "Numerical Linear Algebra Lab: Iterative Eigensolvers",
+      "canonical_url": "https://example.invalid/catalog/eigensolver-lab",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Code Lab",
+      "subject": "Mathematics",
+      "provider": {
+        "provider_id": "open-math-commons",
+        "display_name": "Open Math Commons (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 15,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@spectral_sam",
+        "last_indexed_at": "2026-10-12T15:00:00Z"
+      },
+      "segments": []
+    },
+    "synthetic-resource-war-and-peace-v1": {
+      "resource_version_id": "synthetic-resource-war-and-peace-v1",
+      "title": "War and Peace (Louise and Aylmer Maude translation)",
+      "canonical_url": "https://example.invalid/catalog/war-and-peace-maude",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Humanities",
+      "provider": {
+        "provider_id": "public-domain-classics",
+        "display_name": "Public Domain Classics Library (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 112,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-wp-book-3",
+          "title": "Book Three: Austerlitz",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-wp-book-9",
+          "title": "Book Nine, Chapter 1: What causes a historical event",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-anna-karenina-v1": {
+      "resource_version_id": "synthetic-resource-anna-karenina-v1",
+      "title": "Anna Karenina (Constance Garnett translation)",
+      "canonical_url": "https://example.invalid/catalog/anna-karenina-garnett",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Humanities",
+      "provider": {
+        "provider_id": "public-domain-classics",
+        "display_name": "Public Domain Classics Library (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 96,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-ak-part-7",
+          "title": "Part Seven: Anna's final journey",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-ak-part-8",
+          "title": "Part Eight: Levin's resolution",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-berlin-essay-v1": {
+      "resource_version_id": "synthetic-resource-berlin-essay-v1",
+      "title": "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)",
+      "canonical_url": "https://example.invalid/catalog/hedgehog-and-the-fox",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Humanities",
+      "provider": {
+        "provider_id": "university-press-catalog",
+        "display_name": "University Press Catalog"
+      },
+      "access": {
+        "model": "library_loan",
+        "tier_label": "Library Loan",
+        "cost_label": "Institutional / Loan",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 14,
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
+      },
+      "segments": []
+    },
+    "synthetic-resource-rust-async-book-v1": {
+      "resource_version_id": "synthetic-resource-rust-async-book-v1",
+      "title": "Asynchronous Rust Under the Hood: Futures, Wakers, and Executors",
+      "canonical_url": "https://example.invalid/catalog/async-rust-under-the-hood",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Systems",
+      "provider": {
+        "provider_id": "open-systems-press",
+        "display_name": "Open Systems Press (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 53,
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@ferris_ops",
+        "last_indexed_at": "2026-10-18T12:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-rs-futures",
+          "title": "Chapters 2–3: Futures, Pin, and Wakers",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-rs-reactor",
+          "title": "Chapter 5: Reactors and I/O Readiness",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-rust-lab-v1": {
+      "resource_version_id": "synthetic-resource-rust-lab-v1",
+      "title": "Executor Lab: Test Harness and Reference Solutions",
+      "canonical_url": "https://example.invalid/catalog/executor-lab",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Code Lab",
+      "subject": "Systems",
+      "provider": {
+        "provider_id": "open-systems-press",
+        "display_name": "Open Systems Press (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 22,
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@ferris_ops",
+        "last_indexed_at": "2026-10-18T12:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-rs-lab-executor",
+          "title": "Lab 1: A single-threaded executor",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-rs-lab-timer",
+          "title": "Lab 2: A timer wheel",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-statmech-notes-v1": {
+      "resource_version_id": "synthetic-resource-statmech-notes-v1",
+      "title": "Open Lecture Notes: Statistical Physics",
+      "canonical_url": "https://example.invalid/catalog/statistical-physics-notes",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Physics",
+      "provider": {
+        "provider_id": "open-physics-commons",
+        "display_name": "Open Physics Commons (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 48,
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@ada_curates",
+        "last_indexed_at": "2026-10-08T10:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-sm-ensembles",
+          "title": "Chapter 2: Ensembles and the Partition Function",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-sm-ising",
+          "title": "Chapter 5: The Ising Model",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-statmech-problems-v1": {
+      "resource_version_id": "synthetic-resource-statmech-problems-v1",
+      "title": "Public Problem Sets with Worked Solutions: Statistical Physics",
+      "canonical_url": "https://example.invalid/catalog/statistical-physics-problem-sets",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Problem Set",
+      "subject": "Physics",
+      "provider": {
+        "provider_id": "open-course-problem-bank",
+        "display_name": "Open Course Problem Bank"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 20,
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@ada_curates",
+        "last_indexed_at": "2026-10-08T10:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-sm-ps1",
+          "title": "Problem Set 1: Partition Functions",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-sm-ps2",
+          "title": "Problem Set 2: Phase Transitions",
+          "verified": true
+        }
+      ]
+    }
+  },
+  "global_discovered_resources": {
+    "discovered-book-hnsw-vector-v1": {
+      "resource_version_id": "discovered-book-hnsw-vector-v1",
+      "title": "Book: Approximate Nearest Neighbor & HNSW Vector Indexing (Vector Indexing)",
+      "canonical_url": "https://example.invalid/catalog/discovered-book-hnsw-vector-v1",
+      "captured_at": "2026-10-26T18:00:00Z",
+      "category": "Book",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "open-retrieval-press",
+        "display_name": "Open Retrieval Press · Indexed Book (ISBN 978-0-262-54118-3)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-26T18:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 37,
+        "discovered_by": "AI Web Search",
+        "discovered_by_handle": "@maya_dev",
+        "last_indexed_at": "2026-10-26T18:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "discovered-book-hnsw-vector-v1-ch1",
+          "title": "Ch. 1 · Dense Embedding Geometry & Cosine vs. Inner-Product Metrics (pp. 1–32)",
+          "verified": true
+        },
+        {
+          "segment_id": "discovered-book-hnsw-vector-v1-ch2",
+          "title": "Ch. 2 · Hierarchical Navigable Small World (HNSW) Graph Construction (pp. 33–74)",
+          "verified": true
+        },
+        {
+          "segment_id": "discovered-book-hnsw-vector-v1-ch3",
+          "title": "Ch. 3 · Recall@k vs. Latency Tradeoffs & Product Quantization (pp. 75–112)",
+          "verified": true
+        }
+      ]
+    },
+    "discovered-youtube-rag-eval-playlist-v1": {
+      "resource_version_id": "discovered-youtube-rag-eval-playlist-v1",
+      "title": "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
+      "canonical_url": "https://example.invalid/catalog/discovered-youtube-rag-eval-playlist-v1",
+      "captured_at": "2026-10-26T18:00:00Z",
+      "category": "YouTube",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "ai-systems-youtube",
+        "display_name": "AI Systems Lab · YouTube Playlist (PL-RAG-EVAL-2026)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-26T18:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 21,
+        "discovered_by": "AI Web Search",
+        "discovered_by_handle": "@kenji_ml",
+        "last_indexed_at": "2026-10-26T18:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid1",
+          "title": "00:00 · Part 1: Constructing Golden Evaluation Datasets & Recall@k",
+          "verified": true
+        },
+        {
+          "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid2",
+          "title": "16:20 · Part 2: Automated Faithfulness & Hallucination Attribution Checks",
+          "verified": true
+        },
+        {
+          "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid3",
+          "title": "34:05 · Part 3: End-to-End Hybrid Retrieval + Reranker Ablation Walkthrough",
+          "verified": true
+        }
+      ]
+    },
+    "discovered-course-triton-kernels-v1": {
+      "resource_version_id": "discovered-course-triton-kernels-v1",
+      "title": "Open Course: GPU Kernel Programming with OpenAI Triton & FlashAttention-3",
+      "canonical_url": "https://example.invalid/catalog/triton-gpu-kernels-course",
+      "captured_at": "2026-10-25T14:20:00Z",
+      "category": "Course",
+      "subject": "Systems",
+      "provider": {
+        "provider_id": "gpu-mode-open-collective",
+        "display_name": "GPU MODE Open Collective · Web Search Grounded"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-25T14:20:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "pending_reindex",
+        "embedding_model": "text-embedding-3-large",
+        "dimensions": 1536,
+        "index_type": "pgvector · HNSW",
+        "chunk_count": 34,
+        "discovered_by": "AI Web Search",
+        "discovered_by_handle": "@ferris_ops",
+        "last_indexed_at": "2026-10-25T14:20:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-triton-sram",
+          "title": "Lecture 3: Shared Memory Tiling & Warp Specialization",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-triton-fa3",
+          "title": "Lecture 6: Asynchronous Tensor Cores & Ping-Pong Scheduling",
+          "verified": true
+        }
+      ]
+    }
+  }
+}

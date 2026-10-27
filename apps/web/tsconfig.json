@@ -10,5 +10,5 @@
       "@curriculum/api-client": ["../../packages/api-client/src/index.ts"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "../../packages/ui/src/**/*.ts", "../../packages/api-client/src/**/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "../../packages/ui/src/**/*.ts", "../../packages/api-client/src/**/*.ts"]
 }
