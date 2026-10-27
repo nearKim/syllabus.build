@@ -58,7 +58,7 @@ OPS-002,P0,S07,T02 T09,administration; operational lifecycle,"role, lifecycle, r
 OPS-003,P0,S37,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-004,P0,S23 S38,T02 T09,app-companion.openapi.yaml; administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-005,P0,S39,T02 T04,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
-OPS-006,P0,S40,T00 T02 T09 T13,source-available licensing policy; contributor grants; publication terms; release operations,"Review operative custom terms for accepted individual-only policy, contribution/official-service rights, and separate content rights",specified; implementation pending
+OPS-006,P0,S40,T00 T02 T09 T13,Apache-2.0 software license (LICENSE); LEGAL.md 4-part boundary; CC BY 4.0 publication terms; release operations,"Verify Apache-2.0 software license, Section 5 contributor terms, CC BY 4.0 community curriculum terms, and separate third-party resource rights",specified; implementation pending
 NFR-001,P0,S29 S36 S57 S64 S66 S87,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-002,P0,S11 S31 S57 S64 S88,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-003,P0,S25 S58 S69 S85 S86,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending

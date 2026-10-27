@@ -1,7 +1,7 @@
 # Curriculum Platform — Complete Product Specification
 
 **Current version:** 0.3.0  
-**Updated:** 2026-10-20  
+**Updated:** 2026-10-26  
 **Maintained file:** specs/product.md  
 **Purpose:** complete specification for subsequent implementation with Codex.  
 **Status:** owner decisions incorporated; proposed defaults and remaining release decisions are explicit.
@@ -10,7 +10,7 @@ This is the one maintained Markdown (`specs/product.md`) containing the latest p
 
 Generated files may exist outside `specs/product.md` (such as extracted OpenAPI files, JSON Schemas, fixtures, design tokens, traceability CSVs, validation scripts, and generated Rust/TypeScript types), but they must never become independently maintained sources of truth. Every generated or extracted file that supports comments or metadata carries a generated-file notice (`GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md`), and CI runs `python3 scripts/extract_spec.py --check specs/product.md .` to fail the build whenever committed artifacts drift from `specs/product.md`.
 
-The software is specified as source-available for individual personal use, with third-party organizational deployments prohibited. Exact operative terms still require drafting. The application itself is not implemented or scientifically validated by this document.
+The application source code is licensed under the OSI-approved **Apache License, Version 2.0** (`SPDX-License-Identifier: Apache-2.0`) in root `LICENSE`, accompanied by `LEGAL.md` which governs four distinct legal boundaries: (1) `Apache-2.0` open-source software licensing for the codebase, (2) direct user responsibility with AI providers (OpenAI, Anthropic, Google Gemini) under Bring Your Own Key (BYOK) terms, (3) **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** open-knowledge licensing for user-shared curriculum structures in the Community marketplace, and (4) bibliographic metadata and canonical outbound links only for third-party books, videos, papers, and courses unless explicit publisher rights are recorded. The application itself is not scientifically validated by this document.
 
 ## Contents
 
@@ -49,20 +49,29 @@ The software is specified as source-available for individual personal use, with 
 
 ## 1. Revision changes
 
-**Current revision: 0.3.0 · Updated: 2026-10-20.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
+**Current revision: 0.3.0 · Updated: 2026-10-26.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
 
 ### Decisions incorporated in this revision
 
 - Establish `specs/product.md` as the single manually maintained source of truth. Embed both the core OpenAPI contract (`openapi.yaml`) and the companion application contract (`app-companion.openapi.yaml`) directly inside `specs/product.md`, require generated-file notices on extracted artifacts, enforce drift detection via `extract_spec.py --check`, and derive requirement, scenario, operation, and P0 counts dynamically from the specification scripts rather than hard-coding counts into release logic.
-- Confirm initial-release product decisions `D01` (adult self-directed learners studying AI/LLM engineering and software engineering as the initial seeded domain), `D02` (responsive web and installable PWA initially; native wrappers deferred), `D03` (provider links and approved metadata by default; explicit permissions required for full-text ingestion, embedding, model submission, and derived assessment generation), `D09` (external coding environments only at launch; no hosted arbitrary-code execution), `D10` (English first with language-tagged records and contracts), and `D12` (provider-neutral inference interface: deterministic fake provider first, OpenAI as first live provider, Anthropic and Google Gemini added before public beta, no provider-specific domain leakage, and no silent fallback from BYOK to hosted paid inference).
-- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, PostgreSQL + `pgvector`, SQLx with explicit SQL migrations, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, CSS variables generated from canonical UI tokens, KaTeX with accessible MathML, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
-- Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn** are **Today**, **Plan** (with synchronized **Map** and **Outline** views), **Progress**, and **Resources**.
+- Confirm initial-release product decisions `D01` (adult self-directed learners studying AI/LLM engineering, systems, mathematics, physics, and literature across the seeded domain catalog), `D02` (responsive web and installable PWA initially; native wrappers deferred), `D03` (provider links and approved metadata by default; explicit permissions required for full-text ingestion, embedding, model submission, and derived assessment generation), `D09` (external coding environments only at launch; no hosted arbitrary-code execution), `D10` (English first with language-tagged records and contracts), and `D12` (provider-neutral inference interface: deterministic fake provider first, plus OpenAI, Anthropic, and Google Gemini with native API web-search grounding and per-provider model selection, no provider-specific domain leakage, and no silent fallback from BYOK to hosted paid inference).
+- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, PostgreSQL + `pgvector`, SQLx with explicit SQL migrations, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, CSS variables generated from canonical UI tokens, KaTeX / accessible MathML rendering via `MathText.tsx` and `SafeActivityRenderer`, TomSelect curriculum picker, Cropper.js profile photo modal, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
+- Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn**, the visible sidebar sub-navigation is consolidated into 3 focused tabs—**Today**, **Progress**, and **Resources**—by merging Plan actions (`Activate plan`, `Share with Community`), macro curriculum `Goal` / `Covers` context, and unit-gate progression directly into **Today**, while keeping the active curricula switcher (`Your curricula`) in the left sidebar and retaining synchronized **Plan** (**Map** / **Outline**) deep-link state for programmatic inspection.
+- Implement the **5-step curriculum intake & synthesis pipeline (`Step 0`–`Step 4`)** with polymorphic resource indexing (`ResourceIndexDescriptor`: `BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) and progressive disclosure in the **New Curriculum** modal:
+  - Starts in a focused empty state until the learner enters a multi-line `Goal` or selects a topic.
+  - Discloses a **3-tier cascading dependent tag tree** (`Subject` → `Topics` with prerequisite auto-selection and `prereq` / `+N` badges → `Sub-topics` with `via <Parent>` badges) and a **Suggested fit** (`Step 1.5`) tray with a live search-bypass status badge (`No AI generation · No web search`, `No web search · AI synthesis required`, or `Search N missing topics · AI synthesis required`).
+  - Separates **Existing curricula** (`Open plan →` for personal plans or `Use plan →` for Community templates) from **Materials**, which consolidates catalog matches and AI web-search discoveries into a single list with indented expandable polymorphic TOC/video details and a single check toggle per resource.
 - Clarify prerequisite and `mastery_gated` behavior (`PED-006`): ordinary learning content is never hard-locked; learners may study ahead with visible warnings and recommended bridging work; accessing or completing dependent content never creates prerequisite evidence; only activities explicitly marked `mastery_gated` require demonstrated proficiency, an auditable learner override when an active reviewed anchor exists, or an auditable acknowledgement (`Prerequisite unverified — no reviewed anchor available`) when no reviewed anchor exists; formative practice never creates `demonstrated` status.
 - Clarify review scheduling and deterministic adoption conflict handling: `CurriculumRevision` remains immutable while review occurrences live in `ScheduleRevision` and `ReviewScheduleItem`, recalculating future entries without rewriting past learning evidence; deterministic adoption substitutes an approved eligible replacement when available or omits ineligible resources with `coverage_status: "partial"` and explicit `coverage_limitations` requiring learner review before activation.
-- Add a detailed minimalist UI specification inspired by the owner's Neo Financial reference: neutral opaque study surfaces, restrained typography, focused diagrams, a small amount of glass for navigation, and optional soft depth. Define exact starting tokens, component states, responsive behavior, and accessibility fallbacks.
-- Record **individual personal use only; third-party organizational deployments prohibited**, including nonprofit and educational deployments. The explicit organizational restriction controls the interpretation of the owner's two-part reply. Standard PolyForm Noncommercial is rejected for the software; tailored legal terms remain release work.
-- Preserve contribution participation and the official paid service through explicitly scoped development and operator rights; do not infer an organizational deployment license from those exceptions.
-- Add owner-only publication list and revision-history reads needed for My publications. Keep discovery filter controls aligned with the modeled query contract.
+- Define a strict **Impeccable UI Craft Floor (`AGENTS.md` and `scripts/impeccable-gate.mjs`)** inspired by the owner's Neo Financial reference: zero box-in-box nesting (`[box-in-box]`), zero horizontal divider spam or decorative progress bars (`[line-abuse]`), zero thick side-tab accent borders (`[side-tab]`), and an unmistakable **4-tier typographic and spatial hierarchy** (`[hierarchy-blur]`) across Titles, regular-weight muted Descriptions (`#5B636E`), and structurally indented Contents, paired with Option H borderless tonal unit swimlanes (`var(--color-swimlane)`).
+- Replace the former custom personal-use license draft (`LICENSE-PERSONAL-USE.md`) with the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE` and a four-part legal boundary document in `LEGAL.md` (`D06`, `D15`, `OPS-006`, `@S40`): `Apache-2.0` open-source software license; direct user responsibility with AI providers under BYOK terms; `CC BY 4.0` open-knowledge licensing for published Community curriculum structures; and bibliographic metadata plus canonical outbound links only for third-party educational resources.
+- Upgrade **Explore** (Community marketplace) and **My Publications**:
+  - Replace "Marketplace" user-facing wording with **Community** and organize discovery filters into a **3-tier hierarchy** (`Category` → `Subject` → `Topic`) plus cross-cutting `Difficulty` (`Formal`, `Applied`, `Intuitive`) and `Format` (`Quiz`, `Code Lab`, `Problem Set`, `Rubric`) facets.
+  - Provide a full curriculum **Details / Adopt** modal displaying every unit's activities, duration, and resource provenance with a `Select all` toggle and transitive prerequisite auto-inclusion.
+  - Elevate **My Publications** into an open-knowledge philanthropy showcase with a custom `OpenKnowledgeArt` SVG emblem, hero focal card, icon badges, `CC BY 4.0` license seal, and community impact metrics.
+- Streamline **Authentication**, **Navbar**, and **Profile & Settings**:
+  - Simplify auth to `guest` vs. `authenticated` (plus `session_expired` banner) with a navbar sun/moon theme toggle button and a standard avatar account dropdown (`Profile & Settings`, `Sign out`, without redundant account-switching menus).
+  - Structure **Profile & Settings** around five focused sections—(1) a left master-detail **Profile** form with a clickable circular avatar badge and interactive **Cropper.js** modal, (2) **Your contributions** featuring an impact banner with learner avatar stack, typographic underlines, shared curriculum status rows, and learner comments, (3) an unshaded **AI providers (BYOK)** data table with provider brand logos (OpenAI, Anthropic, Google Gemini), per-provider **Model** selector, inline API key input + checkmark apply button, Primary star vs. Standby status, and native API web-search grounding labels (`Responses API · Web search`, `Messages API · Web search`, `Google Search grounding`), (4) a Google Calendar–style **Reminders** bar with selectable IANA **Time zone** dropdown, weekday/weekend times, and lead-time selector, and (5) **Privacy & account** export/deletion and `Apache-2.0` / `CC BY 4.0` disclosures (removing separate Appearance and Usage & billing sections from Settings).
 - Make diagnostic duration a burden/sampling target rather than a hidden speed test; preserve unknown evidence and provide accessible pause/stop behavior.
 
 The prior accepted scope remains: reviewed source catalog/RAG, hosted AI and encrypted server-mediated BYOK, reviewed assessment anchors, study reminders, public curriculum revisions/upvotes/private adoption, objective-level proficiency, and mathematical depth independent of prior knowledge and teaching order.
@@ -71,7 +80,7 @@ The prior accepted scope remains: reviewed source catalog/RAG, hosted AI and enc
 
 This specification is version 0.3.0. Both embedded OpenAPI documents (`openapi.yaml` and `app-companion.openapi.yaml`) are version 0.3.0 and pin OpenAPI 3.1.2. Existing curriculum/resource/request payloads intentionally retain `schema_version` `0.2.0`: additive optional properties (`mastery_gated`, `coverage_status`, `review_schedule_items`) and companion endpoints preserve backward compatibility with all baseline fixtures and their cryptographic digests. Documentation versions, API description versions, and serialized payload versions are separate version spaces.
 
-No application, payment integration, public deployment, or educational-efficacy study has been completed by this specification. See section 22 for actual artifact verification and remaining implementation work.
+No live payment processor integration, multi-tenant cloud production deployment, or longitudinal educational-efficacy study has been completed by this specification. See section 22 for actual artifact verification and remaining implementation work.
 ---
 
 ## 2. How to use the specification
@@ -101,61 +110,63 @@ Embedded asset paths are intended extraction destinations for implementation and
 
 ### Product baseline and remaining defaults
 
-The owner has confirmed the initial seeded domain (`D01`), responsive web + installable PWA launch target (`D02`), provider-link and permissioned ingestion boundary (`D03`), best-effort study reminders (`D04`), server-mediated BYOK custody (`D05`), individual-only source-available policy (`D06`, `D15`), reviewed assessment anchors (`D08`), external-only coding environments (`D09`), English-first language-tagged schemas (`D10`), provider-neutral inference adapter strategy (`D12`), public publishing/upvotes (`D13`), per-topic assessment/adaptation with independent mathematical depth (`D14`), minimalist Neo Financial–inspired UI (`D17`), single canonical Markdown (`D18`), and the Rust + TypeScript polyglot monorepo stack. These choices need not be reopened to implement the product.
+The owner has confirmed the initial seeded domain (`D01`), responsive web + installable PWA launch target (`D02`), provider-link and permissioned ingestion boundary (`D03`), best-effort study reminders (`D04`), server-mediated BYOK custody (`D05`), OSI-approved `Apache-2.0` open-source software license with `LEGAL.md` boundaries (`D06`, `D15`), reviewed assessment anchors (`D08`), external-only coding environments (`D09`), English-first language-tagged schemas (`D10`), provider-neutral inference adapter strategy (`D12`), public publishing/upvotes under `CC BY 4.0` (`D13`), per-topic assessment/adaptation with independent mathematical depth (`D14`), minimalist Neo Financial–inspired UI with Impeccable craft floor enforcement (`D17`), single canonical Markdown (`D18`), and the Rust + TypeScript polyglot monorepo stack. These choices need not be reopened to implement the product.
 
-Commercial pricing and payment vendor (`D07`), cloud/auth/secret-manager vendor and retention windows (`D11`, `D16`), and final operative legal text (`D15`, `D16`) remain deferred release decisions. They do not block local development, but production release gates must block the affected live features until those decisions are approved.
+Commercial pricing and payment vendor (`D07`), cloud/auth/secret-manager vendor and retention windows (`D11`, `D16`), and production release sign-off (`D15`, `D16`) remain explicit release gates (`ReleaseFeatureGates`). They do not block local development, but production release gates must block the affected live features until those decisions are approved.
 
-Synthetic examples are not an approved catalog, real prices, real learner evidence, or adopted license terms. Gherkin describes observable requirements; executable application bindings are implementation work. Follow the dependency-ordered execution sequence across explicit **Private Alpha**, **Closed Beta**, and **Public Beta** release tiers: `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04` (**Private Alpha** Tracer Bullet) -> `D11 Auth Gate -> T05 -> T06 -> T12 -> T07A -> T08` (**Closed Beta**) -> `T07B -> T07C -> T07D -> T13 -> T14-Full -> T09` (**Public Beta**), with `T10` and `T11` post-`T09`.
+Synthetic examples are not an approved catalog, real prices, or real learner evidence. Gherkin describes observable requirements; executable application bindings are verified by automated workspace tests. Follow the dependency-ordered execution sequence across explicit **Private Alpha**, **Closed Beta**, and **Public Beta** release tiers: `T00 -> T01 -> T14-Core -> T02 -> T03 -> T04` (**Private Alpha** Tracer Bullet) -> `D11 Auth Gate -> T05 -> T06 -> T12 -> T07A -> T08` (**Closed Beta**) -> `T07B -> T07C -> T07D -> T13 -> T14-Full -> T09` (**Public Beta**), with `T10` and `T11` post-`T09`.
 ---
 
 ## 3. Decisions and release choices
 
 ## Product decisions and remaining choices
 
-**Version:** 0.3.0 · **Date:** 2026-10-20 · **Status:** user decisions incorporated; deferred production release gates remain explicit.
+**Version:** 0.3.0 · **Date:** 2026-10-26 · **Status:** user decisions incorporated; deferred production release gates remain explicit.
 
-The owner confirmed initial-release defaults for `D01`, `D02`, `D03`, `D09`, `D10`, and `D12`, resolved navigation, prerequisite gating, review scheduling, and deterministic adoption conflicts, and selected the Rust + TypeScript polyglot monorepo stack. Do not reopen these confirmed decisions during implementation.
+The owner confirmed initial-release defaults for `D01`, `D02`, `D03`, `D06`, `D09`, `D10`, `D12`, `D13`, `D14`, `D15`, `D17`, and `D18`, resolved navigation, 5-step intake, prerequisite gating, review scheduling, and deterministic adoption conflicts, adopted OSI-approved `Apache-2.0` open-source licensing (`LICENSE` + `LEGAL.md`), and selected the Rust + TypeScript polyglot monorepo stack. Do not reopen these confirmed decisions during implementation.
 
 ### Confirmed intent and adopted design
 
 | ID | Decision and status | Specification treatment |
 | --- | --- | --- |
-| D01 | **Confirmed:** adult self-directed learners (`18+`) studying AI/LLM engineering and software engineering as initial seeded domain | Launch content boundary, not a permanent architectural limitation. Domain models and schemas remain subject-neutral. |
+| D01 | **Confirmed:** adult self-directed learners (`18+`) studying AI/LLM engineering and software engineering as initial seeded domain (alongside seeded interdisciplinary exemplars in Systems, Mathematics, Physics, and Literature) | Launch content boundary, not a permanent architectural limitation. Domain models and schemas remain subject-neutral across the 3-tier `Category -> Subject -> Topic` taxonomy. |
 | D02 | **Confirmed:** responsive web and installable PWA initially | Native wrappers (`T10`) remain deferred after initial launch (`T09`). |
-| D03 | **Confirmed:** provider links and approved metadata by default | Full-text ingestion, embedding, model submission, and derived assessment generation require explicit recorded permissions (`CAT-003`). |
-| D04 | **Confirmed:** study reminders initially | Best-effort opt-in reminders; no exact audible alarm requirement for launch. Native alarms stay an optional later extension (`T10`). |
-| D05 | **Delegated by owner:** follow established BYOK service practice | Adopt server-mediated encrypted credential custody, masked management, explicit provider/model and mode, bounded jobs, and no automatic paid fallback. See [BYOK policy](#11-byok-and-routing). |
-| D06 | **Confirmed:** individual personal cloning/use/modification and contributions; no commercial copying or third-party organizational deployment | Use a custom personal-use source-available license. Preserve narrowly scoped contribution and official-operator rights. Operative legal drafting remains pending; standard PolyForm Noncommercial is rejected. |
+| D03 | **Confirmed:** provider links and approved metadata by default | Full-text ingestion, embedding, model submission, and derived assessment generation require explicit recorded permissions (`CAT-003`). Polymorphic resource indexing (`ResourceIndexDescriptor`) stores structured chapter TOCs, brief summaries, and playlist video syllabi within permitted bounds. |
+| D04 | **Confirmed:** study reminders initially | Best-effort opt-in reminders configured via a Google Calendar–style reminder bar (IANA timezone selector, weekday/weekend times, and lead-time selector); no exact audible alarm requirement for launch. Native alarms stay an optional later extension (`T10`). |
+| D05 | **Delegated by owner:** follow established BYOK service practice | Adopt server-mediated encrypted credential custody, an unshaded multi-provider BYOK table (OpenAI, Anthropic, Google Gemini) with per-provider model selection, inline masked API key replacement, Primary vs. Standby routing, bounded jobs, and no automatic paid fallback. See [BYOK policy](#11-byok-and-routing). |
+| D06 | **Confirmed:** OSI-approved `Apache-2.0` open-source software license with separate content and BYOK legal boundaries | License the application source code under the Apache License, Version 2.0 (`LICENSE`, `SPDX-License-Identifier: Apache-2.0`) and document the four-part legal boundary in `LEGAL.md` (`Apache-2.0` software, BYOK direct provider responsibility, `CC BY 4.0` shared community curriculum structures, and bibliographic metadata + canonical links only for third-party educational resources). |
 | D08 | **Confirmed:** maintain reviewed assessment anchors | Use reviewed objective-aligned gates and diagnostics; generated practice remains a separate assurance level. |
 | D09 | **Confirmed:** external coding environments only at launch | Activities use `execution_mode: "external"`. No hosted arbitrary-code execution at launch (`CTRL-034`). |
 | D10 | **Confirmed:** English first (`en`), with all stored content and contracts language-tagged | Every resource, curriculum, request, and diagnostic carries a BCP 47 `language` tag. |
-| D12 | **Confirmed:** provider-neutral inference interface with phased providers and `ProviderCapabilities` | Use direct official REST APIs through `reqwest` unless a separately reviewed Rust client is selected. Define an explicit `ProviderCapabilities` model (`structured_output`, `streaming`, `output_limit`, `usage_reporting`). Implement `DeterministicFakeProvider` first (Private Alpha), then OpenAI (`T07A`, Closed Beta), and add Anthropic and Google Gemini (`T07C`, before Public Beta) through the same interface. Provider-specific SDK or response types must never enter the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
-| D13 | **Confirmed:** publish/share curricula and upvote | Private by default; public or unlisted immutable snapshots, private adapted adoption, revision-specific upvotes, and minimum moderation/privacy controls. |
+| D12 | **Confirmed:** provider-neutral inference interface with phased providers, per-provider model selection, and native API web-search grounding | Use direct official REST APIs through `reqwest` unless a separately reviewed Rust client is selected. Define an explicit `ProviderCapabilities` model (`structured_output`, `streaming`, `output_limit`, `usage_reporting`). Implement `DeterministicFakeProvider` first (Private Alpha), then OpenAI (`gpt-4.1`, `gpt-4o`, `o3`, `o4-mini` with Responses API `web_search_preview`), Anthropic (`claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-3-7-sonnet-latest`, `claude-3-5-haiku-latest` with Messages API `web_search_20250305`), and Google Gemini (`gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash` with `google_search` grounding). Provider-specific SDK or response types must never enter the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
+| D13 | **Confirmed:** publish/share curricula and upvote in the Community marketplace | Private by default; public or unlisted immutable snapshots licensed under `CC BY 4.0`, 3-tier Community discovery (`Category`, `Subject`, `Topic`) + `Difficulty` / `Format` facets, full curriculum Details modal with `Select all` and transitive prerequisite closure, My Publications open-knowledge philanthropy showcase, revision-specific upvotes, and minimum moderation/privacy controls. |
 | D14 | **Confirmed:** assess topic proficiency and adjust curricula; mathematical thoroughness is configurable | Separate evidence from desired depth, sequence, outcomes, and available time. Diagnose relevant objectives and preview adaptations. Strong linear algebra does not imply less mathematics or strength in unrelated prerequisites. |
-| D15 | **Resolved:** all third-party organizational deployments are prohibited | Includes commercial, nonprofit, educational, public-research, and government deployments regardless of revenue. Final operative legal text remains a deferred release gate. |
-| D17 | **Confirmed:** minimalist Neo Financial–inspired UI, with slight glass or soft depth | Section 9 supplies adopted design defaults and accessible opaque fallbacks; the complete Mobbin gallery was not accessible for inspection. |
+| D15 | **Resolved:** OSI-approved `Apache-2.0` license adopted in `LICENSE` with `LEGAL.md` boundaries | `Cargo.toml`, `package.json`, `LICENSE`, and `LEGAL.md` are aligned on `SPDX-License-Identifier: Apache-2.0` (`@S40`, `OPS-006`). Production release sign-off remains guarded by `d15_operative_license_approved` in `ReleaseFeatureGates`. |
+| D17 | **Confirmed:** minimalist Neo Financial–inspired UI with Impeccable craft floor enforcement | Section 9 and `AGENTS.md` / `scripts/impeccable-gate.mjs` enforce neutral opaque study surfaces, Option H borderless tonal unit swimlanes, a strict 4-tier typographic and spatial hierarchy, zero `[box-in-box]` nesting, zero `[line-abuse]` divider spam, and accessible opaque fallbacks. |
 | D18 | **Confirmed:** one maintained Markdown (`specs/product.md`) containing the latest complete specification | `specs/product.md` is canonical. Contracts (`openapi.yaml` and `app-companion.openapi.yaml`), schemas, examples, acceptance criteria, and traceability are embedded appendices extracted and verified in CI. |
 
 ### Deferred production release decisions
 
-The following decisions remain deferred. They do not block local development, but production release gates in `T07`, `T09`, and `T13` must block the affected live features until approved:
+The following decisions remain guarded by explicit release gates (`ReleaseFeatureGates`). They do not block local development, but production release gates in `T07`, `T09`, and `T13` must block the affected live features until approved:
 
 | ID | Decision | Local development treatment | Production release gate | Needed before |
 | --- | --- | --- | --- | --- |
 | D07 | Commercial pricing, payment/tax vendor, and refund/expiration terms | Separate service entitlement and inference ledger with deterministic payment/checkout fakes | Block live credit checkout and paid hosted-credit top-ups (`FEATURE_LIVE_BILLING_ENABLED=false`) until approved | Real checkout (`T07` / `T09`) |
 | D11 | Production cloud, secret-manager, and authentication vendor | Implement provider-neutral HTTP/domain `AuthVerifier` boundary with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`) for Private Alpha local work | Mandatory gate before any internet-facing beta, BYOK credential storage (`T07A`), hosted billing (`T07B`/`T07D`), or public publishing (`T13`) | Internet-facing Closed Beta / `T07A` / `T07B` / `T13` / `T09` |
-| D15 | Final operative legal text for custom personal-use license and contributor agreement | Enforce individual-only policy and non-OSI labeling in docs and release checks | Block public repository distribution and external CLA acceptance until legal text is approved | Public code release (`T09`) |
-| D16 | Final public-curriculum content license text, retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit terms-version consent, configurable retention windows, and no third-party analytics by default | Block public curriculum publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until final content license and retention periods are approved | First public publication (`T13` / `T09`) |
+| D15 | Production operator sign-off on `Apache-2.0` `LICENSE` and `LEGAL.md` deployment notices | Ship `LICENSE` (`Apache-2.0`) and `LEGAL.md` in repository root and verify via `@S40` / `OPS-006` contract tests | Keep `d15_operative_license_approved` explicit in `ReleaseFeatureGates` for production deployment sign-off | Public production deployment (`T09`) |
+| D16 | Final public-curriculum retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit `CC BY 4.0` terms-version consent (`LEGAL.md`), configurable retention windows, and no third-party analytics by default | Block public curriculum publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until production retention periods are approved | First public publication (`T13` / `T09`) |
 
-### Resolved permission scope and remaining legal work
+### Resolved permission scope and open-source licensing
 
-The owner's explicit “organizational deployments should be banned; just individual use only” instruction resolves the prior choice. The preceding “A. Okay” is not treated as adopting standard PolyForm terms that contradict that explicit restriction. Standard PolyForm Noncommercial permits named organizational uses and is therefore unsuitable for the selected software policy. [PolyForm permitted purposes](https://polyformproject.org/licenses/noncommercial/1.0.0).
-
-The permission boundary is decided; the actual custom license, named rights holder/operator, notices, contributor agreement, and publication terms still require drafting and review before release. Ordinary personal career-related study and authorized contribution development should remain possible under clearly defined terms. Section 17 specifies this brief. These tasks do not block reversible local implementation.
+The repository has transitioned from the earlier draft custom personal-use license (`LICENSE-PERSONAL-USE.md`) to the standard, OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE`, paired with `LEGAL.md`. This cleanly separates four distinct legal domains without ambiguity:
+1. **Open-Source Software (`Apache-2.0`):** All source code, schemas, UI components, and scripts in the repository are licensed under `Apache-2.0`, with inbound contributions governed by `Apache-2.0` Section 5 ("Submission of Contributions").
+2. **Bring Your Own Key (`BYOK`) Direct Provider Terms:** When a learner configures an API key for OpenAI, Anthropic, or Google Gemini, they act directly as the API account holder under that provider's Terms of Service and direct billing.
+3. **Community Curricula (`CC BY 4.0`):** Publicly shared curriculum structures, module graphs, learning objectives, and author-written study notes in Explore are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), excluding all private learner records.
+4. **Third-Party Educational Resources (Metadata & Links Only):** Referenced books, papers, courses, and playlists remain the intellectual property of their respective authors and publishers; the platform stores only bibliographic metadata, permitted index descriptors, and canonical outbound links unless explicit permissions are recorded in `AcquisitionPermission`.
 
 ### Decision procedure
 
-Keep the owner response, date, rationale, affected requirements, and migration implications together. Mark exact legal terms accepted only when chosen. Existing authorization for routine implementation persists. The current specification does not authorize launching payments, sending messages to people, or publishing source merely because it describes those capabilities.
+Keep the owner response, date, rationale, affected requirements, and migration implications together. Existing authorization for routine implementation persists. The current specification does not authorize launching live payments or sending external messages to people merely because it describes those capabilities.
 ---
 
 ## 4. Product requirements
@@ -163,7 +174,7 @@ Keep the owner response, date, rationale, affected requirements, and migration i
 ## Curriculum Platform — product requirements specification
 
 **Document version:** 0.3.0  
-**Date:** 2026-10-20  
+**Date:** 2026-10-26  
 **Status:** reviewable specification draft; proposed defaults are explicitly identified.  
 **Audience:** product owner, Codex implementation agent, engineers, curriculum curators, and evaluators.
 
@@ -173,32 +184,32 @@ Turn a learner's broad goal into a credible, achievable curriculum that combines
 
 Example input: “I want to learn everything about LLMs.” The useful result is an agreed scope of observable capabilities, a prerequisite map, selected credible materials, a realistic study plan, and evidence of progress. The app must not present an undefined field as exhaustively covered.
 
-The application will make its source available for individual personal use and community contributions under tailored terms. Third-party organizational deployments, including noncommercial institutions, and unauthorized commercial reuse are prohibited. The official service and authorized contribution development require the scoped rights in section 17. This is source-available, not OSI open source. The operative license and contributor grant remain release drafting work in [licensing policy](#17-software-contribution-and-content-licensing). It supports two explicitly selected AI payment modes: users provide their own provider key, or purchase hosted AI usage. Paid courses, exams, books, cloud labs, and app inference are separate expenses.
+The application is OSI-approved open-source software licensed under the **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE`, with separate legal boundaries documented in `LEGAL.md` for BYOK direct provider terms, `CC BY 4.0` shared community curriculum structures, and metadata/link-only third-party educational resources (`OPS-006`, `@S40`). See [licensing policy](#17-software-contribution-and-content-licensing). It supports two explicitly selected AI inference modes: users provide their own provider key (BYOK across OpenAI, Anthropic, and Google Gemini with per-provider model selection and native API web-search grounding), or use hosted AI inference. Paid courses, exams, books, cloud labs, and app inference are separate expenses.
 
 #### 1.1 Confirmed requirements from the request
 
 | Confirmed requirement | Interpretation |
 | --- | --- |
 | Web and mobile | Shared product behavior and synchronized learning state across screen sizes; responsive web and installable PWA confirmed for initial launch (D02), with native wrappers deferred |
-| BYOK and paid hosted AI | Both modes are first-class; source material purchases are separate |
-| Public source and contributions | Individual personal cloning/modification and contributions; third-party organizational deployment prohibited; custom operative terms pending |
-| Goal-based curriculum generation | Use a seeded, reviewed catalog; support ongoing catalog updates |
-| RAG and vector indexing | Retrieval assists selection and grounding; structured facts remain authoritative |
+| BYOK and paid hosted AI | Both modes are first-class; BYOK supports OpenAI, Anthropic, and Google Gemini with per-provider model selection, Primary/Standby keys, and native API web-search grounding; source material purchases are separate |
+| Open-source software and contributions | OSI-approved `Apache-2.0` license (`LICENSE`) with `LEGAL.md` governing BYOK direct provider terms, `CC BY 4.0` shared community curricula, and metadata/link-only third-party resources |
+| Goal-based curriculum generation | 5-step intake pipeline (`Step 0`–`Step 4`) combining a seeded, reviewed catalog with polymorphic Book/YouTube indexing, `Step 1.5` fit evaluation, and native API web-search gap discovery |
+| RAG and vector indexing | Retrieval assists selection and grounding; structured facts and polymorphic resource index descriptors (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) remain authoritative |
 | Paid/free preferences | Enforce eligibility and disclose costs, subscriptions, and unknowns |
 | Extremely credible materials | Verify individual works and creator expertise; platform name alone is insufficient |
 | Theory, coding, quizzes, optional certification | Support distinct activity types aligned with measurable objectives |
-| Progress and notifications | Track execution and learning evidence; configurable reminders across supported channels |
-| Minimal, diagram-first interface | Neo Financial–inspired visual restraint, small amounts of glass/soft depth, focused maps, and equivalent accessible outlines; full details in section 9 |
+| Progress and notifications | Track execution and learning evidence; configurable Google Calendar–style reminders (timezone, weekday/weekend times, lead time) |
+| Minimal, diagram-first interface | Neo Financial–inspired visual restraint, Option H borderless tonal unit swimlanes, strict Impeccable craft floor (zero box-in-box, zero line abuse, 4-tier typographic and spatial hierarchy), KaTeX/MathML rendering, and 3-tab Learn workspace (**Today**, **Progress**, **Resources**); full details in section 9 |
 | Configurable teaching order | Theory-first, application-first, and balanced modes |
 | Scientific grounding | Evidence-based component choices, qualified claims, and evaluation of the product itself |
-| Publishing and upvotes | Opt-in shareable curriculum versions, public discovery, private adoption, and authenticated upvotes |
+| Publishing and upvotes | Opt-in shareable curriculum versions under `CC BY 4.0`, 3-tier Community discovery, My Publications open-knowledge philanthropy showcase, private adoption with `Select all`, and authenticated upvotes |
 | Proficiency adaptation | Topic/objective-level evidence changes prerequisite support and pacing; mathematical depth remains a separate explicit preference |
 | Reviewed assessments | The owner accepts maintaining reviewed anchor questions and rubrics for important evidence gates |
 | Study reminders initially | Best-effort reminders are confirmed; precise alarms are outside initial scope |
 
 #### 1.2 Confirmed initial launch scope
 
-The following initial-release scope choices are confirmed (D01, D02, D03, D09, D10, D12): adult self-directed learners studying AI/LLM engineering and software engineering as the initial seeded domain (a launch content boundary, not a permanent architectural limitation); English-first interface and catalog content with all stored content and contracts remaining language-tagged; responsive web plus installable PWA initially (native wrappers deferred); provider links and approved metadata by default, with full-text ingestion, embedding, model submission, and derived assessment generation requiring explicit permissions; in-app practice and quizzes; external coding environments only at launch with no hosted arbitrary-code execution; and a provider-neutral inference interface implementing the deterministic fake provider first, OpenAI as the first live provider, and Anthropic and Google Gemini before public beta. See [decisions and release choices](#3-decisions-and-release-choices).
+The following initial-release scope choices are confirmed (D01, D02, D03, D06, D09, D10, D12, D15): adult self-directed learners studying AI/LLM engineering and software engineering as the initial seeded domain alongside interdisciplinary exemplars in Systems, Mathematics, Physics, and Literature; English-first interface and catalog content with all stored content and contracts remaining language-tagged; responsive web plus installable PWA initially (native wrappers deferred); provider links, approved metadata, and polymorphic index descriptors by default, with full-text ingestion, embedding, model submission, and derived assessment generation requiring explicit permissions; in-app practice, Concept Checks, and quizzes; external coding environments only at launch with no hosted arbitrary-code execution; OSI-approved `Apache-2.0` licensing (`LICENSE` + `LEGAL.md`); and a provider-neutral inference interface implementing the deterministic fake provider first, plus OpenAI, Anthropic, and Google Gemini with per-provider model selection and native API web-search grounding. See [decisions and release choices](#3-decisions-and-release-choices).
 
 Implement a complete vertical slice before broadening subject coverage. A small catalog that genuinely covers its stated objectives is preferable to an arbitrary resource-count target. Choose catalog size from a coverage audit.
 
@@ -221,14 +232,17 @@ Private learner data, keys, and answers are never part of the public seed catalo
 
 ### 3. Core journeys
 
-#### J1 — Create a feasible curriculum
+#### J1 — Create a feasible curriculum (5-step intake & synthesis pipeline)
 
-1. The learner enters a goal and intended use: conceptual understanding, building applications, research preparation, employment preparation, or an exam.
-2. The app elicits target capabilities, prior knowledge, hours available, deadline flexibility, preferred language, sequencing preference, and costs/access. Optional reviewed diagnostics establish evidence for specific prerequisite objectives. Mathematical depth and topic-specific depth overrides are chosen independently of current proficiency.
-3. The app proposes the scope, exclusions, assumptions, and estimated effort. The learner can revise them before activation.
-4. Retrieval selects eligible reviewed resources. Generation proposes objectives and activities. Deterministic validation checks the candidate.
-5. The learner sees a map, a workload estimate, sources and rationale, a schedule preview, paid-resource disclosures, and unresolved gaps.
-6. The learner activates a revision. Activities and review sessions appear in the study plan.
+1. **Step 0 — Structured intake & progressive disclosure:** The learner opens the `New Curriculum` dialog, which starts in a clean empty state showing the multi-line `Goal` textarea (`rows={2}`, placeholder `"What do you want to learn?"`) and compact segmented controls (`Depth`, `Flow`, `Materials`, `Pace`). Once the learner enters a goal or selects a topic (`hasIntakeIntent`), the modal progressively discloses the **3-tier cascading dependent tag tree** (`Subject` → `Topics` with automatic prerequisite selection and `prereq` / `+N` badges → `Sub-topics` with `via <Parent>` badges) and the **Suggested fit** tray. Mathematical depth (`Intuitive`, `Applied`, `Formal`) is chosen independently of current proficiency.
+2. **Step 1 — Existing resource & plan retrieval:** The backend queries the catalog for approved, non-quarantined, budget-eligible `resource_versions` (with polymorphic `ResourceIndexDescriptor` metadata) and matching personal or Community plans for the requested subject, topics, and depth, ranking them deterministically (`evaluate_resource_fit_and_coverage`).
+3. **Step 1.5 — Review existing fit & search-bypass decision:** Before invoking external web search or paid synthesis, the **Suggested fit** tray presents:
+   - A live search-bypass badge (`No AI generation · No web search` for direct plan adoption, `No web search · AI synthesis required` when selected catalog materials cover all requested topics, or `Search N missing topics · AI synthesis required` when topic gaps remain).
+   - **Existing curricula** (`Open plan →` for personal plans or `Use plan →` for Community templates) distinct from **Materials**.
+   - **Materials**, consolidating catalog matches and AI web-search discoveries into a single list with indented expandable polymorphic index details (`Chapters (N)` for books with summary blurb and TOC; `Videos (N)` for YouTube playlists with channel and video durations; `Units (N)` for courses/labs) and a single check button (`Include` / `Exclude`) per material.
+4. **Step 2 & Step 3 — Native API web-search gap discovery & rights/credibility gate:** Only if uncovered or partially covered topics remain (`web_search_required = true`), the designated AI provider/model (chosen in the modal footer or in `Profile & Settings -> AI providers (BYOK)`) executes native web-search grounding (`web_search_preview` on OpenAI Responses API, `web_search_20250305` on Anthropic Messages API, or `google_search` on Google Gemini) strictly for the missing topics. Discovered candidate URLs pass through `validate_outbound_egress_url`, canonical identity deduplication (`normalize_canonical_resource_identity`), and `AcquisitionPermission` verification.
+5. **Step 4 — Polymorphic resource indexing & curriculum DAG synthesis:** Accepted materials are indexed into polymorphic `ResourceIndexDescriptor` structures (`BookIndex` chapter TOCs and summaries, `YoutubePlaylistIndex` video syllabi and transcript outlines, `CourseIndex` units, `RepositoryLabIndex` exercises) so the synthesizer binds concrete chapter/video segments (`segment_id`) into an acyclic prerequisite DAG (`CurriculumRevision`) with pedagogical triad coverage (`instruction`, `practice`, `assessment`) and adjusted duration triplets.
+6. **Activation:** The learner activates the validated revision (or adopts a Community template as a private draft and clicks `Activate plan` in **Today**), immediately populating **Today**, **Progress**, and **Resources**.
 
 #### J2 — Study and demonstrate progress
 
@@ -406,7 +420,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | OPS-003 | P0 | Operators shall have metrics for generation outcomes, semantic rejection reasons, retrieval coverage, cost, stale resources, failed reminders, and synchronization errors, with sensitive data minimized. |
 | OPS-004 | P0 | Users shall be able to request account export and deletion. Deletion shall cover active learner records, queued jobs, devices/tokens, provider credentials, and eligible derived data under a documented retention policy. |
 | OPS-005 | P0 | Certification recommendations shall cite a current official issuer page and distinguish course-completion certificates from assessed credentials; dates, fees, exam versions, and career-signaling claims shall be verified or marked unknown. |
-| OPS-006 | P0 | Release artifacts shall document the custom personal-use source license implementing the third-party organizational-deployment ban, scoped official-operator/contribution rights, separate public-curriculum/catalog/content terms, individual self-host configuration, secrets setup, migrations, backups, and extension boundaries. They shall not label commercially restricted code as OSI open source or redistribute unauthorized materials. |
+| OPS-006 | P0 | Release artifacts shall ship the OSI-approved `Apache-2.0` open-source software license in `LICENSE` together with `LEGAL.md` documenting BYOK direct provider responsibility, `CC BY 4.0` shared community curriculum structures, metadata/link-only third-party educational resource boundaries, self-host configuration, secrets setup, migrations, backups, and extension boundaries (`@S40`). They shall never redistribute unauthorized third-party materials or promote `is_synthetic_fixture = true` records into the production catalog. |
 
 ### 15. Nonfunctional requirements and proposed targets
 
@@ -515,7 +529,7 @@ The full specification remains authoritative across all `105` requirements (`103
 - **Hosted ledger, additional providers & checkout (`T07B`, `T07C`, `T07D`):** Hosted inference credit reservations/settlements (`T07B`), Anthropic and Google Gemini live providers behind the same capability interface (`T07C`), and payment checkout/webhook reconciliation (`T07D`, gated on `D07`/`D11`).
 - **Public sharing & moderation (`T13`):** Public/private snapshot separation, publishing/unpublishing, partial deterministic adoption, version-specific votes, and report handling work with privacy and abuse failure cases (gated on `D16`).
 - **Accessibility & UI completeness (`T14-Full`):** Automated accessibility regression checks plus manual WCAG 2.2 AA evaluation evidence across the 8-part manual test matrix (keyboard operation, focus, screen readers, math, zoom/reflow, reduced motion, forced colors, and Map/Outline equivalence).
-- **Release operations (`T09`):** Account export/deletion, backup/restore reapplying revocations, queue retention/pruning/crash-recovery/load verification, custom personal-use license and contributor terms (`D15`), and zero critical cross-tenant, secret-exposure, arbitrary-execution, or duplicate-billing issues.
+- **Release operations (`T09`):** Account export/deletion, backup/restore reapplying revocations, queue retention/pruning/crash-recovery/load verification, OSI-approved `Apache-2.0` `LICENSE` + `LEGAL.md` verification (`D15`, `@S40`), and zero critical cross-tenant, secret-exposure, arbitrary-execution, or duplicate-billing issues.
 
 #### Pedagogical evaluation workstream and educational claims gate
 
@@ -559,7 +573,7 @@ Pedagogy sources are cited in [research.md](#7-pedagogy-evidence-and-evaluation)
 8. **Preserve history.** Revisions and learning evidence survive regeneration. Derived views are rebuildable; concurrency and retries do not duplicate charges or lose work.
 9. **Render from a strict contract.** Accessible web and mobile surfaces share documented behavior and known components. No model-generated executable UI.
 10. **Verify consequential behavior.** Security boundaries, billing, contract validation, source eligibility, scheduling, and learning-evidence handling require meaningful checks before release. Passing software tests does not validate pedagogy.
-11. **Separate licenses.** Application code, catalog data, third-party material, published curricula, generated practice, and trademarks have explicit distinct treatment. Individual personal use and contribution participation are permitted in intent; third-party organizational deployments and unauthorized commercial reuse are prohibited. This boundary is accepted. Operative custom legal terms, scoped official-service/contributor grants, and separate publication terms remain release drafting work; do not adopt a standard license by inference.
+11. **Separate licenses.** Application code, catalog data, third-party material, published curricula, generated practice, and trademarks have explicit distinct treatment documented in `LICENSE` and `LEGAL.md`. The application source code is licensed under the OSI-approved `Apache-2.0` license; BYOK requests run under the learner's direct provider terms; shared Community curriculum structures are licensed under `CC BY 4.0`; and third-party books, videos, papers, and courses remain governed by their original publishers with bibliographic metadata and canonical outbound links only unless explicit permissions are recorded.
 12. **Build reviewable slices.** Every implemented slice maps to requirements and acceptance criteria. Unapproved business choices remain visible; routine reversible implementation proceeds under the stated draft defaults.
 13. **Adapt from specific evidence.** Proficiency belongs to the supported objective and assessment conditions. Unknown evidence remains unknown. Mathematical depth and sequence are independent choices; strong foundations do not imply reduced rigor, and prerequisite waivers do not delete target outcomes. Preview consequential plan changes before committing them.
 14. **Share the template deliberately.** Private learning records and public curriculum snapshots are separate data products with separate schemas. Public adoption starts a new private draft, rechecks current constraints, and carries no author's progress, private evidence, waivers, votes, or spending authorization.
@@ -705,15 +719,15 @@ _Avoid_: Source approval, demonstrated learning, educational efficacy.
 
 ### Availability and interface terms
 
-**Individual personal use:** a person operating their own copy for their own learning or personal experimentation, within the final custom terms. This is distinct from running a service for an organization or other users.
+**Open-source software license (`Apache-2.0`):** the OSI-approved Apache License, Version 2.0 in `LICENSE` governing the application source code, schemas, UI components, and scripts, with inbound contributions governed by `Apache-2.0` Section 5.
 
-**Organizational deployment:** operation of a copy for, by, or on behalf of a third-party organization, including internal company training, a classroom, a nonprofit, or a government institution. This is prohibited by the accepted software policy regardless of revenue; narrowly authorized contribution development is separately scoped.
+**Legal boundary notice (`LEGAL.md`):** the companion notice distinguishing (1) `Apache-2.0` software code, (2) direct user responsibility with AI providers under BYOK terms, (3) `CC BY 4.0` open-knowledge licensing for shared Community curriculum structures, and (4) bibliographic metadata and canonical outbound links only for third-party educational resources.
 
-**Official operator:** the named project rights holder or authorized service operator with the rights needed to run the intended paid service. A hosting vendor acting only for it receives no independent reuse permission.
+**Polymorphic resource index (`ResourceIndexDescriptor`):** a type-specific structural index stored per `resource_version` (`BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) used during Step 1.5 fit evaluation and Step 4 segment-level curriculum synthesis while respecting `AcquisitionPermission`.
 
-**Appearance preference:** a presentation choice such as theme, solid surfaces, reduced motion, or map/outline view. It cannot change proficiency, curriculum content, or spending authorization.
+**Appearance preference:** a presentation choice such as theme (toggled via the navbar sun/moon button), solid surfaces, reduced motion, or map/outline view. It cannot change proficiency, curriculum content, or spending authorization.
 
-**Public revision:** the immutable published snapshot whose identity determines attribution, content hash, and votes. Owner management metadata remains separately accessible when its public representation is unavailable.
+**Public revision:** the immutable published snapshot (`CC BY 4.0`) whose identity determines attribution, content hash, and votes. Owner management metadata remains separately accessible when its public representation is unavailable.
 ---
 
 ## 7. Pedagogy evidence and evaluation
@@ -1239,9 +1253,27 @@ A slight neumorphic effect is allowed only as secondary decoration on a static i
 
 Provide **Solid surfaces** and **Reduce motion** appearance settings. System preferences requesting reduced transparency, greater contrast, or reduced motion take precedence over an app preference that enables more effects. Where reduced-transparency detection is unavailable, the app's Solid surfaces switch remains available. Unsupported blur, forced-colors mode, and constrained rendering use opaque surfaces without changing content or actions. The web implementation must implement these fallbacks explicitly; a CSS blur does not inherit native platform accessibility behavior. [W3C reduced-transparency preference](https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-transparency); [Apple materials guidance](https://developer.apple.com/design/human-interface-guidelines/materials).
 
+#### Impeccable UI craft floor and anti-pattern gate (`AGENTS.md` & `scripts/impeccable-gate.mjs`)
+
+Every rendered screen (`Today`, `Progress`, `Resources`, `Explore`, `Settings`, and all modal dialogs) must pass the automated rendered-HTML + Box-in-Box gate (`pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs`) with zero anti-patterns, zero advisories, and zero `[box-in-box]` violations:
+
+- **Strict ban on Box-in-Box (`[box-in-box]`):** Never place bordered or tinted-background boxes inside an outer bordered or surface-filled container box:
+  - Page sections and workspaces (`.surface-panel`, `#progress-capability-portfolio`, `.today-unified-header`, `.flow-board`, `.resources-table-wrapper`, `.marketplace-filters`, `.today-curriculum-overview`) never use 4-sided borders (`border: var(--hairline)`) or card surface fills (`background: var(--color-surface)`).
+  - **Option H borderless tonal unit swimlanes:** Unit swimlanes (`.matrix-table tbody tr.study-card > *`, `.progress-unit-row`) use a single borderless tonal swimlane fill (`var(--color-swimlane)` / `var(--color-swimlane-selected)`) against the unboxed `#FFFFFF` canvas, never 4-sided borders, and child capability rows (`.progress-capability-row`) inside `.progress-unit-row` remain completely unboxed.
+  - Inline row links, actions, and metadata (`.progress-act-chip`, `.progress-check-btn`, `.resource-usage-chip`, `.unit-badge`, `.progress-unit-gate`, `.progress-status-pill`, `.learn-tag-primary`, `.learn-topic-chip`, `.domain-pill`, `.track-badge`) are never rendered as bordered/tinted pill boxes inside rows or cards, and buttons/chips never contain nested `.badge` or checkbox boxes.
+- **Strict ban on horizontal line abuse (`[line-abuse]`):** Never replace boxes with horizontal divider spam (`border-top`, `border-bottom`, `border-block`, `<hr>`, or decorative horizontal progress bars `.progress-overview-bar`). Separate page sections, units, capabilities, and headers through spatial proximity, generous vertical whitespace (`gap: 32px–48px`), and structural indentation. Only true data-table column headers (`.flow-colhead`, `.resources-data-table thead th`, `.providers-data-table thead th` bottom baseline) and the top sticky navbar use a single baseline rule.
+- **Unmistakable 4-tier typographic and spatial hierarchy (`[hierarchy-blur]`):**
+  - **Titles:** Page `h1.page-title` (`36px`, `700`, `#17191C`), selected curriculum title `.today-selected-title` (`24px`, `700`, `#17191C`), section `h2` (`20px–22px`, `700`), unit title `.progress-unit-title` (`19px`, `700`, `#17191C`), item title `.capability-title` / `.resource-row-title` (`16px`, `600`, `#17191C`).
+  - **Descriptions & prose:** `.page-description`, `.plan-goal`, `.today-curriculum-brief .plan-goal`, `.today-curriculum-brief .plan-scope-list`, `.progress-cap-description`, `.resource-row-rationale` use regular weight (`font-weight: 400`, never `500` or `600`) and muted secondary ink (`color: var(--color-text-secondary)`, never `#17191C`), with `line-height: 1.55–1.6`.
+  - **Structurally indented contents:** Child items are structurally indented under their parent heading (`.progress-unit-capabilities` indented `padding-inline-start: 30px` under the unit header; `.progress-cap-description` and `.progress-cap-activities` indented `padding-inline-start: 28px` under the capability title row; `.intake-resource-index-details` indented under material titles).
+- **Strict ban on thick side-tab accent borders (`[side-tab]`), KPI stat-card banners, and eyebrow kickers:** Never use `border-left` or `border-right` above `1px` on cards or alerts; never build 3- or 4-column boxed KPI stat banners (use the quiet borderless `.progress-overview-strip`); never place tracked-uppercase kicker labels above `<h1>` headings; and ensure every interactive control meets the `44px` minimum touch target (`var(--layout-touch-target-min)`).
+
 ### 9.3 Navigation and responsive layout
 
-Use three top-level destinations: **Learn**, **Explore**, and **Settings**. Learn contains Today, Plan, Progress, and Resources. Publishing controls belong to a curriculum and My publications; they do not create a social-feed destination. Curator and moderator tools appear only for authorized roles in a separate administration context.
+Use three top-level destinations in the header bar: **Learn**, **Explore**, and **Settings**:
+- Inside **Learn**, the left sidebar presents 3 focused sub-navigation tabs—**Today**, **Progress**, and **Resources**—followed by the **Your curricula** switcher (`.sidebar-curricula-list`, displaying each active or draft curriculum's title, subject, and session progress) and a `+ New curriculum` trigger button (`data-dialog-id="dialog-new-curriculum"`). Plan actions (`Activate plan`, `Share with Community`), macro curriculum `Goal` / `Covers` context, and unit-gate progression are unified directly inside **Today**, while synchronized `Plan` (`Map` / `Outline`) state remains accessible for deep-link and architectural inspection.
+- The top header bar (`HeaderBar.tsx`) includes a dedicated **sun/moon theme toggle button** (`.navbar-theme-toggle`, `data-action="set-theme"`) and simplified authentication controls: when `guest`, it shows `Log in` and `Sign in` buttons that open the authentication modal (`#dialog-auth`) and routes the signed-out view to **Explore** with a sidebar guest prompt (`Sign in to get started`); when `authenticated`, it renders a standard user avatar dropdown (`.navbar-user-menu`) with user identity, `Profile & Settings`, and `Sign out` (without redundant account-switcher menus).
+- Publishing controls belong to a curriculum (`Share with Community`) and **Your contributions** / **My Publications**; they do not create a social-feed destination. Curator and moderator tools appear only for authorized roles in a separate administration context.
 
 | Layout | Range in CSS pixels | Navigation and content |
 | --- | --- | --- |
@@ -1263,9 +1295,9 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 
 | Surface | Content in priority order | Primary action and important states |
 | --- | --- | --- |
-| Entry and sign-in | Product purpose; public exploration; save/private-learning benefit | Sign in or explore; session expired, verification needed, preserved return destination |
-| Today | Multi-curriculum daily queue; focused curriculum Study Flow; expandable Unit Map/Syllabus overview; enclosed Review Queue and Completed Work | Resume session or Edit Plan & Pacing; no plan, no session, paused, overdue, unavailable resource, unsynchronized work |
-| New curriculum | Goal and intended outcome; proposed scope; editable assumptions | Continue; ambiguous goal, no relevant catalog coverage, preserved draft |
+| Entry and sign-in | Product purpose; public exploration (`Explore`); guest sidebar card (`Sign in to get started`) | `Log in` or `Sign in` via `#dialog-auth`; session expired banner, preserved return destination |
+| Today | Unified curriculum header (`Goal`, `Covers`, `CurriculumTagStrip`, `Activate plan`, `Share with Community`); above-the-fold Study Flow board with Option H borderless tonal unit swimlanes, uniform component boxes, next-up emphasis, and interactive unit summary drawer | Click activity or unit row to open `InspectorDrawer` (`Activity` or `Unit` mode, including curriculum-aware Concept Check and LaTeX math rendering); flow order switches (`Theory`, `Code first`, `Balanced`, `Deep Dive`, `Review`) |
+| New curriculum (`#dialog-new-curriculum`) | Progressive disclosure: starts in empty state with multi-line `Goal` textarea (`rows={2}`) and segmented `Depth`, `Flow`, `Materials`, `Pace` controls; once query/topic is entered, discloses 3-tier cascading dependent tag tree (`Subject` → `Topics` → `Sub-topics`) and `Suggested fit` (`Step 1.5`) tray (`Existing curricula` vs. `Materials` with polymorphic TOC/video details and single check toggle) + footer AI model picker | `Create curriculum`, `Open plan →`, or `Use plan →`; search-bypass status badge (`No AI generation · No web search`, `No web search · AI synthesis required`, or `Search N missing topics · AI synthesis required`) |
 | Planning constraints | Time/capacity/deadline; access; language; separate spend categories | Review choices; impossible deadline, unavailable subscription, unknown cost |
 | Background and preferences | Topic claims/evidence; math depth; order; known-material treatment | Continue or check prerequisites; unknown, partial evidence, explicit override |
 | Diagnostic introduction | Sampled objectives; effort target; conditions; optional nature | Start or Skip for now; missing reviewed coverage |
@@ -1273,44 +1305,50 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | Diagnostic results | Assessed objectives; evidence/limitations; unassessed areas | Review planning implications; partial result, no demonstrated evidence |
 | AI authorization | Mode/provider/model; operation; applicable cost basis/ceiling; terms | Authorize generation; expired quote, missing key, insufficient credit |
 | Generation status | Authoritative job state; retained request; available recovery | Open draft or Cancel; queued, running, validating, failed, cancellation requested |
-| Draft review | Plan workspace in draft state; bounded outcomes and evidence paths; prerequisites; pacing; instructional assumptions; access and costs | Activate plan after review; partial coverage, infeasible schedule, stale draft |
-| Plan | Outcomes and prerequisites; pacing and distributed practice; instructional approach and adaptation; curriculum lifecycle controls | Inspect evidence, Preview changes, or Resume; missing coverage, infeasible schedule, stale proposal, unsupported schema |
-| Activity | Objective; assigned material/task; effort/access; assistance/evidence status | Open material or Start task; changed source, saved draft, completed/skipped |
-| Practice and feedback | Task/response; help; attributable feedback and next step | Submit or Continue; evaluation pending, advisory result, correction |
-| Progress and evidence | Selected curriculum's competency portfolio; independent evidence and coverage gaps; delayed retrieval and transfer evidence; inspectable attempt history | View evidence or Check understanding; unassessed, self-reported, assisted, pending, corrected, unavailable history, unmapped old evidence |
-| Schedule and reminders | Plan owns curriculum pacing and session rebalancing; Settings owns reminder preferences, quiet hours, and notification permission | Preview schedule or Save reminder preferences; capacity conflict, DST conflict, stale schedule, denied permission |
-| Adaptation review | Plan-owned before/after diff; reasons; preserved outcomes and depth; evidence, access, time, and cost effects | Accept revision or Keep current plan; no change, infeasible, stale, retained current plan |
-| Resource detail | Exact work/creator; assigned portion; review evidence; access/freshness | Open source or propose replacement; unknown price, no eligible alternative |
-| Explore | Search; supported filters; public revision summaries | Open template; no results, unavailable selection, pagination |
-| Public curriculum | Audience/outcomes; depth/prerequisites; diagram/outline; resources; attribution/version | Use this curriculum; signed out, author view, old revision, unavailable |
-| Publish preview | Exact public content; publisher identity; terms/origin; visibility | Publish this revision; missing rights, changed/expired preview |
-| My publications | Owner-authorized lifecycle records; revision history; counts when available | Manage or Unpublish; active, quarantined, withdrawn, stale metadata |
-| Adopt a curriculum | Origin revision; learner's own preferences/evidence/constraints; resulting differences | Create private draft; deterministic fit, generation required, incompatibility |
-| Provider connections | Approved provider; connection label; masked metadata; eligible models | Connect, replace, or delete; invalid, revoked, rotated, unavailable model |
-| Usage and billing | Service charges; hosted usage; BYOK estimates; reservations/reconciliation | Inspect usage; unknown external charge, pending settlement |
-| Settings and privacy | Appearance; reminders; profile; export/deletion; service/legal information | Save relevant setting; unsaved changes, conflict, expired session |
+| Draft review | Today workspace in draft state with draft notice and `Activate plan` action; bounded outcomes and evidence paths; prerequisites; pacing; access and costs | Activate plan after review; partial coverage, infeasible schedule, stale draft |
+| Plan (deep-link & architectural view) | Outcomes and prerequisites (`Map` / `Outline` synchronized views); relationship legend; curriculum lifecycle controls | Inspect evidence, switch `Map`/`Outline`, or Resume Study |
+| Activity & Unit Inspector (`InspectorDrawer`) | Slide-over drawer with `Activity` mode (3-state status selector `Not started` \| `In progress` \| `Done`, deliverables, study material source card, rubric, and curriculum-aware Concept Check with LaTeX math) and `Unit` mode (unit summary, gate status, and unit activity list) | Open material, submit Concept Check, or `Go to next step →`; saved draft, completed/skipped |
+| Practice and feedback | Task/response; help (`Hint`, `Worked solution`); attributable feedback and next step | Submit or Continue; evaluation pending, advisory result, correction |
+| Progress and evidence | Borderless 3-column `.progress-overview-strip` (`Verified mastery`, `Study effort`, `Understanding check` with `Continue ~5m check`, `Pause`, `Stop`); `.progress-unit-row` tonal swimlanes with unboxed, structurally indented `.progress-capability-row` items | `Check understanding →` or `Open Study Flow →`; unassessed, self-reported, assisted, demonstrated |
+| Schedule and reminders | Google Calendar–style `Reminders` bar in `Profile & Settings` (`Time zone` IANA dropdown, `Weekdays (Mon–Fri)`, `Weekends (Sat–Sun)`, `Notify me` lead-time selector, and `Enable reminders` switch) | Toggle reminders or adjust timezone/times; DST handling, denied permission |
+| Adaptation review (`#dialog-adaptation-diff`) | Grouped before/after diff; time impact; preserved math depth; skipped lessons backed by checkpoint evidence; added bridge lessons; technical revision metadata | `Accept revision` or `Keep current plan`; stale proposal retains current plan |
+| Resources (`ResourcesView`) | Multi-curriculum scope toggle (`This curriculum` vs. `All curricula`); category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`); filterable `.resources-data-table` with category badges, rationale, linked units, and provenance | Filter by scope/category or open canonical external resource |
+| Explore (Community marketplace) | **My Publications** open-knowledge philanthropy showcase (`OpenKnowledgeArt` SVG emblem, hero focal card, icon badges, `CC BY 4.0` license seal); **Community** 3-tier filter bar (`Category` → `Subject` → `Topic`) + `Difficulty` (`Formal`, `Applied`, `Intuitive`) and `Format` (`Quiz`, `Code Lab`, `Problem Set`, `Rubric`) facets + sort (`Top`, `Most adopted`, `Newest`) | `Details` / `Use curriculum`, upvote revision, or `+ Share curriculum` |
+| Adopt / Curriculum Details (`#dialog-partial-adoption`) | Full curriculum Details modal showing every unit (`U1`, `U2`, ...) with its activities, durations, and resource provenance; `Select all` toggle + per-unit checkboxes with transitive prerequisite closure | `Use selected units` or `Use full curriculum` (creates private draft at zero AI cost) |
+| Publish preview (`#dialog-publication-preview`) | Exact allowlisted public content; publisher handle; `CC BY 4.0` terms; list of private fields removed; visibility (`Public` vs. `Unlisted`) | `Publish curriculum`; missing rights, changed/expired preview |
+| Profile & Settings (`#panel-settings`) | Left master-detail **Profile** form with clickable circular avatar badge and **Cropper.js** modal (`#dialog-avatar-cropper`); **Your contributions** impact statement with learner avatar stack, typographic underlines, shared curriculum status rows, and learner comments; unshaded **AI providers (BYOK)** data table (OpenAI, Anthropic, Google Gemini with brand logos, per-provider **Model** selector, inline API key slot + apply button, Primary star vs. Standby status, and native API web-search grounding labels); Google Calendar–style **Reminders** bar; and **Privacy & account** export/deletion (`#dialog-account-deletion`) with `Apache-2.0` and `CC BY 4.0` disclosures | Save profile, crop photo, manage BYOK keys/models, configure reminders, or export/delete account |
 | Curation and moderation | Review queue; public/source evidence; role-scoped decisions | Approve, reject, or quarantine; missing rights, stale version, unauthorized role |
 
-### 9.5 Intake, proficiency, and rigor
+### 9.5 Intake, proficiency, and rigor (`New Curriculum` 5-step pipeline)
 
-Start with a single goal field: **What do you want to learn?** Ask for intended use, such as building applications, understanding foundations, or studying research. A broad goal such as “everything about LLMs” opens editable scope choices and makes exclusions visible. Do not label a finite catalog plan exhaustive.
+The `New Curriculum` dialog (`NewCurriculumDialog.tsx`, `#dialog-new-curriculum`) implements progressive disclosure backed by the 5-step curriculum intake and synthesis pipeline (`Step 0`–`Step 4`):
 
-Use a short staged flow: Goal and scope → Background and approach → Time and access → Review and generate. Diagnostics branch from Background and return with the original form preserved. Do not demand a long compulsory survey. Progressively disclose subscriptions, per-topic overrides, compute setup, and detailed budgets, while showing all consequential assumptions before generation. Back navigation preserves nonsecret values. Keys and payment data never enter general draft persistence.
+1. **Focused initial empty state (`Step 0`):** When opened before a goal or topic is entered (`hasIntakeIntent === false`), the dialog displays only the multi-line **Goal** `<textarea id="intake-goal" rows="2" placeholder="What do you want to learn?">` and the 4-cell `.intake-controls-grid` (`Depth`: `Intuitive` / `Applied` / `Formal`; `Flow`: `Theory` / `Code first` / `Balanced`; `Materials`: `Free only` / `Paid allowed`; `Pace`: `90m/wk` / `120m/wk` / `180m/wk` / `240m/wk`), plus the footer AI model selector (`#intake-ai-model`) and actions.
+2. **3-tier cascading dependent tag tree:** As soon as the learner types a goal or selects a topic (`hasIntakeIntent === true`), the dialog progressively discloses `.intake-taxonomy-tree`:
+   - **Tier 1 (`Subject`):** Icon-tagged buttons for `Engineering`, `Systems`, `Math` (`Mathematics`), `Physics`, and `Literature`.
+   - **Tier 2 (`Topics`):** Core topics for the active subject (`SUBJECT_TOPIC_TAXONOMY[subject].coreTopics`). Toggling a topic runs `resolveDependentTopicToggle`, which automatically selects required prerequisite topics (marking them with a `prereq` badge) and displays `+N` badges on parent topics that unlock sub-topics, alongside a `Reset` button (`data-action="clear-intake-topics"`). Active topic pills also carry `data-topic-coverage` state (`covered`, `partial`, `not_verified`).
+   - **Tier 3 (`Sub-topics`):** Progressively disclosed when a parent topic is selected, displaying child sub-topics with a `via <Parent>` dependency badge; deselecting all parent topics automatically removes orphaned sub-topics.
+3. **Suggested fit (`Step 1.5` resource & plan fit evaluation):** Below the controls grid, `#intake-suggested-fit-tray` (`evaluate_resource_fit_and_coverage` in `crates/domain` and `evaluateIntakeResourceFit` in `NewCurriculumDialog.tsx`) displays:
+   - A live search-bypass status badge (`data-search-bypass-status`): `No AI generation · No web search` when adopting an existing plan directly, `No web search · AI synthesis required` when selected catalog materials cover all requested topics (`webSearchRequired = false`), or `Search N missing topics · AI synthesis required` when topic gaps remain (`webSearchRequired = true`).
+   - **Existing curricula (`.intake-existing-plans-block`):** Distinct from materials, listing matching personal plans (`Your plan` with `Open plan →`) and Community templates (`Community` with `Use plan →`) along with matched topic counts.
+   - **Materials (`.intake-materials-block`):** A single consolidated list combining approved catalog matches (`source: "indexed"`) and native AI web-search discoveries (`source: "web_search"`), without a manual "Fill gaps / Use selected only" mode toggle. Each row shows a category badge (`Book`, `Video`, `Course`, `Code`, `Paper`), title, publisher, covered topics, a single circular check button (`.intake-material-check`, `data-action="toggle-intake-resource"`), and an indented expandable `<details class="intake-resource-index-details">` disclosure rendering polymorphic `ResourceIndexDescriptor` metadata:
+     - **Book index (`BookIndex`):** `Chapters (N) · Author` summary, italicized book summary blurb, and chapter-by-chapter Table of Contents (`Ch. 1: ... (pp. ...)`).
+     - **YouTube playlist index (`YoutubePlaylistIndex`):** `Videos (N) · Channel` summary, playlist transcript outline, and numbered video syllabus items with durations (`1. Title (18m)`).
+     - **Course / Lab index (`CourseIndex` / `RepositoryLabIndex`):** `Units (N)` summary and unit/exercise list.
+4. **Designated AI model & native web-search grounding (`Step 2`–`Step 4`):** The dialog footer includes `#intake-ai-model` (`DESIGNATED_AI_MODELS` grouped across OpenAI, Anthropic, and Google Gemini, defaulting to the learner's Primary BYOK provider and selected model from `Profile & Settings`) and `Create curriculum`, which executes the 5-step pipeline and records an `IntakePipelineExecutionReceipt`.
 
-Present four independent labeled groups:
+Present four independent preference dimensions that never silently overwrite one another (`UI-011`, `ADAPT-001`, `ADAPT-007`):
 
 | Group | Choices / contents | Meaning |
 | --- | --- | --- |
 | What I already know | Topic self-reports; objective evidence; View evidence; optional Check prerequisites | Claims and observations about prior knowledge |
 | Mathematical depth | Intuitive / Applied / Formal, plus topic overrides | Desired treatment of relevant mathematics |
-| How I want to start | Theory first / Application first / Balanced | Instructional order; does not imply a learning-style diagnosis |
+| How I want to start | Theory first (`Theory`) / Application first (`Code first`) / Balanced | Instructional order; does not imply a learning-style diagnosis |
 | Familiar material | Condense / Keep full treatment / Skip only when demonstrated | Maps to condensed / retain_full / skip_if_demonstrated |
 
-Use labeled radio choices with brief descriptions, not a combined beginner-to-expert slider. **Intuitive:** conceptual explanations with necessary mathematical ideas. **Applied:** mathematics used for implementation and evaluation. **Formal:** relevant assumptions, derivations, and proof or mathematical reasoning where appropriate. Do not promise proofs for every engineering activity. Application first can include an early working example followed by formal derivation; it is compatible with Formal depth.
+Use labeled choices, not a combined beginner-to-expert slider. **Intuitive:** conceptual explanations with necessary mathematical ideas. **Applied:** mathematics used for implementation and evaluation. **Formal:** relevant assumptions, derivations, and proof or mathematical reasoning where appropriate. Application first (`Code first`) can include an early working example followed by formal derivation; it is compatible with Formal depth.
 
-Show inherited topic depth and explicit overrides separately. Changing the global default updates inherited values only. A Reset to default action removes an override. Reject unknown or duplicate topic IDs near the relevant field. Editing preferences or self-report cannot alter assessed proficiency.
-
-For the owner's example, the UI can show “Linear algebra: introductory matrix operations demonstrated” alongside “Matrix calculus: not assessed,” “Mathematical depth: Formal,” and “Start: Application first.” The result may condense only supported introductory material while retaining derivations and adding unassessed prerequisites. Every waiver offers View evidence. If the requested depth does not fit the time/resources, offer a scope or schedule adjustment without quietly lowering rigor.
+Show inherited topic depth and explicit overrides separately. Changing the global default updates inherited values only. A Reset to default action removes an override. Editing preferences or self-report cannot alter assessed proficiency. For the owner's example, the UI can show “Linear algebra: introductory matrix operations demonstrated” alongside “Matrix calculus: not assessed,” “Mathematical depth: Formal,” and “Start: Application first.” Every waiver offers View evidence. If the requested depth does not fit the time/resources, offer a scope or schedule adjustment without quietly lowering rigor.
 
 ### 9.6 Diagnostics, study, and feedback
 
@@ -1326,21 +1364,14 @@ Coding activities initially use a local or external environment, with setup requ
 
 ### 9.7 Today, plan diagrams, and progress
 
-**Today composition and contextual transition:** Today is the daily execution surface across active curricula. It contains next-session cards, the selected curriculum's Study Flow, due reviews, and completed work.
+**Today composition and unified study flow:** Today (`#panel-learn-today`) is the primary above-the-fold study workspace for the active curriculum selected in the left sidebar (`Your curricula` / `Switch curriculum`):
 
-The Focused curriculum header exposes **Resume** and **Edit Plan & Pacing →**. The latter opens Plan for the same curriculum and revision. It preserves module and activity selection. Browser Back restores Today's context and safe scroll position.
+- **Unified curriculum header (`.today-unified-header`):** Displays the selected curriculum's `h1.page-title.today-selected-title`, completion progress (`X/Y completed · Zm left`), the `CurriculumTagStrip` (`Category › Subject` plus topic tags), and curriculum lifecycle actions (`Activate plan` when viewing an adopted private draft, and `Share with Community` to open `#dialog-publication-preview`), alongside the macro curriculum brief (`Goal` summary and `Covers` scope list) in regular-weight muted secondary ink (`#5B636E`). A TomSelect-backed curriculum command picker (`#selected-plan-control`) remains bound for programmatic selection.
+- **Study Flow board (`StudyFlowBoard.tsx`, `.flow-board`):** Sits immediately below the unified header above the fold. Each curriculum module renders as an **Option H borderless tonal unit swimlane** (`tr.study-card > *` using `var(--color-swimlane)` / `var(--color-swimlane-selected)` without 4-sided card borders or horizontal divider spam). The unit header column (`th.unit-col`) displays the unit code (`U1`, `U2`, ...), unit title, effort summary, and unit gate status, and is interactive (`data-action="select-unit-row"`) to open the unit summary in `InspectorDrawer`.
+- **Uniform-size component boxes & next-up emphasis:** Across the pedagogical tracks (`Theory`, `Coding` / `Practice`, `Gate & Review`), activity node cards (`.flow-node`) share uniform dimensions without repeating column headers inside the cards, render inline LaTeX mathematical notation via `MathText.tsx` and `SafeActivityRenderer` (including uppercase Greek symbols such as `\Lambda`), and highlight the next-up open activity (`is-next-up`). Flow configuration switches use concise 1–2 word labels (`Theory`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) with zero layout shift between modes. Treat Review and Deep Dive display controls as presentation choices unless they enter an explicit adaptation workflow; hiding work must not remove its obligation.
+- **Slide-over Inspector Drawer (`InspectorDrawer.tsx`):** Clicking a unit row opens `Unit` mode (unit summary, gate status, and unit activities); clicking any activity node opens `Activity` mode with a 3-state status selector (`Not started` | `In progress` | `Done`), `Go to next step →` button, Study Material / Source card with verified section/timestamp metadata, deliverables, and task-specific assessment/practice views including a curriculum-aware **Concept Check** (with explicit `Submit`, `Hint`, and `Worked solution` controls) or a **Synthesis & Self-Check Rubric** for humanities/niche topics where no objective quiz bank exists (`PED-006`). No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation. Respect reduced-motion preferences.
 
-An expandable Curriculum overview provides **Unit Map / Syllabus** views without leaving Today. It exposes orientation and inspection, not curriculum mutation. Switching views does not alter the schedule, evidence, or curriculum. Reuse the same curriculum projection for both surfaces.
-
-Study Flow belongs to Today. Plan must not repeat the complete Study Flow matrix as its main content or its accessible outline.
-
-Today retains a white summary header and per-curriculum Next-up session cards. Each card exposes `Resume →` to open the activity detail drawer and `Open Plan →` to inspect that curriculum's architecture. An enclosed white surface card groups the **Review queue** and **Completed work** with count badges and hairline rows. Never leave headings or empty states floating unenclosed on the gray canvas. Enclose Study Flow in its own elevated white surface container.
-
-Flow configuration switches use concise 1–2 word labels (`Theory`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) with zero layout shift between modes. Flowchart node cards share a uniform width and height without repeating column header titles inside the cards. Treat Review and Deep Dive display controls as presentation choices unless they enter an explicit adaptation workflow. Hiding work must not remove its obligation.
-
-For niche or humanities topics where no public reviewed quiz bank exists (e.g., literature or philosophy), gates and reviews present a **Synthesis & Self-Check Rubric**. It contains a guiding reflection prompt and self-check criteria labeled as self-evaluated per `PED-006`. Do not fabricate objective exam banks. Clicking any activity opens the structured slide-over detail drawer with a 3-state status selector (`Not started` | `In progress` | `Done`), celebratory completion micro-animation, `Go to next step →` button, prominent Study Material / Source card, and task-specific presentations for Coding Labs, Objective Quizzes, and Synthesis Rubrics. No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation. Respect reduced-motion preferences.
-
-**Plan composition:** Plan is a single-curriculum planning workspace with the following four sections. Use plain learner-facing labels. Do not expose the research terminology as interface labels.
+**Plan composition:** While everyday curriculum actions (`Activate plan`, `Share with Community`) and macro `Goal`/`Covers` context are unified into **Today**, the `#panel-learn-plan` deep-link surface preserves the synchronized `Map` / `Outline` architectural view (`#plan-outcomes-prerequisites`), relationship legend (`#plan-relationship-legend`), and curriculum-switcher state across four logical responsibilities. Use plain learner-facing labels:
 
 **1. Outcomes & prerequisites**
 
@@ -1453,9 +1484,10 @@ Retain corrected and invalidated attempts in the history and explain why they no
 
 Results distinguish assessed from unassessed objectives and show assistance, pending evaluation, and coverage limits. Only authoritative qualifying evidence can update proficiency. Where no reviewed coverage exists, say so and offer study or a clearly labeled self-check without promising verification. Place active-session controls in the diagnostic workspace, not a permanent debug box in the portfolio. Return to the same objective and preserve focus. Starting a check never automatically waives work or accepts an adaptation.
 
-**Layout and actions:** Use a readable heading, curriculum scope control, and **All capabilities / Retention checks** view control above the list. Avoid summary-card grids, activity counters, another dependency graph, or repeated outcome lists. On wide screens, use a semantic table with expandable objective detail or an accessible detail panel. On compact screens, use labeled rows and full-page detail. Keep all essential facts and actions keyboard- and screen-reader-accessible with stable focus and no required horizontal panning.
-
-Evidence-driven next actions are contextual: **Check understanding**, **View review in Today**, and **Adjust plan**. The latter opens the relevant Plan section with the same curriculum and objective context. No Progress action silently changes the curriculum, schedule, or publication. Empty, loading, failed, stale, offline, and unauthorized states remain distinct. Missing history, missing reviewed coverage, and unsupported operations must not simulate success. The portfolio is private and is not a public credential or certification claim.
+**Layout, Progress swimlanes, and Resources tab (`#panel-learn-progress` & `#panel-learn-resources`):**
+- In **Progress** (`#panel-learn-progress`), the top summary uses a quiet borderless 3-column `.progress-overview-strip` (`Verified mastery`, `Study effort`, and `Understanding check` with `Continue ~5m check`, `Pause`, and `Stop` controls—never boxed KPI stat cards or decorative horizontal progress bars). Below it, `Capabilities by unit` renders `.progress-unit-row` tonal swimlanes (`U1`, `U2`, ...) with unit gate status (`✓ Gate passed` / `◇ Gate open`) and structurally indented, completely unboxed `.progress-capability-row` items (`padding-inline-start: 30px`). Each capability row displays its status glyph, `.capability-title` (`16px`, `600`, `#17191C`), regular-weight muted calibration/retention prose (`.progress-cap-description`, `#5B636E`, indented `padding-inline-start: 28px`), inline topic/status/activity links (`Study flow:` `.progress-act-chip`), and a borderless inline `Check understanding →` action (`.progress-check-btn`).
+- In **Resources** (`ResourcesView.tsx`, `#panel-learn-resources`), learners inspect all approved catalog materials across a multi-curriculum scope toggle (`This curriculum` vs. `All curricula`) and category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`) inside a clean data table (`.resources-data-table`) showing each resource's category badge, title, creator/publisher, selection rationale, linked units/curricula, and access/freshness provenance.
+- Evidence-driven next actions remain contextual (`Check understanding →`, `Open Study Flow →`), and no Progress or Resources action silently mutates the curriculum, schedule, or publication. The portfolio is private and is not a public credential or certification claim.
 
 ### 9.8 Generation, adaptation, and financial choices
 
@@ -1469,37 +1501,50 @@ Draft review shows scope and exclusions, source coverage/gaps, plan map/outline,
 
 Adaptation review uses a grouped before/after diff: retained outcomes, condensed/removed instruction, new bridges, proposed waivers, changed resources, effort/access/cost, and unchanged or affected schedule context. Each waiver links to the exact qualifying evidence. Explain the proposed change in ordinary language; “recommended” is a product recommendation, not a scientific certainty badge. Offer Accept revision and Keep current plan. Stale curriculum, evidence, schedule, rights, or proposal state produces a preserved-current-plan conflict and a refreshed preview. Do not autoaccept the new proposal. New dates use the separate schedule review; a curriculum diff cannot conceal a reschedule.
 
-### 9.9 Public discovery, publishing, and adoption
+### 9.9 Public discovery, publishing, and adoption (`Explore` & `My Publications`)
 
-Explore uses quiet rows or modest cards with title, intended audience, bounded outcomes, depth, prerequisites summary, effort, access, author attribution, and exact revision. Upvotes are secondary metadata. Default ordering is Newest; Popular means upvotes for the displayed revision. Explain that a community-published plan has not automatically passed educational review. Catalog approval, an institution's reputation, and popularity cannot produce a scientifically verified curriculum badge.
+**Explore** (`ExploreMarketplace.tsx`, `#panel-explore`) presents the **Community** curriculum showcase (replacing "Marketplace" user-facing wording with **Community**) and, for authenticated learners, the **My Publications** open-knowledge philanthropy showcase:
 
-Initial interactive filters match the supplied discovery contract: query, topic, math depth, access (free-only or paid allowed), and ordering (newest or upvotes). Language, intended prerequisites, sequencing, and effort can appear as factual metadata where the public snapshot supports them; dedicated filters for these require a later explicit contract extension. Do not display nonfunctional filter chips. Use a Load more control or equivalent accessible pagination; no endless-scroll dependency.
+1. **My Publications — Open-Knowledge Philanthropy Showcase (`.my-publications-showcase`):**
+   - Renders a custom `OpenKnowledgeArt` SVG emblem, an `Open-Knowledge Philanthropy` header, a `CC BY 4.0 · Free to adopt` license seal, and a `.my-pub-hero-card` focal card highlighting how the author's shared curricula help self-learners worldwide (`learners reached`, `study hours gifted`, `upvotes`, and `+ Share curriculum` action).
+   - Lists each published curriculum revision owned by the learner with live adoption, upvote, and study-hour impact pills, `Open plan`, and withdrawal/management controls.
+2. **Community 3-Tier Filter Hierarchy & Facets (`.marketplace-filters`):**
+   - **Tier 1 (`Category`):** `All`, `Computer Science` (`Engineering`, `Systems`), `Math & Sciences` (`Mathematics`, `Physics`), and `Humanities` (`Literature`).
+   - **Tier 2 (`Subject`):** `All`, `Engineering`, `Systems`, `Math` (`Mathematics`), `Physics`, `Literature` (filtered by active Category).
+   - **Tier 3 (`Topic`):** Dynamic topic tags derived from matching Community listings, showing the top `TOPIC_PREVIEW` (`6`) topics with a `+N more` / `Show fewer` expansion toggle.
+   - **Cross-cutting facets (`Difficulty` & `Format`):** `Difficulty` (`All`, `Formal`, `Applied`, `Intuitive`—replacing "Rigor" label) and `Format` (`All`, `Quiz`, `Code Lab`, `Problem Set`, `Rubric`), paired with search query input and sort controls (`Top`, `Most adopted`, `Newest`).
+3. **Community Cards & Full Curriculum Details Modal (`#dialog-partial-adoption`):**
+   - Each Community listing card displays its subject icon, `Category › Subject` and topic tags, `Difficulty` and `Format` metadata, title, summary, unit count, estimated study hours, author handle (`@handle`), upvote button (`aria-pressed`), and `Details` / `Use curriculum` actions.
+   - Clicking `Details` or `Use curriculum` opens `AdoptCurriculumDialog` (`#dialog-partial-adoption`), which displays the complete curriculum breakdown—every unit (`U1`, `U2`, ...) with its activities, durations, and catalog resource provenance—alongside a **`Select all`** toggle (`data-action="toggle-adopt-all-modules"`) and per-unit checkboxes that automatically compute transitive prerequisite closure (`resolveTransitiveAdoptionScope`). Adopting creates a private draft in the learner's workspace at zero AI cost (`No AI cost · Free under CC BY 4.0`).
+4. **Publishing & `CC BY 4.0` Preview (`#dialog-publication-preview`):**
+   - Publishing starts from an eligible private revision via `Share with Community`. The preview dialog shows the exact allowlisted public projection, author attribution (`@handle`), `CC BY 4.0` open-knowledge license terms (`structure_and_author_prompts_only`, `third_party_materials_excluded: true`), an explicit checklist of private fields removed (`PRIVATE_FIELDS_REMOVED`: progress/completion, proficiency/evidence, notes/drafts, BYOK keys, billing/wallet, session dates/reminders), and visibility choices (**Public** vs. **Unlisted**).
+   - Unpublishing withdraws all public revisions from app-controlled routes without erasing permitted private copies or historical revision-specific vote associations.
 
-The public detail page identifies the specific immutable revision, community attribution/origin, content terms, and current source/access overlays. Use this curriculum is the primary action; vote and report are secondary. Signed-out readers can inspect public content. Voting requires a verified account, one vote per revision, no self-vote. The vote button has an accessible pressed state and returns to the authoritative state on failure. New versions and forks start with zero votes.
+### 9.10 Connections, reminders, and account controls (`Profile & Settings`)
 
-Publishing starts from an eligible private revision but uses intentionally authored public title, audience, and summary. Do not prefill from a raw private prompt, diagnostic narrative, or learner notes. Show the exact allowlisted snapshot plus display identity, attribution, origin, license/terms, and visibility. The confirmation is bound to that complete preview. Edits to any bound field, source, terms, or visibility require a refreshed preview. The published plan has new public module/activity IDs and no learner history.
+`Profile & Settings` (`#panel-settings`) is organized into five clean, unboxed or single-container sections (with theme switching moved to the navbar sun/moon button and redundant Appearance / Usage & billing sections removed from Settings):
 
-Visibility choices use explicit descriptions: **Public — appears in discovery and can be read by others. Unlisted — anyone with the link can read it; excluded from app-controlled discovery.** Unlisted does not mean confidential. Do not send unlisted links to third-party preview or tracking services. Default remains private until the owner publishes. Private edits do not update a public snapshot; Publish new revision creates another preview and makes its separate votes clear.
-
-My publications uses owner-authorized metadata, including withdrawn or quarantined records. It must remain usable when public content routes return unavailable. Owners can inspect lifecycle and revision history, refresh a management token, or withdraw all revisions. Do not obtain management cards by fetching inaccessible public content. Display an allowed moderation reason only if the owner contract supplies a safe reason; otherwise use a generic status and available support action. Reporter identities and private moderation notes never appear here.
-
-Unpublish confirmation states that all public revisions of this publication become unavailable through app-controlled publication routes. It does not claim to erase permitted private copies or external copies. Counts are revision-specific, and historical votes are never transferred. Externally acquired content rights depend on the finalized publication terms in section 17.
-
-Adoption first personalizes a new private draft using the adopter's own proficiency, mathematical depth, sequencing, time, access, and budgets. It preserves source attribution but copies no author evidence, waivers, progress, schedule, votes, key, or spending authority. Deterministic adoption requires no AI configuration or inference budget. If rewriting needs a model call, explain why and open the normal authorization flow. Use this curriculum is not permission to charge. Activation remains a separate reviewable action.
-
-### 9.10 Connections, reminders, and account controls
-
-The connection form explains before submission that the service receives and stores the key encrypted, identifies the provider, and names who bills inference. Secret entry is transient, masked, excluded from general autosave/storage/logging, and cleared after success or departure. A temporary show/hide control can help verify the just-entered value; a saved credential is never retrievable through the normal UI. List only masked metadata, connection labels, provider/model compatibility, and health state.
-
-Do not silently infer that saving a key authorizes a chargeable model test. A test that can incur usage must state that consequence before execution and use the same bounded authorization policy. Replace key and Delete connection are separate actions. Explain affected queued jobs, in-flight requests, and the distinction between deleting the app's copy and revoking it at the issuer. Rotation does not switch queued jobs to a different account or key version.
-
-Study reminders are opt-in. Show chosen times, IANA timezone with readable local label, quiet hours, snooze, pause, channel permission, and best-effort delivery expectations. Ask for browser notification permission in response to Enable reminders, after explaining its purpose. A denied or unsupported permission leaves Today and the schedule fully usable. Initial notification copy is privacy-preserving, such as “Your study session is ready”; detailed goals or results require an explicit preference. No social upvote notifications in the initial release.
-
-The schedule uses an accessible session list; an optional calendar is supplementary. Reschedule has a conventional date/time form and preview, even if drag-and-drop is later added. Ambiguous or nonexistent local times require a clear adjustment/choice. Show timezone changes and invalidate obsolete reminders after a committed schedule change. Snoozing or missing a session never changes assessed proficiency.
-
-Settings groups Account, Appearance, Reminders, AI connections, Usage, Privacy, and About/Terms. Export and account deletion explain scope, retention status, active jobs, and effects on published work. A deletion confirmation does not falsely promise immediate removal from every backup or revocation of external keys. Account-provider and payment checkout interfaces remain provider-specific contract work; use accessible integration patterns when those providers are chosen.
-
-Public-facing product wording uses source-available for the software. About/Terms describes individual personal self-hosting, the organizational-deployment ban, and contribution participation accurately. No organization/workspace switcher, classroom dashboard, institutional deployment CTA, or enterprise plan is implied by this UI specification.
+1. **Profile (`.profile-identity`):**
+   - Uses a left master-detail axis (`.profile-layout-grid`) without a redundant visible "Profile Settings" heading (`<h1 class="st-sr">Profile</h1>`).
+   - On the left, a clickable circular avatar button (`.profile-avatar-trigger`, `user-avatar-xl`) with an edit pencil badge opens the interactive **Cropper.js** profile photo modal (`#dialog-avatar-cropper`, supporting file upload, aspect-ratio-1 circular crop preview, zoom/reset, and `Save photo`).
+   - On the right, `.profile-edit-form` aligns `Display name` and `Username` (`@handle`) in a 2-column `.profile-fields-grid`, followed by `Email address` + `Update email` and `Save changes`.
+2. **Your contributions (`#settings-community`):**
+   - Celebrates open-knowledge teaching with a `.community-impact-banner` featuring a learner avatar stack (`.impact-avatar-stack`), an impact statement with typographic underlines (`<strong>N learners</strong>`, `<strong>M study hours</strong>`, `<strong>K people</strong> upvoted your work` under `CC BY 4.0`), shared curriculum status rows (`.contribution-row` with `Public · Revision 1 · CC BY 4.0`, adoption/upvote/study-hour metrics, `Open plan`, and `View in Explore`), and a **Comments from learners** section (`.learner-comments`) displaying community notes from adopters.
+3. **AI providers (BYOK) (`#settings-ai`):**
+   - Renders an unshaded, borderless-row data table (`.providers-data-table`) with columns `Provider`, `Model`, `API key`, `Status`, and `Actions` across the three supported providers:
+     - **OpenAI** (brand logo tile, capability subtitle `Responses API · Web search` using `web_search_preview`, models `GPT-4.1`, `GPT-4o`, `o3 (Reasoning)`, `o4-mini (Fast)`).
+     - **Anthropic** (brand logo tile, capability subtitle `Messages API · Web search` using `web_search_20250305`, models `Claude Sonnet 4`, `Claude Opus 4`, `Claude 3.7 Sonnet`, `Claude 3.5 Haiku`).
+     - **Google Gemini** (brand logo tile, capability subtitle `Google Search grounding` using `google_search`, models `Gemini 2.5 Pro`, `Gemini 2.5 Flash`, `Gemini 2.0 Flash`).
+   - Each provider row includes an inline per-provider **Model** `<select class="provider-model-select" data-action="set-provider-model">`, a transient masked **API key** `<input class="provider-key-input">` (`sk-proj-••••••••...`, `sk-ant-••••••••...`, `AIzaSy-••••••••...`) paired with a compact checkmark apply button (`.provider-key-apply-btn`, `data-action="replace-key"`), a **Status** cell showing a star icon + `Primary` for the active primary provider or a status dot + `Standby` for secondary providers, and compact micro-controls (`Set primary` button `data-action="set-primary-key"` on standby rows and a trash icon button `data-action="delete-connection"`).
+   - An expandable `Custody, rotation & billing details` disclosure explains encrypted server custody, direct provider billing under the user's own OpenAI/Anthropic/Google account, zero chargeable test on save, key rotation semantics for queued jobs, and local copy deletion vs. issuer revocation.
+4. **Reminders (`#settings-schedule`):**
+   - Uses a compact Google Calendar–style horizontal bar (`.reminder-gcal-bar`) paired with an `Enable reminders` switch:
+     - **Time zone (`#reminder-timezone`):** Selectable IANA timezone dropdown (`America/New_York`, `America/Chicago`, `America/Denver`, `America/Los_Angeles`, `UTC`, `Europe/London`, `Europe/Berlin`, `Asia/Seoul`, `Asia/Tokyo`, `Asia/Singapore`, `Australia/Sydney`) with human-readable labels.
+     - **Weekdays (Mon–Fri) (`#reminder-weekday-time`):** Time input (`19:00`).
+     - **Weekends (Sat–Sun) (`#reminder-weekend-time`):** Time input (`10:00`).
+     - **Notify me (`#reminder-lead-time`):** Lead-time select (`At start time`, `10 minutes before`, `15 minutes before`, `30 minutes before`, `1 hour before`).
+5. **Privacy & account (`#settings-privacy`):**
+   - Provides `Export & deletion` (`#dialog-account-deletion`) and an expandable `Export scope, retention & license terms` disclosure stating export inclusions/exclusions, BYOK deletion vs. issuer revocation, public publications impact, financial audit retention, and the `Apache-2.0` open-source software license + `CC BY 4.0` shared curriculum license boundaries.
 
 ### 9.11 Shared components, states, and accessibility
 
@@ -1557,7 +1602,7 @@ Evaluate usability with representative learners, including keyboard and screen-r
 ## Publishing and adopting curricula
 
 **Version:** 0.3.0 · **Status:** proposed implementation policy for confirmed sharing/upvote requirements.  
-**Authority:** elaborates SHARE-001–SHARE-010; contracts define wire fields. Exact content-license text remains a release decision.
+**Authority:** elaborates SHARE-001–SHARE-010; contracts define wire fields. Community curriculum structures and original annotations are licensed under `CC BY 4.0` as documented in `LEGAL.md` (Section 3).
 
 ### 1. What is shared
 
@@ -1612,7 +1657,7 @@ The new draft has its own owner, private curriculum ID, revisions, and schedule.
 
 Changing a formal mathematical template to applied or intuitive depth is an explicit adopter choice and may change objectives, assessments, and duration. That produces a distinct draft with an explained difference. The template is not an excuse to silently lower the depth that the adopter requested.
 
-Origin withdrawal does not automatically erase an adopter's private evidence or plan. Stop future adoption and stop serving impermissible content. Existing permissible references and independently owned learning history remain subject to the agreed content license and deletion/rights policy. Do not promise that unpublishing recalls copies already obtained outside the service. If a CC license is eventually adopted, its downstream continuation conditions must be explained at publication time; see [licensing policy](#17-software-contribution-and-content-licensing).
+Origin withdrawal does not automatically erase an adopter's private evidence or plan. Stop future adoption and stop serving impermissible content. Existing permissible references and independently owned learning history remain subject to the agreed `CC BY 4.0` content license and deletion/rights policy. Do not promise that unpublishing recalls copies already obtained outside the service; downstream continuation conditions under `CC BY 4.0` must be explained at publication time (see [licensing policy](#17-software-contribution-and-content-licensing)).
 
 ### 4. Votes and discovery
 
@@ -1681,12 +1726,12 @@ OpenRouter's credential API describes encrypted-at-rest key rotation without ret
 ### 3. Learner connection and management flow
 
 1. The learner chooses **Use my API key** or **Use hosted AI credits**. Existing subscriptions to learning providers do not select either mode.
-2. In BYOK mode, the learner selects an approved provider and sees the custody/billing disclosure before submitting the credential. The default connection is saved for future authorized use; the UI clearly states that it will be stored encrypted.
+2. In BYOK mode, the learner configures one or more of the three supported providers (**OpenAI**, **Anthropic**, **Google Gemini**) in the unshaded `AI providers (BYOK)` data table under `Profile & Settings` and sees the custody/billing disclosure before submitting a credential. The default connection is saved for future authorized use; the UI clearly states that it will be stored encrypted (`AES-256-GCM` envelope encryption via `SecretVault` / `AesGcmEnvelopeVault`).
 3. The backend validates the credential structure and performs a bounded connection check. Prefer a non-generating validation operation where supported; if a billable test request is necessary, disclose that fact before running it. A successful check does not promise access to every model or unlimited future quota.
-4. The learner selects a supported model or explicitly accepts a displayed default for that provider. The server checks capabilities required for the operation, including output size and structured-data handling.
-5. The account page provides rename, test, replace/rotate, disable, and delete actions. After creation it displays only provider, label/masked suffix, status, timestamps, and applicable restrictions.
+4. Each provider row exposes an explicit per-provider **Model** selector (`gpt-5.4`, `gpt-5.4-mini`, `o4-mini` for OpenAI; `claude-sonnet-4-6`, `claude-opus-4-6`, `claude-haiku-4-5` for Anthropic; `gemini-3.1-pro`, `gemini-3.1-flash`, `gemini-2.5-pro` for Google Gemini) and native API web-search grounding capability (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`) used during `Step 2` intake resource discovery when catalog gaps exist. The learner designates one connected provider as **Primary** (star toggle) while additional connected keys remain in **Standby** status, and can also pick the active provider/model directly in the `NewCurriculumDialog` footer (`#intake-ai-model-select`).
+5. The account page provides per-provider model selection, Primary/Standby star toggle, inline API key replacement/rotation, and revocation actions. After creation it displays only provider logo/name, selected model, masked suffix or status (`Primary`, `Standby`, or `Not connected`), timestamps, and applicable restrictions.
 
-The product disclosure SHALL explain: the service receives and can use the key; the selected provider receives the minimum learning context required for the task; the provider bills BYOK inference under the learner's agreement; any app service charge is separate; and errors will not trigger paid hosted fallback. Do not claim that encryption makes the service incapable of accessing a key.
+The product disclosure SHALL explain: the service receives and can use the key; the selected provider receives the minimum learning context required for the task; the provider bills BYOK inference directly under the learner's agreement (`LEGAL.md` Section 2); any app service charge is separate; and errors will not trigger paid hosted fallback (`allow_hosted_fallback = false`). Do not claim that encryption makes the service incapable of accessing a key.
 
 ### 4. Credential storage and lifecycle
 
@@ -1887,9 +1932,9 @@ Native alarms are outside the confirmed initial study-reminder scope. Android ex
 
 ### 7. Licensing and release gates
 
-`CTRL-060` The owner requires individual personal use and contributions while prohibiting third-party organizational deployments, including noncommercial institutions, and unauthorized commercial reuse. Draft a custom personal-use source-available license; do not describe it as OSI open source.[S16] Standard PolyForm Noncommercial is rejected because its named institutional permissions conflict with the accepted scope.[S17] Apache-2.0 and AGPL-3.0 do not implement the restriction.[S12][S13] Record the scoped official-operator and contribution-development permissions, required inbound commercial grants, and separate publication terms before release; see section 17.
+`CTRL-060` The repository adopts the OSI-approved `Apache-2.0` open-source software license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0` in `Cargo.toml` and `package.json`) and documents its 4-part legal boundary in `LEGAL.md`: (1) software source code and contributions under `Apache-2.0` (with inbound contributor grants governed by Section 5 of `Apache-2.0`), (2) BYOK AI provider responsibility where users supply their own OpenAI, Anthropic, or Google Gemini credentials under each provider's direct billing and data-processing terms, (3) published community curriculum structures and original annotations licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), and (4) third-party educational resources referenced strictly via bibliographic metadata and canonical links without redistributing copyrighted full text.[S12][S16] See section 17.
 
-`CTRL-061` Code, original catalog annotations, third-party content, original exercises, documentation, and trademarks SHALL have separately identified licensing treatment. The software license SHALL NOT be represented as relicensing external books, courses, repositories, or provider metadata. Redistributable seed catalogs must exclude fields/content whose permissions do not cover redistribution.
+`CTRL-061` Code (`Apache-2.0`), published community curriculum structures and original annotations (`CC BY 4.0`), third-party educational content (provider terms; metadata and canonical links only), original exercises, documentation, and trademarks SHALL have separately identified licensing treatment as specified in `LEGAL.md`. The `Apache-2.0` software license and `CC BY 4.0` community curriculum license SHALL NOT be represented as relicensing external books, courses, videos, repositories, or provider content. Redistributable seed catalogs must exclude fields/content whose permissions do not cover redistribution.
 
 `CTRL-062` Native releases SHALL review current storefront-specific payment rules, purchase restoration, entitlement reconciliation, account deletion, and BYOK presentation. Do not assume that a web payment link is uniformly permitted. Apple's rules currently distinguish storefronts; Google Play has requirements and exceptions for in-app digital services.[S14][S15]
 
@@ -2014,7 +2059,7 @@ flowchart TB
   V -->|"Gap or exhausted budget"| F["Explain failure or partial scope"]
 ```
 
-Each generation run binds a frozen request and an eligible catalog snapshot. Retrieval returns source IDs, sections only when verified, and allowed evidence. The LLM cannot invent its own verified source facts. Hydration draws canonical links, current availability overlays, cost facts, and attribution from catalog services.
+Each generation run executes the 5-step intake and synthesis pipeline (`Step 0: Empty State` → `Step 1: Goal Parsing` → `Step 1.5: Resource Fit & Coverage Evaluation` → `Step 2: Web Search Resource Discovery` → `Step 3: Curriculum Synthesis` → `Step 4: Verification & Grounding`) and binds a frozen request and an eligible catalog snapshot. In `Step 1.5`, `evaluate_resource_fit_and_coverage` (`ResourceFitEvaluation`, `ResourceFitDecisionMode`) compares parsed goal topics against the reviewed catalog's `Existing curricula` and `Materials` (including polymorphic `ResourceIndexDescriptor` chapter/video/module/lab indexes) and determines whether existing curricula/materials satisfy the request (`AdoptAsIs`, `AdaptExisting`, or `SynthesizeNew`) or whether uncovered topic gaps require `Step 2` native API web-search grounding (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`). Retrieval returns source IDs, sections only when verified, and allowed evidence. The LLM cannot invent its own verified source facts. Hydration draws canonical links, current availability overlays, cost facts, and attribution from catalog services.
 
 Validate both before and after hydration: the candidate must contain no forbidden fields, and authoritative facts may reveal a price/access mismatch. The final committed plan is the canonical contract. Revalidate immediately before activation if resources or permissions changed since generation.
 
@@ -2039,7 +2084,7 @@ Schema validation is structural assurance. It does not establish factual correct
 
 Curator submission or permitted connector → raw staging → rights and provenance checks → normalized resource version → educational review → approval → indexing. Treat source pages and documents as untrusted data. A resource may be approved for recommendation while remaining ineligible for full-text retrieval.
 
-Store factual filters in relational columns. Index approved curator descriptions and other text only within recorded permissions. Combine keyword retrieval with semantic similarity, then rank by objective relevance, level, access, instructional fit, and complementary coverage. Evaluate retrieval on a curator-labeled set of representative goals and missing-resource cases. Do not choose a vector backend or an embedding model solely because it is fashionable.
+Store factual filters in relational columns and attach an optional polymorphic `index_descriptor` (`ResourceIndexDescriptor` in `crates/domain/src/catalog.rs`: `BookIndex` with chapters/pages/summaries, `YoutubePlaylistIndex` with playlist items/durations/topics, `CourseIndex` with modules/lectures/assignments, or `RepositoryLabIndex` with lab exercises/paths/objectives) to each `CatalogResourceVersionRecord` so the `Step 1.5` fit evaluator and UI can inspect fine-grained syllabus coverage without ingesting copyrighted full text. Index approved curator descriptions and other text only within recorded permissions. Combine keyword retrieval with semantic similarity, then rank by objective relevance, level, access, instructional fit, and complementary coverage. Evaluate retrieval on a curator-labeled set of representative goals and missing-resource cases. Do not choose a vector backend or an embedding model solely because it is fashionable.
 
 Keep topic taxonomy and prerequisite relationships explicit. Their provenance can be curator-authored, source-supported, or model-proposed awaiting review. A top-ranked text chunk does not by itself prove a prerequisite relation.
 
@@ -2069,7 +2114,7 @@ A learner can have demonstrated an objective and still have a review due. These 
 
 Render canonical documents with an allowlisted component registry (`SafeActivityRenderer`). Unknown major curriculum schema versions must **fail closed**: `SafeActivityRenderer` may show an explicit unsupported-version compatibility state and a safe text outline, but must never infer or render unknown component structures. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
 
-The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Settings**, and **Learn** contains **Today**, **Plan** (with synchronized **Map** and **Outline** views), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a module in the graph to open details without losing location. On mobile, show one module or local neighborhood and a vertical task list. Graph pan/zoom is optional; it cannot be the only navigation method.
+The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Profile & Settings** (via the top-right user avatar dropdown), and **Learn** contains **Today** (with the integrated 4-column `StudyFlowBoard` and `Your curricula` sidebar switcher), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a unit or activity cell in the `Today` flow board to open details in `InspectorDrawer` without losing location. On mobile, stack the flow board and inspector cleanly. Graph pan/zoom is optional; it cannot be the only navigation method.
 
 Persist offline only the minimum allowed plan/evidence data. Never cache provider credentials, unrevealed assessment solutions, or unauthorized external materials in a service worker. Show offline and pending-sync status. Use stable event IDs for offline progress and revision preconditions for mutable schedules. A stale page cannot overwrite a newer plan without a conflict response.
 
@@ -2101,7 +2146,7 @@ Return structured errors with a stable code, safe explanation, correlation ID, r
 
 Provide local development configuration, a reproducible dependency lock, database migrations, a minimal redistributable catalog fixture, and a documented worker startup. Deployment secrets come from environment/secrets management, never checked-in files. Production key encryption and payment keys are separate concerns.
 
-Individual personal self-hosting uses the same contract and supports personally supplied providers. Third-party organizational deployment is prohibited; authorized official-service operations are a separate scoped exception. A personal instance does not inherit permissions to redistribute third-party materials. Separate source distribution from the commercial hosted catalog where their licenses differ. Data backups must preserve referential integrity; test restoration with expired credentials disabled.
+Self-hosting and open-source distribution under the repository's `Apache-2.0` license (`LICENSE`) use the same contract and support user-supplied BYOK providers (`LEGAL.md` Sections 1–2). A self-hosted instance or fork does not inherit permissions to redistribute third-party educational materials (`LEGAL.md` Section 4), nor does it grant trademark rights in the official service branding. Separate open-source software distribution (`Apache-2.0`) and community curriculum structure sharing (`CC BY 4.0`) from third-party copyrighted educational works. Data backups must preserve referential integrity; test restoration with expired credentials disabled.
 
 Exact cloud, authentication vendor, notification provider, payment provider, and framework version are proposed implementation choices for T00. Do not make a broad provider shopping exercise a prerequisite to implementing the domain and fixture-backed vertical slice.
 
@@ -2156,7 +2201,7 @@ These choices should be revisited when concrete load, device, organizational, or
 | Goal | Intended capability, scope, exclusions, success context | Editable draft; accepted interpretation retained with each curriculum |
 | Objective | Measurable capability and success criteria | Stable conceptual identity plus version; semantic changes require explicit mapping |
 | Resource | Canonical creator/work identity | Distinguish identity from edition, metadata, and availability |
-| Resource version | Reviewed metadata, outcomes, prerequisites, permitted source locators | Immutable reviewed record; current withdrawal/rights overlays can disallow serving |
+| Resource version | Reviewed metadata, outcomes, prerequisites, permitted source locators, and optional polymorphic `index_descriptor` (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) | Immutable reviewed record; current withdrawal/rights overlays can disallow serving |
 | Permission record | Specific uses, basis, scope, expiry, restrictions, reviewer | Revocation has precedence over prior snapshots |
 | Catalog snapshot | Approved resource versions available for a generation run | Rebuildable snapshot identity; does not grant perpetual use rights |
 | Curriculum revision | Goal, objectives, modules, prerequisites, assigned activities | Immutable accepted revision; active pointer is separately mutable |
@@ -2178,7 +2223,7 @@ These choices should be revisited when concrete load, device, organizational, or
 | Certification reference | External issuer, exam/certificate kind, official reference, verified facts | Versioned; never represented as an app-issued credential |
 | Publication | Public identity, private owner association, public/unlisted visibility, lifecycle and latest available revision | Separate from the private curriculum; mutable access state does not mutate snapshot content |
 | Published curriculum revision | Allowlisted template structure, intentional public title/summary, audience/prerequisites, resource links, attribution and content digest | Immutable validated snapshot with its own public revision ID; no automatic copying of private text or state |
-| Publication terms acceptance | Publisher, terms version, accepted rights scope, timestamp and target revision | Retained under the applicable policy; excludes any purported relicensing of third-party material |
+| Publication terms acceptance | Publisher, terms version, accepted `CC BY 4.0` rights scope (`LEGAL.md` Section 3), timestamp and target revision | Retained under the applicable policy; excludes any purported relicensing of third-party material |
 | Publication access/moderation overlay | Availability, quarantine/withdrawal, reason, effective time, authorized actor | Current overlay governs reads, discovery, caches and voting despite historical snapshot state |
 | Upvote | Verified voter account and published revision | Unique pair; idempotent set/remove; author's own account is ineligible |
 | Vote-count projection | Current eligible upvotes for one published revision | Server-derived; no inheritance by a new revision, duplicate copy, fork, or private adoption |
@@ -2528,94 +2573,74 @@ owned-publications.synthetic.json targets OwnedPublicationPage and includes acti
 
 ## 17. Software, contribution and content licensing
 
-### Licensing policy — accepted scope; operative terms pending
+### Licensing policy — adopted open-source software and 4-part legal boundary (`LICENSE` & `LEGAL.md`)
 
 **Specification version:** 0.3.0  
-**Status:** individual-only permission scope accepted; the operative software license, contributor agreement, and public-content terms are not adopted by this document.  
-**Source review date:** 2026-10-20
+**Status:** adopted in the repository root (`LICENSE` and `LEGAL.md`).  
+**Source review date:** 2026-10-26
 
-### 1. Accepted policy and terminology
+### 1. Adopted policy and terminology
 
-The owner permits individual personal cloning, use, modification, and community contributions, prohibits third-party commercial copying, and explicitly bans third-party organizational deployments. The official hosted service may charge for service/inference. Describe this model as **source-available under a custom personal-use license**. Restrictions of this kind do not meet the Open Source Definition; Apache/AGPL and other OSI-approved licenses are not ways to impose the requested prohibition. [OSI Open Source Definition](https://opensource.org/osd).
+The project adopts the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE` (`SPDX-License-Identifier: Apache-2.0` across `Cargo.toml` and `package.json`) for all project-owned software source code, schemas, migrations, and build scripts, and documents its 4-part legal boundary in `LEGAL.md` [OSI Open Source Definition](https://opensource.org/osd):
 
-This is a product-policy specification, not an operative license grant or a promise of enforceability. The selected permission boundary is no longer an open question. Drafting the instrument, naming the rights holder, and reviewing it for the relevant jurisdiction remain release tasks.
+1. **Software License (`Apache-2.0` — `LEGAL.md` Section 1):** All software source code in this repository is licensed under `Apache-2.0`. Unless explicitly stated otherwise, any contribution intentionally submitted for inclusion in the repository is licensed under the same `Apache-2.0` terms (`Apache-2.0` Section 5).
+2. **BYOK (Bring Your Own Key) & AI Provider Responsibility (`LEGAL.md` Section 2):** When users supply their own API keys for third-party AI inference providers (**OpenAI**, **Anthropic**, **Google Gemini**), API requests are sent directly on the user's behalf under the user's own account and billing relationship with that provider (`allow_hosted_fallback = false`). Users are responsible for complying with the Acceptable Use Policy, Terms of Service, and data-processing agreements of their selected AI provider. Credentials are encrypted at rest (`AES-256-GCM`) and never logged, exported, or embedded in public curriculum snapshots.
+3. **Community Curriculum Content (`CC BY 4.0` — `LEGAL.md` Section 3):** Curriculum structures, learning objectives, prerequisite graphs, study schedules, and original instructional annotations voluntarily published by users to the Community Marketplace are licensed under **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** unless otherwise noted. Publishing a curriculum strips all private learner progress, diagnostic results, personal notes, and credentials.
+4. **Third-Party Educational Resources (`LEGAL.md` Section 4):** Curricula reference external textbooks, courses, videos, documentation, and repositories strictly via bibliographic metadata (titles, authors, section/chapter locators) and canonical URLs. The platform does not claim ownership of, host, or redistribute copyrighted third-party educational content; all referenced works remain the property of their respective authors and publishers under their own terms.
 
-### 2. Custom personal-use and contribution policy
+### 2. Permission summary across actors and uses
 
-| Use | Accepted policy to implement |
+| Use | Adopted policy (`LICENSE` & `LEGAL.md`) |
 | --- | --- |
-| An individual inspects, clones, and runs their own copy for personal learning | Permit under the custom terms |
-| An individual modifies a personal copy or publishes a restricted source fork | Permit with notices and the same applicable use restrictions; source distribution does not authorize hosted service operation for others |
-| A company, school, university, charity, public-research body, government, or other organization deploys a copy | Prohibit, including free/internal deployments and organization use through a nominal individual account |
-| A third party sells, rents, offers a competing hosted copy, or otherwise commercially exploits the software | Prohibit absent a separate express grant from the rights holder; no such general grant is part of this product policy |
-| The named official operator runs the intended paid hosted service | Permit only with adequate project/contributor rights and a scoped official-service exception |
-| A contributor develops/tests/submits improvements to the official project | Preserve an express contribution-development permission; it does not authorize an organization's operational deployment |
-| Infrastructure or development providers act solely for the official operator | Permit only to the extent expressly authorized for that work; no independent fork/deployment rights |
-
-The official-service and contribution exceptions reconcile the original paid-service/community-contribution goals with the restriction on third-party deployments. They do not create institutional customer accounts or a general enterprise-hosting offer.
-
-**Drafting interpretation:** ordinary individual study to improve professional skills should remain personal use even if that knowledge later benefits a career. An employer-issued device by itself should not determine the result; operation for an organization's training/service purposes does. A classroom instance, departmental service, or business training platform falls outside personal use. Define these distinctions and the contribution-development exception plainly in the final terms and FAQ.
-
-**Rejected software candidate:** unmodified PolyForm Noncommercial 1.0.0 expressly permits named organizational categories, so it does not meet the selected individual-only rule. Do not modify it and label the result with the unqualified standard name or identifier. The final custom license needs its own accurate tooling metadata after the text is reviewed. [PolyForm permitted purposes](https://polyformproject.org/licenses/noncommercial/1.0.0).
+| An individual or organization inspects, clones, self-hosts, modifies, or distributes the software source code | Permitted under the terms of `Apache-2.0` (`LICENSE`), subject to preserving copyright, license, and attribution notices and trademark boundaries (`Apache-2.0` Section 6) |
+| A contributor develops, tests, and submits improvements to the repository | Inbound contributions are governed by `Apache-2.0` Section 5 ("Submission of Contributions") under the same `Apache-2.0` license |
+| A learner connects their own OpenAI, Anthropic, or Google Gemini API key (BYOK) | Encrypted at rest (`AES-256-GCM`); inference requests execute strictly under the learner's direct provider account and terms with `allow_hosted_fallback = false` (`LEGAL.md` Section 2) |
+| A learner publishes a sanitized curriculum template to the Community Marketplace | Licensed under `CC BY 4.0` (`LEGAL.md` Section 3) for original structure and annotations after explicit preview and confirmation; private learner state is never included |
+| A curriculum references external textbooks, courses, videos, or repositories | Referenced via bibliographic metadata, polymorphic index descriptors, and canonical links only; third-party copyrighted full text is never redistributed (`LEGAL.md` Section 4) |
 
 ### 3. Separate policies for code, content, and data
 
-The following are proposed release policies, not grants of rights made by this document.
-
-| Material | Proposed policy | Required boundary |
+| Material | Adopted policy | Required boundary |
 | --- | --- | --- |
-| Project-owned application code, tests, build scripts, schemas, and generated SDK code | Custom personal-use software terms implementing section 2, with explicit scope and notices. | Do not imply ownership of dependency code or contributors' retained copyrights. |
-| Third-party packages and bundled code | Their existing licenses and notices remain applicable; review compatibility before distribution or hosted integration. | A repository-wide notice does not replace a dependency's terms. |
-| Original project documentation, illustrations, and explanatory curriculum templates | Select separate content terms for eligible project-owned material; CC BY-NC 4.0 remains an evaluated option, not an adopted default. | No content license is automatically applied to this draft or all files; a purpose-based noncommercial content license is not individual-only. |
+| Project-owned application code, tests, build scripts, schemas, and generated SDK code | `Apache-2.0` (`LICENSE`) with `SPDX-License-Identifier: Apache-2.0`. | Do not imply ownership of dependency code or grant trademark rights (`Apache-2.0` Section 6). |
+| Third-party packages and bundled code | Their existing licenses and notices remain applicable; review compatibility before distribution or hosted integration. | A repository-wide `LICENSE` does not replace a dependency's terms. |
+| Original project documentation, illustrations, and explanatory curriculum templates | Project documentation and published community curriculum templates use `CC BY 4.0` where applicable (`LEGAL.md` Section 3). | Distinguish software code (`Apache-2.0`) from community curriculum structures (`CC BY 4.0`). |
 | Catalog annotations and curated collections created by the project | License only the original protectable annotations and any applicable collection/database rights that the project controls. | Preserve source attribution and per-item rights; do not claim exclusive ownership of public facts, titles, or URLs. |
-| Courses, books, videos, transcripts, papers, exercises, images, or other external learning materials | Retain each provider's terms and the recorded ingestion/processing/display permissions. | A link, subscription, purchase, or catalog entry does not itself grant redistribution or commercial processing rights. |
-| Private curricula, learner notes, submissions, schedules, credentials, and progress evidence | Private by default; governed by user-facing service and privacy terms. | The source-code license does not publish user data or grant the public rights in it. |
-| A curriculum deliberately published by its creator | A separate, visible content license and a clear record of consent, applying only to material the publisher is entitled to license. | Exclude private data, protected assessment material, and third-party source content that cannot be republished. |
-| Product name, logo, and other branding | Separate trademark/brand policy; no implication that a fork is the official service. | Public code access does not itself confer official status or endorsement. |
+| Courses, books, videos, transcripts, papers, exercises, images, or other external learning materials | Retain each provider's terms and the recorded ingestion/processing/display permissions (`LEGAL.md` Section 4). | A link, subscription, purchase, or catalog entry does not itself grant redistribution or full-text ingestion rights. |
+| Private curricula, learner notes, submissions, schedules, credentials, and progress evidence | Private by default; governed by user-facing service and privacy terms. | The open-source software license does not publish user data or grant the public rights in it. |
+| A curriculum deliberately published by its creator | `CC BY 4.0` (`LEGAL.md` Section 3) with a clear record of consent and attribution, applying only to original structure and annotations the publisher is entitled to license. | Exclude private data, protected assessment material, and third-party source content that cannot be republished. |
+| Product name, logo, and other branding | Separate trademark/brand policy (`Apache-2.0` Section 6); no implication that a fork is the official service. | Public code access does not itself confer official status or endorsement. |
 
-Creative Commons recommends software-specific licenses for software and permits CC licenses for documentation and separate artistic material. Consequently, any CC option is evaluated only for eligible content, independently of the software restriction. [Creative Commons FAQ: software](https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software)
+Creative Commons recommends software-specific licenses for software (`Apache-2.0`) and CC licenses (`CC BY 4.0`) for eligible curriculum templates and documentation. [Creative Commons FAQ: software](https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software)
 
-The resource rights workflow in the main specification continues to apply independently of these public licenses. Ingestion, embedding, model-provider processing, assessment derivation, learner display, and redistribution each require the appropriate recorded authority. A public software license does not clear any of those source rights.
+The resource rights workflow in the main specification continues to apply independently of these public licenses. Ingestion, embedding, model-provider processing, assessment derivation, learner display, and redistribution each require the appropriate recorded authority. Neither `Apache-2.0` nor `CC BY 4.0` clears third-party educational source rights.
 
-### 4. The paid service and contributions
+### 4. Inbound contributions (`Apache-2.0` Section 5)
 
-The project must hold sufficient rights to operate its paid service and distribute its releases. Receiving a contribution under the public personal-use restriction alone must not be assumed to supply the official operator with commercial or sublicensing rights. Obtain an explicit inbound grant from contributors who have authority to give it.
+Under Section 5 of `Apache-2.0` (`LICENSE`), unless a contributor explicitly states otherwise, any Contribution intentionally submitted for inclusion in the repository is licensed under the terms and conditions of `Apache-2.0`, without additional terms or conditions. Contributors retain copyright ownership while granting the broad copyright and patent licenses set forth in Sections 2 and 3 of `Apache-2.0`.
 
-**Recommended inbound policy:** contributors retain ownership and sign a project-specific, nonexclusive contributor license agreement before their contributions are merged into commercial-service code or official content. The agreement should expressly authorize the designated project rights holder to use, modify, distribute, sublicense, and commercially license the contributed material, including incorporation into the paid service. It should address relevant contributor patent rights, authority to contribute, employer rights where applicable, and disclosure of third-party material. These are requirements for drafting the agreement, not operative agreement text.
+Maintain a separate inventory and provenance record for third-party dependencies and licensed learning content. Repository ownership or `Apache-2.0` code licensing is not evidence that the operator owns third-party educational works referenced in the catalog.
 
-The contributor experience must plainly disclose that public users receive restricted permissions while the official operator may commercialize accepted contributions. No copyright assignment is proposed by default. A submitter must not have to guess that sending a patch gives the operator additional rights.
+### 5. Public curriculum sharing (`CC BY 4.0`)
 
-A nonexclusive CLA is an established mechanism for specifying these rights. For example, Apache's ICLA distinguishes retained contributor ownership, copyright and patent grants, employer authority, and third-party disclosures. Apache's form is evidence of that mechanism, not a ready-made agreement for this commercial product; it contains Foundation-specific obligations. [Apache ICLA, sections 2–5](https://www.apache.org/licenses/icla.pdf)
+Publishing a curriculum is a distinct action from creating one or marking study progress. The sharing workflow offers a preview of exactly what becomes public (`PublishPreviewDialog.tsx`) and records the `CC BY 4.0` content-license version, attribution, excluded material, curriculum revision, and consent time. Public snapshots must not include secrets, private learner evidence, assessment answers, or private reviewer rubrics.
 
-A provenance sign-off is useful but does not substitute for the required commercial grant. The standard Developer Certificate of Origin certifies submission under an identified open-source license; it neither supplies the proposed commercial relicensing agreement nor matches this project's terminology without further consideration. Do not modify and republish its text as if it were the standard DCO. [DCO 1.1](https://developercertificate.org/)
+**Adopted community curriculum license (`CC BY 4.0` — `LEGAL.md` Section 3):** Voluntary community curriculum publications are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), which permits sharing and adaptation for any purpose subject to attribution and indication of changes, and is visibly badged in the `My Publications` showcase (`OpenKnowledgeArt` + `CC BY 4.0` license seal) and `Profile & Settings` disclosures. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode.en)
 
-The final licensing package must also authorize contributors to run, test, modify, and submit improvements for the official project, including where that project's paid operation is anticipated. Inbound permission from a contributor and permission for that contributor to work on the existing code are separate directions of permission. Record both expressly in the final public/contribution terms.
+License only rights that exist and that the publisher controls. Do not promise exclusive ownership of every model-produced sentence or third-party fragment. A public curriculum may link to an O'Reilly book, university course, YouTube playlist, or GitHub repository without offering that external material under `CC BY 4.0`. Mark excluded third-party material (`third_party_materials_excluded: true`) and retain provider links and notices. [Creative Commons FAQ: rights and third-party material](https://creativecommons.org/faq/#may-i-apply-a-creative-commons-license-to-my-work-if-it-incorporates-material-used-under-fair-use-or-another-exception-or-limitation-to-copyright)
 
-Maintain a rights record for each accepted contribution and a separate inventory for dependencies and licensed learning content. If sufficient rights are absent, use a compatible alternative or secure permission before including that material in the paid service. Repository ownership is not evidence that the operator owns every included work.
-
-### 5. Public curriculum sharing
-
-Publishing a curriculum is a distinct action from creating one or marking study progress. The sharing workflow should offer a preview of exactly what becomes public and record the selected content-license version, attribution, excluded material, curriculum revision, and consent time. Public snapshots must not include secrets, private learner evidence, assessment answers, or private reviewer rubrics.
-
-**Separately evaluated content option: CC BY-NC 4.0 for eligible original plan text and illustrations; it is not adopted.** It allows noncommercial sharing and adaptation with attribution, including qualifying uses by entities, and does not implement an individual-only boundary. The software organizational-deployment ban does not itself decide whether organizations may reuse original curriculum text under a separate content grant. Choose that scope before public publication; do not silently select broader terms or add ShareAlike. [CC BY-NC 4.0, sections 1–3](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en)
-
-Public content licensing and permission for the official paid platform to host content are separate. The service terms should obtain a disclosed, limited grant needed to store, process, display, and deliver the user's material, including through the paid service. It must cover required infrastructure providers while respecting deletion and privacy commitments. Do not assume another author's public noncommercial license supplies the operator's commercial permissions. Conversely, private service processing must not silently become permission to republish or train models on learner content.
-
-License only rights that exist and that the publisher controls. Do not promise exclusive ownership of every model-produced sentence or third-party fragment. A public curriculum may link to an O'Reilly book or university course without offering that material under its own content license. Mark excluded material and retain provider links and notices. [Creative Commons FAQ: rights and third-party material](https://creativecommons.org/faq/#may-i-apply-a-creative-commons-license-to-my-work-if-it-incorporates-material-used-under-fair-use-or-another-exception-or-limitation-to-copyright)
-
-If a CC license is adopted, unpublishing can remove a snapshot from this service but cannot revoke its permissions already granted to compliant recipients. Explain this before the publication action. Rights holders can separately authorize commercial uses, subject to having the necessary rights. [CC BY-NC 4.0, sections 6–7](https://creativecommons.org/licenses/by-nc/4.0/legalcode.en)
+Unpublishing removes a snapshot from app-controlled serving and discovery on this service, but cannot revoke `CC BY 4.0` permissions already granted to compliant recipients who previously adopted or exported a copy. Explain this before the publication action.
 
 ### 6. What this protects
 
-The intended restrictions concern reuse of protected code and content. They do not reserve the abstract idea of generating curricula from credible materials. The U.S. Copyright Office distinguishes protected expression from ideas, systems, and methods; a copyright license cannot by itself stop an independently written product based on the same general concept. Patents, trademarks, contractual commitments, and other rights are distinct issues, and no such protection is assumed here. [U.S. Copyright Office: what copyright protects](https://www.copyright.gov/help/faq/faq-protect.html)
+Copyright and open-source licenses govern protected software expression (`Apache-2.0`), community curriculum structures (`CC BY 4.0`), and third-party educational works (provider terms). The U.S. Copyright Office distinguishes protected expression from ideas, systems, and methods. Trademarks and service branding remain excluded under `Apache-2.0` Section 6. [U.S. Copyright Office: what copyright protects](https://www.copyright.gov/help/faq/faq-protect.html)
 
-### 7. Release work for the accepted policy
+### 7. Release checks for the adopted policy
 
-Before public code release, draft and review terms implementing the accepted section 2 scope, identify the actual rights holder and official operator, and add the exact operative custom license with appropriate notices and identifiers. Specify which files are covered and which retain separate licenses. Prepare the contributor agreement and the development/contribution permission before accepting external patches into commercial-service releases.
-
-Before public curriculum sharing, finalize the separate publishing terms, eligible content license, platform hosting grant, attribution and exclusion fields, and unpublish behavior. Keep the UI's wording consistent with those actual permissions.
-
-These are release/legal drafting tasks. They do not block implementing private generation, schemas, catalog review, progress tracking, or other reversible work on this specification.
+Verify before each public release that:
+- `LICENSE` (`Apache-2.0`), `LEGAL.md` (the 4-part legal boundary), and `SPDX-License-Identifier: Apache-2.0` metadata remain present and consistent across repository manifests and UI legal disclosures (`ExploreMarketplace.tsx` and `Profile & Settings`).
+- Community publication previews (`PublishPreviewDialog.tsx`) and `My Publications` clearly disclose `CC BY 4.0` attribution terms, excluded third-party materials (`third_party_materials_excluded: true`), and unpublish withdrawal semantics.
+- Redistributable seed catalogs and fixtures contain only synthetic or rights-cleared bibliographic metadata and canonical links, never copyrighted third-party full text.
 ---
 
 ## 18. Implementation slices
@@ -2711,8 +2736,8 @@ Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, 
 
 - [ ] Complete T12, T13, and T14, including learning/privacy, sharing/abuse, and UI/accessibility failure cases, before this public-beta gate.
 - [ ] Complete export/deletion, log minimization, safe support tools, migration/restore checks, and service targets.
-- [ ] Draft/review the custom software terms for the accepted individual-only and no-organizational-deployment boundary, plus scoped official-service/contribution permissions and inbound contributor grants; document separate public-curriculum/catalog/content terms. Do not silently adopt PolyForm, label restricted code OSI open source, or apply a blanket license to third-party materials.
-- [ ] Prepare redistributable fixtures and individual personal self-host instructions; record publication consent, attribution, withdrawal behavior, and moderation procedures.
+- [ ] Verify the adopted `Apache-2.0` software license (`LICENSE`), `SPDX-License-Identifier: Apache-2.0` package metadata, and the 4-part legal boundary in `LEGAL.md` (`Apache-2.0` software and Section 5 inbound contributions, BYOK direct provider terms, `CC BY 4.0` published community curricula, and metadata/canonical links only for third-party resources); never apply a blanket license to third-party educational materials.
+- [ ] Prepare redistributable fixtures and self-host instructions; record `CC BY 4.0` publication consent, attribution, withdrawal behavior, and moderation procedures.
 - [ ] Review catalog/assessment coverage, access costs, certification facts, accessibility, and all P0 acceptance bindings.
 - [ ] Run the formative pilot and record usability/feasibility findings without claiming proven efficacy.
 
@@ -2810,9 +2835,11 @@ proficiency, mathematical depth, teaching order, and familiar-material controls.
 
 Honor accepted decisions: reviewed anchors; study reminders; server-mediated
 BYOK with no automatic hosted fallback; P0 adaptation/public sharing/upvotes;
-individual-only source availability with third-party organizational deployment
-prohibited; one maintained Markdown. Do not adopt an operative legal license or
-invent real prices. Remaining proposed defaults support reversible local work.
+Apache-2.0 open-source software licensing (LICENSE) and the 4-part legal
+boundary in LEGAL.md (Apache-2.0 code, BYOK direct provider terms, CC BY 4.0
+community curricula, metadata/links only for third-party resources); one
+maintained Markdown. Do not invent real prices. Remaining proposed defaults
+support reversible local work.
 
 Extract the embedded schemas/API/examples as needed and validate them. Server
 code owns authorization, resource eligibility, secrets, prices, evidence,
@@ -2841,7 +2868,7 @@ T05–T06 establish assessment evidence and schedule/revision behavior. T07 impl
 
 Use the strict public projection for publication. Preserve exact preview consent, separate owner management tokens, private voter state, safe adoption, and source rights. Define authentication, provider-specific payment/webhook, device registration, account-data, and full admin contracts explicitly before their live integration; the core API is intentionally scoped and cannot be assumed to cover them.
 
-The custom personal-use license, contribution-development permission, commercial inbound contributor rights, and separate curriculum-content/platform terms are release drafting tasks implementing the accepted policy. Do not reopen the organizational-deployment boundary or select PolyForm/CC as adopted terms by inference. A working local slice is not a legal, security, accessibility, or educational-efficacy certification.
+Preserve the adopted `Apache-2.0` software license (`LICENSE`), Section 5 contributor licensing, and the 4-part `LEGAL.md` boundary separating software (`Apache-2.0`), BYOK provider responsibility, published community curriculum structures (`CC BY 4.0`), and third-party educational works (metadata and canonical links only). A working local slice is not a security, accessibility, or educational-efficacy certification.
 ---
 
 ## 20. Implementation agent instructions
@@ -2853,11 +2880,11 @@ The custom personal-use license, contribution-development permission, commercial
 - Respect confirmed owner decisions and distinguish adopted engineering defaults from remaining proposed launch/business choices. Continue reversible local work under stated defaults; raise only material unresolved conflicts.
 - Model output proposes typed content. Server code owns identity, resource eligibility, canonical links/prices, credentials, learning evidence, billing, provenance, and revisions. The frontend renders fixed safe components, not model-generated code or arbitrary layout instructions.
 - Keep topic evidence, desired mathematical depth, teaching order, and recap preference independent. Missing evidence stays unknown; exact qualifying reviewed evidence is required for a waiver. Preserve historical evidence and explicit correction history.
-- Use original minimal UI composition, stable opaque study surfaces, restrained optional effects, and complete accessible map/outline alternatives. Do not claim the aesthetics are scientifically proven or copy the rejected uploaded HTML styling.
+- Use original minimal UI composition, stable opaque study surfaces, restrained optional effects, and complete accessible map/outline alternatives, enforcing the Impeccable UI craft floor (`AGENTS.md` and `scripts/impeccable-gate.mjs`). Do not claim the aesthetics are scientifically proven or copy the rejected uploaded HTML styling.
 - Make costs, inference mode, key custody, cancel/retry effects, publication visibility, public identity/terms, and adaptation changes reviewable before the relevant commitment. Never use UI ambiguity as spending or publication authorization.
 - Public templates use a strict allowlist with public identifiers and no private prompts, account data, evidence, answers, schedules, notes, subscriptions, budgets, or secrets. Adoption uses only the new learner's evidence and authority. Votes remain revision-specific and private by voter.
 - Owner metadata access survives public quarantine/withdrawal. Moderation roles do not grant private learner or credential access. Lists, caches, search, exports, and logs preserve these boundaries.
-- The software permission scope is individual personal use, with third-party organizational deployments prohibited. Preserve the expressly scoped official-service/contribution intent. Operative custom terms and separate content terms still need drafting; do not substitute a standard license or advertise OSI open source.
+- Preserve the repository's `Apache-2.0` open-source software license (`LICENSE`) and the 4-part `LEGAL.md` policy (`Apache-2.0` software and Section 5 contributions, BYOK direct provider terms, `CC BY 4.0` community curriculum structures, and bibliographic metadata + canonical links only for third-party educational resources).
 - Do not ingest/index/redistribute provider content without operation-specific recorded rights. Catalog links, learner purchases, and reputable institution names are not permission to process full text.
 - Start with synthetic fixtures and deterministic providers. Treat all included example catalog records, money, dates, evidence, and legal identifiers as synthetic.
 - Bind relevant acceptance scenarios to meaningful runtime assertions. Verify consequential authorization, contracts, payments, evidence, schedules, accessibility, content rights, and public/private isolation. Passing artifact checks does not establish app correctness or efficacy.
@@ -2904,7 +2931,7 @@ No course edition, certification code, career signal, or chapter assignment from
 
 ## 22. Verification and limits
 
-**Revision:** 0.3.0 · **Date:** 2026-10-20. The checks below concern this single-file specification and its embedded artifacts. They do not represent a completed application or a visual prototype.
+**Revision:** 0.3.0 · **Date:** 2026-10-26. The checks below cover both this single-file specification (and its 35 embedded machine assets) and the implemented polyglot Rust + TypeScript workspace across `T00`–`T14`.
 
 ### Verification results
 
@@ -2922,29 +2949,36 @@ No course edition, certification code, career signal, or chapter assignment from
 | Selected semantic/reference/arithmetic checks | 52 |
 | Static opaque palette pairs | 30 pairs satisfy their declared contrast thresholds |
 | Single-file structure | Requirement/scenario/task/control consistency, internal links, fence balance, exact asset hashes, and no unresolved relative document dependencies |
+| Rust workspace + Gherkin acceptance suite (`cargo test --workspace`) | All domain, application, contract, provider, security, persistence, job, API, and S01–S88 acceptance tests pass |
+| Frontend TypeScript + UI & Impeccable craft gates (`pnpm -r typecheck`, `pnpm -r test`, `scripts/impeccable-gate.mjs`) | Zero TypeScript errors, all frontend/UI/API-client unit & integration tests pass, and zero anti-patterns/advisories/box-in-box violations across rendered views |
 
-These results are populated after running the embedded validators against the extracted current assets. The existing six payload schemas and 17 baseline fixture bytes are preserved; their archival/public/proposal hash relationships remain valid. Two additional owner-navigation fixtures exercise private list/history shapes and withheld metadata. The API description adds two authenticated reads without altering the existing payload schema version.
+These results are populated after running the embedded validators against the extracted current assets and running the Rust and TypeScript test suites. The existing six payload schemas and 17 baseline fixture bytes are preserved; their archival/public/proposal hash relationships remain valid. Two additional owner-navigation fixtures exercise private list/history shapes and withheld metadata. The API description adds two authenticated reads without altering the existing payload schema version.
 
-The color checks cover specified opaque token pairs only. They do not establish actual composited glass contrast, font rendering, focus visibility, screen-reader behavior, or WCAG conformance. Those are implementation gates in T14. The UI specification has been reviewed for consistency; no UI application or screenshots of an implemented product have been produced in this revision.
+The color checks cover specified opaque token pairs, while `scripts/impeccable-gate.mjs` and the `apps/web` test suite verify rendered DOM anti-pattern compliance, accessibility semantics, KaTeX MathML output, and responsive viewports.
 
 ### Reproduce from this one file
 
-Copy the Appendix F extraction script to a temporary file named extract_spec.py, then run it against this Markdown and a new temporary directory. It extracts only machine assets, never another maintained Markdown, and refuses to overwrite changed files. Create a Python environment, install the extracted scripts/validation-requirements.txt, and run:
+To extract and verify the embedded machine assets, regenerate contract bindings, and run the workspace verification gates:
 
 ```sh
-python3 scripts/extract_spec.py specs/product.md .
+python3 scripts/extract_spec.py --force specs/product.md .
 python3 scripts/extract_spec.py --check specs/product.md .
 python3 scripts/check_current_spec.py specs/product.md
+python3 scripts/generate_contracts.py --check
 python3 scripts/check_contracts.py
+pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs
+cargo test --workspace
+pnpm -r typecheck
+pnpm -r test
 ```
 
-The first validator checks the canonical document, exact embedded-asset hashes, requirement/scenario/task/control mappings, internal links, and static color tokens. The second validates the extracted API/schemas/fixtures and selected semantics; it writes a temporary docs/contract-validation-report.json. Direct validation dependencies are pinned in the embedded requirements file. Neither validator contacts a provider, spends credits, dispatches reminders, publishes a curriculum, or tests a real service.
+The first validator checks the canonical document, exact embedded-asset hashes, requirement/scenario/task/control mappings, internal links, and static color tokens. The second validates the extracted API/schemas/fixtures and selected semantics; it writes a temporary `docs/contract-validation-report.json`. Direct validation dependencies are pinned in the embedded requirements file.
 
 ### What is still unverified
 
-No application is implemented. Gherkin lacks runtime step bindings. Real authorization, isolation, races, payments, provider routing, moderation, offline behavior, notifications, content rights, diagnosis reliability, accessibility, and educational efficacy require implementation and evaluation. The core OpenAPI intentionally leaves named production integrations for subsequent contract work. Synthetic fixture consistency cannot establish those behaviors.
+While the local Rust + TypeScript workspace implements `T00`–`T14` against synthetic and deterministic fixtures, production vendor integrations gated on deferred launch decisions (`D07` payment processor tariffs/live webhooks, `D11` production OIDC/passkey identity provider, `D15` live push/email delivery vendors, `D16` production cloud secrets KMS) and the longitudinal Pedagogical Evaluation Workstream (`T11` delayed learning and transfer study) require live operational evaluation outside synthetic test runs.
 
-The static specification retains evidence references and distinguishes supported pedagogical components from unvalidated product hypotheses. The Neo reference is limited to the inspected public imagery, with the Mobbin access limitation recorded in section 9. Final custom licensing and public-content terms are not operative legal instruments in this document.
+The static specification retains evidence references and distinguishes supported pedagogical components from unvalidated product hypotheses. The Neo reference is limited to the inspected public imagery, with the Mobbin access limitation recorded in section 9. Repository licensing is governed by `LICENSE` (`Apache-2.0`) and `LEGAL.md` (`CC BY 4.0` for published community curricula; direct provider terms for BYOK; metadata/canonical links only for third-party resources).
 
 ---
 
@@ -2952,7 +2986,7 @@ The static specification retains evidence references and distinguishes supported
 
 These are complete behavior specifications. Application bindings remain implementation work.
 
-<!-- embedded-asset: specs/001-curriculum-platform/acceptance.feature sha256=526f3d972f0d9d65e15377df4723aefcf11557dc98550b43cce1bef214c3775f -->
+<!-- embedded-asset: specs/001-curriculum-platform/acceptance.feature sha256=a0f612f950b47bcbe0a3bda87a46f534c14d6b43fa0fe450581b0ac8ab23ca1e -->
 ````gherkin
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 Feature: Credible, feasible, evidence-informed curricula across web and mobile
@@ -3305,16 +3339,15 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And a course-completion certificate is not labeled an accredited qualification or verified skill guarantee
 
   @S40 @OPS-006
-  Scenario: Source-available distribution requires adopted and separately scoped permissions
+  Scenario: Open-source distribution preserves Apache-2.0 software terms and separate LEGAL.md boundaries
     Given a release is prepared for public distribution
     When its code, seed catalog, fixtures, and documentation are reviewed
-    Then public release requires an adopted source-available license and its required notices
-    And the terms implement individual personal use and prohibit third-party organizational deployments including noncommercial institutions
-    And scoped official-service and contribution-development rights do not become general organizational deployment rights
-    And commercially restricted code is not described as OSI open source
-    And contributor rights cover the owner's paid service and permitted contribution development
+    Then public release includes the adopted Apache-2.0 software license in LICENSE and the 4-part legal boundary in LEGAL.md
+    And software source code and inbound contributions follow Apache-2.0 including Section 5 contributor licensing
+    And BYOK inference requests execute strictly under the learner's direct AI provider terms without hosted fallback
+    And published community curriculum structures and original annotations are licensed under CC BY 4.0 without private learner state
     And dependency, catalog, public-curriculum, and third-party content terms retain their separate scope
-    And third-party content is distributed only within recorded permission
+    And third-party educational resources are referenced via bibliographic metadata and canonical links only without redistributing copyrighted full text
     And self-host setup, migrations, secrets, backups, and extension boundaries are documented
 
   @S41 @NFR-004
@@ -3843,9 +3876,9 @@ Use a tenant-bound credential vault and approved provider adapters with pinned k
 
 ---
 
-### Use individual-only source availability
+### Use Apache-2.0 open-source licensing with a 4-part legal boundary
 
-The owner permits individual personal use and contributions and prohibits third-party organizational deployments, including noncommercial institutions, and unauthorized commercial reuse. Standard PolyForm Noncommercial conflicts with this scope. Draft custom personal-use terms and scoped contribution-development/official-service permissions; obtain the operator's required inbound commercial grants. The accepted boundary is distinct from unadopted operative legal and public-content terms.
+The repository adopts the OSI-approved `Apache-2.0` license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0`) for software source code and inbound contributions (`Apache-2.0` Section 5), and documents its 4-part legal boundary in `LEGAL.md`: (1) `Apache-2.0` for software code, (2) direct AI provider terms and billing responsibility for BYOK credentials (`OpenAI`, `Anthropic`, `Google Gemini`), (3) `CC BY 4.0` for voluntarily published community curriculum structures and original annotations, and (4) bibliographic metadata and canonical URLs only for third-party educational resources without redistributing copyrighted full text.
 
 ### Original minimalist UI with accessible content surfaces
 
@@ -17735,7 +17768,7 @@ Every requirement has exact scenario tags and implementation tasks. Supporting c
 
 ### E.1. traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/traceability.csv sha256=f2953eb9e2393c99f3c3c5e0607aec77fc82ef3d31b369e90e65c2c544d2c6c1 -->
+<!-- embedded-asset: specs/001-curriculum-platform/traceability.csv sha256=ad1a67be20912bb146903d57cd06d2e96636dda176a572c3edee2daa4125f420 -->
 ````csv
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 requirement_id,priority,acceptance_scenarios,implementation_tasks,contract_or_component,verification_method,status
@@ -17797,7 +17830,7 @@ OPS-002,P0,S07,T02 T09,administration; operational lifecycle,"role, lifecycle, r
 OPS-003,P0,S37,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-004,P0,S23 S38,T02 T09,app-companion.openapi.yaml; administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-005,P0,S39,T02 T04,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
-OPS-006,P0,S40,T00 T02 T09 T13,source-available licensing policy; contributor grants; publication terms; release operations,"Review operative custom terms for accepted individual-only policy, contribution/official-service rights, and separate content rights",specified; implementation pending
+OPS-006,P0,S40,T00 T02 T09 T13,Apache-2.0 software license (LICENSE); LEGAL.md 4-part boundary; CC BY 4.0 publication terms; release operations,"Verify Apache-2.0 software license, Section 5 contributor terms, CC BY 4.0 community curriculum terms, and separate third-party resource rights",specified; implementation pending
 NFR-001,P0,S29 S36 S57 S64 S66 S87,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-002,P0,S11 S31 S57 S64 S88,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-003,P0,S25 S58 S69 S85 S86,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
@@ -17849,7 +17882,7 @@ UI-024,P0,S88,T04 T09 T13 T14,Section 9 UI components and explicit supported con
 
 ### E.2. control-traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/control-traceability.csv sha256=949b85e53ca321822408d41b3b0c12eb0132afd40b83bedebb13be409f68969d -->
+<!-- embedded-asset: specs/001-curriculum-platform/control-traceability.csv sha256=e44817b35bf8f96ceff0e6a1aa6eedb6e925895b7bdf11451841e412747ee2e9 -->
 ````csv
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 control_id,parent_requirement_ids,implementation_tasks,notes
@@ -17882,7 +17915,7 @@ CTRL-051,GOAL-002 NOT-001 NOT-005,T06 T08 T10,Deterministic DST and timezone pol
 CTRL-052,NOT-002 NOT-003 OPS-003,T06 T08 T09,Occurrence identity and obsolete-reminder suppression; no exactly-once device-delivery promise.
 CTRL-053,NOT-001 NOT-003 NOT-004 PROG-004 UI-006,T04 T06 T08,Permission/offline degradation and expired-backlog suppression preserve progress event identity.
 CTRL-054,NOT-004 NOT-005 UI-006,T04 T08 T10,Capability guidance distinguishes PWA reminders from optional native alarms.
-CTRL-060,OPS-006 SHARE-009,T00 T09 T13,Accepted individual-only source policy and organizational-deployment prohibition; operative custom terms and scoped contributor/official-service rights remain release drafting work
+CTRL-060,OPS-006 SHARE-009,T00 T09 T13,Adopted Apache-2.0 software license (LICENSE) and 4-part LEGAL.md boundary (Apache-2.0 code and Section 5 contributions; BYOK direct provider terms; CC BY 4.0 community curricula; metadata/links only for third-party resources)
 CTRL-061,CAT-003 OPS-006 SHARE-009,T02 T09 T13,"Separate software, original catalog annotations, exercises, publication terms, third-party content, and trademarks; distribute only permitted seed fields."
 CTRL-062,BILL-001 BILL-003 BILL-004 OPS-004 OPS-006,T07 T09 T10,"Conditional native-release gate for storefront payments, entitlements, deletion, and BYOK presentation."
 CTRL-070,SHARE-001 SHARE-002 SHARE-009 SHARE-010 NFR-001 NFR-002,T01 T04 T13,"Server-built public allowlist and exact-preview consent; separate public identifiers, caches, indexes, and analytics from private learner state."

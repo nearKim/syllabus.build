@@ -349,16 +349,15 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And a course-completion certificate is not labeled an accredited qualification or verified skill guarantee
 
   @S40 @OPS-006
-  Scenario: Source-available distribution requires adopted and separately scoped permissions
+  Scenario: Open-source distribution preserves Apache-2.0 software terms and separate LEGAL.md boundaries
     Given a release is prepared for public distribution
     When its code, seed catalog, fixtures, and documentation are reviewed
-    Then public release requires an adopted source-available license and its required notices
-    And the terms implement individual personal use and prohibit third-party organizational deployments including noncommercial institutions
-    And scoped official-service and contribution-development rights do not become general organizational deployment rights
-    And commercially restricted code is not described as OSI open source
-    And contributor rights cover the owner's paid service and permitted contribution development
+    Then public release includes the adopted Apache-2.0 software license in LICENSE and the 4-part legal boundary in LEGAL.md
+    And software source code and inbound contributions follow Apache-2.0 including Section 5 contributor licensing
+    And BYOK inference requests execute strictly under the learner's direct AI provider terms without hosted fallback
+    And published community curriculum structures and original annotations are licensed under CC BY 4.0 without private learner state
     And dependency, catalog, public-curriculum, and third-party content terms retain their separate scope
-    And third-party content is distributed only within recorded permission
+    And third-party educational resources are referenced via bibliographic metadata and canonical links only without redistributing copyrighted full text
     And self-host setup, migrations, secrets, backups, and extension boundaries are documented
 
   @S41 @NFR-004
