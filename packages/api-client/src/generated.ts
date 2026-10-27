@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
-// Canonical Specification SHA-256: da9c58b1de182b2fbda448b22287373373e0262ce68abf3f039711348ea71207
+// Canonical Specification SHA-256: fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9
 
-export const CANONICAL_SPEC_SHA256 = "da9c58b1de182b2fbda448b22287373373e0262ce68abf3f039711348ea71207" as const;
+export const CANONICAL_SPEC_SHA256 = "fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9" as const;
 
 export type ContractSource = "core" | "companion";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";

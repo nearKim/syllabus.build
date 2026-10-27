@@ -1,8 +1,8 @@
 // GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
-// Canonical Specification SHA-256: da9c58b1de182b2fbda448b22287373373e0262ce68abf3f039711348ea71207
+// Canonical Specification SHA-256: fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9
 
 /// Canonical SHA-256 digest of `specs/product.md`.
-pub const CANONICAL_SPEC_SHA256: &str = "da9c58b1de182b2fbda448b22287373373e0262ce68abf3f039711348ea71207";
+pub const CANONICAL_SPEC_SHA256: &str = "fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9";
 
 /// Descriptor for an embedded JSON Schema Draft 2020-12 contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
