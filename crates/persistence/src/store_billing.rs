@@ -1,8 +1,9 @@
 //! BYOK credential vault custody, notification preferences, reminders, hosted credit wallet, and billing ledger.
 
-use crate::*;
 use curriculum_security::{verify_webhook_hmac_sha256, AuthenticatedPrincipal};
 use serde_json::Value;
+
+use crate::*;
 
 #[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
@@ -10,24 +11,17 @@ impl InMemoryTransactionalStore {
     // T07A: Encrypted BYOK Credential Vault Operations & Usage Tracking
     // =========================================================================
 
+    #[must_use]
     pub fn list_credential_metadata(
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Vec<CredentialMetadataView> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .credentials
             .values()
             .filter(|c| c.owner_account_id == principal.account_id && !c.revoked)
-            .map(|record| CredentialMetadataView {
-                credential_ref: record.credential_ref.clone(),
-                provider_id: record.provider_id.clone(),
-                label: record.label.clone(),
-                masked_hint: record.masked_hint.clone(),
-                version: record.version,
-                etag: record.etag.clone(),
-                status: "active".to_string(),
-            })
+            .map(CredentialMetadataView::from)
             .collect()
     }
 
@@ -42,7 +36,7 @@ impl InMemoryTransactionalStore {
         new_raw_api_key: &str,
         new_label: Option<&str>,
     ) -> Result<CredentialMetadataView, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let (owner_id, current_etag, current_ver) = {
             let record = guard
                 .credentials
@@ -94,15 +88,7 @@ impl InMemoryTransactionalStore {
         }
         record.etag = format!("\"cred-v{next_version}\"");
 
-        Ok(CredentialMetadataView {
-            credential_ref: record.credential_ref.clone(),
-            provider_id: record.provider_id.clone(),
-            label: record.label.clone(),
-            masked_hint,
-            version: record.version,
-            etag: record.etag.clone(),
-            status: "active".to_string(),
-        })
+        Ok(CredentialMetadataView::from(&*record))
     }
 
     /// Decrypts a BYOK credential just-in-time for a pinned `(credential_ref, expected_version)` inference call (`T07A`, `BILL-007`).
@@ -112,7 +98,7 @@ impl InMemoryTransactionalStore {
         credential_ref: &str,
         expected_version: u64,
     ) -> Result<(String, StoredCredentialRecord), PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .credentials
             .get(credential_ref)
@@ -158,7 +144,7 @@ impl InMemoryTransactionalStore {
         completion_tokens: u64,
         usage_source: &str,
     ) -> Result<InferenceUsageRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
         let total_tokens = prompt_tokens + completion_tokens;
@@ -189,7 +175,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Vec<InferenceUsageRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .inference_usage_records
             .iter()
@@ -206,7 +192,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> NotificationPreferencesRecord {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard
             .notification_preferences
             .entry(principal.account_id.clone())
@@ -250,7 +236,7 @@ impl InMemoryTransactionalStore {
         })
         .map_err(|e| PersistenceError::Validation(e.to_string()))?;
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let entry = guard
             .notification_preferences
             .entry(principal.account_id.clone())
@@ -295,7 +281,7 @@ impl InMemoryTransactionalStore {
                 "push subscription endpoint_url must use https://".to_string(),
             ));
         }
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let rec = PushSubscriptionRecord {
             subscription_id: subscription_id.to_string(),
             account_id: principal.account_id.clone(),
@@ -315,7 +301,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         subscription_id: &str,
     ) -> Result<(), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(sub) = guard.push_subscriptions.get_mut(subscription_id) {
             principal.require_learner_ownership(&sub.account_id)?;
             sub.active = false;
@@ -339,7 +325,7 @@ impl InMemoryTransactionalStore {
         now_utc_epoch_seconds: i64,
     ) -> Result<ReminderScheduleDecision, PersistenceError> {
         let prefs = self.get_notification_preferences(principal);
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         let today_study_completed = guard
             .proficiency_by_account
@@ -402,7 +388,7 @@ impl InMemoryTransactionalStore {
                 "snooze_minutes must be between 1 and 1440".to_string(),
             ));
         }
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let occ = guard
             .reminder_occurrences
             .entry(occurrence_id.to_string())
@@ -476,7 +462,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> HostedCreditWalletRecord {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         Self::ensure_wallet_mut(&mut guard, &principal.account_id).clone()
     }
 
@@ -486,7 +472,7 @@ impl InMemoryTransactionalStore {
         available_minor_units: i64,
         reserved_minor_units: i64,
     ) -> HostedCreditWalletRecord {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let wallet = Self::ensure_wallet_mut(&mut guard, account_id);
         wallet.available_minor_units = available_minor_units;
         wallet.reserved_minor_units = reserved_minor_units;
@@ -511,7 +497,7 @@ impl InMemoryTransactionalStore {
         now_epoch_seconds: i64,
         ttl_seconds: i64,
     ) -> Result<UsageQuoteRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
         let resolved_quote_id = quote_id
@@ -595,7 +581,7 @@ impl InMemoryTransactionalStore {
             });
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let idem_lookup = (principal.account_id.clone(), idem_trimmed.to_string());
         if let Some(existing_id) = guard.reservations_by_idempotency.get(&idem_lookup).cloned() {
             if let Some(existing_rec) = guard.credit_reservations.get(&existing_id).cloned() {
@@ -730,7 +716,7 @@ impl InMemoryTransactionalStore {
         actual_usage_minor_units: i64,
         now_epoch_seconds: i64,
     ) -> Result<(CreditReservationRecord, HostedCreditWalletRecord), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let existing = guard
             .credit_reservations
             .get(reservation_id)
@@ -819,7 +805,7 @@ impl InMemoryTransactionalStore {
         reason: &str,
         now_epoch_seconds: i64,
     ) -> Result<(CreditReservationRecord, HostedCreditWalletRecord), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let existing = guard
             .credit_reservations
             .get(reservation_id)
@@ -901,7 +887,7 @@ impl InMemoryTransactionalStore {
         outcome: AmbiguousProviderOutcome,
         now_epoch_seconds: i64,
     ) -> Result<(CreditReservationRecord, HostedCreditWalletRecord), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let existing = guard
             .credit_reservations
             .get(reservation_id)
@@ -985,7 +971,7 @@ impl InMemoryTransactionalStore {
     }
 
     pub fn list_ledger_entries(&self, principal: &AuthenticatedPrincipal) -> Vec<LedgerEntry> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .ledger_entries
             .iter()
@@ -1023,7 +1009,7 @@ impl InMemoryTransactionalStore {
             ));
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let idem_key = (principal.account_id.clone(), idem_trimmed.to_string());
         if let Some(existing_id) = guard.checkout_by_idempotency.get(&idem_key).cloned() {
             if let Some(existing_sess) = guard.checkout_sessions.get(&existing_id).cloned() {
@@ -1118,7 +1104,7 @@ impl InMemoryTransactionalStore {
             })?
             .to_string();
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         // 2. Deduplicate by provider_event_id (idempotent replay with zero duplicate ledger mutation)
         if let Some(existing_receipt) = guard

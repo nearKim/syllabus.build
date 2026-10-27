@@ -1,13 +1,15 @@
 //! Core transactional store, identity/session management, tenancy, catalog, and curriculum revisions.
 
-use crate::*;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use curriculum_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
 use curriculum_security::{
     AuthenticatedPrincipal, CredentialVault, PrincipalRole, SealedCredentialEnvelope, SecurityError,
 };
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, RwLock};
+
+use crate::*;
 
 #[derive(Default)]
 pub(crate) struct StoreInner {
@@ -90,12 +92,22 @@ pub(crate) const PROHIBITED_PRIVATE_FIELDS_IN_PUBLIC: &[&str] = &[
 ];
 
 impl InMemoryTransactionalStore {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    pub(crate) fn read_inner(&self) -> RwLockReadGuard<'_, StoreInner> {
+        self.inner.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn write_inner(&self) -> RwLockWriteGuard<'_, StoreInner> {
+        self.inner.write().unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// Creates a store pre-seeded with Learner A (`00000000-0000-4000-8000-000000000001`)
     /// and Learner B (`00000000-0000-4000-8000-000000000002`) for development and integration tests.
+    #[must_use]
     pub fn new_with_dev_fixtures() -> Self {
         let store = Self::new();
         let learner_a = "00000000-0000-4000-8000-000000000001";
@@ -168,7 +180,7 @@ impl InMemoryTransactionalStore {
     }
 
     pub fn upsert_account(&self, account: AccountRecord) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard
             .proficiency_by_account
             .entry(account.account_id.clone())
@@ -196,7 +208,7 @@ impl InMemoryTransactionalStore {
             return Err(PersistenceError::Security(SecurityError::Unauthenticated));
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
 
@@ -282,7 +294,7 @@ impl InMemoryTransactionalStore {
         bearer_token: &str,
     ) -> Result<Option<AuthenticatedPrincipal>, PersistenceError> {
         let token_sha256 = sha256_bytes_hex(bearer_token.as_bytes());
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         if let Some(sess) = guard.sessions_by_token_sha.get(&token_sha256) {
             if sess.revoked {
                 return Err(PersistenceError::Security(SecurityError::Unauthenticated));
@@ -303,7 +315,7 @@ impl InMemoryTransactionalStore {
 
     pub fn revoke_session_token(&self, bearer_token: &str, now_ms: u64) -> Result<(), PersistenceError> {
         let token_sha256 = sha256_bytes_hex(bearer_token.as_bytes());
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(sess) = guard.sessions_by_token_sha.get_mut(&token_sha256) {
             sess.revoked = true;
             let session_id = sess.session_id.clone();
@@ -364,7 +376,7 @@ impl InMemoryTransactionalStore {
             }
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         // Verify ownership if curriculum_id already exists
         let existing_revs: Vec<&CurriculumRevisionRecord> = guard
@@ -440,7 +452,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         revision_id: &str,
     ) -> Result<CurriculumRevisionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .private_revisions
             .get(revision_id)
@@ -488,7 +500,7 @@ impl InMemoryTransactionalStore {
             }
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let source_rev = guard
             .private_revisions
             .get(source_private_revision_id)
@@ -542,7 +554,7 @@ impl InMemoryTransactionalStore {
         &self,
         publication_revision_id: &str,
     ) -> Result<PublicTemplateRevisionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .public_revisions
             .get(publication_revision_id)
@@ -566,7 +578,7 @@ impl InMemoryTransactionalStore {
         target_account_id: &str,
     ) -> Result<LearnerProficiencyProjection, PersistenceError> {
         principal.require_learner_ownership(target_account_id)?;
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         Ok(guard
             .proficiency_by_account
             .get(target_account_id)
@@ -589,7 +601,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         input: ProgressEventInput,
     ) -> Result<ProgressEventReceiptRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         // Verify ownership of the target curriculum
         let curriculum_owner = guard
@@ -714,7 +726,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         curriculum_id: &str,
     ) -> Result<ScheduleRevisionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let schedule = guard
             .schedules
             .get(curriculum_id)
@@ -734,7 +746,7 @@ impl InMemoryTransactionalStore {
         if_match: Option<&str>,
         patch: SchedulePatchInput,
     ) -> Result<ScheduleRevisionRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let schedule = guard
             .schedules
             .get_mut(curriculum_id)
@@ -798,7 +810,7 @@ impl InMemoryTransactionalStore {
         label: &str,
         raw_api_key: &str,
     ) -> Result<CredentialMetadataView, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let sealed = guard.credential_vault.seal_credential(
             &principal.account_id,
             credential_ref,
@@ -819,21 +831,14 @@ impl InMemoryTransactionalStore {
             etag: "\"cred-v1\"".to_string(),
             revoked: false,
         };
+        let view = CredentialMetadataView::from(&record);
         guard
             .credential_envelopes
             .insert(credential_ref.to_string(), sealed);
         guard
             .credentials
-            .insert(credential_ref.to_string(), record.clone());
-        Ok(CredentialMetadataView {
-            credential_ref: record.credential_ref,
-            provider_id: record.provider_id,
-            label: record.label,
-            masked_hint,
-            version: record.version,
-            etag: record.etag,
-            status: "active".to_string(),
-        })
+            .insert(credential_ref.to_string(), record);
+        Ok(view)
     }
 
     pub fn get_credential_metadata(
@@ -841,7 +846,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         credential_ref: &str,
     ) -> Result<CredentialMetadataView, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .credentials
             .get(credential_ref)
@@ -856,15 +861,7 @@ impl InMemoryTransactionalStore {
                 resource_id: credential_ref.to_string(),
             });
         }
-        Ok(CredentialMetadataView {
-            credential_ref: record.credential_ref.clone(),
-            provider_id: record.provider_id.clone(),
-            label: record.label.clone(),
-            masked_hint: record.masked_hint.clone(),
-            version: record.version,
-            etag: record.etag.clone(),
-            status: "active".to_string(),
-        })
+        Ok(CredentialMetadataView::from(record))
     }
 
     pub fn revoke_credential(
@@ -874,7 +871,7 @@ impl InMemoryTransactionalStore {
         if_match: Option<&str>,
         now_ms: u64,
     ) -> Result<(), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let record = guard
             .credentials
             .get_mut(credential_ref)
@@ -909,7 +906,7 @@ impl InMemoryTransactionalStore {
         now_ms: u64,
     ) -> Result<(), PersistenceError> {
         principal.require_learner_ownership(target_account_id)?;
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(acct) = guard.accounts.get_mut(target_account_id) {
             acct.deleted_at_ms = Some(now_ms);
         }
@@ -943,7 +940,7 @@ impl InMemoryTransactionalStore {
         account_id: &str,
         credential_ref: &str,
     ) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(acct) = guard.accounts.get_mut(account_id) {
             acct.deleted_at_ms = None;
         }
@@ -960,7 +957,7 @@ impl InMemoryTransactionalStore {
     /// Replays all append-only deletion and revocation tombstones after a backup restore
     /// before traffic resumes (`@S43`, `@S45`, `NFR-006`).
     pub fn apply_deletion_tombstones_after_restore(&self, now_ms: u64) -> TombstoneReplayReport {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let mut accounts_purged = 0usize;
         let mut credentials_revoked = 0usize;
         let mut sessions_revoked = 0usize;
@@ -1074,7 +1071,7 @@ impl InMemoryTransactionalStore {
             key_str.to_string(),
         );
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(existing) = guard.idempotency_keys.get(&composite_key) {
             if existing.expires_at_ms > now_ms {
                 if existing.request_sha256 != request_sha256 {
@@ -1133,7 +1130,7 @@ impl InMemoryTransactionalStore {
             operation_id.to_string(),
             idempotency_key.trim().to_string(),
         );
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if status_code >= 500 {
             guard.idempotency_keys.remove(&composite_key);
         } else if let Some(record) = guard.idempotency_keys.get_mut(&composite_key) {
@@ -1145,7 +1142,7 @@ impl InMemoryTransactionalStore {
 
     /// Prunes expired `Completed` idempotency keys (`T01` retention policy).
     pub fn prune_expired_idempotency_keys(&self, now_ms: u64) -> usize {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let before = guard.idempotency_keys.len();
         guard.idempotency_keys.retain(|_, record| {
             record.state == IdempotencyKeyState::InFlight || record.expires_at_ms > now_ms
@@ -1612,7 +1609,7 @@ impl InMemoryTransactionalStore {
             },
         ];
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         for item in items {
             guard
                 .catalog_resources
@@ -1621,7 +1618,7 @@ impl InMemoryTransactionalStore {
     }
 
     pub fn upsert_catalog_resource(&self, record: CatalogResourceVersionRecord) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard
             .catalog_resources
             .insert(record.resource_version_id.clone(), record);
@@ -1631,7 +1628,7 @@ impl InMemoryTransactionalStore {
         &self,
         resource_version_id: &str,
     ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .catalog_resources
             .get(resource_version_id)
@@ -1646,7 +1643,7 @@ impl InMemoryTransactionalStore {
         &self,
         include_synthetic: bool,
     ) -> Vec<CatalogResourceVersionRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .catalog_resources
             .values()
@@ -1661,7 +1658,7 @@ impl InMemoryTransactionalStore {
         &self,
         query: &CatalogFilterQuery,
     ) -> Result<CatalogFilterOutcome, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
 
         let mut eligible_resources = Vec::new();
         let mut optional_certification_resources = Vec::new();
@@ -1855,7 +1852,7 @@ impl InMemoryTransactionalStore {
         target_url: Option<&str>,
         allow_synthetic_fixtures_for_test: bool,
     ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .catalog_resources
             .get(resource_version_id)
@@ -1918,7 +1915,7 @@ impl InMemoryTransactionalStore {
             principal.require_role(PrincipalRole::Curator)?;
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let record = guard
             .catalog_resources
             .get_mut(resource_version_id)
@@ -2025,7 +2022,7 @@ impl InMemoryTransactionalStore {
             principal.require_role(PrincipalRole::Curator)?;
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let record = guard
             .catalog_resources
             .get_mut(resource_version_id)
@@ -2069,7 +2066,7 @@ impl InMemoryTransactionalStore {
             _ => ResourceFreshnessState::Degraded,
         };
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(res) = guard.catalog_resources.get_mut(resource_version_id) {
             res.freshness_state = new_state;
             if new_state == ResourceFreshnessState::Broken {
@@ -2099,7 +2096,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         curriculum_id: &str,
     ) -> Result<Vec<ResourceAlertRecord>, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let revisions: Vec<&CurriculumRevisionRecord> = guard
             .private_revisions
             .values()
@@ -2246,7 +2243,7 @@ impl InMemoryTransactionalStore {
             )));
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let existing_revs: Vec<&CurriculumRevisionRecord> = guard
             .private_revisions
             .values()
@@ -2319,7 +2316,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Result<Vec<CurriculumSummaryItem>, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let mut by_curriculum: BTreeMap<String, Vec<&CurriculumRevisionRecord>> = BTreeMap::new();
         for rev in guard.private_revisions.values() {
             if rev.owner_account_id == principal.account_id {
@@ -2369,7 +2366,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         curriculum_id: &str,
     ) -> Result<CurriculumOverviewRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let mut revs: Vec<&CurriculumRevisionRecord> = guard
             .private_revisions
             .values()
@@ -2404,7 +2401,7 @@ impl InMemoryTransactionalStore {
             .get(curriculum_id)
             .copied()
             .unwrap_or(0);
-        let alerts = Self::collect_alerts_for_revisions(&guard, curriculum_id, &revisions_slice(&revs));
+        let alerts = Self::collect_alerts_for_revisions(&guard, curriculum_id, &revs);
 
         Ok(CurriculumOverviewRecord {
             curriculum_id: curriculum_id.to_string(),
@@ -2426,7 +2423,7 @@ impl InMemoryTransactionalStore {
         curriculum_id: &str,
         revision_id: &str,
     ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let record = guard
             .private_revisions
             .get(revision_id)
@@ -2455,7 +2452,7 @@ impl InMemoryTransactionalStore {
         revision_id: &str,
         if_match: Option<&str>,
     ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let owner_account_id = {
             let target = guard
                 .private_revisions
@@ -2497,19 +2494,20 @@ impl InMemoryTransactionalStore {
     }
 
     pub fn record_candidate_archive(&self, archive: CandidateArchiveRecord) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard
             .candidate_archives
             .insert(archive.archive_id.clone(), archive);
     }
 
+    #[must_use]
     pub fn get_candidate_archive(&self, archive_id: &str) -> Option<CandidateArchiveRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard.candidate_archives.get(archive_id).cloned()
     }
 
     pub fn upsert_generation_job(&self, job: GenerationJobRecord) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.generation_jobs.insert(job.job_id.clone(), job);
     }
 
@@ -2518,7 +2516,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         job_id: &str,
     ) -> Result<GenerationJobRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let job = guard
             .generation_jobs
             .get(job_id)
@@ -2535,7 +2533,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         job_id: &str,
     ) -> Result<GenerationJobRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let job = guard
             .generation_jobs
             .get_mut(job_id)
@@ -2550,9 +2548,4 @@ impl InMemoryTransactionalStore {
         }
         Ok(job.clone())
     }
-
-}
-
-pub(crate) fn revisions_slice<'a>(revs: &[&'a CurriculumRevisionRecord]) -> Vec<&'a CurriculumRevisionRecord> {
-    revs.to_vec()
 }

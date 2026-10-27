@@ -226,7 +226,6 @@ dependencies = [
  "curriculum-domain",
  "curriculum-jobs",
  "curriculum-persistence",
- "curriculum-providers",
  "curriculum-security",
  "serde",
  "serde_json",
@@ -240,22 +239,18 @@ version = "0.1.0"
 dependencies = [
  "curriculum-contracts",
  "curriculum-domain",
- "curriculum-jobs",
  "curriculum-persistence",
  "curriculum-providers",
  "curriculum-security",
  "serde",
- "thiserror",
 ]
 
 [[package]]
 name = "curriculum-contracts"
 version = "0.1.0"
 dependencies = [
- "curriculum-domain",
  "hex",
  "jsonschema",
- "serde",
  "serde_json",
  "sha2",
  "thiserror",
@@ -273,7 +268,7 @@ dependencies = [
 name = "curriculum-jobs"
 version = "0.1.0"
 dependencies = [
- "curriculum-domain",
+ "curriculum-persistence",
  "serde",
  "serde_json",
  "thiserror",
@@ -308,7 +303,9 @@ dependencies = [
 name = "curriculum-security"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "serde",
+ "sha2",
  "thiserror",
 ]
 
@@ -317,10 +314,6 @@ name = "curriculum-test-support"
 version = "0.1.0"
 dependencies = [
  "curriculum-contracts",
- "curriculum-domain",
- "curriculum-providers",
- "curriculum-security",
- "serde",
  "serde_json",
 ]
 
@@ -328,14 +321,10 @@ dependencies = [
 name = "curriculum-worker"
 version = "0.1.0"
 dependencies = [
- "curriculum-application",
  "curriculum-contracts",
- "curriculum-domain",
  "curriculum-jobs",
  "curriculum-persistence",
  "curriculum-providers",
- "curriculum-security",
- "serde",
  "serde_json",
  "tokio",
 ]

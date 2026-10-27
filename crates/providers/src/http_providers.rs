@@ -1,8 +1,15 @@
 //! Official OpenAI, Anthropic, and Google Gemini HTTP provider adapters with SSRF egress validation and BYOK credential pinning.
 
-use crate::*;
-use curriculum_contracts::jcs::sha256_bytes_hex;
+use std::time::Duration;
+
 use serde_json::Value;
+
+use crate::{
+    CandidateGenerationOutput, CandidateGenerationRequest, InferenceAuthMode, InferenceProvider,
+    NormalizedUsageReport, ProviderCapabilities, ProviderError, StructuredOutputCapability,
+    TokenLimits, UsageReportingCapability, build_no_redirect_http_client,
+    handle_live_http_response, load_validated_canonical_candidate,
+};
 
 // =============================================================================
 // T07A: Official OpenAI REST Provider (`OpenAiHttpProvider`) over `reqwest`
@@ -14,7 +21,7 @@ pub const OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/co
 /// Allowed outbound DNS hosts for `OpenAiHttpProvider` (`@S31`).
 pub const OPENAI_ALLOWED_EGRESS_HOSTS: [&str; 1] = ["api.openai.com"];
 
-/// Pinned BYOK credential binding passed to `OpenAiHttpProvider` (`BILL-001`, `BILL-007`, `@S28`, `@S66`, `@S67`).
+/// Pinned BYOK credential binding passed to HTTP providers (`BILL-001`, `BILL-007`, `@S28`, `@S66`, `@S67`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedByokBinding {
     pub account_id: String,
@@ -24,23 +31,62 @@ pub struct PinnedByokBinding {
     pub allow_hosted_fallback: bool,
 }
 
-/// Transport execution mode for `OpenAiHttpProvider` (`D12`, `T07A`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Transport execution mode for HTTP providers (`D12`, `T07A`, `T07C`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpenAiTransportMode {
-    /// Deterministic local/test response simulating a 200 OK from `api.openai.com` with exact usage counts.
+    /// Deterministic local/test response simulating a 200 OK from the provider with exact usage counts.
     Simulated200Ok {
         prompt_tokens: u32,
         completion_tokens: u32,
     },
-    /// Simulated HTTP 401/403 authentication failure from `api.openai.com`.
+    /// Simulated HTTP 401/403 authentication failure from the provider.
     Simulated401Unauthorized,
-    /// Simulated HTTP 429 rate-limit / quota failure from `api.openai.com`.
+    /// Simulated HTTP 429 rate-limit / quota failure from the provider.
     Simulated429RateLimit,
-    /// Live `reqwest::Client` execution against `https://api.openai.com/v1/chat/completions`.
+    /// Live `reqwest::Client` execution against the provider endpoint.
     LiveHttp,
 }
 
+/// Provider-neutral alias for [`OpenAiTransportMode`].
+pub type HttpTransportMode = OpenAiTransportMode;
+
+fn validate_endpoint_egress(endpoint_url: &str, allowed_hosts: &[&str]) -> Result<(), ProviderError> {
+    curriculum_domain::validate_outbound_egress_url(endpoint_url, allowed_hosts)
+        .map(|_| ())
+        .map_err(|e| ProviderError::UnsafeEndpointUrl {
+            url: endpoint_url.to_string(),
+            reason: e.to_string(),
+        })
+}
+
+fn init_pinned_http_client(
+    endpoint_url: &str,
+    allowed_hosts: &[&str],
+    timeout: Option<Duration>,
+) -> Result<reqwest::Client, ProviderError> {
+    validate_endpoint_egress(endpoint_url, allowed_hosts)?;
+    build_no_redirect_http_client(timeout)
+}
+
+async fn send_pinned_live_http_request(
+    endpoint_url: &str,
+    allowed_hosts: &[&str],
+    provider_display_name: &str,
+    credential_id: &str,
+    request_builder: reqwest::RequestBuilder,
+    body: &Value,
+) -> Result<Value, ProviderError> {
+    validate_endpoint_egress(endpoint_url, allowed_hosts)?;
+    let resp = request_builder
+        .json(body)
+        .send()
+        .await
+        .map_err(|_| ProviderError::AmbiguousTimeout)?;
+    handle_live_http_response(resp, provider_display_name, credential_id).await
+}
+
 /// Official OpenAI REST API adapter (`D06`, `D12`, `T07A`, `BILL-001`..`BILL-008`, `@S28`, `@S31`, `@S66`, `@S67`, `@S68`).
+#[derive(Debug, Clone)]
 pub struct OpenAiHttpProvider {
     endpoint_url: String,
     capabilities: ProviderCapabilities,
@@ -58,20 +104,13 @@ impl OpenAiHttpProvider {
         pinned_binding: PinnedByokBinding,
         transport_mode: OpenAiTransportMode,
     ) -> Result<Self, ProviderError> {
-        curriculum_domain::validate_outbound_egress_url(endpoint_url, &OPENAI_ALLOWED_EGRESS_HOSTS)
-            .map_err(|e| ProviderError::UnsafeEndpointUrl {
-                url: endpoint_url.to_string(),
-                reason: e.to_string(),
-            })?;
-
-        let model_id = model_id.into();
-        let http_client = build_no_redirect_http_client(None)?;
+        let http_client = init_pinned_http_client(endpoint_url, &OPENAI_ALLOWED_EGRESS_HOSTS, None)?;
 
         Ok(Self {
             endpoint_url: endpoint_url.to_string(),
             capabilities: ProviderCapabilities {
                 provider_id: "openai".to_string(),
-                model_id,
+                model_id: model_id.into(),
                 structured_output: StructuredOutputCapability::NativeJsonSchema,
                 streaming: true,
                 output_limit: TokenLimits {
@@ -87,15 +126,18 @@ impl OpenAiHttpProvider {
         })
     }
 
+    #[must_use]
     pub fn endpoint_url(&self) -> &str {
         &self.endpoint_url
     }
 
+    #[must_use]
     pub fn pinned_binding(&self) -> &PinnedByokBinding {
         &self.pinned_binding
     }
 
     /// Builds the official OpenAI `/v1/chat/completions` JSON request body with `response_format: json_schema`.
+    #[must_use]
     pub fn build_openai_request_body(&self, request: &CandidateGenerationRequest) -> Value {
         serde_json::json!({
             "model": self.capabilities.model_id,
@@ -126,26 +168,20 @@ impl OpenAiHttpProvider {
         request: &CandidateGenerationRequest,
         resolved_api_key: &str,
     ) -> Result<Value, ProviderError> {
-        curriculum_domain::validate_outbound_egress_url(
-            &self.endpoint_url,
-            &OPENAI_ALLOWED_EGRESS_HOSTS,
-        )
-        .map_err(|e| ProviderError::UnsafeEndpointUrl {
-            url: self.endpoint_url.clone(),
-            reason: e.to_string(),
-        })?;
-
         let body = self.build_openai_request_body(request);
-        let resp = self
+        let req = self
             .http_client
             .post(&self.endpoint_url)
-            .bearer_auth(resolved_api_key.trim())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| ProviderError::AmbiguousTimeout)?;
-
-        handle_live_http_response(resp, "OpenAI", &self.pinned_binding.credential_id).await
+            .bearer_auth(resolved_api_key.trim());
+        send_pinned_live_http_request(
+            &self.endpoint_url,
+            &OPENAI_ALLOWED_EGRESS_HOSTS,
+            "OpenAI",
+            &self.pinned_binding.credential_id,
+            req,
+            &body,
+        )
+        .await
     }
 }
 
@@ -164,7 +200,7 @@ impl InferenceProvider for OpenAiHttpProvider {
             "OpenAI",
             &self.capabilities,
             &self.pinned_binding,
-            self.transport_mode.clone(),
+            self.transport_mode,
             request,
         )
     }
@@ -180,12 +216,7 @@ fn execute_pinned_byok_candidate_generation(
     request: &CandidateGenerationRequest,
 ) -> Result<CandidateGenerationOutput, ProviderError> {
     // 1. Validate outbound endpoint allowlist (`@S31`)
-    curriculum_domain::validate_outbound_egress_url(endpoint_url, allowed_hosts).map_err(|e| {
-        ProviderError::UnsafeEndpointUrl {
-            url: endpoint_url.to_string(),
-            reason: e.to_string(),
-        }
-    })?;
+    validate_endpoint_egress(endpoint_url, allowed_hosts)?;
 
     // 2. Enforce BYOK no-silent-fallback invariant (`BILL-001`, `BILL-006`, `@S28`, `@S66`)
     if request.allow_hosted_fallback || pinned_binding.allow_hosted_fallback {
@@ -252,29 +283,8 @@ fn execute_pinned_byok_candidate_generation(
             prompt_tokens,
             completion_tokens,
         } => {
-            let root = curriculum_contracts::workspace_root();
-            let candidate_path = root.join(
-                "specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json",
-            );
-            let raw_bytes =
-                std::fs::read(&candidate_path).expect("read canonical candidate fixture");
-            let candidate_sha256 = sha256_bytes_hex(&raw_bytes);
-            let raw_candidate_json =
-                String::from_utf8(raw_bytes).expect("canonical candidate is valid UTF-8");
-            let parsed_candidate: Value =
-                serde_json::from_str(&raw_candidate_json).expect("valid candidate JSON");
-
-            let registry = curriculum_contracts::ContractRegistry::load_from_root(&root)
-                .expect("load registry");
-            registry
-                .validate_def(
-                    "curriculum.schema.json",
-                    "modelCandidate",
-                    &parsed_candidate,
-                )
-                .map_err(|e| ProviderError::InvalidCandidateOutput {
-                    message: e.to_string(),
-                })?;
+            let (raw_candidate_json, candidate_sha256, parsed_candidate) =
+                load_validated_canonical_candidate()?;
 
             Ok(CandidateGenerationOutput {
                 raw_candidate_json,
@@ -326,20 +336,15 @@ impl AnthropicHttpProvider {
         transport_mode: OpenAiTransportMode,
     ) -> Result<Self, ProviderError> {
         let endpoint_url = endpoint_url.into();
-        curriculum_domain::validate_outbound_egress_url(
+        let http_client = init_pinned_http_client(
             &endpoint_url,
             &ANTHROPIC_ALLOWED_EGRESS_HOSTS,
-        )
-        .map_err(|e| ProviderError::UnsafeEndpointUrl {
-            url: endpoint_url.clone(),
-            reason: e.to_string(),
-        })?;
+            Some(Duration::from_secs(30)),
+        )?;
 
         if pinned_binding.allow_hosted_fallback {
             return Err(ProviderError::ForbiddenHostedFallback);
         }
-
-        let http_client = build_no_redirect_http_client(Some(std::time::Duration::from_secs(30)))?;
 
         Ok(Self {
             endpoint_url,
@@ -361,15 +366,18 @@ impl AnthropicHttpProvider {
         })
     }
 
+    #[must_use]
     pub fn endpoint_url(&self) -> &str {
         &self.endpoint_url
     }
 
+    #[must_use]
     pub fn pinned_binding(&self) -> &PinnedByokBinding {
         &self.pinned_binding
     }
 
     /// Builds the official Anthropic `/v1/messages` JSON request body using tool-call schema output.
+    #[must_use]
     pub fn build_anthropic_request_body(&self, request: &CandidateGenerationRequest) -> Value {
         serde_json::json!({
             "model": self.capabilities.model_id,
@@ -402,27 +410,21 @@ impl AnthropicHttpProvider {
         request: &CandidateGenerationRequest,
         resolved_api_key: &str,
     ) -> Result<Value, ProviderError> {
-        curriculum_domain::validate_outbound_egress_url(
-            &self.endpoint_url,
-            &ANTHROPIC_ALLOWED_EGRESS_HOSTS,
-        )
-        .map_err(|e| ProviderError::UnsafeEndpointUrl {
-            url: self.endpoint_url.clone(),
-            reason: e.to_string(),
-        })?;
-
         let body = self.build_anthropic_request_body(request);
-        let resp = self
+        let req = self
             .http_client
             .post(&self.endpoint_url)
             .header("x-api-key", resolved_api_key.trim())
-            .header("anthropic-version", "2023-06-01")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| ProviderError::AmbiguousTimeout)?;
-
-        handle_live_http_response(resp, "Anthropic", &self.pinned_binding.credential_id).await
+            .header("anthropic-version", "2023-06-01");
+        send_pinned_live_http_request(
+            &self.endpoint_url,
+            &ANTHROPIC_ALLOWED_EGRESS_HOSTS,
+            "Anthropic",
+            &self.pinned_binding.credential_id,
+            req,
+            &body,
+        )
+        .await
     }
 }
 
@@ -441,7 +443,7 @@ impl InferenceProvider for AnthropicHttpProvider {
             "Anthropic",
             &self.capabilities,
             &self.pinned_binding,
-            self.transport_mode.clone(),
+            self.transport_mode,
             request,
         )
     }
@@ -465,20 +467,15 @@ impl GeminiHttpProvider {
         transport_mode: OpenAiTransportMode,
     ) -> Result<Self, ProviderError> {
         let endpoint_url = endpoint_url.into();
-        curriculum_domain::validate_outbound_egress_url(
+        let http_client = init_pinned_http_client(
             &endpoint_url,
             &GEMINI_ALLOWED_EGRESS_HOSTS,
-        )
-        .map_err(|e| ProviderError::UnsafeEndpointUrl {
-            url: endpoint_url.clone(),
-            reason: e.to_string(),
-        })?;
+            Some(Duration::from_secs(30)),
+        )?;
 
         if pinned_binding.allow_hosted_fallback {
             return Err(ProviderError::ForbiddenHostedFallback);
         }
-
-        let http_client = build_no_redirect_http_client(Some(std::time::Duration::from_secs(30)))?;
 
         Ok(Self {
             endpoint_url,
@@ -500,15 +497,18 @@ impl GeminiHttpProvider {
         })
     }
 
+    #[must_use]
     pub fn endpoint_url(&self) -> &str {
         &self.endpoint_url
     }
 
+    #[must_use]
     pub fn pinned_binding(&self) -> &PinnedByokBinding {
         &self.pinned_binding
     }
 
     /// Builds the official Google Gemini `generateContent` JSON request body with native JSON schema config.
+    #[must_use]
     pub fn build_gemini_request_body(&self, request: &CandidateGenerationRequest) -> Value {
         serde_json::json!({
             "contents": [
@@ -537,26 +537,20 @@ impl GeminiHttpProvider {
         request: &CandidateGenerationRequest,
         resolved_api_key: &str,
     ) -> Result<Value, ProviderError> {
-        curriculum_domain::validate_outbound_egress_url(
-            &self.endpoint_url,
-            &GEMINI_ALLOWED_EGRESS_HOSTS,
-        )
-        .map_err(|e| ProviderError::UnsafeEndpointUrl {
-            url: self.endpoint_url.clone(),
-            reason: e.to_string(),
-        })?;
-
         let body = self.build_gemini_request_body(request);
-        let resp = self
+        let req = self
             .http_client
             .post(&self.endpoint_url)
-            .header("x-goog-api-key", resolved_api_key.trim())
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| ProviderError::AmbiguousTimeout)?;
-
-        handle_live_http_response(resp, "Gemini", &self.pinned_binding.credential_id).await
+            .header("x-goog-api-key", resolved_api_key.trim());
+        send_pinned_live_http_request(
+            &self.endpoint_url,
+            &GEMINI_ALLOWED_EGRESS_HOSTS,
+            "Gemini",
+            &self.pinned_binding.credential_id,
+            req,
+            &body,
+        )
+        .await
     }
 }
 
@@ -575,7 +569,7 @@ impl InferenceProvider for GeminiHttpProvider {
             "Gemini",
             &self.capabilities,
             &self.pinned_binding,
-            self.transport_mode.clone(),
+            self.transport_mode,
             request,
         )
     }

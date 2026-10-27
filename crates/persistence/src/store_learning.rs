@@ -1,10 +1,12 @@
 //! Assessments, spaced repetition reviews, adaptive diagnostics, and adaptation proposals.
 
-use crate::*;
+use std::collections::{BTreeMap, BTreeSet};
+
 use curriculum_contracts::jcs::jcs_sha256_hex;
 use curriculum_security::{AuthenticatedPrincipal, PrincipalRole};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
+
+use crate::*;
 
 #[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
@@ -14,7 +16,7 @@ impl InMemoryTransactionalStore {
     // =========================================================================
 
     pub fn seed_reviewed_assessments(&self) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         let mut key_tokenization = BTreeMap::new();
         key_tokenization.insert("item-tok-1".to_string(), "bpe_subword".to_string());
@@ -102,7 +104,7 @@ impl InMemoryTransactionalStore {
         _principal: &AuthenticatedPrincipal,
         assessment_id: &str,
     ) -> Result<Value, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let rec = guard
             .reviewed_assessments
             .get(assessment_id)
@@ -131,7 +133,7 @@ impl InMemoryTransactionalStore {
         attempt_id: Option<&str>,
         assistance_level: AssistanceLevel,
     ) -> Result<Value, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if !guard.reviewed_assessments.contains_key(assessment_id) {
             return Err(PersistenceError::NotFound {
                 resource_type: "assessment",
@@ -180,7 +182,7 @@ impl InMemoryTransactionalStore {
         responses: BTreeMap<String, String>,
         explicit_score_bp: Option<u32>,
     ) -> Result<AssessmentAttemptRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let assessment = guard
             .reviewed_assessments
             .get(assessment_id)
@@ -297,7 +299,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         attempt_id: &str,
     ) -> Result<AssessmentAttemptRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let rec = guard
             .assessment_attempts
             .get(attempt_id)
@@ -320,7 +322,7 @@ impl InMemoryTransactionalStore {
         reason_code: &str,
         details: &str,
     ) -> Result<AssessmentIssueReportRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
         let assessment = guard
@@ -365,7 +367,7 @@ impl InMemoryTransactionalStore {
     ) -> Result<AssessmentKeyCorrectionRecord, PersistenceError> {
         principal.require_role(PrincipalRole::Curator)?;
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
         let correction_id = format!("keycorr-{assessment_id}-{seq}");
@@ -452,7 +454,7 @@ impl InMemoryTransactionalStore {
         is_mastery_gated: bool,
         learner_decision: Option<LearnerGateDecision>,
     ) -> Result<MasteryGateEvaluation, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let prof = guard
             .proficiency_by_account
             .get(&principal.account_id)
@@ -515,7 +517,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Vec<SpacedReviewRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .spaced_reviews
             .get(&principal.account_id)
@@ -534,7 +536,7 @@ impl InMemoryTransactionalStore {
                 "invalid playback speed `{playback_speed}`"
             )));
         }
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let sched = guard
             .schedules
             .get(curriculum_id)
@@ -550,7 +552,7 @@ impl InMemoryTransactionalStore {
     }
 
     pub fn get_schedule_playback_speed(&self, curriculum_id: &str) -> f64 {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .schedule_playback_speeds
             .get(curriculum_id)
@@ -567,14 +569,14 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         preference: MathDepthPreference,
     ) {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard
             .math_depth_by_account
             .insert(principal.account_id.clone(), preference);
     }
 
     pub fn get_math_depth_preference(&self, principal: &AuthenticatedPrincipal) -> MathDepthPreference {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         guard
             .math_depth_by_account
             .get(&principal.account_id)
@@ -592,7 +594,7 @@ impl InMemoryTransactionalStore {
         candidate_objective_ids: Vec<String>,
         math_depth_preference: Option<MathDepthPreference>,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         if let Some(pref) = math_depth_preference {
             guard
                 .math_depth_by_account
@@ -654,7 +656,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         diagnostic_id: &str,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let rec = guard
             .diagnostic_sessions
             .get(diagnostic_id)
@@ -675,7 +677,7 @@ impl InMemoryTransactionalStore {
         answer: &str,
         assistance_level: AssistanceLevel,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let owner_id = guard
             .diagnostic_sessions
             .get(diagnostic_id)
@@ -780,7 +782,7 @@ impl InMemoryTransactionalStore {
         diagnostic_id: &str,
         reason: Option<DiagnosticStopReason>,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let sess = guard
             .diagnostic_sessions
             .get_mut(diagnostic_id)
@@ -813,7 +815,7 @@ impl InMemoryTransactionalStore {
         proposal_id: &str,
         trigger_kind: Option<&str>,
     ) -> Result<AdaptationProposalRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         // Resolve current active/latest curriculum revision and current schedule revision
         let mut revs: Vec<&CurriculumRevisionRecord> = guard
@@ -929,7 +931,7 @@ impl InMemoryTransactionalStore {
         let mut full_payload = payload_without_sha;
         full_payload["proposal_sha256"] = Value::String(proposal_sha256.clone());
 
-        let registry = curriculum_contracts::ContractRegistry::load_from_workspace()
+        let registry = curriculum_contracts::ContractRegistry::global()
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
             .validate("adaptation-proposal.schema.json", &full_payload)
@@ -958,7 +960,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         proposal_id: &str,
     ) -> Result<AdaptationProposalRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let rec = guard
             .adaptation_proposals
             .get(proposal_id)
@@ -984,7 +986,7 @@ impl InMemoryTransactionalStore {
         expected_base_curriculum_revision_id: Option<&str>,
         expected_base_schedule_revision_id: Option<&str>,
     ) -> Result<AdaptationProposalRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let proposal = guard
             .adaptation_proposals
             .get(proposal_id)

@@ -1,12 +1,14 @@
 //! Persistence domain records, error types, and HTTP concurrency precondition helpers.
 
-use crate::*;
+use std::collections::{BTreeMap, BTreeSet};
+
 use curriculum_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
 use curriculum_security::{PrincipalRole, SecurityError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
+
+use crate::*;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PersistenceError {
@@ -100,6 +102,7 @@ pub enum PersistenceError {
 }
 
 impl PersistenceError {
+    #[must_use]
     pub fn http_status_code(&self) -> u16 {
         match self {
             PersistenceError::Security(
@@ -137,6 +140,7 @@ impl PersistenceError {
         }
     }
 
+    #[must_use]
     pub fn error_code(&self) -> &'static str {
         match self {
             PersistenceError::Security(SecurityError::Unauthenticated) => "unauthenticated",
@@ -212,6 +216,7 @@ pub fn evaluate_if_match(
 }
 
 /// Looks up the canonical OpenAPI concurrency descriptor for `operation_id`.
+#[must_use]
 pub fn lookup_operation_concurrency_policy(
     operation_id: &str,
 ) -> Option<&'static OpenApiOperationDescriptor> {
@@ -422,6 +427,30 @@ pub struct CredentialMetadataView {
     pub status: String,
 }
 
+impl From<&StoredCredentialRecord> for CredentialMetadataView {
+    fn from(record: &StoredCredentialRecord) -> Self {
+        Self {
+            credential_ref: record.credential_ref.clone(),
+            provider_id: record.provider_id.clone(),
+            label: record.label.clone(),
+            masked_hint: record.masked_hint.clone(),
+            version: record.version,
+            etag: record.etag.clone(),
+            status: if record.revoked {
+                "revoked".to_string()
+            } else {
+                "active".to_string()
+            },
+        }
+    }
+}
+
+impl From<StoredCredentialRecord> for CredentialMetadataView {
+    fn from(record: StoredCredentialRecord) -> Self {
+        Self::from(&record)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TombstoneEntityType {
@@ -518,6 +547,7 @@ pub struct CatalogResourceVersionRecord {
 impl CatalogResourceVersionRecord {
     /// Projects this catalog resource version into a JSON object conforming to
     /// `specs/001-curriculum-platform/contracts/resource.schema.json`.
+    #[must_use]
     pub fn to_contract_json(&self) -> Value {
         let access_model_str = match self.access_model {
             CatalogAccessModel::FreePublic => "free",
@@ -1172,6 +1202,40 @@ pub struct PublicationViewRecord {
     pub upvote_label: String,
     pub snapshot: Value,
     pub published_at: String,
+}
+
+impl PublicationViewRecord {
+    /// Projects a `PublicationRecord` and `PublicationRevisionRecord` into a `PublicationViewRecord`.
+    #[must_use]
+    pub fn from_records(pub_rec: &PublicationRecord, rev: &PublicationRevisionRecord) -> Self {
+        let content = &rev.snapshot["content"];
+        let title = content["title"]
+            .as_str()
+            .unwrap_or("Published Curriculum")
+            .to_string();
+        let summary = content["summary"].as_str().unwrap_or("").to_string();
+        let topic_id = content["topic_ids"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|v| v.as_str())
+            .unwrap_or("topic-tokenization")
+            .to_string();
+        Self {
+            publication_id: pub_rec.publication_id.clone(),
+            publication_revision_id: rev.publication_revision_id.clone(),
+            revision_number: rev.revision_number,
+            visibility: pub_rec.visibility.as_str().to_string(),
+            title,
+            summary,
+            topic_id,
+            publisher_display_name: pub_rec.publisher_display_name.clone(),
+            content_sha256: rev.content_sha256.clone(),
+            upvote_count: rev.upvote_count,
+            upvote_label: "community_signal_not_proficiency_or_endorsement".to_string(),
+            snapshot: rev.snapshot.clone(),
+            published_at: rev.published_at.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

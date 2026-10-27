@@ -1,5 +1,7 @@
 //! Embedded SQL migrations and PostgreSQL transactional SQL statement builders.
 
+use std::fmt::Write;
+
 use serde::{Deserialize, Serialize};
 
 pub const BASELINE_MIGRATION_SQL: &str = include_str!("../migrations/0000_t00_baseline.sql");
@@ -84,21 +86,24 @@ pub struct PostgresTransactionalStatements;
 
 impl PostgresTransactionalStatements {
     /// Concatenates all embedded `MIGRATIONS` (`0000`–`0005`) in lexical/version order wrapped in a transaction (`BEGIN; ... COMMIT;`).
+    #[must_use]
     pub fn render_full_migration_bundle() -> String {
         let mut bundle = String::from("BEGIN;\n\n");
         for migration in &MIGRATIONS {
-            bundle.push_str(&format!(
+            let _ = write!(
+                bundle,
                 "-- === Migration {:04}: {} ===\n{}\n\n",
                 migration.version,
                 migration.name,
                 migration.sql.trim()
-            ));
+            );
         }
         bundle.push_str("COMMIT;\n");
         bundle
     }
 
     /// Canonical `SELECT ... FOR UPDATE SKIP LOCKED` outbox job claim statement (`T01`, `@S24`).
+    #[must_use]
     pub fn claim_next_outbox_job_sql() -> &'static str {
         "UPDATE outbox_jobs \
          SET state = 'leased', locked_by = $1, locked_until = $2, attempt_count = attempt_count + 1 \
@@ -113,6 +118,7 @@ impl PostgresTransactionalStatements {
     }
 
     /// Canonical expired lease-reaping and dead-letter transition SQL (`T01`).
+    #[must_use]
     pub fn reap_expired_leases_sql() -> &'static str {
         "UPDATE outbox_jobs \
          SET state = CASE WHEN attempt_count >= max_attempts THEN 'failed' ELSE 'queued' END, \
@@ -125,6 +131,7 @@ impl PostgresTransactionalStatements {
     }
 
     /// Canonical tenant-scoped `Idempotency-Key` acquisition SQL (`T01`, `@S24`).
+    #[must_use]
     pub fn idempotency_begin_sql() -> &'static str {
         "INSERT INTO idempotency_keys (account_id, operation_id, idempotency_key, request_sha256, state, expires_at) \
          VALUES ($1, $2, $3, $4, 'in_flight', $5) \
@@ -133,6 +140,7 @@ impl PostgresTransactionalStatements {
     }
 
     /// Canonical tenant-scoped optimistic concurrency schedule update SQL (`T01`, `@S22`, `@S24`).
+    #[must_use]
     pub fn optimistic_schedule_update_sql() -> &'static str {
         "UPDATE schedule_revisions \
          SET etag_version = etag_version + 1, \
@@ -146,6 +154,7 @@ impl PostgresTransactionalStatements {
     }
 
     /// Canonical `pg_stat_user_tables` bloat and autovacuum monitoring query (`T01`).
+    #[must_use]
     pub fn pg_bloat_monitoring_sql() -> &'static str {
         "SELECT \
              relname AS table_name, \

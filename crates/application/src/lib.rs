@@ -11,6 +11,8 @@
 //!   (`ActivityComponentBreakdown::adjusted_effort`), and URL egress safety
 //!   (`validate_outbound_egress_url`) to `curriculum-domain`.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use curriculum_contracts::generated::CANONICAL_SPEC_SHA256;
 use curriculum_contracts::jcs::sha256_bytes_hex;
 use curriculum_contracts::ContractRegistry;
@@ -36,7 +38,6 @@ use curriculum_providers::{
 };
 use curriculum_security::{AuthenticatedPrincipal, ReleaseFeatureGates};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
 
 /// Segregated port for deterministic catalog metadata filtering and lookup (`T02`, ISP/DIP).
 pub trait CatalogRetrievalPort {
@@ -141,6 +142,7 @@ pub struct SystemReadinessReport {
     pub release_gates: ReleaseFeatureGates,
 }
 
+#[must_use]
 pub fn build_readiness_report(gates: ReleaseFeatureGates) -> SystemReadinessReport {
     SystemReadinessReport {
         status: "ok".to_string(),
@@ -238,7 +240,7 @@ pub fn interpret_goal_request(
                 .get("generation_options")
                 .and_then(|o| o.get("planning_horizon_days"))
                 .and_then(|v| v.as_u64())
-                .map(|days| (days.max(7) / 7) as u64)
+                .map(|days| days.max(7) / 7)
         })
         .unwrap_or(4)
         .max(1) as u32;
@@ -462,8 +464,8 @@ pub fn interpret_goal_request(
     });
 
     // Validate the normalized request against generation-request.schema.json
-    let registry = ContractRegistry::load_from_workspace()
-        .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+    let registry =
+        ContractRegistry::global().map_err(|e| PersistenceError::Validation(e.to_string()))?;
     registry
         .validate(
             "generation-request.schema.json",
@@ -641,8 +643,8 @@ where
     }
 
     // 3. Validate against curriculum.schema.json#/$defs/modelCandidate
-    let registry = ContractRegistry::load_from_workspace()
-        .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+    let registry =
+        ContractRegistry::global().map_err(|e| PersistenceError::Validation(e.to_string()))?;
     if let Err(schema_err) = registry.validate_def(
         "curriculum.schema.json",
         "modelCandidate",
@@ -1449,6 +1451,7 @@ pub fn load_traceability_rows_from_workspace(
 
 /// Evaluates whether the release candidate satisfies every `priority == "P0"` requirement
 /// discovered dynamically from `traceability.csv` and all operational readiness gates (`@S40`..`@S45`).
+#[must_use]
 pub fn evaluate_dynamic_release_readiness(
     rows: &[TraceabilityRequirementRow],
     input: &DynamicReleaseGateInput,
@@ -1620,6 +1623,7 @@ pub struct SearchAndIndexPipelineReceipt {
 /// - For `FillGaps` (`Path B`) or `SearchAllTopics` (`Path C`), searches only uncovered topics,
 ///   deduplicating against already-indexed `canonical_url` / `external_id` and learner-`[Skip]`ped IDs.
 /// - Indexes newly discovered polymorphic resources (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) (`Step 4`).
+#[allow(clippy::too_many_arguments)]
 pub fn execute_search_and_index_pipeline(
     goal_title: &str,
     subject: &str,

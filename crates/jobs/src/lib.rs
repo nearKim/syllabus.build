@@ -4,10 +4,11 @@
 //! reaping, retention pruning, worker-crash recovery with idempotent effect ledger,
 //! `pg_stat_user_tables` autovacuum/bloat monitoring, and multi-worker concurrent load verification.
 
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
-use std::sync::{Arc, Mutex};
 use thiserror::Error;
 
 /// Canonical generation job lifecycle states (`Section 14.6`).
@@ -25,6 +26,7 @@ pub enum GenerationJobState {
 }
 
 impl GenerationJobState {
+    #[must_use]
     pub fn is_terminal(self) -> bool {
         matches!(
             self,
@@ -137,21 +139,9 @@ RETURNING j.*;
 "#;
 
 /// Canonical SQL query over `pg_stat_user_tables` for autovacuum & dead-tuple bloat monitoring (`T01`).
+#[must_use]
 pub fn pg_bloat_monitoring_sql() -> &'static str {
-    r#"
-SELECT
-    relname AS table_name,
-    n_live_tup,
-    n_dead_tup,
-    CASE
-        WHEN (n_live_tup + n_dead_tup) = 0 THEN 0.0
-        ELSE ROUND((n_dead_tup::NUMERIC / (n_live_tup + n_dead_tup)::NUMERIC), 4)
-    END AS dead_tuple_ratio,
-    EXTRACT(EPOCH FROM (NOW() - COALESCE(last_autovacuum, last_vacuum)))::BIGINT AS last_autovacuum_age_seconds
-FROM pg_stat_user_tables
-WHERE relname IN ('outbox_jobs', 'idempotency_keys', 'progress_events', 'schedule_revisions')
-ORDER BY dead_tuple_ratio DESC;
-"#
+    curriculum_persistence::PostgresTransactionalStatements::pg_bloat_monitoring_sql()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +171,7 @@ pub struct PgBloatHealthReport {
 }
 
 /// Evaluates `pg_stat_user_tables` dead-tuple ratios against `dead_tuple_ratio_threshold` (`T01`).
+#[must_use]
 pub fn evaluate_pg_bloat_health(
     stats: &[PgTableTupleStats],
     dead_tuple_ratio_threshold: f64,
@@ -234,6 +225,7 @@ pub struct OutboxJobQueue {
 }
 
 impl OutboxJobQueue {
+    #[must_use]
     pub fn new(config: OutboxQueueConfig) -> Self {
         Self {
             inner: Arc::new(Mutex::new(QueueInner {
@@ -246,8 +238,13 @@ impl OutboxJobQueue {
         }
     }
 
+    fn lock_inner(&self) -> MutexGuard<'_, QueueInner> {
+        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[must_use]
     pub fn config(&self) -> OutboxQueueConfig {
-        self.inner.lock().expect("queue lock").config
+        self.lock_inner().config
     }
 
     /// Enqueues a job transactionally into the outbox.
@@ -260,7 +257,7 @@ impl OutboxJobQueue {
         now_ms: u64,
     ) -> Result<OutboxJobRecord, OutboxQueueError> {
         let job_id = job_id.into();
-        let mut guard = self.inner.lock().expect("queue lock");
+        let mut guard = self.lock_inner();
         if guard.jobs.contains_key(&job_id) {
             return Err(OutboxQueueError::DuplicateJobId(job_id));
         }
@@ -289,12 +286,17 @@ impl OutboxJobQueue {
     /// If the next queued job's `attempt_count >= max_attempts`, transitions it to dead-letter (`Failed`)
     /// and continues scanning.
     pub fn claim_next_job(&self, worker_id: &str, now_ms: u64) -> Option<OutboxJobRecord> {
-        let mut guard = self.inner.lock().expect("queue lock");
-        let lease_ms = (guard.config.lease_duration_seconds as u64) * 1_000;
-        let order = guard.insertion_order.clone();
+        let mut guard = self.lock_inner();
+        let QueueInner {
+            config,
+            insertion_order,
+            jobs,
+            ..
+        } = &mut *guard;
+        let lease_ms = (config.lease_duration_seconds as u64) * 1_000;
 
-        for job_id in order {
-            if let Some(job) = guard.jobs.get_mut(&job_id) {
+        for job_id in insertion_order.iter() {
+            if let Some(job) = jobs.get_mut(job_id) {
                 if job.state == OutboxJobState::Queued && job.available_at_ms <= now_ms {
                     if job.attempt_count >= job.max_attempts {
                         job.state = OutboxJobState::Failed;
@@ -321,7 +323,7 @@ impl OutboxJobQueue {
         worker_id: &str,
         now_ms: u64,
     ) -> Result<bool, OutboxQueueError> {
-        let mut guard = self.inner.lock().expect("queue lock");
+        let mut guard = self.lock_inner();
         let job = guard
             .jobs
             .get_mut(job_id)
@@ -347,30 +349,27 @@ impl OutboxJobQueue {
     /// Recovers `InFlight` jobs where `locked_until_ms < now_ms`, or transitions them to
     /// dead-letter (`Failed`) when `attempt_count >= max_attempts`.
     pub fn reap_expired_leases(&self, now_ms: u64) -> ReapLeasesReport {
-        let mut guard = self.inner.lock().expect("queue lock");
+        let mut guard = self.lock_inner();
         let mut reaped_to_queued = 0usize;
         let mut transitioned_to_dead_letter = 0usize;
 
-        let job_ids: Vec<String> = guard.jobs.keys().cloned().collect();
-        for job_id in job_ids {
-            if let Some(job) = guard.jobs.get_mut(&job_id) {
-                if job.state == OutboxJobState::InFlight {
-                    if let Some(locked_until) = job.locked_until_ms {
-                        if locked_until < now_ms {
-                            job.locked_by = None;
-                            job.locked_until_ms = None;
-                            if job.attempt_count >= job.max_attempts {
-                                job.state = OutboxJobState::Failed;
-                                job.completed_at_ms = Some(now_ms);
-                                job.last_error =
-                                    Some("lease_expired_max_attempts_exceeded".to_string());
-                                transitioned_to_dead_letter += 1;
-                            } else {
-                                job.state = OutboxJobState::Queued;
-                                job.last_error =
-                                    Some("worker_lease_expired_requeued".to_string());
-                                reaped_to_queued += 1;
-                            }
+        for job in guard.jobs.values_mut() {
+            if job.state == OutboxJobState::InFlight {
+                if let Some(locked_until) = job.locked_until_ms {
+                    if locked_until < now_ms {
+                        job.locked_by = None;
+                        job.locked_until_ms = None;
+                        if job.attempt_count >= job.max_attempts {
+                            job.state = OutboxJobState::Failed;
+                            job.completed_at_ms = Some(now_ms);
+                            job.last_error =
+                                Some("lease_expired_max_attempts_exceeded".to_string());
+                            transitioned_to_dead_letter += 1;
+                        } else {
+                            job.state = OutboxJobState::Queued;
+                            job.last_error =
+                                Some("worker_lease_expired_requeued".to_string());
+                            reaped_to_queued += 1;
                         }
                     }
                 }
@@ -388,16 +387,22 @@ impl OutboxJobQueue {
     /// Removes completed jobs older than `completed_retention_days` and dead-letter jobs
     /// older than `dead_letter_retention_days`.
     pub fn prune_retained_jobs(&self, now_ms: u64) -> PruneJobsReport {
-        let mut guard = self.inner.lock().expect("queue lock");
+        let mut guard = self.lock_inner();
+        let QueueInner {
+            config,
+            jobs,
+            insertion_order,
+            ..
+        } = &mut *guard;
         let completed_cutoff_ms =
-            (guard.config.completed_retention_days as u64) * 24 * 60 * 60 * 1_000;
+            (config.completed_retention_days as u64) * 24 * 60 * 60 * 1_000;
         let dead_letter_cutoff_ms =
-            (guard.config.dead_letter_retention_days as u64) * 24 * 60 * 60 * 1_000;
+            (config.dead_letter_retention_days as u64) * 24 * 60 * 60 * 1_000;
 
         let mut pruned_succeeded = 0usize;
         let mut pruned_dead_letter = 0usize;
 
-        guard.jobs.retain(|_, job| match job.state {
+        jobs.retain(|_, job| match job.state {
             OutboxJobState::Succeeded => {
                 let completed_at = job.completed_at_ms.unwrap_or(job.created_at_ms);
                 if now_ms.saturating_sub(completed_at) >= completed_cutoff_ms {
@@ -419,10 +424,7 @@ impl OutboxJobQueue {
             OutboxJobState::Queued | OutboxJobState::InFlight => true,
         });
 
-        let remaining_keys: BTreeSet<String> = guard.jobs.keys().cloned().collect();
-        guard
-            .insertion_order
-            .retain(|id| remaining_keys.contains(id));
+        insertion_order.retain(|id| jobs.contains_key(id));
 
         PruneJobsReport {
             pruned_succeeded,
@@ -431,8 +433,9 @@ impl OutboxJobQueue {
     }
 
     /// Operation 2: Queue Metrics (`metrics_snapshot(now_ms)`).
+    #[must_use]
     pub fn metrics_snapshot(&self, now_ms: u64) -> QueueMetricsSnapshot {
-        let guard = self.inner.lock().expect("queue lock");
+        let guard = self.lock_inner();
         let mut queued_depth = 0usize;
         let mut in_flight_leased = 0usize;
         let mut succeeded_count = 0usize;
@@ -470,21 +473,14 @@ impl OutboxJobQueue {
         }
     }
 
+    #[must_use]
     pub fn get_job(&self, job_id: &str) -> Option<OutboxJobRecord> {
-        self.inner
-            .lock()
-            .expect("queue lock")
-            .jobs
-            .get(job_id)
-            .cloned()
+        self.lock_inner().jobs.get(job_id).cloned()
     }
 
+    #[must_use]
     pub fn committed_effect_count(&self) -> usize {
-        self.inner
-            .lock()
-            .expect("queue lock")
-            .committed_effects
-            .len()
+        self.lock_inner().committed_effects.len()
     }
 }
 

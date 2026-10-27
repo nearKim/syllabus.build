@@ -156,6 +156,7 @@ impl Default for DeterministicFakeProvider {
 }
 
 impl DeterministicFakeProvider {
+    #[must_use]
     pub fn new(fault_mode: FakeFaultInjection) -> Self {
         Self {
             capabilities: ProviderCapabilities {
@@ -173,6 +174,44 @@ impl DeterministicFakeProvider {
             fault_mode,
         }
     }
+}
+
+pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Value), ProviderError> {
+    let root = curriculum_contracts::workspace_root();
+    let candidate_path =
+        root.join("specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json");
+    let raw_bytes =
+        std::fs::read(&candidate_path).map_err(|e| ProviderError::InvalidCandidateOutput {
+            message: format!("failed to read canonical candidate fixture: {e}"),
+        })?;
+    let candidate_sha256 = sha256_bytes_hex(&raw_bytes);
+    let raw_candidate_json =
+        String::from_utf8(raw_bytes).map_err(|e| ProviderError::InvalidCandidateOutput {
+            message: format!("canonical candidate is not valid UTF-8: {e}"),
+        })?;
+    let parsed_candidate: Value =
+        serde_json::from_str(&raw_candidate_json).map_err(|e| {
+            ProviderError::InvalidCandidateOutput {
+                message: format!("failed to parse canonical candidate JSON: {e}"),
+            }
+        })?;
+
+    let registry = curriculum_contracts::ContractRegistry::global().map_err(|e| {
+        ProviderError::InvalidCandidateOutput {
+            message: e.to_string(),
+        }
+    })?;
+    registry
+        .validate_def(
+            "curriculum.schema.json",
+            "modelCandidate",
+            &parsed_candidate,
+        )
+        .map_err(|e| ProviderError::InvalidCandidateOutput {
+            message: e.to_string(),
+        })?;
+
+    Ok((raw_candidate_json, candidate_sha256, parsed_candidate))
 }
 
 impl InferenceProvider for DeterministicFakeProvider {
@@ -215,14 +254,13 @@ impl InferenceProvider for DeterministicFakeProvider {
                 return Err(ProviderError::AmbiguousTimeout);
             }
             FakeFaultInjection::InvalidExecutableCandidate => {
-                let root = curriculum_contracts::workspace_root();
-                let valid_path = root
-                    .join("specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json");
-                let raw = std::fs::read_to_string(&valid_path).expect("read candidate fixture");
-                let registry = curriculum_contracts::ContractRegistry::load_from_root(&root)
-                    .expect("load registry");
-                let mut parsed: Value = serde_json::from_str(&raw).expect("parse JSON");
+                let (_, _, mut parsed) = load_validated_canonical_candidate()?;
                 parsed["html"] = serde_json::json!("<script>alert(1)</script>");
+                let registry = curriculum_contracts::ContractRegistry::global().map_err(|e| {
+                    ProviderError::InvalidCandidateOutput {
+                        message: e.to_string(),
+                    }
+                })?;
                 if let Err(e) =
                     registry.validate_def("curriculum.schema.json", "modelCandidate", &parsed)
                 {
@@ -234,28 +272,8 @@ impl InferenceProvider for DeterministicFakeProvider {
             FakeFaultInjection::None => {}
         }
 
-        let root = curriculum_contracts::workspace_root();
-        let candidate_path =
-            root.join("specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json");
-        let raw_bytes = std::fs::read(&candidate_path).expect("read canonical candidate fixture");
-        let candidate_sha256 = sha256_bytes_hex(&raw_bytes);
-        let raw_candidate_json =
-            String::from_utf8(raw_bytes).expect("canonical candidate is valid UTF-8");
-        let parsed_candidate: Value =
-            serde_json::from_str(&raw_candidate_json).expect("valid candidate JSON");
-
-        // Authoritative backend schema check before returning candidate output
-        let registry =
-            curriculum_contracts::ContractRegistry::load_from_root(&root).expect("load registry");
-        registry
-            .validate_def(
-                "curriculum.schema.json",
-                "modelCandidate",
-                &parsed_candidate,
-            )
-            .map_err(|e| ProviderError::InvalidCandidateOutput {
-                message: e.to_string(),
-            })?;
+        let (raw_candidate_json, candidate_sha256, parsed_candidate) =
+            load_validated_canonical_candidate()?;
 
         Ok(CandidateGenerationOutput {
             raw_candidate_json,

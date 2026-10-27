@@ -11,7 +11,5 @@ curriculum-domain.workspace = true
 curriculum-contracts.workspace = true
 curriculum-persistence.workspace = true
 curriculum-providers.workspace = true
-curriculum-jobs.workspace = true
 curriculum-security.workspace = true
 serde.workspace = true
-thiserror.workspace = true

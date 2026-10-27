@@ -1,12 +1,41 @@
 //! Public templates, snapshot sanitization, moderation, adoption, and account lifecycle.
 
-use crate::*;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::OnceLock;
+
 use curriculum_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
 use curriculum_security::{AuthenticatedPrincipal, PrincipalRole};
 use serde_json::{json, Value};
-use std::collections::{BTreeMap, BTreeSet};
 
-#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+use crate::*;
+
+pub(crate) struct SanitizedPublicEnvelope {
+    pub(crate) content: Value,
+    pub(crate) publisher: Value,
+    pub(crate) publication_terms: Value,
+    pub(crate) origin: Value,
+    pub(crate) content_sha256: String,
+    pub(crate) preview_sha256: String,
+    pub(crate) stripped_private_fields: Vec<String>,
+    pub(crate) withheld_restricted_fields: Vec<String>,
+}
+
+fn cached_synthetic_public_curriculum() -> Result<&'static Value, PersistenceError> {
+    static PUBLIC_CURRICULUM_TEMPLATE: OnceLock<Value> = OnceLock::new();
+    if let Some(doc) = PUBLIC_CURRICULUM_TEMPLATE.get() {
+        return Ok(doc);
+    }
+    let root = curriculum_contracts::workspace_root();
+    let synthetic_path =
+        root.join("specs/001-curriculum-platform/examples/public-curriculum.synthetic.json");
+    let raw = std::fs::read_to_string(&synthetic_path)
+        .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+    let parsed: Value =
+        serde_json::from_str(&raw).map_err(|e| PersistenceError::Validation(e.to_string()))?;
+    Ok(PUBLIC_CURRICULUM_TEMPLATE.get_or_init(|| parsed))
+}
+
+#[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
     // =========================================================================
     // T13: Public Templates, Sanitization, Preview Digest, Discovery,
@@ -20,27 +49,8 @@ impl InMemoryTransactionalStore {
         visibility: ModerationVisibilityState,
         publisher_display_name: &str,
         attribution_text: &str,
-    ) -> Result<
-        (
-            Value,
-            Value,
-            Value,
-            Value,
-            String,
-            String,
-            Vec<String>,
-            Vec<String>,
-        ),
-        PersistenceError,
-    > {
-        let root = curriculum_contracts::workspace_root();
-        let synthetic_path =
-            root.join("specs/001-curriculum-platform/examples/public-curriculum.synthetic.json");
-        let base_doc: Value = serde_json::from_str(
-            &std::fs::read_to_string(&synthetic_path)
-                .map_err(|e| PersistenceError::Validation(e.to_string()))?,
-        )
-        .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+    ) -> Result<SanitizedPublicEnvelope, PersistenceError> {
+        let base_doc = cached_synthetic_public_curriculum()?;
 
         let mut stripped_private_fields = vec![
             "account_id".to_string(),
@@ -141,7 +151,7 @@ impl InMemoryTransactionalStore {
         });
         let preview_sha256 = jcs_sha256_hex(&preview_envelope);
 
-        Ok((
+        Ok(SanitizedPublicEnvelope {
             content,
             publisher,
             publication_terms,
@@ -150,7 +160,7 @@ impl InMemoryTransactionalStore {
             preview_sha256,
             stripped_private_fields,
             withheld_restricted_fields,
-        ))
+        })
     }
 
     /// Generates a sanitized publication preview with `preview_sha256` (`T13`, `SHARE-001`, `SHARE-002`, `SHARE-009`, `@S56`, `@S57`, `@S79`).
@@ -171,7 +181,7 @@ impl InMemoryTransactionalStore {
             ));
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let mut revs: Vec<&CurriculumRevisionRecord> = guard
             .private_revisions
             .values()
@@ -204,8 +214,8 @@ impl InMemoryTransactionalStore {
             .filter(|s| !s.is_empty())
             .unwrap_or("Synthetic author; no external provider endorsement.");
 
-        let (
-            sanitized_content,
+        let SanitizedPublicEnvelope {
+            content: sanitized_content,
             publisher,
             publication_terms,
             origin,
@@ -213,7 +223,7 @@ impl InMemoryTransactionalStore {
             preview_sha256,
             stripped_private_fields,
             withheld_restricted_fields,
-        ) = Self::build_sanitized_public_envelope(
+        } = Self::build_sanitized_public_envelope(
             &guard,
             curriculum_id,
             &active_rev,
@@ -261,7 +271,7 @@ impl InMemoryTransactionalStore {
         accept_publication_terms: bool,
         visibility_override: Option<ModerationVisibilityState>,
     ) -> Result<PublicationViewRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
 
         // Resolve preview by preview_id or latest preview for (account_id, curriculum_id / expected_preview_sha256)
         let preview = if let Some(pid) = preview_id {
@@ -299,15 +309,16 @@ impl InMemoryTransactionalStore {
         .clone();
 
         let effective_visibility = visibility_override.unwrap_or(preview.visibility);
-        let (_, _, _, _, current_content_sha256, current_computed_preview_sha256, _, _) =
-            Self::build_sanitized_public_envelope(
-                &guard,
-                &preview.curriculum_id,
-                &current_active_rev,
-                effective_visibility,
-                &preview.publisher_display_name,
-                &preview.attribution_text,
-            )?;
+        let current_envelope = Self::build_sanitized_public_envelope(
+            &guard,
+            &preview.curriculum_id,
+            &current_active_rev,
+            effective_visibility,
+            &preview.publisher_display_name,
+            &preview.attribution_text,
+        )?;
+        let current_content_sha256 = current_envelope.content_sha256;
+        let current_computed_preview_sha256 = current_envelope.preview_sha256;
 
         let digest_verifier = PublicationPreviewDigest {
             preview_sha256: preview.preview_sha256.clone(),
@@ -367,7 +378,7 @@ impl InMemoryTransactionalStore {
             "origin": preview.origin
         });
 
-        let registry = curriculum_contracts::ContractRegistry::load_from_workspace()
+        let registry = curriculum_contracts::ContractRegistry::global()
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
             .validate("public-curriculum.schema.json", &snapshot)
@@ -406,47 +417,20 @@ impl InMemoryTransactionalStore {
             preview_sha256: preview.preview_sha256.clone(),
             content_sha256: preview.content_sha256.clone(),
             upvote_count: 0,
-            snapshot: snapshot.clone(),
+            snapshot,
             published_at: "2026-10-20T16:00:00Z".to_string(),
         };
 
-        let title = snapshot["content"]["title"]
-            .as_str()
-            .unwrap_or("Published Curriculum")
-            .to_string();
-        let summary = snapshot["content"]["summary"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let topic_id = snapshot["content"]["topic_ids"]
-            .as_array()
-            .and_then(|a| a.first())
-            .and_then(|v| v.as_str())
-            .unwrap_or("topic-tokenization")
-            .to_string();
+        let view = PublicationViewRecord::from_records(&pub_record, &rev_record);
 
         guard
             .publications
-            .insert(resolved_pub_id.clone(), pub_record);
+            .insert(resolved_pub_id, pub_record);
         guard
             .publication_revisions
-            .insert(resolved_pub_rev_id.clone(), rev_record);
+            .insert(resolved_pub_rev_id, rev_record);
 
-        Ok(PublicationViewRecord {
-            publication_id: resolved_pub_id,
-            publication_revision_id: resolved_pub_rev_id,
-            revision_number: 1,
-            visibility: effective_visibility.as_str().to_string(),
-            title,
-            summary,
-            topic_id,
-            publisher_display_name: preview.publisher_display_name,
-            content_sha256: preview.content_sha256,
-            upvote_count: 0,
-            upvote_label: "community_signal_not_proficiency_or_endorsement".to_string(),
-            snapshot,
-            published_at: "2026-10-20T16:00:00Z".to_string(),
-        })
+        Ok(view)
     }
 
     /// Publishes a new revision of an existing owned publication (`T13`, `SHARE-007`, `@S61`, `@S79`).
@@ -460,7 +444,7 @@ impl InMemoryTransactionalStore {
         expected_preview_sha256: &str,
         accept_publication_terms: bool,
     ) -> Result<PublicationViewRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let existing_pub = guard
             .publications
             .get(publication_id)
@@ -510,15 +494,16 @@ impl InMemoryTransactionalStore {
             .unwrap_or_else(|| revs.last().expect("at least one revision")))
         .clone();
 
-        let (_, _, _, _, current_content_sha256, current_computed_preview_sha256, _, _) =
-            Self::build_sanitized_public_envelope(
-                &guard,
-                &existing_pub.source_curriculum_id,
-                &current_active_rev,
-                preview.visibility,
-                &preview.publisher_display_name,
-                &preview.attribution_text,
-            )?;
+        let current_envelope = Self::build_sanitized_public_envelope(
+            &guard,
+            &existing_pub.source_curriculum_id,
+            &current_active_rev,
+            preview.visibility,
+            &preview.publisher_display_name,
+            &preview.attribution_text,
+        )?;
+        let current_content_sha256 = current_envelope.content_sha256;
+        let current_computed_preview_sha256 = current_envelope.preview_sha256;
 
         let digest_verifier = PublicationPreviewDigest {
             preview_sha256: preview.preview_sha256.clone(),
@@ -570,7 +555,7 @@ impl InMemoryTransactionalStore {
             "origin": preview.origin
         });
 
-        let registry = curriculum_contracts::ContractRegistry::load_from_workspace()
+        let registry = curriculum_contracts::ContractRegistry::global()
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
             .validate("public-curriculum.schema.json", &snapshot)
@@ -587,53 +572,29 @@ impl InMemoryTransactionalStore {
             preview_sha256: preview.preview_sha256.clone(),
             content_sha256: preview.content_sha256.clone(),
             upvote_count: 0,
-            snapshot: snapshot.clone(),
-            published_at: "2026-10-20T17:00:00Z".to_string(),
-        };
-        guard
-            .publication_revisions
-            .insert(new_pub_rev_id.clone(), rev_record);
-
-        if let Some(pub_mut) = guard.publications.get_mut(publication_id) {
-            pub_mut.current_revision_id = new_pub_rev_id.clone();
-            pub_mut.latest_revision_number = next_rev_num;
-            pub_mut.visibility = preview.visibility;
-            pub_mut.pre_moderation_visibility = preview.visibility;
-            pub_mut.etag_version += 1;
-            pub_mut.etag = format!("\"pub-mgmt-v{}\"", pub_mut.etag_version);
-            pub_mut.updated_at = "2026-10-20T17:00:00Z".to_string();
-        }
-
-        let title = snapshot["content"]["title"]
-            .as_str()
-            .unwrap_or("Published Curriculum")
-            .to_string();
-        let summary = snapshot["content"]["summary"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let topic_id = snapshot["content"]["topic_ids"]
-            .as_array()
-            .and_then(|a| a.first())
-            .and_then(|v| v.as_str())
-            .unwrap_or("topic-tokenization")
-            .to_string();
-
-        Ok(PublicationViewRecord {
-            publication_id: publication_id.to_string(),
-            publication_revision_id: new_pub_rev_id,
-            revision_number: next_rev_num,
-            visibility: preview.visibility.as_str().to_string(),
-            title,
-            summary,
-            topic_id,
-            publisher_display_name: preview.publisher_display_name,
-            content_sha256: preview.content_sha256,
-            upvote_count: 0,
-            upvote_label: "community_signal_not_proficiency_or_endorsement".to_string(),
             snapshot,
             published_at: "2026-10-20T17:00:00Z".to_string(),
-        })
+        };
+
+        let mut updated_pub = existing_pub;
+        updated_pub.current_revision_id = new_pub_rev_id.clone();
+        updated_pub.latest_revision_number = next_rev_num;
+        updated_pub.visibility = preview.visibility;
+        updated_pub.pre_moderation_visibility = preview.visibility;
+        updated_pub.etag_version += 1;
+        updated_pub.etag = format!("\"pub-mgmt-v{}\"", updated_pub.etag_version);
+        updated_pub.updated_at = "2026-10-20T17:00:00Z".to_string();
+
+        let view = PublicationViewRecord::from_records(&updated_pub, &rev_record);
+
+        guard
+            .publication_revisions
+            .insert(new_pub_rev_id, rev_record);
+        guard
+            .publications
+            .insert(publication_id.to_string(), updated_pub);
+
+        Ok(view)
     }
 
     pub(crate) fn publication_has_quarantined_resource(
@@ -667,7 +628,7 @@ impl InMemoryTransactionalStore {
         topic_id: Option<&str>,
         sort: Option<&str>,
     ) -> Vec<PublicationViewRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let mut items = Vec::new();
 
         for pub_rec in guard.publications.values() {
@@ -680,50 +641,23 @@ impl InMemoryTransactionalStore {
             if Self::publication_has_quarantined_resource(&guard, rev) {
                 continue;
             }
-            let title = rev.snapshot["content"]["title"]
-                .as_str()
-                .unwrap_or("Published Curriculum")
-                .to_string();
-            let summary = rev.snapshot["content"]["summary"]
-                .as_str()
-                .unwrap_or("")
-                .to_string();
-            let rev_topic_id = rev.snapshot["content"]["topic_ids"]
-                .as_array()
-                .and_then(|a| a.first())
-                .and_then(|v| v.as_str())
-                .unwrap_or("topic-tokenization")
-                .to_string();
+            let view = PublicationViewRecord::from_records(pub_rec, rev);
 
             if let Some(q) = query.map(str::trim).filter(|s| !s.is_empty()) {
                 let q_low = q.to_ascii_lowercase();
-                if !title.to_ascii_lowercase().contains(&q_low)
-                    && !summary.to_ascii_lowercase().contains(&q_low)
+                if !view.title.to_ascii_lowercase().contains(&q_low)
+                    && !view.summary.to_ascii_lowercase().contains(&q_low)
                 {
                     continue;
                 }
             }
             if let Some(tid) = topic_id.map(str::trim).filter(|s| !s.is_empty()) {
-                if rev_topic_id != tid {
+                if view.topic_id != tid {
                     continue;
                 }
             }
 
-            items.push(PublicationViewRecord {
-                publication_id: pub_rec.publication_id.clone(),
-                publication_revision_id: rev.publication_revision_id.clone(),
-                revision_number: rev.revision_number,
-                visibility: pub_rec.visibility.as_str().to_string(),
-                title,
-                summary,
-                topic_id: rev_topic_id,
-                publisher_display_name: pub_rec.publisher_display_name.clone(),
-                content_sha256: rev.content_sha256.clone(),
-                upvote_count: rev.upvote_count,
-                upvote_label: "community_signal_not_proficiency_or_endorsement".to_string(),
-                snapshot: rev.snapshot.clone(),
-                published_at: rev.published_at.clone(),
-            });
+            items.push(view);
         }
 
         if sort == Some("upvotes") {
@@ -749,7 +683,7 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
         publication_revision_id: Option<&str>,
     ) -> Result<PublicationViewRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -775,36 +709,7 @@ impl InMemoryTransactionalStore {
                 resource_id: target_rev_id.to_string(),
             })?;
 
-        let title = rev.snapshot["content"]["title"]
-            .as_str()
-            .unwrap_or("Published Curriculum")
-            .to_string();
-        let summary = rev.snapshot["content"]["summary"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let topic_id = rev.snapshot["content"]["topic_ids"]
-            .as_array()
-            .and_then(|a| a.first())
-            .and_then(|v| v.as_str())
-            .unwrap_or("topic-tokenization")
-            .to_string();
-
-        Ok(PublicationViewRecord {
-            publication_id: pub_rec.publication_id.clone(),
-            publication_revision_id: rev.publication_revision_id.clone(),
-            revision_number: rev.revision_number,
-            visibility: pub_rec.visibility.as_str().to_string(),
-            title,
-            summary,
-            topic_id,
-            publisher_display_name: pub_rec.publisher_display_name.clone(),
-            content_sha256: rev.content_sha256.clone(),
-            upvote_count: rev.upvote_count,
-            upvote_label: "community_signal_not_proficiency_or_endorsement".to_string(),
-            snapshot: rev.snapshot.clone(),
-            published_at: rev.published_at.clone(),
-        })
+        Ok(PublicationViewRecord::from_records(pub_rec, rev))
     }
 
     /// Lists the authenticated owner's publications across active, quarantined, and withdrawn states (`@S80`, `@S85`, `@S86`).
@@ -813,7 +718,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Vec<OwnedPublicationSummaryRecord> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let mut out = Vec::new();
         for pub_rec in guard.publications.values() {
             if pub_rec.owner_account_id.as_deref() != Some(principal.account_id.as_str()) {
@@ -858,7 +763,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         publication_id: &str,
     ) -> Result<OwnedPublicationManagementRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -904,7 +809,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         publication_id: &str,
     ) -> Result<Vec<OwnedPublicationRevisionItem>, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -948,7 +853,7 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
         if_match: Option<&str>,
     ) -> Result<OwnedPublicationManagementRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let (owner_opt, current_etag, already_withdrawn) = {
             let pub_rec = guard
                 .publications
@@ -1009,7 +914,7 @@ impl InMemoryTransactionalStore {
         reason_code: &str,
         details: &str,
     ) -> Result<PublicationReportRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -1045,7 +950,7 @@ impl InMemoryTransactionalStore {
         if !principal.has_role(PrincipalRole::Operator) {
             principal.require_role(PrincipalRole::Moderator)?;
         }
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         Ok(guard.publication_reports.clone())
     }
 
@@ -1060,7 +965,7 @@ impl InMemoryTransactionalStore {
         if !principal.has_role(PrincipalRole::Operator) {
             principal.require_role(PrincipalRole::Moderator)?;
         }
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -1135,7 +1040,7 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
         publication_revision_id: &str,
     ) -> Result<PublicationVoteStateRecord, PersistenceError> {
-        let guard = self.inner.read().expect("store read lock");
+        let guard = self.read_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -1179,7 +1084,7 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
         publication_revision_id: &str,
     ) -> Result<PublicationVoteStateRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let email_verified = guard
             .accounts
             .get(&principal.account_id)
@@ -1248,7 +1153,7 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
         publication_revision_id: &str,
     ) -> Result<PublicationVoteStateRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -1301,7 +1206,7 @@ impl InMemoryTransactionalStore {
         free_only: bool,
         max_budget_minor_units: Option<u64>,
     ) -> Result<AdoptedCurriculumRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
             .get(publication_id)
@@ -1560,7 +1465,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         export_id: Option<&str>,
     ) -> Result<AccountExportRecord, PersistenceError> {
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
         let resolved_export_id = export_id
@@ -1669,7 +1574,7 @@ impl InMemoryTransactionalStore {
             ));
         }
 
-        let mut guard = self.inner.write().expect("store write lock");
+        let mut guard = self.write_inner();
         let owned_pub_ids: Vec<String> = guard
             .publications
             .values()
