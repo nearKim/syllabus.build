@@ -4,6 +4,7 @@ use curriculum_contracts::workspace_root;
 use serde_json::Value;
 
 /// Loads a synthetic fixture by relative filename under `specs/001-curriculum-platform/examples/`.
+#[must_use]
 pub fn load_synthetic_fixture(name: &str) -> Value {
     let path = workspace_root()
         .join("specs/001-curriculum-platform/examples")

@@ -1,8 +1,13 @@
 //! Spaced repetition lifecycle, schedule recalculation math, adaptive diagnostics, and objective waivers.
 
-use crate::*;
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+use serde::{Deserialize, Serialize};
+
+use crate::{
+    ActivityComponentBreakdown, DomainError, EffortTriplet, ObjectiveProficiencyState,
+    format_epoch_utc_iso,
+};
 
 // =============================================================================
 // T06: Spaced Repetition Lifecycle & Schedule Recalculation Math
@@ -23,7 +28,8 @@ pub enum ReviewScheduleStatus {
 }
 
 impl ReviewScheduleStatus {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             ReviewScheduleStatus::Scheduled => "scheduled",
             ReviewScheduleStatus::Due => "due",
@@ -292,7 +298,8 @@ pub enum MathDepthPreference {
 }
 
 impl MathDepthPreference {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             MathDepthPreference::Formal => "formal",
             MathDepthPreference::Intuitive => "intuitive",
@@ -322,7 +329,8 @@ pub enum DiagnosticStopReason {
 }
 
 impl DiagnosticStopReason {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             DiagnosticStopReason::AllItemsAnswered => "all_items_answered",
             DiagnosticStopReason::LearnerStopped => "learner_stopped",
@@ -333,6 +341,7 @@ impl DiagnosticStopReason {
 
 /// Evaluated objective evidence from a diagnostic session (`PED-007`, `@S70`, `@S81`).
 /// Unreached objectives remain explicitly `ObjectiveProficiencyState::Unassessed`.
+#[must_use]
 pub fn partition_diagnostic_objectives(
     candidate_objective_ids: &[String],
     answered_independent_results: &BTreeMap<String, bool>,

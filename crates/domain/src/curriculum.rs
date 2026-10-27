@@ -1,8 +1,10 @@
 //! Curriculum workload math, DAG validation, three-layer state separation, assessments, mastery gates, and key corrections.
 
-use crate::*;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+use serde::{Deserialize, Serialize};
+
+use crate::DomainError;
 
 /// Bounds (`min_minutes <= point_minutes <= max_minutes`) for a single workload component.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,47 +99,49 @@ impl ActivityComponentBreakdown {
 pub fn validate_dag_acyclic(
     edges: &[(String, Vec<String>)],
 ) -> Result<Vec<String>, DomainError> {
-    let mut node_set = BTreeSet::new();
+    let mut node_set: BTreeSet<&str> = BTreeSet::new();
     for (node, _) in edges {
-        if !node_set.insert(node.clone()) {
+        if !node_set.insert(node.as_str()) {
             return Err(DomainError::DuplicateIdentifier(node.clone()));
         }
     }
 
-    let mut in_degree: BTreeMap<String, usize> = BTreeMap::new();
-    let mut dependents: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut in_degree: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut dependents: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
 
     for (node, prereqs) in edges {
-        in_degree.entry(node.clone()).or_insert(0);
+        let node_str = node.as_str();
+        in_degree.entry(node_str).or_insert(0);
         for prereq in prereqs {
-            if !node_set.contains(prereq) {
+            let prereq_str = prereq.as_str();
+            if !node_set.contains(prereq_str) {
                 return Err(DomainError::UnknownDependency {
                     node: node.clone(),
                     dependency: prereq.clone(),
                 });
             }
-            *in_degree.entry(node.clone()).or_insert(0) += 1;
+            *in_degree.entry(node_str).or_insert(0) += 1;
             dependents
-                .entry(prereq.clone())
+                .entry(prereq_str)
                 .or_default()
-                .push(node.clone());
+                .push(node_str);
         }
     }
 
-    let mut queue: VecDeque<String> = in_degree
+    let mut queue: VecDeque<&str> = in_degree
         .iter()
-        .filter_map(|(k, &deg)| if deg == 0 { Some(k.clone()) } else { None })
+        .filter_map(|(&k, &deg)| if deg == 0 { Some(k) } else { None })
         .collect();
 
     let mut topo_order = Vec::with_capacity(edges.len());
     while let Some(curr) = queue.pop_front() {
-        topo_order.push(curr.clone());
-        if let Some(children) = dependents.get(&curr) {
-            for child in children {
+        topo_order.push(curr.to_string());
+        if let Some(children) = dependents.get(curr) {
+            for &child in children {
                 if let Some(deg) = in_degree.get_mut(child) {
                     *deg -= 1;
                     if *deg == 0 {
-                        queue.push_back(child.clone());
+                        queue.push_back(child);
                     }
                 }
             }
@@ -147,7 +151,7 @@ pub fn validate_dag_acyclic(
     if topo_order.len() != edges.len() {
         let cycle_nodes: Vec<String> = in_degree
             .into_iter()
-            .filter_map(|(n, deg)| if deg > 0 { Some(n) } else { None })
+            .filter_map(|(n, deg)| if deg > 0 { Some(n.to_string()) } else { None })
             .collect();
         return Err(DomainError::GraphCycleDetected { cycle_nodes });
     }
@@ -273,7 +277,8 @@ pub enum AssistanceLevel {
 }
 
 impl AssistanceLevel {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             AssistanceLevel::Independent => "independent",
             AssistanceLevel::HintUsed => "hint_used",
@@ -294,11 +299,13 @@ impl AssistanceLevel {
         }
     }
 
-    pub fn is_independent(&self) -> bool {
+    #[must_use]
+    pub fn is_independent(self) -> bool {
         matches!(self, AssistanceLevel::Independent)
     }
 
     /// Escalates assistance monotonically within an attempt (`SolutionStudied > HintUsed > Independent`).
+    #[must_use]
     pub fn escalate(self, other: AssistanceLevel) -> AssistanceLevel {
         match (self, other) {
             (AssistanceLevel::SolutionStudied, _) | (_, AssistanceLevel::SolutionStudied) => {
@@ -321,7 +328,8 @@ pub enum AssessmentKind {
 }
 
 impl AssessmentKind {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             AssessmentKind::ReviewedAnchor => "reviewed_anchor",
             AssessmentKind::AiPractice => "ai_practice",
@@ -341,7 +349,8 @@ pub enum AssessmentReviewStatus {
 }
 
 impl AssessmentReviewStatus {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             AssessmentReviewStatus::Approved => "approved",
             AssessmentReviewStatus::Quarantined => "quarantined",
@@ -503,6 +512,7 @@ pub enum MasteryGateEvaluation {
 ///     (or `PrerequisiteOverrideRecorded`), emitting `"unverified_prerequisite_acknowledged"`.
 ///   - When active reviewed anchors exist (`@S15`), the learner is blocked until remediation OR explicit
 ///     `LearnerGateDecision::PrerequisiteOverrideRecorded`, emitting `"prerequisite_override_recorded"`.
+#[must_use]
 pub fn evaluate_prerequisite_gate(
     is_mastery_gated: bool,
     prerequisites: &[PrerequisiteGateInput],

@@ -1,5 +1,7 @@
 //! RFC 8785 JSON Canonicalization Scheme (JCS) + SHA-256 digest computation (`NFR-005`).
 
+use std::fmt::Write as _;
+
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
@@ -9,6 +11,7 @@ use sha2::{Digest, Sha256};
 ///   order for BMP characters used in our schemas/fixtures, implemented explicitly over UTF-16 code units).
 /// - No insignificant whitespace.
 /// - Standard JSON string escaping (`\b`, `\t`, `\n`, `\f`, `\r`, `\"`, `\\`, and `\uXXXX` for `<= 0x1F`).
+#[must_use]
 pub fn canonicalize_jcs(value: &Value) -> String {
     let mut out = String::new();
     write_jcs(value, &mut out);
@@ -16,12 +19,14 @@ pub fn canonicalize_jcs(value: &Value) -> String {
 }
 
 /// Computes the lower-case hex SHA-256 digest over the UTF-8 RFC 8785 JCS canonicalization of `value`.
+#[must_use]
 pub fn jcs_sha256_hex(value: &Value) -> String {
     let canonical = canonicalize_jcs(value);
     sha256_bytes_hex(canonical.as_bytes())
 }
 
 /// Computes the lower-case hex SHA-256 digest over raw bytes.
+#[must_use]
 pub fn sha256_bytes_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
@@ -44,7 +49,7 @@ fn write_jcs_string(s: &str, out: &mut String) {
             '\u{000C}' => out.push_str("\\f"),
             '\u{000D}' => out.push_str("\\r"),
             c if (c as u32) <= 0x1F => {
-                out.push_str(&format!("\\u{:04x}", c as u32));
+                let _ = write!(out, "\\u{:04x}", c as u32);
             }
             c => out.push(c),
         }
@@ -59,19 +64,19 @@ fn write_jcs(value: &Value, out: &mut String) {
         Value::Bool(false) => out.push_str("false"),
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
-                out.push_str(&i.to_string());
+                let _ = write!(out, "{i}");
             } else if let Some(u) = n.as_u64() {
-                out.push_str(&u.to_string());
+                let _ = write!(out, "{u}");
             } else if let Some(f) = n.as_f64() {
                 if f == 0.0 {
                     out.push('0');
                 } else if f.fract() == 0.0 && f.abs() < 1e15 {
-                    out.push_str(&format!("{:.0}", f));
+                    let _ = write!(out, "{f:.0}");
                 } else {
-                    out.push_str(&n.to_string());
+                    let _ = write!(out, "{n}");
                 }
             } else {
-                out.push_str(&n.to_string());
+                let _ = write!(out, "{n}");
             }
         }
         Value::String(s) => write_jcs_string(s, out),

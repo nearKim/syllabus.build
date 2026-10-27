@@ -1,7 +1,8 @@
 //! Catalog access models, review states, acquisition permissions, goal intake, and SSRF egress validation.
 
-use crate::*;
 use serde::{Deserialize, Serialize};
+
+use crate::DomainError;
 
 /// Catalog access pricing model (`CAT-005`, `@S05`, `@S06`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +50,8 @@ pub enum ResourceOperationKind {
 }
 
 impl ResourceOperationKind {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             ResourceOperationKind::Metadata => "metadata",
             ResourceOperationKind::LinkOut => "link_out",
@@ -78,6 +80,7 @@ pub struct AcquisitionPermission {
 
 impl AcquisitionPermission {
     /// Pure domain policy evaluating whether `operation` is permitted by this rights record (`CAT-003`, `@S05`).
+    #[must_use]
     pub fn permits(&self, operation: ResourceOperationKind) -> bool {
         match operation {
             ResourceOperationKind::Metadata => self.allow_metadata,
@@ -383,10 +386,39 @@ pub struct ResourceFitEvaluation {
     pub cost_badge_label: String,
 }
 
+/// Structured query parameters for evaluating indexed resource fit and coverage (`Step 1` & `Step 1.5`).
+#[derive(Debug, Clone, Copy)]
+pub struct ResourceFitQuery<'a> {
+    pub requested_subject: &'a str,
+    pub requested_topics: &'a [String],
+    pub required_math_depth: &'a str,
+    pub free_only: bool,
+    pub candidates: &'a [IndexedMaterialCandidate],
+    pub selected_resource_version_ids: &'a [String],
+    pub skipped_resource_version_ids: &'a [String],
+    pub requested_mode: Option<ResourceFitDecisionMode>,
+}
+
+/// Evaluates eligible indexed materials using [`ResourceFitQuery`].
+#[must_use]
+pub fn evaluate_resource_fit(query: &ResourceFitQuery<'_>) -> ResourceFitEvaluation {
+    evaluate_resource_fit_and_coverage(
+        query.requested_subject,
+        query.requested_topics,
+        query.required_math_depth,
+        query.free_only,
+        query.candidates,
+        query.selected_resource_version_ids,
+        query.skipped_resource_version_ids,
+        query.requested_mode,
+    )
+}
+
 /// Evaluates eligible indexed materials, ranks them deterministically, and computes
 /// evidence-backed topic coverage over the learner's accepted (`selected_resource_version_ids`)
 /// and rejected (`skipped_resource_version_ids`) choices (`Step 1` & `Step 1.5`).
 #[must_use]
+#[allow(clippy::too_many_arguments)]
 pub fn evaluate_resource_fit_and_coverage(
     requested_subject: &str,
     requested_topics: &[String],

@@ -1,8 +1,10 @@
 //! Reminder scheduling & DST policy, account deletion impact, pedagogical evaluation benchmarks, and native alarm boundaries.
 
-use crate::*;
-use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+
+use crate::DomainError;
 
 // =============================================================================
 // T08: Notification Preferences, DST Resolution & Reminder Scheduling Policy
@@ -18,7 +20,8 @@ pub enum DstResolutionPolicy {
 }
 
 impl DstResolutionPolicy {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             DstResolutionPolicy::ExactLocalTime => "exact_local_time",
             DstResolutionPolicy::SpringForwardShifted => "spring_forward_shifted",
@@ -325,6 +328,7 @@ fn civil_date_time_to_epoch_seconds(
 }
 
 /// Formats epoch seconds as RFC 3339 UTC string `YYYY-MM-DDTHH:MM:SSZ`.
+#[must_use]
 pub fn format_epoch_utc_iso(epoch_seconds: i64) -> String {
     let days = epoch_seconds.div_euclid(86_400);
     let secs_of_day = epoch_seconds.rem_euclid(86_400);

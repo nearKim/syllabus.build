@@ -1,8 +1,10 @@
 //! Public templates, snapshot sanitization, preview digest, moderation state machine, and partial adoption closure.
 
-use crate::*;
-use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+use serde::{Deserialize, Serialize};
+
+use crate::{DomainError, ObjectiveProficiencyState, validate_dag_acyclic};
 
 // =============================================================================
 // T13: Public Templates, Sanitization, Preview Digest, Moderation & Partial Adoption
@@ -20,7 +22,8 @@ pub enum ModerationVisibilityState {
 }
 
 impl ModerationVisibilityState {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Private => "private",
             Self::Unlisted => "unlisted",
@@ -45,11 +48,13 @@ impl ModerationVisibilityState {
         }
     }
 
-    pub fn is_listed_in_public_discovery(&self) -> bool {
+    #[must_use]
+    pub fn is_listed_in_public_discovery(self) -> bool {
         matches!(self, Self::Public)
     }
 
-    pub fn is_readable_via_direct_link(&self) -> bool {
+    #[must_use]
+    pub fn is_readable_via_direct_link(self) -> bool {
         matches!(self, Self::Public | Self::Unlisted)
     }
 }
@@ -86,10 +91,12 @@ impl PublicSnapshotSanitizer {
         "raw_content_excerpt",
     ];
 
+    #[must_use]
     pub fn is_private_learner_field(field_name: &str) -> bool {
         Self::PRIVATE_LEARNER_FIELD_MARKERS.contains(&field_name)
     }
 
+    #[must_use]
     pub fn is_restricted_third_party_field(field_name: &str) -> bool {
         Self::RESTRICTED_RESOURCE_FIELD_MARKERS.contains(&field_name)
     }
@@ -191,65 +198,76 @@ pub fn compute_partial_adoption_closure(
     let topological_modules = validate_dag_acyclic(module_edges)?;
     let topological_objectives = validate_dag_acyclic(objective_edges)?;
 
-    let module_prereq_map: BTreeMap<String, Vec<String>> = module_edges.iter().cloned().collect();
-    let objective_prereq_map: BTreeMap<String, Vec<String>> =
-        objective_edges.iter().cloned().collect();
+    let module_prereq_map: BTreeMap<&str, &[String]> = module_edges
+        .iter()
+        .map(|(node, prereqs)| (node.as_str(), prereqs.as_slice()))
+        .collect();
+    let objective_prereq_map: BTreeMap<&str, &[String]> = objective_edges
+        .iter()
+        .map(|(node, prereqs)| (node.as_str(), prereqs.as_slice()))
+        .collect();
 
-    let requested_set: BTreeSet<String> = if selected_module_ids.is_empty() {
-        topological_modules.iter().cloned().collect()
+    let requested_set: BTreeSet<&str> = if selected_module_ids.is_empty() {
+        module_prereq_map.keys().copied().collect()
     } else {
         let mut s = BTreeSet::new();
         for mid in selected_module_ids {
-            if !module_prereq_map.contains_key(mid) {
+            let mid_str = mid.as_str();
+            if !module_prereq_map.contains_key(mid_str) {
                 return Err(DomainError::PublicSharingInvariantViolation(format!(
                     "unknown selected_module_id `{mid}` in partial adoption request"
                 )));
             }
-            s.insert(mid.clone());
+            s.insert(mid_str);
         }
         s
     };
 
-    let mut closure_modules = BTreeSet::new();
-    let mut queue: VecDeque<String> = requested_set.iter().cloned().collect();
+    let mut closure_modules: BTreeSet<&str> = BTreeSet::new();
+    let mut queue: VecDeque<&str> = requested_set.iter().copied().collect();
     while let Some(curr) = queue.pop_front() {
-        if closure_modules.insert(curr.clone()) {
-            if let Some(prereqs) = module_prereq_map.get(&curr) {
-                for prereq in prereqs {
-                    if !closure_modules.contains(prereq) {
-                        queue.push_back(prereq.clone());
+        if closure_modules.insert(curr) {
+            if let Some(prereqs) = module_prereq_map.get(curr) {
+                for prereq in *prereqs {
+                    let prereq_str = prereq.as_str();
+                    if !closure_modules.contains(prereq_str) {
+                        queue.push_back(prereq_str);
                     }
                 }
             }
         }
     }
 
-    let ordered_module_ids: Vec<String> = topological_modules
-        .into_iter()
-        .filter(|m| closure_modules.contains(m))
-        .collect();
-
-    let auto_included_prerequisite_module_ids: Vec<String> = ordered_module_ids
+    let auto_included_prerequisite_module_ids: Vec<String> = topological_modules
         .iter()
-        .filter(|m| !requested_set.contains(*m))
+        .filter(|m| {
+            let m_str = m.as_str();
+            closure_modules.contains(m_str) && !requested_set.contains(m_str)
+        })
         .cloned()
         .collect();
 
-    let mut closure_objectives = BTreeSet::new();
-    let mut obj_queue = VecDeque::new();
+    let ordered_module_ids: Vec<String> = topological_modules
+        .into_iter()
+        .filter(|m| closure_modules.contains(m.as_str()))
+        .collect();
+
+    let mut closure_objectives: BTreeSet<&str> = BTreeSet::new();
+    let mut obj_queue: VecDeque<&str> = VecDeque::new();
     for mid in &ordered_module_ids {
         if let Some(objs) = module_objectives.get(mid) {
             for oid in objs {
-                obj_queue.push_back(oid.clone());
+                obj_queue.push_back(oid.as_str());
             }
         }
     }
     while let Some(oid) = obj_queue.pop_front() {
-        if closure_objectives.insert(oid.clone()) {
-            if let Some(prereqs) = objective_prereq_map.get(&oid) {
-                for prereq in prereqs {
-                    if !closure_objectives.contains(prereq) {
-                        obj_queue.push_back(prereq.clone());
+        if closure_objectives.insert(oid) {
+            if let Some(prereqs) = objective_prereq_map.get(oid) {
+                for prereq in *prereqs {
+                    let prereq_str = prereq.as_str();
+                    if !closure_objectives.contains(prereq_str) {
+                        obj_queue.push_back(prereq_str);
                     }
                 }
             }
@@ -258,7 +276,7 @@ pub fn compute_partial_adoption_closure(
 
     let ordered_objective_ids: Vec<String> = topological_objectives
         .into_iter()
-        .filter(|o| closure_objectives.contains(o))
+        .filter(|o| closure_objectives.contains(o.as_str()))
         .collect();
 
     let mut initial_proficiency_states = BTreeMap::new();

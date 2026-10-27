@@ -3,6 +3,7 @@
 //! release-decision feature gates (`D07`, `D11`, `D15`, `D16`, `CTRL-001`).
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,6 +16,7 @@ pub enum AppEnvironment {
 }
 
 impl AppEnvironment {
+    #[must_use]
     pub fn is_local_dev_or_test(self) -> bool {
         matches!(self, AppEnvironment::Development | AppEnvironment::Test)
     }
@@ -37,6 +39,7 @@ pub struct AuthenticatedPrincipal {
 }
 
 impl AuthenticatedPrincipal {
+    #[must_use]
     pub fn has_role(&self, role: PrincipalRole) -> bool {
         self.roles.contains(&role)
     }
@@ -44,6 +47,7 @@ impl AuthenticatedPrincipal {
     /// Enforces strict tenant isolation (`NFR-001`, `@S36`, `@S64`):
     /// Curators, moderators, and operators do not gain access to another learner's private state,
     /// assessment evidence, schedules, or BYOK credentials.
+    #[must_use]
     pub fn can_access_learner_private_resource(&self, resource_owner_account_id: &str) -> bool {
         self.account_id == resource_owner_account_id
     }
@@ -295,6 +299,7 @@ impl Default for CredentialVault {
 }
 
 impl CredentialVault {
+    #[must_use]
     pub fn new(master_kek: [u8; 32]) -> Self {
         Self { master_kek }
     }
@@ -307,14 +312,12 @@ impl CredentialVault {
                 "API key must be at least 8 characters long".to_string(),
             ));
         }
-        let tail: String = trimmed
-            .chars()
+        let tail_start = trimmed
+            .char_indices()
             .rev()
-            .take(4)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
+            .nth(3)
+            .map_or(0, |(idx, _)| idx);
+        let tail = &trimmed[tail_start..];
         Ok(format!("...{tail}"))
     }
 
@@ -328,8 +331,8 @@ impl CredentialVault {
         raw_api_key: &str,
     ) -> Result<SealedCredentialEnvelope, SecurityError> {
         let trimmed = raw_api_key.trim();
-        let key_last4_redacted = Self::redact_secret_secret_inner(trimmed)?;
-        let key_fingerprint_sha256 = hex_encode(&sha256_digest(trimmed.as_bytes()));
+        let key_last4_redacted = Self::redact_secret_suffix(trimmed)?;
+        let key_fingerprint_sha256 = hex::encode(sha256_digest(trimmed.as_bytes()));
 
         // Deterministic per-record 16-byte nonce derived from KEK + AAD + key fingerprint so
         // rotating a key or bumping version produces a distinct nonce and ciphertext.
@@ -354,9 +357,9 @@ impl CredentialVault {
             version,
             key_last4_redacted,
             key_fingerprint_sha256,
-            ciphertext_hex: hex_encode(&ciphertext),
-            nonce_hex: hex_encode(nonce),
-            auth_tag_hex: hex_encode(&auth_tag),
+            ciphertext_hex: hex::encode(&ciphertext),
+            nonce_hex: hex::encode(nonce),
+            auth_tag_hex: hex::encode(auth_tag),
         })
     }
 
@@ -376,14 +379,15 @@ impl CredentialVault {
             return Err(SecurityError::VaultDecryptionFailed);
         }
 
-        let nonce = hex_decode(&envelope.nonce_hex).ok_or(SecurityError::VaultDecryptionFailed)?;
+        let nonce =
+            hex::decode(&envelope.nonce_hex).map_err(|_| SecurityError::VaultDecryptionFailed)?;
         if nonce.len() != 16 {
             return Err(SecurityError::VaultDecryptionFailed);
         }
-        let ciphertext =
-            hex_decode(&envelope.ciphertext_hex).ok_or(SecurityError::VaultDecryptionFailed)?;
-        let expected_tag =
-            hex_decode(&envelope.auth_tag_hex).ok_or(SecurityError::VaultDecryptionFailed)?;
+        let ciphertext = hex::decode(&envelope.ciphertext_hex)
+            .map_err(|_| SecurityError::VaultDecryptionFailed)?;
+        let expected_tag = hex::decode(&envelope.auth_tag_hex)
+            .map_err(|_| SecurityError::VaultDecryptionFailed)?;
         if expected_tag.len() != 32 {
             return Err(SecurityError::VaultDecryptionFailed);
         }
@@ -399,10 +403,6 @@ impl CredentialVault {
 
         let plaintext_bytes = xor_keystream(&enc_subkey, &nonce, &aad, &ciphertext);
         String::from_utf8(plaintext_bytes).map_err(|_| SecurityError::VaultDecryptionFailed)
-    }
-
-    fn redact_secret_secret_inner(trimmed: &str) -> Result<String, SecurityError> {
-        Self::redact_secret_suffix(trimmed)
     }
 
     fn format_aad(account_id: &str, credential_id: &str, version: u64) -> Vec<u8> {
@@ -455,27 +455,6 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn hex_encode(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        use std::fmt::Write;
-        let _ = write!(&mut s, "{b:02x}");
-    }
-    s
-}
-
-fn hex_decode(hex: &str) -> Option<Vec<u8>> {
-    if !hex.len().is_multiple_of(2) {
-        return None;
-    }
-    let mut out = Vec::with_capacity(hex.len() / 2);
-    for idx in (0..hex.len()).step_by(2) {
-        let byte = u8::from_str_radix(&hex[idx..idx + 2], 16).ok()?;
-        out.push(byte);
-    }
-    Some(out)
-}
-
 fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     let mut k_block = [0u8; 64];
     if key.len() > 64 {
@@ -502,9 +481,10 @@ fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
 }
 
 /// Computes lowercase 64-character hex HMAC-SHA256 signature for payment webhook payloads (`T07D`, `BILL-005`).
+#[must_use]
 pub fn compute_webhook_hmac_sha256(secret: &[u8], payload: &[u8]) -> String {
     let mac = hmac_sha256(secret, payload);
-    hex_encode(&mac)
+    hex::encode(mac)
 }
 
 /// Verifies a payment webhook HMAC-SHA256 signature header against the raw payload using constant-time comparison (`T07D`, `@S67`, `@S68`).
@@ -524,7 +504,7 @@ pub fn verify_webhook_hmac_sha256(
         .strip_prefix("sha256=")
         .or_else(|| trimmed.strip_prefix("v1="))
         .unwrap_or(trimmed);
-    let provided_bytes = hex_decode(normalized).ok_or_else(|| {
+    let provided_bytes = hex::decode(normalized).map_err(|_| {
         SecurityError::InvalidWebhookSignature(
             "webhook signature is not valid hex encoding".to_string(),
         )
@@ -540,97 +520,13 @@ pub fn verify_webhook_hmac_sha256(
             "HMAC-SHA256 digest mismatch".to_string(),
         ));
     }
-    Ok(hex_encode(&expected))
+    Ok(hex::encode(expected))
 }
 
 /// FIPS 180-4 SHA-256 digest used by `CredentialVault`.
+#[must_use]
 pub fn sha256_digest(input: &[u8]) -> [u8; 32] {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
-
-    let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-
-    let bit_len = (input.len() as u64) * 8;
-    let mut padded = input.to_vec();
-    padded.push(0x80);
-    while (padded.len() % 64) != 56 {
-        padded.push(0x00);
-    }
-    padded.extend_from_slice(&bit_len.to_be_bytes());
-
-    for chunk in padded.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for (i, word) in chunk.chunks_exact(4).enumerate() {
-            w[i] = u32::from_be_bytes([word[0], word[1], word[2], word[3]]);
-        }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[i - 7])
-                .wrapping_add(s1);
-        }
-
-        let mut a = h[0];
-        let mut b = h[1];
-        let mut c = h[2];
-        let mut d = h[3];
-        let mut e = h[4];
-        let mut f = h[5];
-        let mut g = h[6];
-        let mut hh = h[7];
-
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ ((!e) & g);
-            let temp1 = hh
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = s0.wrapping_add(maj);
-
-            hh = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(temp1);
-            d = c;
-            c = b;
-            b = a;
-            a = temp1.wrapping_add(temp2);
-        }
-
-        h[0] = h[0].wrapping_add(a);
-        h[1] = h[1].wrapping_add(b);
-        h[2] = h[2].wrapping_add(c);
-        h[3] = h[3].wrapping_add(d);
-        h[4] = h[4].wrapping_add(e);
-        h[5] = h[5].wrapping_add(f);
-        h[6] = h[6].wrapping_add(g);
-        h[7] = h[7].wrapping_add(hh);
-    }
-
-    let mut out = [0u8; 32];
-    for (i, word) in h.iter().enumerate() {
-        out[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
-    }
-    out
+    Sha256::digest(input).into()
 }
 
 #[cfg(test)]

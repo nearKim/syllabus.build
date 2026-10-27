@@ -4,10 +4,12 @@
 pub mod generated;
 pub mod jcs;
 
-use jsonschema::Validator;
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+use jsonschema::Validator;
+use serde_json::Value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -21,6 +23,12 @@ pub enum ContractValidationError {
     JsonParse {
         path: String,
         source: serde_json::Error,
+    },
+    #[error("schema SHA-256 drift detected for `{schema_name}`: expected `{expected_sha256}`, got `{actual_sha256}`")]
+    SchemaDigestDrift {
+        schema_name: String,
+        expected_sha256: String,
+        actual_sha256: String,
     },
     #[error("failed to compile JSON Schema `{schema_name}`: {message}")]
     SchemaCompilation {
@@ -37,6 +45,7 @@ pub enum ContractValidationError {
 }
 
 /// Returns the workspace root directory.
+#[must_use]
 pub fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -49,15 +58,31 @@ pub fn workspace_root() -> PathBuf {
 /// `specs/001-curriculum-platform/contracts/*.schema.json`.
 pub struct ContractRegistry {
     validators: BTreeMap<String, Validator>,
+    raw_schemas: BTreeMap<String, Value>,
 }
 
+static GLOBAL_CONTRACT_REGISTRY: OnceLock<ContractRegistry> = OnceLock::new();
+
 impl ContractRegistry {
+    /// Returns a process-wide cached [`ContractRegistry`] loaded from the workspace root,
+    /// avoiding repeated disk reads and JSON Schema compilations on hot paths.
+    pub fn global() -> Result<&'static Self, ContractValidationError> {
+        if let Some(reg) = GLOBAL_CONTRACT_REGISTRY.get() {
+            return Ok(reg);
+        }
+        let loaded = Self::load_from_root(&workspace_root())?;
+        let _ = GLOBAL_CONTRACT_REGISTRY.set(loaded);
+        Ok(GLOBAL_CONTRACT_REGISTRY
+            .get()
+            .expect("global contract registry initialized"))
+    }
+
     pub fn load_from_workspace() -> Result<Self, ContractValidationError> {
         Self::load_from_root(&workspace_root())
     }
 
     pub fn load_from_root(root: &Path) -> Result<Self, ContractValidationError> {
-        let mut raw_schemas: Vec<(String, Value)> = Vec::new();
+        let mut raw_schemas: BTreeMap<String, Value> = BTreeMap::new();
         let mut opts = jsonschema::options().with_draft(jsonschema::Draft::Draft202012);
 
         for desc in &generated::JSON_SCHEMA_DESCRIPTORS {
@@ -67,11 +92,13 @@ impl ContractRegistry {
                 source,
             })?;
             let actual_sha = jcs::sha256_bytes_hex(&bytes);
-            assert_eq!(
-                actual_sha, desc.sha256,
-                "schema SHA-256 drift detected for {}",
-                desc.name
-            );
+            if actual_sha != desc.sha256 {
+                return Err(ContractValidationError::SchemaDigestDrift {
+                    schema_name: desc.name.to_string(),
+                    expected_sha256: desc.sha256.to_string(),
+                    actual_sha256: actual_sha,
+                });
+            }
             let val: Value =
                 serde_json::from_slice(&bytes).map_err(|source| ContractValidationError::JsonParse {
                     path: full_path.display().to_string(),
@@ -86,21 +113,24 @@ impl ContractRegistry {
                 })?;
                 opts = opts.with_resource(id.to_string(), res);
             }
-            raw_schemas.push((desc.name.to_string(), val));
+            raw_schemas.insert(desc.name.to_string(), val);
         }
 
         let mut validators = BTreeMap::new();
-        for (name, schema_val) in raw_schemas {
-            let compiled = opts.build(&schema_val).map_err(|e| {
+        for (name, schema_val) in &raw_schemas {
+            let compiled = opts.build(schema_val).map_err(|e| {
                 ContractValidationError::SchemaCompilation {
                     schema_name: name.clone(),
                     message: e.to_string(),
                 }
             })?;
-            validators.insert(name, compiled);
+            validators.insert(name.clone(), compiled);
         }
 
-        Ok(Self { validators })
+        Ok(Self {
+            validators,
+            raw_schemas,
+        })
     }
 
     pub fn validate(&self, schema_name: &str, instance: &Value) -> Result<(), ContractValidationError> {
@@ -123,38 +153,46 @@ impl ContractRegistry {
             })
         }
     }
+
     pub fn validate_def(
         &self,
         schema_name: &str,
         def_name: &str,
         instance: &Value,
     ) -> Result<(), ContractValidationError> {
-        let root = workspace_root();
+        let base_schema = self
+            .raw_schemas
+            .get(schema_name)
+            .ok_or_else(|| ContractValidationError::UnknownSchema(schema_name.to_string()))?;
+        let base_id = base_schema
+            .get("$id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ContractValidationError::SchemaCompilation {
+                schema_name: schema_name.to_string(),
+                message: "missing string `$id` in base schema".to_string(),
+            })?;
+
         let mut opts = jsonschema::options().with_draft(jsonschema::Draft::Draft202012);
-        for desc in &generated::JSON_SCHEMA_DESCRIPTORS {
-            let val: Value =
-                serde_json::from_slice(&std::fs::read(root.join(desc.relative_path)).unwrap())
-                    .unwrap();
-            if let Some(id) = val.get("$id").and_then(|v| v.as_str()).map(str::to_string) {
-                let res = jsonschema::Resource::from_contents(val).unwrap();
-                opts = opts.with_resource(id, res);
+        for (name, val) in &self.raw_schemas {
+            if let Some(id) = val.get("$id").and_then(Value::as_str) {
+                let res = jsonschema::Resource::from_contents(val.clone()).map_err(|e| {
+                    ContractValidationError::SchemaCompilation {
+                        schema_name: name.clone(),
+                        message: e.to_string(),
+                    }
+                })?;
+                opts = opts.with_resource(id.to_string(), res);
             }
         }
-        let target_desc = generated::JSON_SCHEMA_DESCRIPTORS
-            .iter()
-            .find(|d| d.name == schema_name)
-            .ok_or_else(|| ContractValidationError::UnknownSchema(schema_name.to_string()))?;
-        let base_schema: Value =
-            serde_json::from_slice(&std::fs::read(root.join(target_desc.relative_path)).unwrap())
-                .unwrap();
-        let base_id = base_schema["$id"].as_str().unwrap();
+
+        let qualified_name = format!("{schema_name}#/$defs/{def_name}");
         let ref_schema = serde_json::json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "$ref": format!("{base_id}#/$defs/{def_name}")
         });
         let validator = opts.build(&ref_schema).map_err(|e| {
             ContractValidationError::SchemaCompilation {
-                schema_name: format!("{schema_name}#/$defs/{def_name}"),
+                schema_name: qualified_name.clone(),
                 message: e.to_string(),
             }
         })?;
@@ -166,7 +204,7 @@ impl ContractRegistry {
             Ok(())
         } else {
             Err(ContractValidationError::SchemaValidationFailed {
-                schema_name: format!("{schema_name}#/$defs/{def_name}"),
+                schema_name: qualified_name,
                 errors,
             })
         }

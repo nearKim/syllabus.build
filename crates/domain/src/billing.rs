@@ -1,7 +1,8 @@
 //! BYOK credential policy, hosted credit wallet, quotes, reservations, double-entry ledger, and timeout reconciliation.
 
-use crate::*;
 use serde::{Deserialize, Serialize};
+
+use crate::DomainError;
 
 // =============================================================================
 // T07A: BYOK Credential Custody & Usage Accounting Policy
@@ -17,7 +18,8 @@ pub enum CredentialStatus {
 }
 
 impl CredentialStatus {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             CredentialStatus::Active => "active",
             CredentialStatus::Revoked => "revoked",
@@ -61,6 +63,7 @@ pub struct MoneyMinorUnits {
 }
 
 impl MoneyMinorUnits {
+    #[must_use]
     pub fn usd(amount_minor_units: i64) -> Self {
         Self {
             currency: "USD".to_string(),
@@ -96,7 +99,8 @@ pub enum CostBucketKind {
 }
 
 impl CostBucketKind {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::ServiceAccess => "service_access",
             Self::HostedAiInference => "hosted_ai_inference",
@@ -146,7 +150,8 @@ pub enum BillingModeKind {
 }
 
 impl BillingModeKind {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::HostedCredits => "hosted_credits",
             Self::Byok => "byok",
@@ -210,7 +215,8 @@ pub enum ReservationStatus {
 }
 
 impl ReservationStatus {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Reserved => "reserved",
             Self::Settled => "settled",
@@ -251,7 +257,8 @@ pub enum LedgerEntryKind {
 }
 
 impl LedgerEntryKind {
-    pub fn as_str(&self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::TopUpCredit => "top_up_credit",
             Self::ReservationHold => "reservation_hold",
