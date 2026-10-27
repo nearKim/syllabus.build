@@ -1394,6 +1394,7 @@ export interface NewCurriculumDialogProps {
   readonly lastPipelineReceipt: IntakePipelineExecutionReceipt | null;
   readonly designatedProviderId?: string;
   readonly designatedModelId?: string;
+  readonly configuredProviderIds?: readonly string[];
 }
 
 export function NewCurriculumDialog({
@@ -1412,8 +1413,12 @@ export function NewCurriculumDialog({
   lastPipelineReceipt,
   designatedProviderId = "openai",
   designatedModelId = "gpt-6-astra",
+  configuredProviderIds = ["openai", "anthropic", "google_gemini"],
 }: NewCurriculumDialogProps): VNode {
   const activeCompoundModel = `${designatedProviderId}:${designatedModelId}`;
+  const availableModels = DESIGNATED_AI_MODELS.filter((opt) =>
+    configuredProviderIds.includes(opt.providerId),
+  );
   const taxonomy = SUBJECT_TOPIC_TAXONOMY[subject];
   const hasIntakeIntent = goalTitle.trim().length > 0 || requestedTopics.length > 0;
   const disclosedSubtopics: { readonly topic: string; readonly parentTopic: string }[] = [];
@@ -1798,31 +1803,45 @@ export function NewCurriculumDialog({
         ) : null}
 
         <footer class="dialog-footer intake-dialog-footer">
-          <div class="intake-model-picker">
-            <select
-              id="intake-ai-model"
-              class="intake-model-select"
-              name="intake-ai-model"
-              aria-label="Designated AI model for synthesis and web search"
-              data-action="set-intake-ai-model"
-              data-designated-provider={designatedProviderId}
-              data-designated-model={designatedModelId}
-            >
-              {DESIGNATED_AI_MODELS.map((opt) => {
-                const compound = `${opt.providerId}:${opt.modelId}`;
-                return (
-                  <option
-                    key={compound}
-                    value={compound}
-                    selected={compound === activeCompoundModel}
-                  >
-                    {opt.providerLabel} · {opt.modelLabel} · {opt.webSearchTool}
-                  </option>
-                );
-              })}
-            </select>
+          <div class="intake-model-picker" data-has-active-keys={String(availableModels.length > 0)}>
+            {availableModels.length > 0 ? (
+              <select
+                id="intake-ai-model"
+                class="intake-model-select"
+                name="intake-ai-model"
+                aria-label="Designated AI model for synthesis and web search"
+                data-action="set-intake-ai-model"
+                data-designated-provider={designatedProviderId}
+                data-designated-model={designatedModelId}
+              >
+                {availableModels.map((opt) => {
+                  const compound = `${opt.providerId}:${opt.modelId}`;
+                  return (
+                    <option
+                      key={compound}
+                      value={compound}
+                      selected={compound === activeCompoundModel}
+                    >
+                      {opt.providerLabel} · {opt.modelLabel} · {opt.webSearchTool}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <div class="intake-no-key-row">
+                <span class="row-meta">No AI API key configured</span>
+                <button type="button" class="clear-filters" data-action="open-ai-settings">
+                  Add key in Settings →
+                </button>
+              </div>
+            )}
           </div>
-          <button type="button" class="btn-primary" data-action="generate-curriculum-ai">
+          <button
+            type="button"
+            class="btn-primary"
+            data-action="generate-curriculum-ai"
+            disabled={availableModels.length === 0}
+          >
             <SfIcon name="sparkles" size={15} />
             <span>Generate curriculum</span>
           </button>

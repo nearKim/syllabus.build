@@ -6450,6 +6450,11 @@ ul.adopt-resources {
   background: var(--color-border-control);
 }
 
+.status-dot[data-status="unconfigured"] {
+  border: 1.5px solid var(--color-border-control);
+  background: transparent;
+}
+
 .status-dot[data-status="revoked"],
 .status-dot[data-status="invalid"] {
   background: var(--color-danger-text);
@@ -6720,6 +6725,73 @@ ul.adopt-resources {
   color: var(--color-action-text);
 }
 
+.provider-key-cancel-btn {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border-control);
+  border-radius: 7px;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.provider-key-cancel-btn:hover {
+  border-color: var(--color-text-secondary);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+}
+
+.provider-key-readonly {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-inline-size: 0;
+}
+
+.provider-key-masked {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.provider-key-readonly[data-primary="true"] .provider-key-masked {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.provider-key-empty {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.provider-empty-banner {
+  margin: 0;
+  max-width: 65ch;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.provider-empty-banner strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
 .provider-identity {
   display: flex;
   align-items: center;
@@ -6863,7 +6935,8 @@ ul.adopt-resources {
   font-weight: 600;
 }
 
-.status-text[data-status="standby"] {
+.status-text[data-status="standby"],
+.status-text[data-status="unconfigured"] {
   color: var(--color-text-secondary);
   font-weight: 500;
 }
@@ -7410,6 +7483,23 @@ dialog::backdrop {
   color: var(--color-text-primary);
   font-size: 13px;
   font-weight: 500;
+}
+
+.intake-no-key-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.intake-no-key-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.intake-add-key-link {
+  cursor: pointer;
 }
 
 .dialog-surface > .action-row {

@@ -378,6 +378,12 @@ ${fallbackScript}
           if (canvas) patch.avatarUrl = canvas.toDataURL("image/png");
         }
       }
+      if (action === "replace-key") {
+        const providerId = target.dataset.providerId || "openai";
+        const keySelector = providerId === "openai" ? "#byok-key" : "#byok-key-" + CSS.escape(providerId);
+        const keyInput = root.querySelector(keySelector);
+        if (keyInput) patch.keyValue = keyInput.value;
+      }
       dispatchServerRender(patch);
     }
   });

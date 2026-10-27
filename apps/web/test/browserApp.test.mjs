@@ -1175,14 +1175,21 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.ok(settingsPanel.includes('class="provider-logo-svg"'));
   assert.ok(settingsPanel.includes('class="ui-switch"'));
   assert.ok(settingsPanel.includes('class="provider-compact-btn" data-action="set-primary-key"'));
-  assert.ok(settingsPanel.includes('class="provider-key-apply-btn" data-action="replace-key"'));
+  assert.ok(settingsPanel.includes('class="provider-key-masked"'));
+  assert.ok(settingsPanel.includes('data-action="edit-provider-key" data-provider-id="openai"'));
+  assert.equal(settingsPanel.includes('id="byok-key"'), false, "API key must be read-only until Edit is pressed");
   assert.ok(settingsPanel.includes('class="provider-icon-btn provider-remove-btn" data-action="delete-connection"'));
   assert.ok(settingsPanel.includes('<h2 id="settings-ai-title">AI providers (BYOK)</h2>'));
   assert.ok(settingsPanel.includes('data-primary-credential="cred-openai-1"'));
+  click({ action: "edit-provider-key", providerId: "openai", credentialRef: "cred-openai-1" });
+  assert.ok(root.innerHTML.includes('id="byok-key"'));
+  assert.ok(root.innerHTML.includes('class="provider-key-apply-btn" data-action="replace-key"'));
   assert.ok(
-    settingsPanel.indexOf("Encrypted server-custody") < settingsPanel.indexOf('id="byok-key"'),
+    root.innerHTML.indexOf("Encrypted server-custody") < root.innerHTML.indexOf('id="byok-key"'),
     "BYOK server custody disclosure must precede #byok-key input",
   );
+  click({ action: "cancel-edit-key", providerId: "openai" });
+  assert.equal(root.innerHTML.includes('id="byok-key"'), false);
   click({ action: "set-primary-key", credentialRef: "cred-anthropic-1" });
   assert.ok(root.innerHTML.includes('data-primary-credential="cred-anthropic-1"'));
   assert.ok(settingsPanel.includes('class="provider-model-select"'));
@@ -1853,5 +1860,57 @@ test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector 
   assert.equal(progressPanel.includes("progress-capability-card"), false);
   assert.doesNotMatch(progressPanel, /class="today-selected-eyebrow"[^>]*>[\s\S]*?<h1 class="page-title">Your learning evidence<\/h1>/);
 });
+
+test("BYOK read-only API keys, Edit button toggle, and zero-API-keys states across Settings and New Curriculum dialog", () => {
+  const { app, root, click } = mountWithClicks({ topLevel: "Settings" });
+
+  // 1. Default state: all 3 providers have read-only masked keys and an explicit Edit button (no editable <input>)
+  assert.ok(root.innerHTML.includes("sk-proj-••••••••9a4F"));
+  assert.ok(root.innerHTML.includes("sk-ant-••••••••7c2B"));
+  assert.ok(root.innerHTML.includes("AIzaSy-••••••••3e8D"));
+  assert.equal(root.innerHTML.includes('class="provider-key-input"'), false);
+
+  // 2. Pressing Edit on Anthropic opens only Anthropic's input field
+  click({ action: "edit-provider-key", providerId: "anthropic", credentialRef: "cred-anthropic-1" });
+  assert.equal(app.getState().editingCredentialProviderId, "anthropic");
+  assert.ok(root.innerHTML.includes('id="byok-key-anthropic"'));
+  assert.equal(root.innerHTML.includes('id="byok-key"'), false);
+
+  // 3. Saving a new key returns to read-only mode with updated masked suffix
+  app.applyUiAction("replace-key", {
+    providerId: "anthropic",
+    credentialRef: "cred-anthropic-1",
+    keyValue: "sk-ant-api03-newkey-44FF",
+  });
+  assert.equal(app.getState().editingCredentialProviderId, null);
+  assert.ok(root.innerHTML.includes("sk-ant-••••••••44FF"));
+  assert.equal(root.innerHTML.includes('class="provider-key-input"'), false);
+
+  // 4. Removing all 3 provider keys enters the zero-API-keys state
+  click({ action: "delete-connection", providerId: "openai", credentialRef: "cred-openai-1" });
+  click({ action: "delete-connection", providerId: "anthropic", credentialRef: "cred-anthropic-1" });
+  click({ action: "delete-connection", providerId: "google_gemini", credentialRef: "cred-gemini-1" });
+
+  assert.equal(app.getState().byokCredentials.length, 0);
+  assert.equal(app.getState().primaryCredentialRef, "");
+  assert.ok(root.innerHTML.includes('data-has-active-keys="false"'));
+  assert.ok(root.innerHTML.includes("No API key set"));
+  assert.ok(root.innerHTML.includes("+ Add key"));
+  assert.ok(root.innerHTML.includes("No API keys configured."));
+
+  // 5. Opening New Curriculum dialog when zero API keys are configured shows Add key in Settings prompt & disables Generate
+  app.openDialog("dialog-new-curriculum");
+  assert.ok(root.innerHTML.includes("No AI API key configured"));
+  assert.ok(root.innerHTML.includes('data-action="open-ai-settings"'));
+  assert.match(root.innerHTML, /data-action="generate-curriculum-ai"[^>]*disabled/);
+
+  // 6. Clicking "Add key in Settings →" closes the dialog, navigates to Settings, and opens OpenAI key input for editing
+  click({ action: "open-ai-settings" });
+  assert.equal(app.getState().openDialogId, null);
+  assert.equal(app.getState().topLevel, "Settings");
+  assert.equal(app.getState().editingCredentialProviderId, "openai");
+  assert.ok(root.innerHTML.includes('id="byok-key"'));
+});
+
 
 
