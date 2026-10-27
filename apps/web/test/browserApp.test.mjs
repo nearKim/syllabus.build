@@ -1495,6 +1495,45 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
   }
 });
 
+test("the navbar shows Learn and Explore, and Admin opens only at its protected URL", async () => {
+  // Settings opens from the account menu. No control anywhere in the app opens Admin.
+  const html = renderCurriculumWebAppHtml();
+  const destinations = (nav) => [...(html.match(new RegExp(`<nav class="${nav}[\\s\\S]*?</nav>`))?.[0] ?? "").matchAll(/data-destination="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(destinations("top-level-nav"), ["Learn", "Explore"]);
+  assert.deepEqual(destinations("compact-bottom-nav"), ["Learn", "Explore"]);
+  assert.ok(html.match(/<header class="app-header[\s\S]*?<\/header>/)?.[0].includes('data-action="navigate-top" data-destination="Settings"'), "the account menu opens Settings");
+  assert.equal(html.includes('data-action="open-admin-resources"'), false, "Admin has no visible entry");
+  assert.equal(html.includes('id="panel-admin-resources"'), false, "an admin's page carries no hidden console until it opens");
+  assert.match(renderCurriculumWebAppHtml({ topLevel: "Settings" }), /<h1 class="page-title">Profile &amp; settings<\/h1>/);
+
+  // Learn, Explore, Settings, and Admin share one content width.
+  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.equal(/#panel-(?:explore|settings)[^{]*\{[^}]*max-(?:width|inline-size)/.test(css), false, "no page caps its own width");
+
+  // /admin and ?topLevel=Admin open the console for a signed-in admin. Anyone else gets 403.
+  const fetchWith = async (initialState, url) => {
+    const { server } = createWebAppServer({ initialState });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`);
+      return { status: res.status, html: await res.text() };
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  };
+  const admin = await fetchWith({}, "/admin");
+  assert.equal(admin.status, 200);
+  assert.ok(admin.html.includes('data-admin-authorized="true"'));
+  assert.equal((await fetchWith({}, "/?topLevel=Admin")).status, 200);
+  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@curriculum.io", role: "Learner" } };
+  const denied = await fetchWith(learner, "/admin");
+  assert.equal(denied.status, 403);
+  assert.ok(denied.html.includes("403 Unauthorized Role"));
+  assert.equal((await fetchWith(learner, "/?topLevel=Admin")).status, 403);
+  assert.equal((await fetchWith({ authStatus: "guest" }, "/admin")).status, 403);
+  assert.equal((await fetchWith(learner, "/")).status, 200);
+});
+
 test("createCurriculumSignalStore provides fine-grained @preact/signals reactivity and computed views", () => {
   const store = createCurriculumSignalStore({ topLevel: "Learn", learnSubDestination: "Today" });
   assert.equal(store.topLevel.value, "Learn");

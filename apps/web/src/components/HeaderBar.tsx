@@ -1,9 +1,5 @@
 import type { VNode } from "preact";
-import {
-  TOP_LEVEL_DESTINATIONS,
-  type LearnSubDestination,
-  type TopLevelDestination,
-} from "../index.ts";
+import type { LearnSubDestination, TopLevelDestination } from "../index.ts";
 import type { PlatformRole } from "../releaseAndA11yViews.ts";
 import { SfIcon, type SfIconName } from "./Icons.tsx";
 
@@ -46,16 +42,20 @@ export function initialsOf(account: Account): string {
   return (name.slice(0, 2) || "U").toUpperCase();
 }
 
+// The navbar shows Learn and Explore. Settings opens from the account menu, and Admin has no visible entry.
+const PRIMARY_DESTINATIONS = ["Learn", "Explore"] as const;
+type PrimaryDestination = (typeof PRIMARY_DESTINATIONS)[number];
+
 export function TopDestButton({
   dest,
   className,
   isCurrent,
 }: {
-  readonly dest: TopLevelDestination;
+  readonly dest: PrimaryDestination;
   readonly className: string;
   readonly isCurrent: boolean;
 }): VNode {
-  const icon: SfIconName = dest === "Learn" ? "learn" : dest === "Explore" ? "explore" : "settings";
+  const icon: SfIconName = dest === "Learn" ? "learn" : "explore";
   return (
     <button
       type="button"
@@ -113,12 +113,6 @@ export function HeaderBar({
 }: HeaderBarProps): VNode {
   const signedOut = authStatus === "guest";
   const isDark = resolvedThemeMode === "dark";
-  const isAdmin =
-    !signedOut &&
-    (account.role === "Moderator" ||
-      account.role === "Curator" ||
-      account.accountId === "learner-default" ||
-      account.email.toLowerCase() === "alex@curriculum.io");
   return (
     <header class="app-header nav-chrome-glass" role="banner">
       <div class="brand-cluster">
@@ -141,7 +135,7 @@ export function HeaderBar({
         <span class="brand-title">Curriculum.io</span>
       </div>
       <nav class="top-level-nav" aria-label="Primary navigation">
-        {TOP_LEVEL_DESTINATIONS.map((dest) => (
+        {PRIMARY_DESTINATIONS.map((dest) => (
           <TopDestButton
             key={dest}
             dest={dest}
@@ -149,17 +143,6 @@ export function HeaderBar({
             isCurrent={!adminConsoleOpen && dest === activeTopLevel}
           />
         ))}
-        {isAdmin ? (
-          <button
-            type="button"
-            class={`nav-top-btn${adminConsoleOpen ? " is-active" : ""}`}
-            data-action="open-admin-resources"
-            aria-current={adminConsoleOpen ? "page" : "false"}
-          >
-            <SfIcon name="resources" size={16} />
-            <span>Admin</span>
-          </button>
-        ) : null}
       </nav>
       <div class="header-status">
         {signedOut ? null : (
@@ -262,16 +245,6 @@ export function HeaderBar({
                   <SfIcon name="settings" size={15} />
                   <span>Profile &amp; Settings</span>
                 </button>
-                {isAdmin ? (
-                  <button
-                    type="button"
-                    class="navbar-dropdown-item"
-                    data-action="open-admin-resources"
-                  >
-                    <SfIcon name="resources" size={15} />
-                    <span>Admin · Resource Index</span>
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   class="navbar-dropdown-item navbar-dropdown-signout"
@@ -457,7 +430,7 @@ export function AppSidebar({
 export function CompactBottomNav({ activeTopLevel }: { readonly activeTopLevel: TopLevelDestination }): VNode {
   return (
     <nav class="compact-bottom-nav nav-chrome-glass" aria-label="Compact mobile navigation">
-      {TOP_LEVEL_DESTINATIONS.map((dest) => (
+      {PRIMARY_DESTINATIONS.map((dest) => (
         <TopDestButton key={dest} dest={dest} className="bottom-nav-btn" isCurrent={dest === activeTopLevel} />
       ))}
     </nav>

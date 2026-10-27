@@ -116,6 +116,10 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+::selection {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+}
+
 [data-theme="light"] {
   color-scheme: light;
 }
@@ -1159,6 +1163,7 @@ section[id] {
 
 .sidebar-curriculum-btn {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: start;
   gap: 2px;
   width: 100%;
@@ -1289,11 +1294,6 @@ section[id] {
 
 .app-main-workspace:focus {
   outline: none;
-}
-
-#panel-explore,
-#panel-settings {
-  max-width: var(--layout-reading-max);
 }
 
 .section-header {
@@ -2096,7 +2096,7 @@ textarea {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--color-accent);
-  color: #ffffff;
+  color: var(--color-action-text);
   font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -6414,10 +6414,6 @@ ul.adopt-resources {
 }
 
 /* Settings: visual tonal cards and real controls, separated by generous whitespace. */
-#panel-settings {
-  max-inline-size: 62rem;
-}
-
 .settings-stack {
   display: grid;
   gap: var(--space-7);
@@ -6464,6 +6460,7 @@ ul.adopt-resources {
 }
 
 .row-meta {
+  max-inline-size: 70ch;
   margin: 0;
   font-size: 13.5px;
   font-weight: 400;
@@ -6724,10 +6721,10 @@ ul.adopt-resources {
 }
 
 /* BYOK Providers Data Table (unshaded canvas table with provider brand logos) */
+/* Three providers never need a vertical scroll box. A height cap made phones scroll inside the page scroll. */
 .providers-table-wrapper {
-  overflow: auto;
+  overflow-x: auto;
   max-inline-size: 100%;
-  max-block-size: min(500px, 80vh);
   container-type: inline-size;
   border: 0;
   border-radius: 0;
@@ -6786,6 +6783,13 @@ ul.adopt-resources {
   z-index: 1;
   font-weight: 400;
   background: var(--color-surface);
+}
+
+/* The shell is surface in light mode and canvas in dark mode, so the sticky cells follow it and show no band. */
+[data-theme="dark"] .providers-data-table thead,
+[data-theme="dark"] .providers-data-table thead th,
+[data-theme="dark"] .providers-data-table tbody th.provider-primary-cell {
+  background: var(--color-canvas);
 }
 
 .providers-data-table tbody tr:last-child th,
@@ -7242,6 +7246,10 @@ ul.adopt-resources {
   margin: 0;
 }
 
+.reminder-gcal-bar .reminder-timezone-field {
+  grid-column: span 2;
+}
+
 .settings-privacy-row {
   display: flex;
   flex-wrap: wrap;
@@ -7523,7 +7531,7 @@ input[type="checkbox"].ui-switch:focus-visible {
 .flatpickr-day.selected:hover {
   background: var(--color-accent);
   border-color: var(--color-accent);
-  color: #fff;
+  color: var(--color-action-text);
 }
 
 .knowledge-list li {
@@ -8491,6 +8499,27 @@ dialog.inspector::backdrop {
 /* Responsive breakpoints (UI-009, UI-010, @S71, @S76, @S85) */
 /* 1. Compact (below 768px, down to 320px): one column, bottom tabs, stacked flowchart */
 @media (max-width: 767.98px) {
+  /* Every filter, sort, and row control reaches the 44px touch target. In-card topic tags stay smaller
+     and still clear the 24px WCAG 2.5.8 minimum. */
+  :is(.resource-category-pill, .category-btn, .facet-more, .sort-btn, .upvote-btn, .unpublish-btn, .provider-compact-btn),
+  .marketplace-filters .tag,
+  .marketplace-card-foot :is(.btn-primary, .btn-secondary),
+  .providers-data-table select.provider-model-select,
+  #marketplace-topic {
+    min-height: var(--layout-touch-target-min);
+  }
+
+  .provider-icon-btn {
+    min-width: var(--layout-touch-target-min);
+    min-height: var(--layout-touch-target-min);
+  }
+
+  /* The sidebar holds Learn navigation and curricula. On a phone it would push Explore, Settings, and Admin
+     down by a screen, and the bottom navigation already covers Learn. */
+  .curriculum-app-shell:not([data-current-top-level="Learn"]) .app-sidebar {
+    display: none;
+  }
+
   .app-header {
     display: flex;
     flex-wrap: wrap;

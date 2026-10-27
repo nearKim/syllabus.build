@@ -18,6 +18,7 @@ import {
   getDialogLightDismissFallbackScript,
   renderCurriculumWebAppHtml,
 } from "./browserApp.ts";
+import { isAdminAccount } from "./components/AdminResourcesView.tsx";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -699,7 +700,9 @@ export function createWebAppServer(options = {}) {
     const topParam = parsedUrl.searchParams.get("topLevel");
     const subParam = parsedUrl.searchParams.get("learnSub");
     const planViewParam = parsedUrl.searchParams.get("planView");
-    if (topParam === "Admin") {
+    // Admin has no link anywhere. Only /admin or ?topLevel=Admin opens it, and anyone but a signed-in admin gets 403.
+    const wantsAdmin = pathname === "/admin" || topParam === "Admin";
+    if (wantsAdmin) {
       controller.applyUiAction("open-admin-resources");
     } else if (topParam === "Learn" || topParam === "Explore" || topParam === "Settings") {
       controller.navigateTopLevel(topParam);
@@ -722,7 +725,9 @@ export function createWebAppServer(options = {}) {
         : renderCurriculumWebAppHtml(controller.getState());
     const fullPage = templateHtml.replace("<!--__SSR_APP_HTML__-->", ssrAppHtml);
 
-    res.writeHead(200, {
+    const { authStatus, account } = controller.getState();
+    const forbidden = wantsAdmin && !(authStatus === "authenticated" && isAdminAccount(account));
+    res.writeHead(forbidden ? 403 : 200, {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
     });

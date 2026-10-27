@@ -158,7 +158,6 @@ export function buildAdminGlobalResourceRows(
 }
 
 export interface AdminResourcesViewProps {
-  readonly active: boolean;
   readonly account: Account;
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly adminSourceFilter: AdminDiscoverySource;
@@ -170,7 +169,6 @@ export interface AdminResourcesViewProps {
 }
 
 export function AdminResourcesView({
-  active,
   account,
   catalogResources,
   adminSourceFilter,
@@ -218,15 +216,14 @@ export function AdminResourcesView({
         class="top-level-panel"
         id="panel-admin-resources"
         data-top-panel="Admin"
-        data-active={String(active)}
+        data-active="true"
         data-admin-authorized="false"
-        hidden={!active}
       >
         <div class="section-header">
           <div class="page-heading-group">
             <h1 class="page-title">Admin resource corpus</h1>
             <p class="page-description">
-              Restricted to platform administrators and curators (`403 Unauthorized Role`).
+              Only platform administrators and curators can open this page (403 Unauthorized Role).
             </p>
           </div>
           <div class="plan-toolbar">
@@ -249,12 +246,11 @@ export function AdminResourcesView({
       class="top-level-panel"
       id="panel-admin-resources"
       data-top-panel="Admin"
-      data-active={String(active)}
+      data-active="true"
       data-admin-authorized="true"
       data-admin-source={adminSourceFilter}
       data-admin-category={adminCategoryFilter}
       data-vector-engine={catalogResourcesJson.vector_db_config.engine}
-      hidden={!active}
     >
       <div class="section-header">
         <div class="page-heading-group">

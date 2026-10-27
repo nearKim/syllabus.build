@@ -285,7 +285,6 @@ export interface ResourcesViewProps {
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly resourceScope: ResourceScope;
   readonly resourceCategory: ResourceCategory;
-  readonly isAdmin?: boolean | undefined;
 }
 
 export function ResourcesView({
@@ -296,7 +295,6 @@ export function ResourcesView({
   catalogResources,
   resourceScope,
   resourceCategory,
-  isAdmin = false,
 }: ResourcesViewProps): VNode {
   const scopedPlans = resourceScope === "all" ? allPlans : [selectedPlan];
   const allScopedRows = buildAggregatedResourceRows(scopedPlans, proficiency, catalogResources);
@@ -373,16 +371,6 @@ export function ResourcesView({
               ))}
             </select>
           </label>
-          {isAdmin ? (
-            <button
-              type="button"
-              class="btn-secondary"
-              data-action="open-admin-resources"
-            >
-              <span>Admin corpus</span>
-              <span aria-hidden="true">→</span>
-            </button>
-          ) : null}
         </div>
       </div>
 

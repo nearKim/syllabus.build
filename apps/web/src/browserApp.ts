@@ -2080,7 +2080,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           catalogResources,
           resourceScope,
           resourceCategory,
-          isAdmin: isAdminAccount(account),
         }))}
       </section>`}
 
@@ -2099,9 +2098,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       }))}
 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${isSettings}"${isSettings ? "" : " hidden"}>
+        <div class="section-header">
+          <h1 class="page-title">Profile &amp; settings</h1>
+        </div>
         <div class="settings-stack">
           <section class="settings-section profile-identity" aria-labelledby="settings-profile-title" data-opaque-surface="true">
-            <h1 class="st-sr" id="settings-profile-title">Profile</h1>
+            <h2 class="st-sr" id="settings-profile-title">Profile</h2>
             <div class="profile-layout-grid">
               <div class="profile-photo-stack">
                 <button type="button" class="profile-avatar-trigger" data-action="open-dialog" data-dialog-id="dialog-avatar-cropper" aria-label="Edit profile photo">
@@ -2348,7 +2350,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <label class="switch-field switch-field-inline"><span>Enable reminders</span><input type="checkbox" class="ui-switch" data-action="toggle-reminders"${remindersOn ? " checked" : ""}></label>
             </div>
             <div class="reminder-gcal-bar">
-              <label class="field" for="reminder-timezone">Time zone
+              <label class="field reminder-timezone-field" for="reminder-timezone">Time zone
                 <select id="reminder-timezone" name="reminder-timezone" data-action="set-reminder-timezone">
                   ${REMINDER_TIMEZONES.map((tz) => `<option value="${escapeHtml(tz.id)}"${tz.id === reminderState.timezone ? " selected" : ""}>${escapeHtml(tz.label)} (${escapeHtml(tz.id)})</option>`).join("")}
                 </select>
@@ -2389,8 +2391,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           </section>
         </div>
       </section>
-      ${renderToString(h(AdminResourcesView, {
-        active: adminConsoleOpen,
+      ${adminConsoleOpen ? renderToString(h(AdminResourcesView, {
         account,
         catalogResources,
         adminSourceFilter,
@@ -2399,7 +2400,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         adminRemovedResourceIds,
         adminResourceOverrides,
         adminNotice,
-      }))}`}
+      })) : ""}`}
     </main>
   </div>
   ${signedOut ? "" : inspectorHtml}
