@@ -60,7 +60,7 @@ import {
   type ResourceCategory, type ResourceScope,
 } from "./components/ResourcesView.tsx";
 import {
-  DEFAULT_SUBJECT_TOPICS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
+  DEFAULT_SUBJECT_TOPICS, DESIGNATED_AI_MODELS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
   INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
   evaluateIntakeResourceFit, executeIntakeGenerationPipeline, inferIntakeSubjectFromGoal, resolveDependentTopicToggle,
   type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
@@ -2298,25 +2298,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                         ? "Messages API · Web search"
                         : "Google Search grounding";
                     const modelOptions: ReadonlyArray<{ readonly id: string; readonly label: string }> =
-                      cred.provider_id === "openai"
-                        ? [
-                            { id: "gpt-4.1", label: "GPT-4.1" },
-                            { id: "gpt-4o", label: "GPT-4o" },
-                            { id: "o3", label: "o3 (Reasoning)" },
-                            { id: "o4-mini", label: "o4-mini (Fast)" },
-                          ]
-                        : cred.provider_id === "anthropic"
-                          ? [
-                              { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
-                              { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
-                              { id: "claude-3-7-sonnet-latest", label: "Claude 3.7 Sonnet" },
-                              { id: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku" },
-                            ]
-                          : [
-                              { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-                              { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-                              { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
-                            ];
+                      DESIGNATED_AI_MODELS
+                        .filter((m) => m.providerId === cred.provider_id)
+                        .map((m) => ({ id: m.modelId, label: m.modelLabel }));
                     const selectedModelId =
                       inputState.providerModels?.[cred.provider_id] ?? modelOptions[0]?.id ?? "";
                     const keyPrefix = cred.provider_id === "openai" ? "sk-proj-" : cred.provider_id === "anthropic" ? "sk-ant-" : "AIzaSy-";
@@ -2467,7 +2451,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       byokState.credentials.find((c) => c.credential_ref === (byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref)) ??
       byokState.credentials[0];
     const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-4.1";
+    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-5.4";
     return renderToString(
       h(NewCurriculumDialog, {
         open: openDialogId === "dialog-new-curriculum",
@@ -2629,9 +2613,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let keyVisible = initialState.keyVisible ?? false;
   let primaryCredentialRef = initialState.primaryCredentialRef ?? (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)[0]?.credential_ref ?? "cred-openai-1";
   let providerModels: Record<string, string> = {
-    openai: "gpt-4.1",
-    anthropic: "claude-sonnet-4-20250514",
-    google_gemini: "gemini-2.5-pro",
+    openai: "gpt-5.4",
+    anthropic: "claude-sonnet-4-6",
+    google_gemini: "gemini-3.1-pro-preview",
     ...(initialState.providerModels ?? {}),
   };
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
@@ -3306,7 +3290,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         const activePrimaryCred =
           byokRecords.find((c) => c.credential_ref === primaryCredentialRef) ?? byokRecords[0];
         const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-        const designatedModelId = providerModels[designatedProviderId] ?? "gpt-4.1";
+        const designatedModelId = providerModels[designatedProviderId] ?? "gpt-5.4";
         const pipelineResult = executeIntakeGenerationPipeline({
           fitEvaluation,
           goalTitle: intakeGoalTitle,

@@ -1775,10 +1775,10 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
 
   // 4. Designate an AI model in the modal footer (or Settings) and trigger Step 2-4 AI Curriculum Synthesis + Polymorphic DB Indexing
   assert.ok(dialogOf(root.innerHTML).includes('id="intake-ai-model"'));
-  app.applyUiAction("set-intake-ai-model", { compoundModel: "anthropic:claude-sonnet-4-20250514" });
+  app.applyUiAction("set-intake-ai-model", { compoundModel: "anthropic:claude-sonnet-4-6" });
   assert.equal(app.getState().primaryCredentialRef, "cred-anthropic-1");
-  assert.equal(app.getState().providerModels.anthropic, "claude-sonnet-4-20250514");
-  assert.ok(dialogOf(root.innerHTML).includes('data-designated-provider="anthropic" data-designated-model="claude-sonnet-4-20250514"'));
+  assert.equal(app.getState().providerModels.anthropic, "claude-sonnet-4-6");
+  assert.ok(dialogOf(root.innerHTML).includes('data-designated-provider="anthropic" data-designated-model="claude-sonnet-4-6"'));
 
   click({ action: "set-intake-fit-mode", fitMode: "fill_gaps" });
   click({ action: "generate-curriculum-ai" });
@@ -1789,8 +1789,8 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.equal(afterGen.openDialogId, null);
   assert.ok(afterGen.lastPipelineReceipt);
   assert.equal(afterGen.lastPipelineReceipt.designatedProviderId, "anthropic");
-  assert.equal(afterGen.lastPipelineReceipt.designatedModelId, "claude-sonnet-4-20250514");
-  assert.ok(afterGen.lastPipelineReceipt.summaryNote.includes("Anthropic · Claude Sonnet 4"));
+  assert.equal(afterGen.lastPipelineReceipt.designatedModelId, "claude-sonnet-4-6");
+  assert.ok(afterGen.lastPipelineReceipt.summaryNote.includes("Anthropic · Claude Sonnet 4.6"));
   assert.equal(afterGen.lastPipelineReceipt.webSearchExecuted, true);
   assert.deepEqual(afterGen.lastPipelineReceipt.searchedDeltaTopics, ["Vector Indexing"]);
   assert.deepEqual(afterGen.lastPipelineReceipt.newlyIndexedResourceIds, [
