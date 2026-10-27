@@ -420,8 +420,8 @@ export function AdminResourcesView({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Resource &amp; syllabus chunks</th>
                   <th scope="col">Type</th>
+                  <th scope="col">Resource &amp; syllabus chunks</th>
                   <th scope="col">Discovered by</th>
                   <th scope="col">Vector DB index</th>
                   <th scope="col">Access (JSON)</th>
@@ -458,6 +458,12 @@ export function AdminResourcesView({
                       data-vector-status={row.vectorStatus}
                       data-opaque-surface="true"
                     >
+                      <td class="resource-category-cell">
+                        <span class="resource-category-badge" data-category={row.category}>
+                          <SfIcon name={categoryIcon(row.category)} size={15} />
+                          <span>{row.category}</span>
+                        </span>
+                      </td>
                       <th scope="row" class="resource-primary-cell">
                         <div class="resource-main">
                           <h3 class="resource-row-title">{row.title}</h3>
@@ -475,15 +481,6 @@ export function AdminResourcesView({
                           ) : null}
                         </div>
                       </th>
-                      <td class="resource-category-cell">
-                        <div class="resource-category-stack">
-                          <span class="resource-category-badge" data-category={row.category}>
-                            <SfIcon name={categoryIcon(row.category)} size={15} />
-                            <span>{row.category}</span>
-                          </span>
-                          <span class="row-meta">{row.subject}</span>
-                        </div>
-                      </td>
                       <td class="admin-provenance-cell">
                         <div class="resource-access-stack">
                           <span class="resource-access-tier">{row.discoveredBy}</span>

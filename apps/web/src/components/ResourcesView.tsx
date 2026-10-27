@@ -36,6 +36,7 @@ export interface ResourceUsageEntry {
   readonly activityId: string;
   readonly activityTitle: string;
   readonly required: boolean;
+  readonly sourceUrl: string | null;
 }
 
 export interface AggregatedResourceRow {
@@ -213,6 +214,15 @@ export function buildAggregatedResourceRows(
           (u) => u.curriculumId === plan.curriculumId && u.activityId === act.activityId,
         );
         if (!duplicateUsage) {
+          const rawEntryForUrl =
+            catalogResources[card.resourceVersionId] ?? CANONICAL_JSON_BY_ID[card.resourceVersionId];
+          const baseUrl = card.canonicalUrl ?? rawEntryForUrl?.canonical_url ?? null;
+          const primarySegmentId = card.verifiedSegments[0] ?? null;
+          const sourceUrl = baseUrl
+            ? primarySegmentId && !baseUrl.includes("#")
+              ? `${baseUrl}#${primarySegmentId}`
+              : baseUrl
+            : null;
           entry.usages.push({
             curriculumId: plan.curriculumId,
             curriculumTitle,
@@ -222,6 +232,7 @@ export function buildAggregatedResourceRows(
             activityId: act.activityId,
             activityTitle: act.title,
             required: act.required,
+            sourceUrl,
           });
         }
       }
@@ -421,8 +432,8 @@ export function ResourcesView({
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Resource</th>
                   <th scope="col">Type</th>
+                  <th scope="col">Resource</th>
                   <th scope="col">Units</th>
                   <th scope="col">Access</th>
                   <th scope="col"><span class="st-sr">Action</span></th>
@@ -446,6 +457,12 @@ export function ResourcesView({
                       data-access-model={row.accessJson.model}
                       data-opaque-surface="true"
                     >
+                      <td class="resource-category-cell">
+                        <span class="resource-category-badge" data-category={row.category}>
+                          <SfIcon name={categoryIcon(row.category)} size={15} />
+                          <span>{row.category}</span>
+                        </span>
+                      </td>
                       <th scope="row" class="resource-primary-cell">
                         <div class="resource-main">
                           <h3 class="resource-row-title">{row.title}</h3>
@@ -467,43 +484,44 @@ export function ResourcesView({
                           ) : null}
                         </div>
                       </th>
-                      <td class="resource-category-cell">
-                        <div class="resource-category-stack">
-                          <span class="resource-category-badge" data-category={row.category}>
-                            <SfIcon name={categoryIcon(row.category)} size={15} />
-                            <span>{row.category}</span>
-                          </span>
-                          {row.curricula.map((curr) => (
-                            <span
-                              key={curr.curriculumId}
-                              class="resource-curriculum-pill"
-                              data-curriculum-id={curr.curriculumId}
-                            >
-                              {curr.curriculumTitle}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
                       <td class="resource-usage-cell">
-                        <ul class="resource-usage-list" aria-label={`Activities using ${row.title}`}>
-                          {row.usages.map((usage) => (
-                            <li key={`${usage.curriculumId}-${usage.activityId}`}>
-                              <button
-                                type="button"
-                                class="resource-usage-chip"
-                                data-action="resume-curriculum"
-                                data-curriculum-id={usage.curriculumId}
-                                data-activity-id={usage.activityId}
-                                data-module-id={usage.moduleId}
-                              >
-                                <span class="resource-usage-unit">U{usage.unitIndex}</span>
-                                <span class="resource-usage-title">
-                                  <MathText text={usage.activityTitle} />
-                                </span>
-                                <span aria-hidden="true">→</span>
-                              </button>
-                            </li>
-                          ))}
+                        <ul class="resource-usage-list" aria-label={`Units using ${row.title}`}>
+                          {row.usages.map((usage) => {
+                            const href = usage.sourceUrl ?? row.canonicalUrl;
+                            return (
+                              <li key={`${usage.curriculumId}-${usage.activityId}`}>
+                                {href ? (
+                                  <a
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="resource-usage-chip"
+                                    data-curriculum-id={usage.curriculumId}
+                                    data-activity-id={usage.activityId}
+                                    data-module-id={usage.moduleId}
+                                  >
+                                    <span class="resource-usage-unit">U{usage.unitIndex}</span>
+                                    <span class="resource-usage-title">
+                                      <MathText text={usage.activityTitle} />
+                                    </span>
+                                    <span aria-hidden="true">↗</span>
+                                  </a>
+                                ) : (
+                                  <span
+                                    class="resource-usage-chip"
+                                    data-curriculum-id={usage.curriculumId}
+                                    data-activity-id={usage.activityId}
+                                    data-module-id={usage.moduleId}
+                                  >
+                                    <span class="resource-usage-unit">U{usage.unitIndex}</span>
+                                    <span class="resource-usage-title">
+                                      <MathText text={usage.activityTitle} />
+                                    </span>
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                       <td class="resource-access-cell">
