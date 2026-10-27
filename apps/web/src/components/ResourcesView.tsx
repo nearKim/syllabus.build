@@ -4,18 +4,28 @@ import {
   type CatalogResourceMetadataInput,
 } from "../../../../packages/ui/src/index.ts";
 import { formatMinorCurrency } from "../billingAndSharing.ts";
+import catalogResourcesJson from "../data/catalogResources.json" with { type: "json" };
 import type { ProficiencyProfileFixture } from "../diagnosticsAndAdaptation.ts";
 import { goalTitleOf, type ActiveCurriculum } from "./ExploreMarketplace.tsx";
 import { SfIcon, type SfIconName } from "./Icons.tsx";
 import type { SourceCardView } from "./InspectorDrawer.tsx";
 import { MathText } from "./MathText.tsx";
-import { humanize, rightsWords } from "./StudyFlowBoard.tsx";
+import { rightsWords } from "./StudyFlowBoard.tsx";
 
 export const RESOURCE_CATEGORIES = ["All", "Course", "Book", "YouTube", "Code Lab", "Problem Set"] as const;
 export type ResourceCategory = (typeof RESOURCE_CATEGORIES)[number];
 
 export const RESOURCE_SCOPES = ["selected", "all"] as const;
 export type ResourceScope = (typeof RESOURCE_SCOPES)[number];
+
+export interface StructuredResourceAccessJson {
+  readonly model: string;
+  readonly tier_label: string;
+  readonly cost_label: string;
+  readonly rights_label: string;
+  readonly certificate_included: boolean;
+  readonly optional_certificate_price_minor: number | null;
+}
 
 export interface ResourceUsageEntry {
   readonly curriculumId: string;
@@ -35,19 +45,84 @@ export interface AggregatedResourceRow {
   readonly versionTimestamp: string;
   readonly canonicalUrl: string | null;
   readonly accessModel: string;
+  readonly accessJson: StructuredResourceAccessJson;
   readonly rightsBadge: SourceCardView["rightsBadge"];
   readonly optionalCertificationBadge: SourceCardView["optionalCertificationBadge"];
   readonly selectionRationale: string;
   readonly category: Exclude<ResourceCategory, "All">;
+  readonly segments: readonly { readonly segment_id: string; readonly title: string }[];
   readonly curricula: readonly { readonly curriculumId: string; readonly curriculumTitle: string; readonly domain: string }[];
   readonly usages: readonly ResourceUsageEntry[];
+}
+
+const CANONICAL_JSON_BY_ID: Readonly<Record<string, CatalogResourceMetadataInput>> = {
+  ...(catalogResourcesJson.resources as Readonly<Record<string, CatalogResourceMetadataInput>>),
+  ...(catalogResourcesJson.global_discovered_resources as Readonly<Record<string, CatalogResourceMetadataInput>>),
+};
+
+export function resolveStructuredAccessJson(
+  resourceVersionId: string,
+  catalogEntry: CatalogResourceMetadataInput | undefined,
+  fallbackAccessModel: string,
+  rightsBadge: SourceCardView["rightsBadge"],
+  optionalCertificationBadge: SourceCardView["optionalCertificationBadge"],
+): StructuredResourceAccessJson {
+  const jsonEntry = CANONICAL_JSON_BY_ID[resourceVersionId];
+  const rawAccess = catalogEntry?.access ?? jsonEntry?.access;
+  const model = rawAccess?.model ?? fallbackAccessModel ?? "free";
+  const certIncluded = Boolean(rawAccess?.certificate_included ?? optionalCertificationBadge?.included);
+  const certMinor =
+    typeof rawAccess?.optional_certificate_price_minor === "number"
+      ? rawAccess.optional_certificate_price_minor
+      : certIncluded
+        ? 4900
+        : null;
+
+  const tier_label =
+    rawAccess?.tier_label ??
+    (model === "freemium_optional_certificate"
+      ? "Freemium"
+      : model === "library_loan"
+        ? "Library Loan"
+        : model === "paid"
+          ? "Paid"
+          : "Free");
+
+  const cost_label =
+    rawAccess?.cost_label ??
+    (certIncluded && certMinor !== null
+      ? `Core ${formatMinorCurrency(0, "USD")} · Cert ${formatMinorCurrency(certMinor, "USD")}`
+      : model === "library_loan"
+        ? "Institutional / Loan"
+        : "$0");
+
+  const rights_label = rawAccess?.rights_label ?? rightsWords(rightsBadge);
+
+  return {
+    model,
+    tier_label,
+    cost_label,
+    rights_label,
+    certificate_included: certIncluded,
+    optional_certificate_price_minor: certMinor,
+  };
 }
 
 export function classifyResourceCategory(
   resourceVersionId: string,
   title: string,
   verifiedPublisher: string,
+  explicitCategory?: string | undefined,
 ): Exclude<ResourceCategory, "All"> {
+  if (
+    explicitCategory === "Course" ||
+    explicitCategory === "Book" ||
+    explicitCategory === "YouTube" ||
+    explicitCategory === "Code Lab" ||
+    explicitCategory === "Problem Set"
+  ) {
+    return explicitCategory;
+  }
   const haystack = `${resourceVersionId} ${title} ${verifiedPublisher}`.toLowerCase();
   if (haystack.includes("youtube") || haystack.includes("video") || haystack.includes("walkthrough")) {
     return "YouTube";
@@ -79,7 +154,7 @@ export function categoryIcon(category: Exclude<ResourceCategory, "All">): SfIcon
   }
 }
 
-function formatDate(iso: string): string {
+export function formatResourceDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return new Intl.DateTimeFormat("en-US", {
@@ -153,20 +228,42 @@ export function buildAggregatedResourceRows(
     }
   }
 
-  return Array.from(byResourceId.values()).map(({ card, curriculaMap, usages }) => ({
-    resourceVersionId: card.resourceVersionId,
-    title: card.title,
-    verifiedPublisher: card.verifiedPublisher,
-    versionTimestamp: card.versionTimestamp,
-    canonicalUrl: card.canonicalUrl,
-    accessModel: card.accessModel,
-    rightsBadge: card.rightsBadge,
-    optionalCertificationBadge: card.optionalCertificationBadge,
-    selectionRationale: card.selectionRationale,
-    category: classifyResourceCategory(card.resourceVersionId, card.title, card.verifiedPublisher),
-    curricula: Array.from(curriculaMap.values()),
-    usages,
-  }));
+  return Array.from(byResourceId.values()).map(({ card, curriculaMap, usages }) => {
+    const rawEntry = catalogResources[card.resourceVersionId] ?? CANONICAL_JSON_BY_ID[card.resourceVersionId];
+    const accessJson = resolveStructuredAccessJson(
+      card.resourceVersionId,
+      rawEntry,
+      card.accessModel,
+      card.rightsBadge,
+      card.optionalCertificationBadge,
+    );
+    const rawSegments = rawEntry?.segments ?? [];
+    const segments = rawSegments
+      .filter((s): s is { readonly segment_id: string; readonly title: string } => Boolean(s.segment_id && s.title))
+      .map((s) => ({ segment_id: s.segment_id, title: s.title }));
+
+    return {
+      resourceVersionId: card.resourceVersionId,
+      title: card.title,
+      verifiedPublisher: card.verifiedPublisher,
+      versionTimestamp: card.versionTimestamp,
+      canonicalUrl: card.canonicalUrl,
+      accessModel: card.accessModel,
+      accessJson,
+      rightsBadge: card.rightsBadge,
+      optionalCertificationBadge: card.optionalCertificationBadge,
+      selectionRationale: card.selectionRationale,
+      category: classifyResourceCategory(
+        card.resourceVersionId,
+        card.title,
+        card.verifiedPublisher,
+        rawEntry?.category,
+      ),
+      segments,
+      curricula: Array.from(curriculaMap.values()),
+      usages,
+    };
+  });
 }
 
 export interface ResourcesViewProps {
@@ -177,6 +274,7 @@ export interface ResourcesViewProps {
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly resourceScope: ResourceScope;
   readonly resourceCategory: ResourceCategory;
+  readonly isAdmin?: boolean | undefined;
 }
 
 export function ResourcesView({
@@ -187,6 +285,7 @@ export function ResourcesView({
   catalogResources,
   resourceScope,
   resourceCategory,
+  isAdmin = false,
 }: ResourcesViewProps): VNode {
   const scopedPlans = resourceScope === "all" ? allPlans : [selectedPlan];
   const allScopedRows = buildAggregatedResourceRows(scopedPlans, proficiency, catalogResources);
@@ -212,7 +311,14 @@ export function ResourcesView({
       hidden={!active}
     >
       <div class="section-header">
-        <h1 class="page-title">Resources</h1>
+        <div class="page-heading-group">
+          <h1 class="page-title">Resources</h1>
+          <p class="page-description">
+            {resourceScope === "all"
+              ? `All study materials linked across your ${allPlans.length} personal curricula.`
+              : `Study materials linked to ${selectedCurriculumTitle}.`}
+          </p>
+        </div>
         <div class="plan-toolbar">
           <div class="segmented" role="group" aria-label="Resource curriculum scope">
             <button
@@ -256,6 +362,16 @@ export function ResourcesView({
               ))}
             </select>
           </label>
+          {isAdmin ? (
+            <button
+              type="button"
+              class="btn-secondary"
+              data-action="open-admin-resources"
+            >
+              <span>Admin corpus</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -314,13 +430,12 @@ export function ResourcesView({
               </thead>
               <tbody>
                 {filteredRows.map((row) => {
-                  const certBadge = row.optionalCertificationBadge ? (
-                    <span class="badge badge-cert-cost" data-optional-certification="true">
-                      Optional certification {formatMinorCurrency(4900, "USD")}
-                    </span>
-                  ) : (
-                    <span class="badge badge-cert-none">Core access {formatMinorCurrency(0, "USD")}</span>
-                  );
+                  const accessTone =
+                    row.accessJson.model === "free"
+                      ? "active"
+                      : row.accessJson.model === "freemium_optional_certificate"
+                        ? "standby"
+                        : "public";
 
                   return (
                     <tr
@@ -328,16 +443,28 @@ export function ResourcesView({
                       class="resource-catalog-card resource-table-row"
                       data-resource-version-id={row.resourceVersionId}
                       data-resource-category={row.category}
+                      data-access-model={row.accessJson.model}
                       data-opaque-surface="true"
                     >
                       <th scope="row" class="resource-primary-cell">
                         <div class="resource-main">
                           <h3 class="resource-row-title">{row.title}</h3>
                           <p class="meta-text">
-                            {row.verifiedPublisher} · Version captured{" "}
-                            <time dateTime={row.versionTimestamp}>{formatDate(row.versionTimestamp)}</time>
+                            {row.verifiedPublisher} ·{" "}
+                            <time dateTime={row.versionTimestamp}>{formatResourceDate(row.versionTimestamp)}</time>
                           </p>
-                          <p class="prose resource-row-rationale">{row.selectionRationale}</p>
+                          <p class="prose resource-row-rationale">
+                            <MathText text={row.selectionRationale} />
+                          </p>
+                          {row.segments.length > 0 ? (
+                            <ul class="resource-segments-inline" aria-label="Verified syllabus segments">
+                              {row.segments.map((seg) => (
+                                <li key={seg.segment_id} class="resource-segment-item">
+                                  <MathText text={seg.title} />
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
                         </div>
                       </th>
                       <td class="resource-category-cell">
@@ -380,24 +507,21 @@ export function ResourcesView({
                         </ul>
                       </td>
                       <td class="resource-access-cell">
-                        <div class="resource-main">
-                          <p class="badge-row">
-                            <span class="badge badge-rights" data-rights-basis={row.rightsBadge.basis}>
-                              {rightsWords(row.rightsBadge)}
-                            </span>
-                            <span class="badge">{humanize(row.accessModel)} access</span>
-                            {certBadge}
-                          </p>
-                          {row.optionalCertificationBadge ? (
-                            <p class="prose warning-copy">
-                              {row.optionalCertificationBadge.label}. Separate optional cost{" "}
-                              {formatMinorCurrency(4900, "USD")}. Opening the source does not mark the activity complete.
-                            </p>
-                          ) : (
-                            <p class="prose meta-text">
-                              Core access is free ({formatMinorCurrency(0, "USD")}); opening the source does not mark the activity complete.
-                            </p>
-                          )}
+                        <div
+                          class="resource-access-stack"
+                          data-rights-basis={row.rightsBadge.basis}
+                          data-optional-certification={row.accessJson.certificate_included ? "true" : undefined}
+                          data-tier={row.accessJson.tier_label}
+                          data-cost={row.accessJson.cost_label}
+                          data-rights={row.accessJson.rights_label}
+                        >
+                          <div class="resource-access-primary">
+                            <span class="status-dot" data-status={accessTone} aria-hidden="true" />
+                            <span class="resource-access-tier">{row.accessJson.tier_label}</span>
+                            <span class="resource-access-sep" aria-hidden="true">·</span>
+                            <code class="resource-access-cost">{row.accessJson.cost_label}</code>
+                          </div>
+                          <span class="row-meta resource-access-rights">{row.accessJson.rights_label}</span>
                         </div>
                       </td>
                       <td class="resource-action-cell">
@@ -408,9 +532,9 @@ export function ResourcesView({
                             rel="noopener noreferrer"
                             class="btn-secondary"
                           >
-                            Open source
+                            Open
                             <span aria-hidden="true">↗</span>
-                            <span class="st-sr"> in a new tab</span>
+                            <span class="st-sr"> {row.title} in a new tab</span>
                           </a>
                         ) : null}
                       </td>

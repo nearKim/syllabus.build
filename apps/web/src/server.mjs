@@ -699,7 +699,9 @@ export function createWebAppServer(options = {}) {
     const topParam = parsedUrl.searchParams.get("topLevel");
     const subParam = parsedUrl.searchParams.get("learnSub");
     const planViewParam = parsedUrl.searchParams.get("planView");
-    if (topParam === "Learn" || topParam === "Explore" || topParam === "Settings") {
+    if (topParam === "Admin") {
+      controller.applyUiAction("open-admin-resources");
+    } else if (topParam === "Learn" || topParam === "Explore" || topParam === "Settings") {
       controller.navigateTopLevel(topParam);
     }
     if (

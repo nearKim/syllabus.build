@@ -4079,9 +4079,8 @@ button[interestfor="plan-relationship-legend"] {
 }
 
 .resources-table-wrapper {
-  overflow: auto;
+  overflow-x: auto;
   max-inline-size: 100%;
-  max-block-size: min(640px, 78vh);
   container-type: inline-size;
   border: 0;
   border-radius: 0;
@@ -4102,7 +4101,7 @@ button[interestfor="plan-relationship-legend"] {
   position: sticky;
   inset-block-start: 0;
   z-index: 2;
-  background: var(--color-canvas);
+  background: var(--color-surface);
 }
 
 .resources-data-table th,
@@ -4121,7 +4120,7 @@ button[interestfor="plan-relationship-legend"] {
   letter-spacing: 0;
   text-transform: none;
   color: var(--color-text-secondary);
-  background: var(--color-canvas);
+  background: var(--color-surface);
 }
 
 .resources-data-table tbody th.resource-primary-cell {
@@ -4131,7 +4130,7 @@ button[interestfor="plan-relationship-legend"] {
   min-inline-size: 16rem;
   max-inline-size: 24rem;
   font-weight: 400;
-  background: var(--color-canvas);
+  background: var(--color-surface);
 }
 
 .resources-data-table tbody tr:last-child th,
@@ -4208,6 +4207,110 @@ button[interestfor="plan-relationship-legend"] {
   content: "·";
   margin-right: 6px;
   color: var(--color-text-secondary);
+}
+
+.resource-access-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 150px;
+}
+
+.resource-access-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.resource-access-tier {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.resource-access-sep {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.resource-access-cost {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-primary);
+  background: transparent;
+  padding: 0;
+}
+
+.resource-access-rights {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.resource-segments-inline {
+  margin: 4px 0 0;
+  padding-inline-start: 16px;
+  display: grid;
+  gap: 2px;
+  list-style: disc;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+}
+
+.resource-segment-item {
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.admin-vector-overview-strip {
+  margin-block-end: 32px;
+}
+
+.admin-vector-overview-strip code,
+#panel-admin-resources .page-description code {
+  background: transparent;
+  padding: 0;
+}
+
+.admin-status-notice {
+  margin: 0 0 20px;
+  color: var(--color-accent);
+  font-size: 13.5px;
+}
+
+.admin-resources-filters {
+  display: grid;
+  gap: 12px;
+  margin-block-end: 16px;
+}
+
+.admin-search-form {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline-start: auto;
+}
+
+.admin-search-input {
+  min-width: 260px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: var(--hairline);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13px;
+}
+
+.admin-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.admin-row-actions .provider-compact-btn {
+  min-height: 44px;
 }
 
 .resource-usage-list {

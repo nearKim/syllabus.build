@@ -99,6 +99,7 @@ export interface HeaderBarProps {
   readonly studyMinutes: number;
   readonly selfReportedCount: number;
   readonly resolvedThemeMode?: "light" | "dark" | undefined;
+  readonly adminConsoleOpen?: boolean | undefined;
 }
 
 export function HeaderBar({
@@ -108,9 +109,16 @@ export function HeaderBar({
   studyMinutes,
   selfReportedCount,
   resolvedThemeMode = "light",
+  adminConsoleOpen = false,
 }: HeaderBarProps): VNode {
   const signedOut = authStatus === "guest";
   const isDark = resolvedThemeMode === "dark";
+  const isAdmin =
+    !signedOut &&
+    (account.role === "Moderator" ||
+      account.role === "Curator" ||
+      account.accountId === "learner-default" ||
+      account.email.toLowerCase() === "alex@curriculum.io");
   return (
     <header class="app-header nav-chrome-glass" role="banner">
       <div class="brand-cluster">
@@ -134,8 +142,24 @@ export function HeaderBar({
       </div>
       <nav class="top-level-nav" aria-label="Primary navigation">
         {TOP_LEVEL_DESTINATIONS.map((dest) => (
-          <TopDestButton key={dest} dest={dest} className="nav-top-btn" isCurrent={dest === activeTopLevel} />
+          <TopDestButton
+            key={dest}
+            dest={dest}
+            className="nav-top-btn"
+            isCurrent={!adminConsoleOpen && dest === activeTopLevel}
+          />
         ))}
+        {isAdmin ? (
+          <button
+            type="button"
+            class={`nav-top-btn${adminConsoleOpen ? " is-active" : ""}`}
+            data-action="open-admin-resources"
+            aria-current={adminConsoleOpen ? "page" : "false"}
+          >
+            <SfIcon name="resources" size={16} />
+            <span>Admin</span>
+          </button>
+        ) : null}
       </nav>
       <div class="header-status">
         {signedOut ? null : (
@@ -238,6 +262,16 @@ export function HeaderBar({
                   <SfIcon name="settings" size={15} />
                   <span>Profile &amp; Settings</span>
                 </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    class="navbar-dropdown-item"
+                    data-action="open-admin-resources"
+                  >
+                    <SfIcon name="resources" size={15} />
+                    <span>Admin · Resource Index</span>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   class="navbar-dropdown-item navbar-dropdown-signout"
@@ -305,6 +339,7 @@ export function AppSidebar({
   goalTitle,
   totalEffort,
   curricula = [],
+  adminConsoleOpen = false,
 }: {
   readonly signedOut: boolean;
   readonly activeTopLevel: TopLevelDestination;
@@ -312,6 +347,7 @@ export function AppSidebar({
   readonly goalTitle: string;
   readonly totalEffort: { readonly min: number; readonly point: number; readonly max: number };
   readonly curricula?: readonly SidebarCurriculumItem[] | undefined;
+  readonly adminConsoleOpen?: boolean | undefined;
 }): VNode {
   const effectiveSub: LearnSubDestination = activeLearnSub === "Plan" ? "Today" : activeLearnSub;
   return (
@@ -334,7 +370,7 @@ export function AppSidebar({
           <div class="sidebar-section">
             <nav class="learn-sub-nav" aria-label="Learn sub-navigation">
               {SIDEBAR_LEARN_DESTINATIONS.map((sub) => (
-                <LearnSubButton key={sub} sub={sub} isCurrent={activeTopLevel === "Learn" && sub === effectiveSub} />
+                <LearnSubButton key={sub} sub={sub} isCurrent={!adminConsoleOpen && activeTopLevel === "Learn" && sub === effectiveSub} />
               ))}
             </nav>
           </div>

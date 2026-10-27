@@ -1912,5 +1912,97 @@ test("BYOK read-only API keys, Edit button toggle, and zero-API-keys states acro
   assert.ok(root.innerHTML.includes('id="byok-key"'));
 });
 
+test("JSON-driven Learn Resources Access column and Admin Global Resource & Vector Index Console", () => {
+  const { app, root, click } = mountWithClicks({
+    topLevel: "Learn",
+    learnSubDestination: "Resources",
+  });
+
+  // 1. Learn › Resources shows only resources belonging to the learner's curricula and loads structured JSON Access fields
+  const resourcesPanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-learn-resources"'),
+    root.innerHTML.indexOf('id="panel-explore"')
+  );
+  assert.ok(resourcesPanel.includes('class="resource-access-stack"'));
+  assert.ok(resourcesPanel.includes('class="resource-access-primary"'));
+  assert.ok(resourcesPanel.includes("resource-access-rights"));
+  assert.ok(resourcesPanel.includes("Free"));
+  assert.ok(resourcesPanel.includes("Freemium"));
+  assert.ok(resourcesPanel.includes("Core $0 · Cert $49"));
+  assert.ok(resourcesPanel.includes("Link &amp; metadata"));
+  // Old boilerplate prose wall of text is eliminated from the table cells
+  assert.equal(
+    resourcesPanel.includes("Core access is free ($0.00); opening the source does not mark the activity complete."),
+    false
+  );
+  // Global AI-discovered resources from other learners are NOT shown in this learner's personal Resources tab
+  assert.equal(
+    resourcesPanel.includes("Open Course: GPU Kernel Programming with OpenAI Triton &amp; FlashAttention-3"),
+    false
+  );
+
+  // 2. Clicking "Admin corpus →" opens the Admin Global Resource & Vector Index Console
+  click({ action: "open-admin-resources" });
+  assert.equal(app.getState().adminConsoleOpen, true);
+  const adminPanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-admin-resources"'),
+    root.innerHTML.indexOf('</main>')
+  );
+  assert.ok(adminPanel.includes("Global resource &amp; vector index"));
+  assert.ok(adminPanel.includes("pgvector · HNSW (1536d)"));
+  assert.ok(adminPanel.includes("Library Loan"));
+  assert.ok(adminPanel.includes("Institutional / Loan"));
+  // Shows all 18 discovered resources across all learners (15 base/community + 3 global AI web-search discoveries)
+  assert.ok(adminPanel.includes("18 discovered resources"));
+  assert.ok(adminPanel.includes("Book: Approximate Nearest Neighbor &amp; HNSW Vector Indexing"));
+  assert.ok(adminPanel.includes("YouTube Playlist: RAG Triad Evaluation, Faithfulness &amp; Context Recall Walkthrough"));
+  assert.ok(adminPanel.includes("Open Course: GPU Kernel Programming with OpenAI Triton &amp; FlashAttention-3"));
+
+  // 3. Filter by Discovery Source = AI Web Search (3 resources, 1 pending vector re-index)
+  click({ action: "set-admin-resource-source", adminSource: "AI Web Search" });
+  assert.equal(app.getState().adminSourceFilter, "AI Web Search");
+  const aiFilteredPanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-admin-resources"'),
+    root.innerHTML.indexOf('</main>')
+  );
+  assert.ok(aiFilteredPanel.includes("Pending re-index"));
+  assert.ok(aiFilteredPanel.includes("Open Course: GPU Kernel Programming with OpenAI Triton &amp; FlashAttention-3"));
+  assert.equal(aiFilteredPanel.includes("Reviewed Open Monograph: Subword Tokenization"), false);
+
+  // 4. Admin can Verify and Re-index a discovered resource
+  click({ action: "admin-verify-resource", resourceId: "discovered-course-triton-kernels-v1" });
+  assert.equal(
+    app.getState().adminResourceOverrides["discovered-course-triton-kernels-v1"]?.vector_index?.discovered_by,
+    "Curator Verified"
+  );
+  const afterVerifyPanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-admin-resources"'),
+    root.innerHTML.indexOf('</main>')
+  );
+  assert.equal(afterVerifyPanel.includes("Pending re-index"), false);
+
+  // 5. Admin can remove a resource from the active global corpus
+  click({ action: "admin-remove-resource", resourceId: "discovered-youtube-rag-eval-playlist-v1" });
+  assert.ok(app.getState().adminRemovedResourceIds.includes("discovered-youtube-rag-eval-playlist-v1"));
+  const afterRemovePanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-admin-resources"'),
+    root.innerHTML.indexOf('</main>')
+  );
+  assert.equal(
+    afterRemovePanel.includes("YouTube Playlist: RAG Triad Evaluation, Faithfulness &amp; Context Recall Walkthrough"),
+    false
+  );
+
+  // 6. Non-admin learner accounts receive a 403 role boundary if they view Admin
+  app.applyUiAction("submit-sign-in", { email: "sam@curriculum.io" });
+  app.applyUiAction("open-admin-resources");
+  const unauthorizedAdminPanel = root.innerHTML.slice(
+    root.innerHTML.indexOf('id="panel-admin-resources"'),
+    root.innerHTML.indexOf('</main>')
+  );
+  assert.ok(unauthorizedAdminPanel.includes("403 Unauthorized Role"));
+});
+
+
 
 

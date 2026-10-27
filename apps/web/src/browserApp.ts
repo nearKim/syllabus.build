@@ -60,6 +60,11 @@ import {
   type ResourceCategory, type ResourceScope,
 } from "./components/ResourcesView.tsx";
 import {
+  ADMIN_DISCOVERY_SOURCES, AdminResourcesView, isAdminAccount,
+  type AdminDiscoverySource,
+} from "./components/AdminResourcesView.tsx";
+import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
+import {
   DEFAULT_SUBJECT_TOPICS, DESIGNATED_AI_MODELS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
   INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
   evaluateIntakeResourceFit, executeIntakeGenerationPipeline, inferIntakeSubjectFromGoal, resolveDependentTopicToggle,
@@ -87,6 +92,7 @@ export {
   type Vote,
   type ResourceCategory,
   type ResourceScope,
+  type AdminDiscoverySource,
   type IntakeSubject,
   type IntakeDepthChoice,
   type IntakeFlowChoice,
@@ -133,6 +139,13 @@ export interface CurriculumWebAppStateInput {
   readonly publishedListings?: readonly MarketplaceListing[];
   readonly adoptPublicationId?: string | null; readonly adoptModuleIds?: readonly string[];
   readonly resourceScope?: ResourceScope; readonly resourceCategory?: ResourceCategory;
+  readonly adminConsoleOpen?: boolean;
+  readonly adminSourceFilter?: AdminDiscoverySource;
+  readonly adminCategoryFilter?: ResourceCategory;
+  readonly adminSearchQuery?: string;
+  readonly adminRemovedResourceIds?: readonly string[];
+  readonly adminResourceOverrides?: Readonly<Record<string, Partial<CatalogResourceMetadataInput>>>;
+  readonly adminNotice?: string | null;
   readonly intakeGoalTitle?: string; readonly intakeSubject?: IntakeSubject;
   readonly intakeTopics?: readonly string[]; readonly intakeDepth?: IntakeDepthChoice;
   readonly intakeFlow?: IntakeFlowChoice; readonly intakeMaterials?: IntakeMaterialsChoice;
@@ -283,95 +296,8 @@ const DEFAULT_SYNTHETIC_PROFICIENCY: ProficiencyProfileFixture = {
   ],
 };
 
-const makeCatalogEntry = (
-  resource_version_id: string, title: string, slug: string, provider: readonly [id: string, name: string], model: string,
-  segments: readonly (readonly [id: string, title: string])[] = [],
-): CatalogResourceMetadataInput => ({
-  resource_version_id, title, canonical_url: `https://example.invalid/catalog/${slug}`, captured_at: "2026-10-20T16:00:00Z",
-  provider: { provider_id: provider[0], display_name: provider[1] },
-  access: { model, certificate_included: false, access_verified_at: "2026-10-20T16:00:00Z" },
-  ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
-  segments: segments.map(([segment_id, segmentTitle]) => ({ segment_id, title: segmentTitle, verified: true })),
-});
-
-const OPEN_MATH_COMMONS = ["open-math-commons", "Open Math Commons (Curator Verified)"] as const;
-const PUBLIC_DOMAIN_CLASSICS = ["public-domain-classics", "Public Domain Classics Library (Curator Verified)"] as const;
-const OPEN_SYSTEMS_PRESS = ["open-systems-press", "Open Systems Press (Curator Verified)"] as const;
-
-const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadataInput>> = {
-  "synthetic-resource-tokenization-v1": {
-    resource_version_id: "synthetic-resource-tokenization-v1", title: "Reviewed Open Monograph: Subword Tokenization & Sequence Packing",
-    canonical_url: "https://example.invalid/catalog/tokenization-monograph", captured_at: "2026-10-20T16:00:00Z",
-    provider: { provider_id: "open-ml-press", display_name: "Open ML Press (Curator Verified)" },
-    access: { model: "free", certificate_included: false, access_verified_at: "2026-10-20T16:00:00Z" },
-    ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
-    segments: [{ segment_id: "seg-bpe-overview", title: "Section 2.1: Byte-Pair Encoding Merge Tables", verified: true }],
-  },
-  "synthetic-resource-cert-prep-v1": {
-    resource_version_id: "synthetic-resource-cert-prep-v1", title: "Applied Sequence Modeling Lab & Optional Certification Track",
-    canonical_url: "https://example.invalid/catalog/sequence-lab-cert", captured_at: "2026-10-20T16:00:00Z",
-    provider: { provider_id: "systems-ai-institute", display_name: "Systems AI Institute" },
-    access: { model: "freemium_optional_certificate", certificate_included: true, access_verified_at: "2026-10-20T16:00:00Z" },
-    ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
-    segments: [],
-  },
-  "synthetic-resource-attention-youtube-v1": makeCatalogEntry(
-    "synthetic-resource-attention-youtube-v1", "YouTube Lecture: Scaled Dot-Product Attention & Softmax Variance Walkthrough", "youtube-attention-walkthrough",
-    ["ai-engineering-youtube", "AI Engineering Channel · YouTube (Curator Verified)"], "free",
-    [["seg-yt-attention", "04:15 — Why unscaled dot products grow with $d_k$"]],
-  ),
-  "synthetic-resource-rag-lab-repo-v1": makeCatalogEntry(
-    "synthetic-resource-rag-lab-repo-v1", "Code Lab Repository: FlashAttention & Tokenizer Benchmarks", "rag-benchmark-lab-repo",
-    ["open-ml-press", "Open ML Press (Curator Verified)"], "free",
-  ),
-  "synthetic-resource-strang-youtube-v1": makeCatalogEntry(
-    "synthetic-resource-strang-youtube-v1", "MIT OCW YouTube Lecture: Projection Matrices and Least Squares", "youtube-mit-projections",
-    ["mit-ocw-youtube", "MIT OpenCourseWare · YouTube (Curator Verified)"], "free",
-    [["seg-yt-projection", "12:40 — Deriving $P = A(A^T A)^{-1}A^T$"]],
-  ),
-  "synthetic-resource-la-notes-v1": makeCatalogEntry(
-    "synthetic-resource-la-notes-v1", "Open Linear Algebra Notes: Spectral Theory and Projections", "linear-algebra-notes", OPEN_MATH_COMMONS, "free",
-    [["seg-la-eigen", "Chapter 6: Eigenvalues and Eigenvectors"], ["seg-la-svd", "Chapter 7: The Singular Value Decomposition"]],
-  ),
-  "synthetic-resource-la-problem-sets-v1": makeCatalogEntry(
-    "synthetic-resource-la-problem-sets-v1", "Public Problem Sets with Worked Solutions: Linear Algebra", "linear-algebra-problem-sets",
-    ["open-course-problem-bank", "Open Course Problem Bank"], "free",
-    [["seg-la-ps1", "Problem Set 1: Eigenvalues and Projections"], ["seg-la-ps2", "Problem Set 2: The SVD and Low-Rank Approximation"]],
-  ),
-  "synthetic-resource-la-lab-v1": makeCatalogEntry(
-    "synthetic-resource-la-lab-v1", "Numerical Linear Algebra Lab: Iterative Eigensolvers", "eigensolver-lab", OPEN_MATH_COMMONS, "free",
-  ),
-  "synthetic-resource-war-and-peace-v1": makeCatalogEntry(
-    "synthetic-resource-war-and-peace-v1", "War and Peace (Louise and Aylmer Maude translation)", "war-and-peace-maude", PUBLIC_DOMAIN_CLASSICS, "free",
-    [["seg-wp-book-3", "Book Three: Austerlitz"], ["seg-wp-book-9", "Book Nine, Chapter 1: What causes a historical event"]],
-  ),
-  "synthetic-resource-anna-karenina-v1": makeCatalogEntry(
-    "synthetic-resource-anna-karenina-v1", "Anna Karenina (Constance Garnett translation)", "anna-karenina-garnett", PUBLIC_DOMAIN_CLASSICS, "free",
-    [["seg-ak-part-7", "Part Seven: Anna's final journey"], ["seg-ak-part-8", "Part Eight: Levin's resolution"]],
-  ),
-  "synthetic-resource-berlin-essay-v1": makeCatalogEntry(
-    "synthetic-resource-berlin-essay-v1", "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)", "hedgehog-and-the-fox",
-    ["university-press-catalog", "University Press Catalog"], "library_loan",
-  ),
-  "synthetic-resource-rust-async-book-v1": makeCatalogEntry(
-    "synthetic-resource-rust-async-book-v1", "Asynchronous Rust Under the Hood: Futures, Wakers, and Executors", "async-rust-under-the-hood",
-    OPEN_SYSTEMS_PRESS, "free", [["seg-rs-futures", "Chapters 2–3: Futures, Pin, and Wakers"], ["seg-rs-reactor", "Chapter 5: Reactors and I/O Readiness"]],
-  ),
-  "synthetic-resource-rust-lab-v1": makeCatalogEntry(
-    "synthetic-resource-rust-lab-v1", "Executor Lab: Test Harness and Reference Solutions", "executor-lab",
-    OPEN_SYSTEMS_PRESS, "free", [["seg-rs-lab-executor", "Lab 1: A single-threaded executor"], ["seg-rs-lab-timer", "Lab 2: A timer wheel"]],
-  ),
-  "synthetic-resource-statmech-notes-v1": makeCatalogEntry(
-    "synthetic-resource-statmech-notes-v1", "Open Lecture Notes: Statistical Physics", "statistical-physics-notes",
-    ["open-physics-commons", "Open Physics Commons (Curator Verified)"], "free",
-    [["seg-sm-ensembles", "Chapter 2: Ensembles and the Partition Function"], ["seg-sm-ising", "Chapter 5: The Ising Model"]],
-  ),
-  "synthetic-resource-statmech-problems-v1": makeCatalogEntry(
-    "synthetic-resource-statmech-problems-v1", "Public Problem Sets with Worked Solutions: Statistical Physics", "statistical-physics-problem-sets",
-    ["open-course-problem-bank", "Open Course Problem Bank"], "free",
-    [["seg-sm-ps1", "Problem Set 1: Partition Functions"], ["seg-sm-ps2", "Problem Set 2: Phase Transitions"]],
-  ),
-};
+const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadataInput>> =
+  catalogResourcesJson.resources as Readonly<Record<string, CatalogResourceMetadataInput>>;
 
 const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
   schema_version: "0.2.0", curriculum_id: "curriculum-linear-algebra-002",
@@ -1519,7 +1445,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     deepDive: inputState.deepDive ?? "included",
     spacedReview: inputState.spacedReview ?? "included",
   };
-  const isLearn = activeTopLevel === "Learn";
+  const adminConsoleOpen = !signedOut && Boolean(inputState.adminConsoleOpen);
+  const adminSourceFilter: AdminDiscoverySource = inputState.adminSourceFilter ?? "All";
+  const adminCategoryFilter: ResourceCategory = inputState.adminCategoryFilter ?? "All";
+  const adminSearchQuery = inputState.adminSearchQuery ?? "";
+  const adminRemovedResourceIds = inputState.adminRemovedResourceIds ?? [];
+  const adminResourceOverrides = inputState.adminResourceOverrides ?? {};
+  const adminNotice = inputState.adminNotice ?? null;
+  const isLearn = !adminConsoleOpen && activeTopLevel === "Learn";
+  const isExplore = !adminConsoleOpen && activeTopLevel === "Explore";
+  const isSettings = !adminConsoleOpen && activeTopLevel === "Settings";
 
   const isExecutionDone = (status: string) => status === "completed" || status === "self_reported_completed";
   const nextSession = todayState.nextSession;
@@ -1925,7 +1860,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const totalUpvotesReceived = ownedListings.reduce((sum, listing) => sum + upvotesOfListing(listing), 0);
   const derivedListings = listings.filter((listing) => listing.basedOn === handleOf(account));
 
-  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
+  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${adminConsoleOpen ? "Admin" : activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   ${renderToString(h(HeaderBar, {
     activeTopLevel,
@@ -1934,6 +1869,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     studyMinutes,
     selfReportedCount,
     resolvedThemeMode,
+    adminConsoleOpen,
   }))}
   ${renderToString(h(SessionExpiredBanner, { authStatus }))}
   <div class="app-body-grid">
@@ -1944,6 +1880,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       goalTitle: basePlanModel.goal.title,
       totalEffort,
       curricula: sidebarCurricula,
+      adminConsoleOpen,
     }))}
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-learn" data-top-panel="Learn" data-active="${isLearn}"${isLearn ? "" : " hidden"}>
@@ -2141,11 +2078,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           catalogResources,
           resourceScope,
           resourceCategory,
+          isAdmin: isAdminAccount(account),
         }))}
       </section>`}
 
       ${renderToString(h(ExploreMarketplace, {
-        active: activeTopLevel === "Explore",
+        active: isExplore,
         signedOut,
         account,
         listings,
@@ -2158,7 +2096,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         loadMoreNote,
       }))}
 
-      ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${activeTopLevel === "Settings"}"${activeTopLevel === "Settings" ? "" : " hidden"}>
+      ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${isSettings}"${isSettings ? "" : " hidden"}>
         <div class="settings-stack">
           <section class="settings-section profile-identity" aria-labelledby="settings-profile-title" data-opaque-surface="true">
             <h1 class="st-sr" id="settings-profile-title">Profile</h1>
@@ -2448,7 +2386,18 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </details>
           </section>
         </div>
-      </section>`}
+      </section>
+      ${renderToString(h(AdminResourcesView, {
+        active: adminConsoleOpen,
+        account,
+        catalogResources,
+        adminSourceFilter,
+        adminCategoryFilter,
+        adminSearchQuery,
+        adminRemovedResourceIds,
+        adminResourceOverrides,
+        adminNotice,
+      }))}`}
     </main>
   </div>
   ${signedOut ? "" : inspectorHtml}
@@ -2617,6 +2566,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let adoptPublicationId: string | null = initialState.adoptPublicationId ?? null;
   let resourceScope: ResourceScope = initialState.resourceScope ?? "selected";
   let resourceCategory: ResourceCategory = initialState.resourceCategory ?? "All";
+  let adminConsoleOpen: boolean = initialState.adminConsoleOpen ?? false;
+  let adminSourceFilter: AdminDiscoverySource = initialState.adminSourceFilter ?? "All";
+  let adminCategoryFilter: ResourceCategory = initialState.adminCategoryFilter ?? "All";
+  let adminSearchQuery: string = initialState.adminSearchQuery ?? "";
+  let adminRemovedResourceIds: string[] = [...(initialState.adminRemovedResourceIds ?? [])];
+  let adminResourceOverrides: Record<string, Partial<CatalogResourceMetadataInput>> = {
+    ...(initialState.adminResourceOverrides ?? {}),
+  };
+  let adminNotice: string | null = initialState.adminNotice ?? null;
   const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
   const adoptListing = (): MarketplaceListing | undefined => listings().find((entry) => entry.publicationId === adoptPublicationId);
   let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? unitIdsOf(adoptListing()))];
@@ -2816,6 +2774,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     adoptModuleIds = [];
     resourceScope = "selected";
     resourceCategory = "All";
+    adminConsoleOpen = false;
+    adminSourceFilter = "All";
+    adminCategoryFilter = "All";
+    adminSearchQuery = "";
+    adminRemovedResourceIds = [];
+    adminResourceOverrides = {};
+    adminNotice = null;
     generatedPlans = [];
     intakeGoalTitle = "";
     lastPipelineReceipt = null;
@@ -2962,6 +2927,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptModuleIds: [...adoptModuleIds] as readonly string[],
       resourceScope, resourceCategory,
+      adminConsoleOpen,
+      adminSourceFilter,
+      adminCategoryFilter,
+      adminSearchQuery,
+      adminRemovedResourceIds: [...adminRemovedResourceIds] as readonly string[],
+      adminResourceOverrides: { ...adminResourceOverrides } as Readonly<
+        Record<string, Partial<CatalogResourceMetadataInput>>
+      >,
+      adminNotice,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
       remindersEnabled, remindersPaused, reminderTimezone, keyVisible,
@@ -2990,18 +2964,21 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
     navigateTopLevel(destination: TopLevelDestination) {
       if (destination !== "Explore" && !signedIn()) return requireSignIn(placeOf(destination, learnSubDestination));
+      adminConsoleOpen = false;
       topLevel = destination;
       studyDetailOpen = false;
       return getState();
     },
     navigateLearnSubDestination(subDestination: LearnSubDestination) {
       if (!signedIn()) return requireSignIn(placeOf("Learn", subDestination));
+      adminConsoleOpen = false;
       topLevel = "Learn";
       learnSubDestination = subDestination;
       studyDetailOpen = false;
       return getState();
     },
     switchPlanView(view: PlanSynchronizedView) {
+      adminConsoleOpen = false;
       topLevel = "Learn";
       learnSubDestination = "Plan";
       planView = view;
@@ -3142,6 +3119,77 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         resourceScope = data["resourceScope"];
       } else if (action === "set-resource-category" && isOneOf(RESOURCE_CATEGORIES, data["resourceCategory"])) {
         resourceCategory = data["resourceCategory"];
+      } else if (action === "open-admin-resources") {
+        adminConsoleOpen = true;
+        studyDetailOpen = false;
+      } else if (action === "close-admin-resources") {
+        adminConsoleOpen = false;
+      } else if (action === "set-admin-resource-source" && isOneOf(ADMIN_DISCOVERY_SOURCES, data["adminSource"])) {
+        adminSourceFilter = data["adminSource"];
+      } else if (action === "set-admin-resource-category" && isOneOf(RESOURCE_CATEGORIES, data["adminCategory"])) {
+        adminCategoryFilter = data["adminCategory"];
+      } else if (action === "set-admin-resource-query") {
+        adminSearchQuery = (value("query") ?? "").trim().slice(0, 120);
+      } else if (action === "clear-admin-resource-query") {
+        adminSearchQuery = "";
+      } else if (action === "admin-verify-resource" && data["resourceId"] && isAdminAccount(account)) {
+        const resId = data["resourceId"];
+        const prev = adminResourceOverrides[resId];
+        adminResourceOverrides = {
+          ...adminResourceOverrides,
+          [resId]: {
+            ...prev,
+            vector_index: {
+              ...prev?.vector_index,
+              status: "indexed",
+              discovered_by: "Curator Verified",
+              last_indexed_at: new Date().toISOString(),
+            },
+          },
+        };
+        adminNotice = `Verified ${resId} and updated its vector corpus provenance to Curator Verified.`;
+      } else if (action === "admin-reindex-resource" && data["resourceId"] && isAdminAccount(account)) {
+        const resId = data["resourceId"];
+        const prev = adminResourceOverrides[resId];
+        adminResourceOverrides = {
+          ...adminResourceOverrides,
+          [resId]: {
+            ...prev,
+            vector_index: {
+              ...prev?.vector_index,
+              status: "indexed",
+              last_indexed_at: new Date().toISOString(),
+            },
+          },
+        };
+        adminNotice = `Re-indexed ${resId} into pgvector · HNSW (1536d).`;
+      } else if (action === "admin-reindex-all" && isAdminAccount(account)) {
+        const now = new Date().toISOString();
+        const nextOverrides: Record<string, Partial<CatalogResourceMetadataInput>> = { ...adminResourceOverrides };
+        for (const id of [
+          ...Object.keys(catalogResourcesJson.resources),
+          ...Object.keys(catalogResourcesJson.global_discovered_resources),
+          ...Object.keys(catalogResources),
+        ]) {
+          if (adminRemovedResourceIds.includes(id)) continue;
+          const prev = nextOverrides[id];
+          nextOverrides[id] = {
+            ...prev,
+            vector_index: {
+              ...prev?.vector_index,
+              status: "indexed",
+              last_indexed_at: now,
+            },
+          };
+        }
+        adminResourceOverrides = nextOverrides;
+        adminNotice = "Re-indexed all global corpus resources into pgvector · HNSW (1536d).";
+      } else if (action === "admin-remove-resource" && data["resourceId"] && isAdminAccount(account)) {
+        const resId = data["resourceId"];
+        if (!adminRemovedResourceIds.includes(resId)) {
+          adminRemovedResourceIds = [...adminRemovedResourceIds, resId];
+        }
+        adminNotice = `Removed ${resId} from the global vector database corpus.`;
       } else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
         selectCurriculum(data["curriculumId"]);
         topLevel = "Learn";
@@ -3626,6 +3674,7 @@ export function mountCurriculumWebApp(
       action === "submit-sign-in" ? { email: valueOf("#auth-email-input") }
       : action === "update-profile" ? { displayName: valueOf("#profile-name-input"), email: valueOf("#profile-email-input") }
       : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
+      : action === "set-admin-resource-query" ? { query: valueOf("#admin-resource-search") }
       : { query: valueOf("#marketplace-search") };
     if (controller.applyUiAction(action, data).handled) syncDom();
   });

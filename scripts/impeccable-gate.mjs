@@ -47,6 +47,7 @@ function runBoxInBoxAudit(rawCss, views) {
     ".today-active-workspace > .flow-board",
     ".resources-table-wrapper",
     ".marketplace-filters",
+    ".admin-resources-filters",
     ".session-reschedule-panel"
   ];
 
@@ -146,6 +147,7 @@ function runLineAndHierarchyAudit(rawCss, views) {
     ".progress-unit-row",
     ".progress-capability-row",
     ".marketplace-filters",
+    ".admin-resources-filters",
     ".facet-pair",
     ".marketplace-card-foot",
     ".intake-fit-tray",
@@ -249,12 +251,16 @@ function main() {
   app.navigateTopLevel("Settings");
   const settingsHtml = app.renderHtml();
 
+  app.applyUiAction("open-admin-resources");
+  const adminHtml = app.renderHtml();
+
   const views = {
     today: todayHtml,
     progress: progressHtml,
     resources: resourcesHtml,
     explore: exploreHtml,
-    settings: settingsHtml
+    settings: settingsHtml,
+    admin: adminHtml
   };
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "curriculum-impeccable-gate-"));
@@ -308,7 +314,7 @@ function main() {
     }
 
     console.log(
-      `✅ Impeccable + Craft Gate Passed: 5 rendered screens + source files scanned, 0 anti-patterns, 0 advisories, 0 box-in-box / line-abuse / hierarchy-blur violations.`
+      `✅ Impeccable + Craft Gate Passed: 6 rendered screens + source files scanned, 0 anti-patterns, 0 advisories, 0 box-in-box / line-abuse / hierarchy-blur violations.`
     );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
