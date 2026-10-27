@@ -1185,6 +1185,9 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   );
   click({ action: "set-primary-key", credentialRef: "cred-anthropic-1" });
   assert.ok(root.innerHTML.includes('data-primary-credential="cred-anthropic-1"'));
+  assert.ok(settingsPanel.includes('class="provider-model-select"'));
+  click({ action: "set-provider-model", providerId: "openai", modelId: "o3" });
+  assert.ok(root.innerHTML.includes('data-provider-id="openai" data-selected-model="o3"'));
   assert.ok(settingsPanel.includes('id="reminder-timezone" name="reminder-timezone" data-action="set-reminder-timezone"'));
   click({ action: "set-reminder-timezone", reminderTimezone: "Asia/Seoul" });
   assert.ok(root.innerHTML.includes("Korea Standard Time (<code>Asia/Seoul</code>)"));

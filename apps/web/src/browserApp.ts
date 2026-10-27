@@ -109,6 +109,7 @@ export interface CurriculumWebAppStateInput {
   readonly diagnosticSession?: DiagnosticSessionFixture; readonly adaptationProposal?: AdaptationProposalFixture;
   readonly byokMode?: InferenceMode; readonly byokCredentials?: readonly MaskedCredentialRecord[];
   readonly primaryCredentialRef?: string;
+  readonly providerModels?: Readonly<Record<string, string>>;
   readonly wallet?: HostedCreditWalletSnapshot; readonly openDialogId?: string | null;
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
@@ -2271,7 +2272,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-                <p class="section-lede">Enter your API key directly in each provider's row and choose one Primary provider for curriculum synthesis and diagnostics.</p>
+                <p class="section-lede">Enter your API key, choose your preferred model per provider, and mark one Primary provider for synthesis, diagnostics, and native web search grounding.</p>
                 <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
               </div>
             </div>
@@ -2280,6 +2281,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 <thead>
                   <tr>
                     <th scope="col">Provider</th>
+                    <th scope="col">Model</th>
                     <th scope="col">API key</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="provider-actions-head">Actions</th>
@@ -2290,7 +2292,33 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                     const primaryRef = byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref;
                     const isPrimary = cred.credential_ref === primaryRef && cred.status === "active";
                     const providerTitle = cred.provider_id === "openai" ? "OpenAI" : cred.provider_id === "anthropic" ? "Anthropic" : "Google Gemini";
-                    const modelSubtitle = cred.provider_id === "openai" ? "GPT-4o · o3-mini" : cred.provider_id === "anthropic" ? "Claude 3.7 Sonnet" : "Gemini 2.5 Pro";
+                    const capabilitySubtitle = cred.provider_id === "openai"
+                      ? "Responses API · Web search"
+                      : cred.provider_id === "anthropic"
+                        ? "Messages API · Web search"
+                        : "Google Search grounding";
+                    const modelOptions: ReadonlyArray<{ readonly id: string; readonly label: string }> =
+                      cred.provider_id === "openai"
+                        ? [
+                            { id: "gpt-4.1", label: "GPT-4.1" },
+                            { id: "gpt-4o", label: "GPT-4o" },
+                            { id: "o3", label: "o3 (Reasoning)" },
+                            { id: "o4-mini", label: "o4-mini (Fast)" },
+                          ]
+                        : cred.provider_id === "anthropic"
+                          ? [
+                              { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
+                              { id: "claude-opus-4-20250514", label: "Claude Opus 4" },
+                              { id: "claude-3-7-sonnet-latest", label: "Claude 3.7 Sonnet" },
+                              { id: "claude-3-5-haiku-latest", label: "Claude 3.5 Haiku" },
+                            ]
+                          : [
+                              { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
+                              { id: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+                              { id: "gemini-2.0-flash", label: "Gemini 2.0 Flash" },
+                            ];
+                    const selectedModelId =
+                      inputState.providerModels?.[cred.provider_id] ?? modelOptions[0]?.id ?? "";
                     const keyPrefix = cred.provider_id === "openai" ? "sk-proj-" : cred.provider_id === "anthropic" ? "sk-ant-" : "AIzaSy-";
                     const inputId = cred.provider_id === "openai" ? "byok-key" : `byok-key-${cred.provider_id}`;
                     const statusTone = cred.status !== "active" ? cred.status : isPrimary ? "active" : "standby";
@@ -2300,16 +2328,21 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                       : cred.provider_id === "anthropic"
                         ? `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 18.5 9.6 5.5h1.5l5.1 13"/><path d="M6.5 14.2h7.4"/><path d="M15.8 5.5 20 18.5"/></svg>`
                         : `<svg class="provider-logo-svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.25c.62 4.92 4.83 9.13 9.75 9.75-4.92.62-9.13 4.83-9.75 9.75-.62-4.92-4.83-9.13-9.75-9.75 4.92-.62 9.13-4.83 9.75-9.75Z"/></svg>`;
-                    return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}">
+                    return `<tr class="provider-row" data-credential-ref="${escapeHtml(cred.credential_ref)}" data-provider-id="${escapeHtml(cred.provider_id)}" data-selected-model="${escapeHtml(selectedModelId)}" data-primary="${isPrimary}">
                     <th scope="row" class="provider-primary-cell">
                       <div class="provider-identity">
                         <span class="provider-brand-tile" data-provider="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}" aria-hidden="true">${logoSvg}</span>
                         <div class="provider-text">
                           <span class="provider-name">${escapeHtml(providerTitle)}</span>
-                          <span class="row-meta">${escapeHtml(modelSubtitle)}</span>
+                          <span class="row-meta">${escapeHtml(capabilitySubtitle)}</span>
                         </div>
                       </div>
                     </th>
+                    <td class="provider-model-cell">
+                      <select id="provider-model-${escapeHtml(cred.provider_id)}" class="provider-model-select" name="provider-model-${escapeHtml(cred.provider_id)}" aria-label="${escapeHtml(providerTitle)} model" data-action="set-provider-model" data-provider-id="${escapeHtml(cred.provider_id)}" data-primary="${isPrimary}">
+                        ${modelOptions.map((opt) => `<option value="${escapeHtml(opt.id)}"${opt.id === selectedModelId ? " selected" : ""}>${escapeHtml(opt.label)}</option>`).join("")}
+                      </select>
+                    </td>
                     <td class="provider-key-cell">
                       <div class="provider-key-group" data-primary="${isPrimary}">
                         <input id="${escapeHtml(inputId)}" class="provider-key-input" name="provider-key-${escapeHtml(cred.provider_id)}" type="${keyVisible ? "text" : "password"}" aria-label="${escapeHtml(providerTitle)} API key" placeholder="${escapeHtml(`${keyPrefix}••••••••${cred.masked_suffix}`)}" autocomplete="off" spellcheck="false" data-transient-key="true" data-provider-id="${escapeHtml(cred.provider_id)}" value="">
@@ -2588,6 +2621,12 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let reminderTimezone = initialState.reminderTimezone ?? "America/New_York";
   let keyVisible = initialState.keyVisible ?? false;
   let primaryCredentialRef = initialState.primaryCredentialRef ?? (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)[0]?.credential_ref ?? "cred-openai-1";
+  let providerModels: Record<string, string> = {
+    openai: "gpt-4.1",
+    anthropic: "claude-sonnet-4-20250514",
+    google_gemini: "gemini-2.5-pro",
+    ...(initialState.providerModels ?? {}),
+  };
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
   let adaptationChoice: "pending" | "accept_reviewed" | "keep_current" = initialState.adaptationChoice ?? "pending";
   let loadMoreNote: string | null = initialState.loadMoreNote ?? null;
@@ -2891,7 +2930,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       resourceScope, resourceCategory,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
-      remindersEnabled, remindersPaused, reminderTimezone, keyVisible, primaryCredentialRef, diagnosticControl, adaptationChoice,
+      remindersEnabled, remindersPaused, reminderTimezone, keyVisible, primaryCredentialRef,
+      providerModels: { ...providerModels } as Readonly<Record<string, string>>,
+      diagnosticControl, adaptationChoice,
       loadMoreNote, intakeNote, keyActionNote, snoozeNote, rescheduleSessionId, rescheduleValue,
       depthOverrideReset, studyDetailOpen, inspectorMode, flowOrder, deepDive, spacedReview,
       catalogResources, intakeGoalTitle, intakeSubject,
@@ -3106,6 +3147,12 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         primaryCredentialRef = data["credentialRef"];
         const matchedCred = (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS).find((c) => c.credential_ref === primaryCredentialRef);
         keyActionNote = `${matchedCred?.label ?? primaryCredentialRef} is now set as your primary AI provider for curriculum synthesis and diagnostics.`;
+      } else if (action === "set-provider-model" && data["providerId"] && (data["modelId"] || data["value"])) {
+        const providerId = data["providerId"];
+        const nextModel = (data["modelId"] ?? data["value"] ?? "").trim();
+        if (nextModel) {
+          providerModels = { ...providerModels, [providerId]: nextModel };
+        }
       } else if (action === "replace-key") keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
       else if (action === "delete-connection") keyActionNote = "Delete connection would remove this app's encrypted copy only. It would not revoke the key at the issuer. No live delete was sent.";
       else if (action === "load-more") loadMoreNote = "No further public revisions are available in this preview.";
@@ -3429,7 +3476,7 @@ export function mountCurriculumWebApp(
           ? { intakeSubject: select.value, intakeGoalTitle }
           : action === "toggle-intake-topic"
             ? { intakeTopic: select.value, intakeGoalTitle }
-            : { value: select.value };
+            : { ...select.dataset, value: select.value };
     if (controller.applyUiAction(action, payload).handled) syncDom();
   });
 
