@@ -412,24 +412,39 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(quiz, /<span class="proficiency-pill" data-proficiency-status="unassessed">[\s\S]*?Unassessed<\/span>/);
   assert.equal(/Study ahead|Prerequisite Bridge|class="status-toggle"|class="dep-flow"|Why this is next/.test(theory + coding + quiz), false);
 
-  // The source card says what the material is and where it lives, and opens it in one click.
-  const source = theory.match(/<section class="source-card"[\s\S]*?<\/section>/)?.[0] ?? "";
-  assert.ok(source.includes('class="source-title">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing</h3>'));
-  assert.ok(source.includes('<p class="source-publisher">Open ML Press (Curator Verified)</p>'));
-  assert.ok(source.includes('<a href="https://example.invalid/catalog/tokenization-monograph" target="_blank" rel="noopener noreferrer">catalog/tokenization-monograph</a>'));
-  assert.ok(source.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
-  assert.deepEqual([...source.matchAll(/<li>([^<]+)<\/li>/g)].map((match) => match[1]), ["Free", "External link"]);
-  assert.match(source, /<a class="btn-primary source-open" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Open Study Material<span aria-hidden="true">↗<\/span>/);
-  assert.equal(drawerFor("activity-review", "module-attention").includes('class="source-card"'), false, "no card without material");
+  // Each material is a subtask: one round checkbox, the title, the sections to read, and one link that opens it.
+  const material = theory.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.match(material, /^<li class="subtask" data-done="false"><button type="button" class="subtask-check" role="checkbox" aria-checked="false" aria-labelledby="learn-detail-inspector-subtask-0" data-action="toggle-subtask" data-activity-id="activity-theory" data-subtask-id="activity-theory:material:synthetic-resource-tokenization-v1">/);
+  assert.ok(material.includes('<p id="learn-detail-inspector-subtask-0" class="subtask-title">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing</p>'));
+  assert.ok(material.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
+  assert.match(material, /<a class="source-open-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Open study material<span aria-hidden="true">↗<\/span>/);
+  assert.ok(material.includes("<span>Open ML Press (Curator Verified) · Free · External link</span>"));
+  assert.equal(drawerFor("activity-review", "module-attention").includes(":material:"), false, "no material subtask without material");
 
-  // The drawer states what the step builds. Narrow screens add previous and next buttons, hidden at 872px and up.
+  // The study focus comes first, then the subtasks with a done count. Each row has one circle, so the numbered spine is gone.
+  assert.match(theory, /<ol class="step-pager" aria-hidden="true">/);
+  assert.match(theory, /<h3 id="learn-detail-inspector-prompt">Study focus<\/h3>[\s\S]*?<h3 id="learn-detail-inspector-subtasks" class="subtasks-head">Subtasks <span class="subtasks-count">0\/1<\/span><\/h3><ul class="subtask-list" role="list">/);
+  assert.equal(/step-procedure|step-num|todoist/.test(theory + coding + quiz), false);
+  // An activity with no material and no distinct prompt starts at the concept check.
+  const review = drawerFor("activity-review", "module-attention");
+  assert.match(review, /<ul class="subtask-list" role="list"><li class="subtask" data-done="false"><button [^>]*data-subtask-id="activity-review:concept-check">[\s\S]*?class="subtask-title">Answer the concept check<\/p>/);
   assert.match(theory, /<h3 id="learn-detail-inspector-focus">What this builds<\/h3>[\s\S]*?Analyze BPE and Unigram tokenization sequence lengths[\s\S]*?Prepares for: Unit 1 Gate/);
+  assert.match(theory, /<h3 id="learn-detail-inspector-order">Unit 1 learning order \(0\/3 done\)<\/h3>[\s\S]*?aria-current="step"/);
+  assert.match(theory, /<h3 id="learn-detail-inspector-time">Time &amp; duration<\/h3>[\s\S]*?Unit total<\/span><\/th><td>[^<]*\([0-9]+m remaining\)<\/td>/);
   assert.match(quiz, /<h3 id="learn-detail-inspector-focus">What this checks<\/h3>/);
+  // Every activity drawer (including concept-check activities) has at most ONE primary CTA button (.btn-primary).
+  for (const drawer of [theory, coding, quiz]) {
+    assert.equal(drawer.match(/class="btn-primary/g)?.length ?? 0, 1, "only one primary button in the drawer");
+  }
   const nav = coding.match(/<nav class="mobile-step-nav"[\s\S]*?<\/nav>/)?.[0] ?? "";
   assert.match(nav, /data-action="select-outline-activity" data-activity-id="activity-example"[^>]*>[\s\S]*?Prev: Worked Example/);
   assert.match(nav, /data-action="select-outline-activity" data-activity-id="activity-quiz"[^>]*>[\s\S]*?Next: Formative Checkpoint/);
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
+  assert.match(css, /dialog\.inspector\s*\{[^}]*width:\s*min\(560px,\s*100vw\);/s);
   assert.match(css, /@media \(min-width: 872px\)\s*\{\s*\.mobile-step-nav\s*\{\s*display:\s*none;/);
+  assert.match(css, /\.status-control \.seg-btn\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--color-surface\);/s);
+  // The global button rule has a 44px minimum, so the 20px subtask circle must reset it.
+  assert.match(css, /\n\.subtask-check \{[^}]*width: 20px;[^}]*min-width: 0;[^}]*min-height: 0;/);
 
   // An earlier step that is not done is one click away. A mastery gate says required instead of recommended.
   assert.match(coding, /Recommended first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-example"/);
@@ -446,15 +461,18 @@ test("Today has no detached Study block, and the drawer ends worked examples, qu
   assert.ok(audit.includes("<h3>Honest Two-Layer Status Summary</h3>"), "the status summary sits in the Progress audit disclosure");
 
   const drawerFor = (selectedActivityId, extra = {}) => drawerOf(renderCurriculumWebAppHtml({ selectedActivityId, studyDetailOpen: true, ...extra }));
-  const checkOf = (drawer) => drawer.match(/<section id="study-workspace" class="inspector-section study-workspace"[\s\S]*?<\/section>/)?.[0] ?? "";
+  const checkOf = (drawer) => drawer.match(/<section id="study-workspace" class="study-workspace" aria-label="Concept check"[\s\S]*?<\/section>/)?.[0] ?? "";
   const legendOf = (check) => check.match(/<legend>([^<]+)<\/legend>/)?.[1];
+  const countOf = (drawer) => drawer.match(/<span class="subtasks-count">([^<]+)<\/span>/)?.[1];
 
   for (const id of ["activity-example", "activity-quiz", "activity-review"]) {
     const check = checkOf(drawerFor(id));
-    assert.ok(check.includes('<h3 id="learn-detail-inspector-check">Concept check</h3>'), `${id} has no concept check`);
+    assert.ok(check, `${id} has no concept check`);
     assert.match(check, /<div class="math-formula-surface" data-opaque-surface="true"><math [^>]*aria-label="Mathematical expression: Attention/);
     assert.equal(legendOf(check), "Which statement matches the scaling term?");
-    assert.equal(check.match(/<input type="radio"[^>]*name="practice-choice"/g)?.length, 3);
+    // Each answer keeps a real radio for keyboards and screen readers, hidden behind a lettered square, so no answer looks like a round subtask checkbox.
+    assert.equal(check.match(/<input type="radio" class="st-sr"[^>]*name="practice-choice"/g)?.length, 3);
+    assert.deepEqual([...check.matchAll(/<span class="choice-letter" aria-hidden="true">([A-Z])<\/span>/g)].map((match) => match[1]), ["A", "B", "C"]);
     for (const action of ["request-hint", "study-worked-solution", "submit-practice"]) assert.ok(check.includes(`data-action="${action}"`), `${id} has no ${action}`);
   }
   for (const id of ["activity-theory", "activity-coding"]) assert.equal(checkOf(drawerFor(id)), "", `${id} has a concept check`);
@@ -477,17 +495,29 @@ test("Today has no detached Study block, and the drawer ends worked examples, qu
   const live = () => checkOf(drawerOf(root.innerHTML));
   const practiceOf = ({ hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice }) => ({ hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice });
   const fresh = { hintRequested: false, workedSolutionRevealed: false, practiceSubmitted: false, practiceChoice: null };
+  // Submit answer is the one bordered button. Hint and worked solution are text actions.
+  assert.match(live(), /<div class="practice-actions"><button type="button" class="btn-secondary" data-action="submit-practice">Submit answer<\/button><button type="button" class="practice-aid" data-action="request-hint">Show hint<\/button><button type="button" class="practice-aid" data-action="study-worked-solution">Show worked solution<\/button><\/div>/);
   click({ action: "submit-practice" });
-  assert.ok(live().includes("Choose an answer, then select Submit."));
+  assert.ok(live().includes("Choose an answer, then select Submit answer."));
+  assert.equal(countOf(drawerOf(root.innerHTML)), "0/3", "an empty submit does not check off the concept check");
   const chosen = { 'input[name="practice-choice"]:checked': { value: "variance" } };
   click({ action: "request-hint" }, chosen);
   assert.ok(live().includes('value="variance" checked'));
   assert.match(live(), /<strong>Hint\.<\/strong> Suppose the entries of q and k are independent/);
+  assert.equal(live().includes('data-action="request-hint"'), false, "the hint note replaces its button");
   click({ action: "study-worked-solution" }, { 'input[name="practice-choice"]:checked': null });
   assert.ok(live().includes('value="variance" checked'), "the worked solution keeps the chosen answer");
   assert.match(live(), /<strong>Worked solution\.<\/strong> The dot product q·k has variance d_k\./);
+  assert.equal(live().includes('data-action="study-worked-solution"'), false, "the solution note replaces its button");
   click({ action: "submit-practice" }, chosen);
   assert.ok(live().includes("Answer submitted: It keeps the variance of each dot-product score near 1 as d_k grows."));
+  assert.equal(countOf(drawerOf(root.innerHTML)), "1/3", "a submitted answer checks off the concept check");
+  assert.match(drawerOf(root.innerHTML), /aria-checked="true"[^>]*data-subtask-id="activity-example:concept-check"/);
+  const material = { action: "toggle-subtask", activityId: "activity-example", subtaskId: "activity-example:material:synthetic-resource-tokenization-v1" };
+  click(material);
+  assert.equal(countOf(drawerOf(root.innerHTML)), "2/3", "a material checkbox checks off that material");
+  click(material);
+  assert.equal(countOf(drawerOf(root.innerHTML)), "1/3", "a second click unchecks it");
   assert.deepEqual(practiceOf(app.getState()), { hintRequested: true, workedSolutionRevealed: true, practiceSubmitted: true, practiceChoice: "variance" });
 
   click({ action: "select-outline-activity", activityId: "activity-quiz", moduleId: "module-attention" });
@@ -496,6 +526,67 @@ test("Today has no detached Study block, and the drawer ends worked examples, qu
   click({ action: "request-hint" }, chosen);
   change("curriculum-linear-algebra-002");
   assert.deepEqual(practiceOf(app.getState()), fresh);
+});
+
+test("checked subtasks set the activity status, and the status control sets the subtasks", () => {
+  const open = (initialState = {}) => {
+    const { app, root, click } = mountWithClicks({ selectedActivityId: "activity-example", studyDetailOpen: true, ...initialState });
+    const drawer = () => drawerOf(root.innerHTML);
+    return {
+      app, root, click,
+      toggle: (subtask) => click({ action: "toggle-subtask", activityId: "activity-example", subtaskId: `activity-example:${subtask}` }),
+      // The pressed status and the subtask count, for example ["In progress", "1/3"].
+      state: () => [drawer().match(/aria-pressed="true">([^<]+)</)?.[1], drawer().match(/<span class="subtasks-count">([^<]+)<\/span>/)?.[1]],
+      checked: () => [...drawer().matchAll(/aria-checked="true"[^>]*data-subtask-id="activity-example:([^"]+)"/g)].map((match) => match[1]),
+    };
+  };
+  const notes = "material:synthetic-resource-tokenization-v1";
+  const lecture = "material:synthetic-resource-attention-youtube-v1";
+  const { root, click, toggle, state, checked } = open();
+  assert.deepEqual(state(), ["Not started", "0/3"]);
+
+  // The first check starts the activity. The last check, here a submitted answer, marks it Done.
+  toggle(notes);
+  assert.deepEqual(state(), ["In progress", "1/3"]);
+  assert.ok(root.innerHTML.includes('data-activity-id="activity-example" data-execution-status="in_progress"'), "the board shows the new status");
+  toggle(lecture);
+  assert.deepEqual(state(), ["In progress", "2/3"]);
+  click({ action: "submit-practice" }, { 'input[name="practice-choice"]:checked': { value: "variance" } });
+  assert.deepEqual(state(), ["Done", "3/3"]);
+  assert.ok(root.innerHTML.includes('data-self-reported-count="1"'));
+
+  // The checkboxes stay live on a Done activity. Unchecking one reopens it, and unchecking the last resets it.
+  toggle(notes);
+  assert.deepEqual(state(), ["In progress", "2/3"]);
+  assert.ok(root.innerHTML.includes('data-self-reported-count="0"'), "reopening drops the self-reported completion");
+  toggle(lecture);
+  toggle("concept-check");
+  assert.deepEqual(state(), ["Not started", "0/3"]);
+
+  // Done checks every subtask and Not started clears them. In progress keeps them as they are.
+  click({ action: "set-activity-status", activityId: "activity-example", status: "completed" });
+  assert.deepEqual(checked(), [notes, lecture, "concept-check"]);
+  click({ action: "set-activity-status", activityId: "activity-example", status: "in_progress" });
+  assert.deepEqual(state(), ["In progress", "3/3"]);
+  click({ action: "set-activity-status", activityId: "activity-example", status: "not_started" });
+  assert.deepEqual(state(), ["Not started", "0/3"]);
+  click({ action: "complete-activity", activityId: "activity-example", eventId: "evt-complete-activity-example" });
+  assert.deepEqual(state(), ["Done", "3/3"]);
+  // A subtask id that is not one of this activity's changes nothing.
+  toggle("material:unknown");
+  assert.deepEqual(state(), ["Done", "3/3"]);
+
+  // An activity completed before this session shows every subtask checked. Unchecking one keeps the other two.
+  const earlier = open({ activityStates: { "activity-example": "self_reported_completed" } });
+  assert.deepEqual(earlier.state(), ["Done", "3/3"]);
+  earlier.toggle(notes);
+  assert.deepEqual(earlier.state(), ["In progress", "2/3"]);
+  assert.deepEqual(earlier.checked(), [lecture, "concept-check"]);
+
+  // A guest is asked to sign in, and nothing is checked.
+  const guest = open({ authStatus: "guest" });
+  guest.toggle(notes);
+  assert.deepEqual([guest.app.getState().openDialogId, guest.app.getState().completedSubtaskIds], ["dialog-auth", []]);
 });
 
 test("the status control sets three states, celebrates Done, and then offers the next step", () => {
@@ -546,17 +637,23 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   const section = (id) => lab.match(new RegExp(`<section class="inspector-section[^"]*" aria-labelledby="learn-detail-inspector-${id}">([\\s\\S]*?)</section>`))?.[1] ?? "";
   assert.match(section("brief"), /Deliverable brief[\s\S]*Run the external test suite to verify lossless UTF-8 round-trip encoding\.[\s\S]*<li>A reversible tokenizer and a tensor shape validator/);
   assert.deepEqual([...section("specs").matchAll(/<span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), ["25 min (19–38 min)", "Formal", "Required", "Local or external IDE"]);
-  assert.ok(section("checks").includes("Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples."));
-  assert.match(lab, /<section class="source-card"[\s\S]*?>Open Lab Specification<span aria-hidden="true">↗<\/span>/);
+  assert.match(lab, /data-subtask-id="activity-coding:verify:objective-tokenization">[\s\S]*?class="subtask-title">Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples\.<\/p>/);
+  assert.match(lab, /<a class="source-open-link" [^>]*>Open lab specification<span aria-hidden="true">↗<\/span>/);
   assert.ok(lab.includes("Optional certificate $49.00"), "a paid option stays visible before the learner leaves");
-  const order = ["brief", "specs", "checks"].map((id) => lab.indexOf(`aria-labelledby="learn-detail-inspector-${id}"`)).concat(lab.indexOf('class="source-card"'));
+  // The brief and specs describe the task. The subtasks follow: open the spec first, then verify each criterion.
+  const order = [
+    lab.indexOf('aria-labelledby="learn-detail-inspector-brief"'),
+    lab.indexOf('aria-labelledby="learn-detail-inspector-specs"'),
+    lab.indexOf('data-subtask-id="activity-coding:material:'),
+    lab.indexOf('data-subtask-id="activity-coding:verify:'),
+  ];
   assert.ok(order.every((at) => at >= 0));
   assert.deepEqual([...order].sort((a, b) => a - b), order);
   assert.equal(lab.includes('<table class="meta-table">'), false, "the lab sheet shows its specs as chips");
 
   // A reading activity keeps the plain details table and has no lab sections.
   const reading = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-theory", studyDetailOpen: true }));
-  assert.equal(/Deliverable brief|Verification checklist|Open Lab Specification/.test(reading), false);
+  assert.equal(/Deliverable brief|:verify:|Open lab specification/.test(reading), false);
   assert.ok(reading.includes('<table class="meta-table">'));
 
   // Rigor is the plan's math depth, and a topic override wins over it.
@@ -660,7 +757,7 @@ test("a plan with no public quiz bank gates on a self-check rubric in the drawer
   assert.ok(rubric.includes('<h3 id="learn-detail-inspector-rubric">Synthesis &amp; Self-Check Rubric</h3>'));
   assert.ok(rubric.includes('<p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>'));
   assert.match(rubric, /<p class="rubric-prompt">Compare Prince Andrei's disillusionment at Austerlitz[\s\S]*?hedgehog and fox framework applies\.<\/p>/);
-  assert.equal(rubric.match(/<li>/g)?.length, 3);
+  assert.equal(drawerOf(root.innerHTML).match(/data-subtask-id="tl-gate-war-and-peace:rubric:\d"/g)?.length, 3, "each rubric criterion is a subtask");
   assert.ok(drawerOf(root.innerHTML).includes('<span class="proficiency-pill" data-proficiency-status="unassessed">'));
 
   // The review revisits the same rubric. A gate backed by a quiz bank shows none.
@@ -1598,15 +1695,21 @@ test("Resources renders a Filterable Data Table + Category Pill Bar with Synced 
   assert.equal(laResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 4);
   assert.ok(laResources.includes("Public Problem Sets with Worked Solutions: Linear Algebra"));
 
-  // 5. Clicking a "Used in units & activities" chip opens that activity in the study inspector drawer
-  click({
-    action: "resume-curriculum",
-    curriculumId: "curriculum-linear-algebra-002",
-    activityId: "la-gate-spectral",
-    moduleId: "la-module-spectral",
-  });
-  assert.ok(drawerOf(root.innerHTML).includes('data-open="true"'));
-  assert.ok(drawerOf(root.innerHTML).includes(">Problem Set 1: Eigenvalues &amp; Projections</h2>"));
+  // 5. Type is the first column without redundant curriculum title pills, and Units chips are external hyperlinks to the actual resource source (not sidebar drawer triggers)
+  assert.match(
+    initialResources,
+    /<thead>\s*<tr>\s*<th scope="col">Type<\/th>\s*<th scope="col">Resource<\/th>\s*<th scope="col">Units<\/th>/
+  );
+  assert.equal(initialResources.includes("resource-curriculum-pill"), false);
+  assert.equal(laResources.includes('data-action="resume-curriculum"'), false);
+  assert.match(
+    laResources,
+    /<a href="https:\/\/example\.invalid\/catalog\/linear-algebra-problem-sets(?:#[^"]+)?" target="_blank" rel="noopener noreferrer" class="resource-usage-chip"[^>]*data-activity-id="la-gate-spectral"/
+  );
+  assert.match(
+    laResources,
+    /<a href="https:\/\/example\.invalid\/catalog\/linear-algebra-notes#seg-la-eigen" target="_blank" rel="noopener noreferrer" class="resource-usage-chip"/
+  );
 
   // 6. Verify responsive-table container query and sticky header rules in styles.css
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");

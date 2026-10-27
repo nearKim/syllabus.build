@@ -69,6 +69,54 @@ const CONCEPT_CHECK_TYPES: ReadonlySet<string> = new Set(["worked_example", "qui
 
 export type SourceCardView = StudyActivity["resourceProvenanceCards"][number];
 
+export function activityConceptCheck(
+  activity: StudyActivity,
+  rubric: SelfCheckRubric | null,
+  conceptCheck: ConceptCheck | null,
+): ConceptCheck | null {
+  return conceptCheck && !rubric && CONCEPT_CHECK_TYPES.has(activity.type) ? conceptCheck : null;
+}
+
+// One checkable row under the activity: a material, the concept check, or a lab or rubric criterion.
+export type SubtaskSpec =
+  | { readonly kind: "material"; readonly subtaskId: string; readonly card: SourceCardView }
+  | { readonly kind: "concept-check"; readonly subtaskId: string }
+  | { readonly kind: "criterion"; readonly subtaskId: string; readonly text: string };
+
+// The activity's subtasks in working order: each material, the concept check, then each lab or rubric criterion.
+// The drawer renders this list and the controller counts it to set the activity status.
+export function activitySubtasks(
+  modules: readonly StudyModule[],
+  activity: StudyActivity,
+  rubric: SelfCheckRubric | null,
+  conceptCheck: ConceptCheck | null,
+): readonly SubtaskSpec[] {
+  const id = activity.activityId;
+  const isLab = activity.type === "coding" || activity.type === "project";
+  const objectives = new Map(modules.flatMap((unit) => unit.objectives).map((objective) => [objective.objectiveId, objective]));
+  const labCriteria = isLab
+    ? activity.objectiveIds.flatMap((objectiveId) => {
+        const criterion = objectives.get(objectiveId)?.successCriterion;
+        return criterion ? [{ kind: "criterion" as const, subtaskId: `${id}:verify:${objectiveId}`, text: criterion }] : [];
+      })
+    : [];
+  return [
+    ...activity.resourceProvenanceCards.map((card) => ({
+      kind: "material" as const,
+      subtaskId: `${id}:material:${card.resourceVersionId}`,
+      card,
+    })),
+    ...(activityConceptCheck(activity, rubric, conceptCheck) ? [{ kind: "concept-check" as const, subtaskId: conceptCheckSubtaskId(id) }] : []),
+    ...labCriteria,
+    ...(rubric?.criteria ?? []).map((text, idx) => ({ kind: "criterion" as const, subtaskId: `${id}:rubric:${idx}`, text })),
+  ];
+}
+
+// A valid Submit answer checks this subtask off, so the controller builds the same id.
+export function conceptCheckSubtaskId(activityId: string): string {
+  return `${activityId}:concept-check`;
+}
+
 export function displayLocation(url: string): string {
   const { hostname, pathname } = new URL(url);
   const path = pathname.replace(/\/+$/, "");
@@ -90,6 +138,7 @@ export interface InspectorDrawerProps {
   readonly conceptCheck: ConceptCheck | null;
   readonly practice: PracticeState;
   readonly skipRecorded: boolean;
+  readonly completedSubtaskIds: readonly string[];
 }
 
 export function InspectorDrawer({
@@ -105,6 +154,7 @@ export function InspectorDrawer({
   conceptCheck,
   practice,
   skipRecorded,
+  completedSubtaskIds,
 }: InspectorDrawerProps): VNode {
   const unitIdx = modules.indexOf(mod);
   const unitNumber = unitIdx + 1;
@@ -332,6 +382,8 @@ export function InspectorDrawer({
   const isLab = activity.type === "coding" || activity.type === "project";
   const tone = executionTone(activity.executionStatus);
   const status: SettableStatus = tone === "done" ? "completed" : tone === "doing" ? "in_progress" : "not_started";
+  const uProg = unitProgress(mod.activities);
+  const stepIndexInUnit = Math.max(0, mod.activities.findIndex((a) => a.activityId === activity.activityId)) + 1;
 
   const steps = modules.flatMap((unit) => unit.activities);
   const at = steps.findIndex((step) => step.activityId === activity.activityId);
@@ -346,9 +398,8 @@ export function InspectorDrawer({
     modules.flatMap((unit) => unit.objectives).map((objective) => [objective.objectiveId, objective]),
   );
   const mine = activity.objectiveIds.flatMap((objectiveId) => objectives.get(objectiveId) ?? []);
-  const criteriaObjectives = mine.filter((objective) => objective.successCriterion);
 
-  const check = conceptCheck && !rubric && CONCEPT_CHECK_TYPES.has(activity.type) ? conceptCheck : null;
+  const check = activityConceptCheck(activity, rubric, conceptCheck);
   const chosen = check?.choices.find((choice) => choice.value === practice.choice);
 
   const specs: readonly (readonly [SfIconName, string])[] = [
@@ -357,6 +408,132 @@ export function InspectorDrawer({
     ["pin", activity.required ? "Required" : "Optional"],
     ["code", "Local or external IDE"],
   ];
+
+  const hasPrompt = !isLab && Boolean(activity.promptSummary && activity.promptSummary !== activity.title);
+
+  // The activity is the parent task. A Done activity shows every subtask as checked, even one completed elsewhere.
+  const completedSubtasks = new Set(completedSubtaskIds);
+  const subtaskDone = (subtaskId: string): boolean => status === "completed" || completedSubtasks.has(subtaskId);
+
+  const conceptCheckWorkspace = check ? (
+    <>
+      <p class="subtask-meta">Practice only. Your answer does not change the objective's proficiency status.</p>
+      <section id="study-workspace" class="study-workspace" aria-label="Concept check" data-opaque-surface="true">
+        <div
+          class="math-formula-surface"
+          data-opaque-surface="true"
+          dangerouslySetInnerHTML={{ __html: renderAccessibleMathFormula(check.formula, { displayMode: "block" }).mathml }}
+        />
+        <fieldset class="choice-group">
+          <legend>
+            <MathText text={check.question} />
+          </legend>
+          {check.choices.map(({ value, label }, idx) => (
+            <label key={value} class="choice-option" for={`practice-choice-${value}`}>
+              <input
+                type="radio"
+                class="st-sr"
+                id={`practice-choice-${value}`}
+                name="practice-choice"
+                value={value}
+                checked={value === practice.choice}
+              />
+              <span class="choice-letter" aria-hidden="true">
+                {String.fromCharCode(65 + idx)}
+              </span>
+              <span>
+                <MathText text={label} />
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <div class="practice-actions">
+          <button type="button" class="btn-secondary" data-action="submit-practice">
+            Submit answer
+          </button>
+          {practice.hintRequested ? null : (
+            <button type="button" class="practice-aid" data-action="request-hint">
+              Show hint
+            </button>
+          )}
+          {practice.workedSolutionRevealed ? null : (
+            <button type="button" class="practice-aid" data-action="study-worked-solution">
+              Show worked solution
+            </button>
+          )}
+        </div>
+        {practice.submitted ? (
+          <p class="meta-text practice-feedback" role="status">
+            {chosen ? (
+              <>
+                Answer submitted: <MathText text={chosen.label} />.
+              </>
+            ) : (
+              "Choose an answer, then select Submit answer."
+            )}
+          </p>
+        ) : null}
+        {practice.hintRequested ? (
+          <p class="practice-note" role="status">
+            <strong>Hint.</strong> <MathText text={check.hint} /> Hints carry no penalty.
+          </p>
+        ) : null}
+        {practice.workedSolutionRevealed ? (
+          <p class="practice-note" role="status">
+            <strong>Worked solution.</strong> <MathText text={check.solution} /> This counts as solution-assisted study, not an
+            independent attempt.
+          </p>
+        ) : null}
+      </section>
+    </>
+  ) : null;
+
+  const subtasks = activitySubtasks(modules, activity, rubric, conceptCheck).map((subtask) => {
+    switch (subtask.kind) {
+      case "material": {
+        const { card } = subtask;
+        const segments = catalogResources[card.resourceVersionId]?.segments ?? [];
+        const sections = card.verifiedSegments
+          .flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
+          .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
+        const provenance = [
+          card.verifiedPublisher,
+          humanize(card.accessModel),
+          card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
+          ...(card.optionalCertificationBadge ? [`Optional certificate ${formatMinorCurrency(4900, "USD")}`] : []),
+        ];
+        const url = card.canonicalUrl;
+        return {
+          subtaskId: subtask.subtaskId,
+          title: card.title,
+          details: (
+            <>
+              {sections.map((section, secIdx) => (
+                <p key={secIdx} class="source-section">
+                  <MathText text={section} />
+                </p>
+              ))}
+              <p class="subtask-meta">
+                {url ? (
+                  <a class="source-open-link" href={url} target="_blank" rel="noopener noreferrer">
+                    {isLab ? "Open lab specification" : "Open study material"}
+                    <span aria-hidden="true">↗</span>
+                    <span class="st-sr"> in a new tab</span>
+                  </a>
+                ) : null}
+                <span>{provenance.join(" · ")}</span>
+              </p>
+            </>
+          ),
+        };
+      }
+      case "concept-check":
+        return { subtaskId: subtask.subtaskId, title: "Answer the concept check", details: conceptCheckWorkspace };
+      case "criterion":
+        return { subtaskId: subtask.subtaskId, title: <MathText text={subtask.text} />, details: null };
+    }
+  });
+  const doneSubtasks = subtasks.filter(({ subtaskId }) => subtaskDone(subtaskId)).length;
 
   return (
     <dialog
@@ -370,9 +547,20 @@ export function InspectorDrawer({
       data-opaque-surface="true"
     >
       <header class="inspector-head">
-        <p class="inspector-context">
-          Unit {unitNumber} · {TRACK_LABELS[track].badge}
-        </p>
+        <div class="inspector-context-row">
+          <p class="inspector-context">
+            Unit {unitNumber} · Step {stepIndexInUnit} of {mod.activities.length} · {TRACK_LABELS[track].badge} · {effortWords(activity.durationTriplet)}
+          </p>
+          <ol class="step-pager" aria-hidden="true">
+            {mod.activities.map((unitAct) => (
+              <li
+                key={unitAct.activityId}
+                data-done={String(isClosed(unitAct.executionStatus))}
+                data-current={String(unitAct.activityId === activity.activityId)}
+              />
+            ))}
+          </ol>
+        </div>
         <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
           <MathText text={activity.title} />
         </h2>
@@ -468,35 +656,12 @@ export function InspectorDrawer({
           </div>
         ) : null}
 
-        {!isLab && activity.promptSummary && activity.promptSummary !== activity.title ? (
+        {hasPrompt ? (
           <section class="inspector-section study-guide-prompt" aria-labelledby={`${INSPECTOR_ID}-prompt`}>
             <h3 id={`${INSPECTOR_ID}-prompt`}>Study focus</h3>
             <p class="prose">
               <MathText text={activity.promptSummary} />
             </p>
-          </section>
-        ) : null}
-
-        {rubric ? (
-          <section class="inspector-section rubric-block" aria-labelledby={`${INSPECTOR_ID}-rubric`}>
-            <h3 id={`${INSPECTOR_ID}-rubric`}>Synthesis &amp; Self-Check Rubric</h3>
-            <p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>
-            <p class="rubric-label">Guiding synthesis prompt</p>
-            <p class="rubric-prompt">
-              <MathText text={rubric.prompt} />
-            </p>
-            <p class="rubric-label">Check your synthesis against each criterion before you mark this Done</p>
-            <ul class="lab-checklist">
-              {rubric.criteria.map((criterion, idx) => (
-                <li key={idx}>
-                  <StatusGlyph type="module" tone="todo" size={16} />
-                  <span>
-                    <MathText text={criterion} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p class="meta-text">Your self-check does not change the objective's proficiency status.</p>
           </section>
         ) : null}
 
@@ -528,200 +693,169 @@ export function InspectorDrawer({
                 ))}
               </ul>
             </section>
-            <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-checks`}>
-              <h3 id={`${INSPECTOR_ID}-checks`}>Verification checklist</h3>
-              <ul class="lab-checklist">
-                {criteriaObjectives.length > 0 ? (
-                  criteriaObjectives.map((objective) => (
-                    <li key={objective.objectiveId}>
-                      <StatusGlyph type="module" tone="todo" size={16} />
-                      <span>
-                        <MathText text={objective.successCriterion} />
-                      </span>
-                    </li>
-                  ))
-                ) : (
-                  <li>No acceptance criteria are stated.</li>
-                )}
-              </ul>
-            </section>
           </>
         ) : null}
 
-        {activity.resourceProvenanceCards.map((card, index) => {
-          const segments = catalogResources[card.resourceVersionId]?.segments ?? [];
-          const sections = card.verifiedSegments
-            .flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
-            .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
-          const tags = [
-            humanize(card.accessModel),
-            card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
-            ...(card.optionalCertificationBadge ? [`Optional certificate ${formatMinorCurrency(4900, "USD")}`] : []),
-          ];
-          const url = card.canonicalUrl;
-          return (
-            <section
-              key={`${card.resourceVersionId}-${index}`}
-              class="source-card"
-              data-resource-version-id={card.resourceVersionId}
-              aria-labelledby={`${INSPECTOR_ID}-source-${index}`}
-            >
-              <h3 id={`${INSPECTOR_ID}-source-${index}`} class="source-title">
-                {card.title}
-              </h3>
-              <p class="source-publisher">{card.verifiedPublisher}</p>
-              {url ? (
-                <p class="source-location">
-                  <SfIcon name="resources" size={15} />
-                  <a href={url} target="_blank" rel="noopener noreferrer">
-                    {displayLocation(url)}
-                  </a>
-                </p>
-              ) : null}
-              {sections.map((section, secIdx) => (
-                <p key={secIdx} class="source-section">
-                  <MathText text={section} />
-                </p>
-              ))}
-              <ul class="source-tags">
-                {tags.map((tag, tagIdx) => (
-                  <li key={tagIdx}>{tag}</li>
-                ))}
-              </ul>
-              {url ? (
-                <a class="btn-primary source-open" href={url} target="_blank" rel="noopener noreferrer">
-                  {isLab ? "Open Lab Specification" : "Open Study Material"}
-                  <span aria-hidden="true">↗</span>
-                  <span class="st-sr"> in a new tab</span>
-                </a>
-              ) : null}
-            </section>
-          );
-        })}
-
-        {check ? (
-          <section
-            id="study-workspace"
-            class="inspector-section study-workspace"
-            aria-labelledby={`${INSPECTOR_ID}-check`}
-            data-opaque-surface="true"
-          >
-            <h3 id={`${INSPECTOR_ID}-check`}>Concept check</h3>
-            <div
-              class="math-formula-surface"
-              data-opaque-surface="true"
-              dangerouslySetInnerHTML={{ __html: renderAccessibleMathFormula(check.formula, { displayMode: "block" }).mathml }}
-            />
-            <fieldset class="choice-group">
-              <legend>
-                <MathText text={check.question} />
-              </legend>
-              {check.choices.map(({ value, label }) => (
-                <label key={value} class="choice-option" for={`practice-choice-${value}`}>
-                  <input
-                    type="radio"
-                    id={`practice-choice-${value}`}
-                    name="practice-choice"
-                    value={value}
-                    checked={value === practice.choice}
-                  />
-                  <span>
-                    <MathText text={label} />
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-            <div class="action-row">
-              <button type="button" class="btn-secondary" data-action="request-hint">
-                Request hint
-              </button>
-              <button type="button" class="btn-secondary" data-action="study-worked-solution">
-                Study worked solution
-              </button>
-              <button type="button" class="btn-primary" data-action="submit-practice">
-                Submit
-              </button>
-            </div>
-            {practice.submitted ? (
-              <p class="meta-text practice-feedback" role="status">
-                {chosen ? (
-                  <>
-                    Answer submitted: <MathText text={chosen.label} />. Practice answers do not change the objective's proficiency status.
-                  </>
-                ) : (
-                  "Choose an answer, then select Submit."
-                )}
-              </p>
-            ) : null}
-            {practice.hintRequested ? (
-              <p class="practice-note" role="status">
-                <strong>Hint.</strong> <MathText text={check.hint} /> Hints carry no penalty.
-              </p>
-            ) : null}
-            {practice.workedSolutionRevealed ? (
-              <p class="practice-note" role="status">
-                <strong>Worked solution.</strong> <MathText text={check.solution} /> This counts as solution-assisted study, not an
-                independent attempt.
-              </p>
-            ) : null}
+        {rubric ? (
+          <section class="inspector-section rubric-block" aria-labelledby={`${INSPECTOR_ID}-rubric`}>
+            <h3 id={`${INSPECTOR_ID}-rubric`}>Synthesis &amp; Self-Check Rubric</h3>
+            <p class="rubric-mode">Self-Evaluated Rubric · No public quiz bank for this topic</p>
+            <p class="rubric-label">Guiding synthesis prompt</p>
+            <p class="rubric-prompt">
+              <MathText text={rubric.prompt} />
+            </p>
+            <p class="meta-text">
+              Check off each criterion under Subtasks when your synthesis meets it. Your self-check does not change the
+              objective's proficiency status.
+            </p>
           </section>
         ) : null}
 
-        <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-focus`}>
-          <h3 id={`${INSPECTOR_ID}-focus`}>{isGate ? "What this checks" : "What this builds"}</h3>
-          <ul class="focus-list">
-            {mine.length > 0 ? (
-              mine.map((objective) => (
-                <li key={objective.objectiveId}>
-                  <MathText text={objective.title} />
-                </li>
-              ))
-            ) : (
-              <li>No objective is mapped to this activity.</li>
-            )}
-          </ul>
-          {isGate || postGateIds(mod).has(activity.activityId) ? null : (
-            <p class="focus-next">
-              <StatusGlyph type="gate" tone={unitGate(mod).passed ? "done" : "todo"} size={16} />
-              <span>Prepares for: Unit {unitNumber} Gate</span>
-            </p>
-          )}
-        </section>
+        {subtasks.length > 0 ? (
+          <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-subtasks`}>
+            <h3 id={`${INSPECTOR_ID}-subtasks`} class="subtasks-head">
+              Subtasks <span class="subtasks-count">{doneSubtasks}/{subtasks.length}</span>
+            </h3>
+            <ul class="subtask-list" role="list">
+              {subtasks.map(({ subtaskId, title, details }, idx) => {
+                const done = subtaskDone(subtaskId);
+                return (
+                  <li key={subtaskId} class="subtask" data-done={String(done)}>
+                    <button
+                      type="button"
+                      class="subtask-check"
+                      role="checkbox"
+                      aria-checked={done}
+                      aria-labelledby={`${INSPECTOR_ID}-subtask-${idx}`}
+                      data-action="toggle-subtask"
+                      data-activity-id={id}
+                      data-subtask-id={subtaskId}
+                    >
+                      <SfIcon name="check" size={15} />
+                    </button>
+                    <div class="subtask-body">
+                      <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
+                        {title}
+                      </p>
+                      {details}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
 
-        {isLab ? null : (
-          <table class="meta-table">
-            <caption class="st-sr">Activity details</caption>
-            <tbody>
-              <tr>
-                <th scope="row">
-                  <span class="meta-key">
-                    <SfIcon name="clock" />
-                    Duration
-                  </span>
-                </th>
-                <td>{effortWords(activity.durationTriplet)}</td>
-              </tr>
-              <tr>
-                <th scope="row">
-                  <span class="meta-key">
-                    <SfIcon name="rigor" />
-                    Rigor
-                  </span>
-                </th>
-                <td>{rigor}</td>
-              </tr>
-              <tr>
-                <th scope="row">
-                  <span class="meta-key">
-                    <SfIcon name="pin" />
-                    Type
-                  </span>
-                </th>
-                <td>{activity.required ? "Required" : "Optional"}</td>
-              </tr>
-            </tbody>
-          </table>
-        )}
+        <div class="inspector-reference-group">
+          <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-focus`}>
+            <h3 id={`${INSPECTOR_ID}-focus`}>{isGate ? "What this checks" : "What this builds"}</h3>
+            <ul class="focus-list">
+              {mine.length > 0 ? (
+                mine.map((objective) => (
+                  <li key={objective.objectiveId}>
+                    <MathText text={objective.title} />
+                  </li>
+                ))
+              ) : (
+                <li>No objective is mapped to this activity.</li>
+              )}
+            </ul>
+            {isGate || postGateIds(mod).has(activity.activityId) ? null : (
+              <p class="focus-next">
+                <StatusGlyph type="gate" tone={unitGate(mod).passed ? "done" : "todo"} size={16} />
+                <span>Prepares for: Unit {unitNumber} Gate</span>
+              </p>
+            )}
+          </section>
+
+          {isLab ? null : (
+            <section class="inspector-section inspector-time-section" aria-labelledby={`${INSPECTOR_ID}-time`}>
+              <h3 id={`${INSPECTOR_ID}-time`}>Time &amp; duration</h3>
+              <table class="meta-table">
+                <caption class="st-sr">Activity details</caption>
+                <tbody>
+                  <tr>
+                    <th scope="row">
+                      <span class="meta-key">
+                        <SfIcon name="clock" />
+                        Duration
+                      </span>
+                    </th>
+                    <td>{effortWords(activity.durationTriplet)}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <span class="meta-key">
+                        <SfIcon name="learn" />
+                        Unit total
+                      </span>
+                    </th>
+                    <td>
+                      {effortWords(mod.durationTriplet)}
+                      {uProg.left > 0 ? ` (${uProg.left}m remaining)` : " (complete)"}
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <span class="meta-key">
+                        <SfIcon name="rigor" />
+                        Rigor
+                      </span>
+                    </th>
+                    <td>{rigor}</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">
+                      <span class="meta-key">
+                        <SfIcon name="pin" />
+                        Type
+                      </span>
+                    </th>
+                    <td>{activity.required ? "Required" : "Optional"}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          )}
+
+          <section class="inspector-section inspector-order-section" aria-labelledby={`${INSPECTOR_ID}-order`}>
+            <h3 id={`${INSPECTOR_ID}-order`}>
+              Unit {unitNumber} learning order ({uProg.done}/{uProg.total} done)
+            </h3>
+            <ol class="inspector-order-list">
+              {mod.activities.map((step, idx) => {
+                const stepTrack = trackOf(step);
+                const isCurrent = step.activityId === activity.activityId;
+                const stepDone = isClosed(step.executionStatus);
+                return (
+                  <li
+                    key={step.activityId}
+                    class="inspector-order-item"
+                    data-current={String(isCurrent)}
+                    data-done={String(stepDone)}
+                  >
+                    <button
+                      type="button"
+                      class="inspector-order-btn"
+                      data-action="select-outline-activity"
+                      data-activity-id={step.activityId}
+                      data-module-id={mod.moduleId}
+                      aria-current={isCurrent ? "step" : undefined}
+                    >
+                      <span class="inspector-order-num">{idx + 1}.</span>
+                      <span class="inspector-order-title">
+                        <MathText text={step.title} />
+                      </span>
+                      <span class="inspector-order-meta">
+                        {TRACK_LABELS[stepTrack].badge} · {step.durationTriplet.point}m
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+        </div>
 
         {skipRecorded ? (
           <p class="prose" role="status">
@@ -731,17 +865,22 @@ export function InspectorDrawer({
       </div>
       <div class="inspector-actions">
         {status !== "completed" ? (
-          <button
-            type="button"
-            class="btn-primary"
-            data-action="complete-activity"
-            data-activity-id={id}
-            data-module-id={activity.moduleId}
-            data-event-id={`evt-complete-${id}`}
-          >
-            Mark as Done
-            <span aria-hidden="true">✓</span>
-          </button>
+          <>
+            <button
+              type="button"
+              class="btn-primary"
+              data-action="complete-activity"
+              data-activity-id={id}
+              data-module-id={activity.moduleId}
+              data-event-id={`evt-complete-${id}`}
+            >
+              Mark as Done
+              <span aria-hidden="true">✓</span>
+            </button>
+            <button type="button" class="inspector-skip-btn" data-action="skip-activity" data-activity-id={id}>
+              Skip this activity
+            </button>
+          </>
         ) : next ? (
           <button
             type="button"
@@ -756,9 +895,6 @@ export function InspectorDrawer({
             <span aria-hidden="true">→</span>
           </button>
         ) : null}
-        <button type="button" class="btn-secondary" data-action="skip-activity" data-activity-id={id}>
-          Skip this activity
-        </button>
       </div>
     </dialog>
   );

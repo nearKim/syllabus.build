@@ -1424,21 +1424,55 @@ textarea {
   line-height: 1.35;
 }
 
+/* Answer rows: a lettered square marks each answer. The radio stays in the DOM for keyboard and screen readers
+   but is visually hidden, so no round marker looks like a subtask checkbox. A pick does not re-render,
+   so the selected look comes from :checked. */
 .choice-option {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: var(--space-3);
-  padding: var(--space-3) 0;
-  border-top: var(--hairline);
+  padding: 10px var(--space-3);
+  border-radius: var(--radius-control);
   cursor: pointer;
 }
 
-.choice-option input {
+.choice-option + .choice-option {
+  margin-top: 2px;
+}
+
+.choice-letter {
+  display: inline-grid;
   flex: none;
-  width: 18px;
-  height: 18px;
-  margin: 3px 0 0;
-  accent-color: var(--color-accent);
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--tint-8);
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.choice-option:has(input:checked) {
+  background: var(--color-accent-surface);
+}
+
+.choice-option input:checked + .choice-letter {
+  background: var(--color-accent);
+  color: var(--color-action-text);
+}
+
+.choice-option:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .choice-option:hover {
+    background: var(--tint-4);
+  }
 }
 
 .choice-option strong,
@@ -4091,8 +4125,8 @@ button[interestfor="plan-relationship-legend"] {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  --label-2: "Category & curriculum";
-  --label-3: "Used in";
+  --label-1: "Type";
+  --label-3: "Units";
   --label-4: "Access, rights & cost";
   --label-5: "Action";
 }
@@ -4123,10 +4157,13 @@ button[interestfor="plan-relationship-legend"] {
   background: var(--color-surface);
 }
 
+.resources-data-table td.resource-category-cell {
+  width: 1%;
+  padding-inline-end: var(--space-4);
+  white-space: nowrap;
+}
+
 .resources-data-table tbody th.resource-primary-cell {
-  position: sticky;
-  inset-inline-start: 0;
-  z-index: 1;
   min-inline-size: 16rem;
   max-inline-size: 24rem;
   font-weight: 400;
@@ -4335,6 +4372,7 @@ button[interestfor="plan-relationship-legend"] {
   font-size: 13px;
   font-weight: 500;
   text-align: left;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -4386,8 +4424,8 @@ button[interestfor="plan-relationship-legend"] {
     background: var(--color-surface-secondary);
   }
 
-  .resources-data-table td:nth-child(2)::before {
-    content: var(--label-2) ": ";
+  .resources-data-table td:nth-child(1)::before {
+    content: var(--label-1) ": ";
     display: block;
     margin-block-end: 4px;
     font-size: 12px;
@@ -7667,11 +7705,11 @@ dialog::backdrop {
   margin-bottom: var(--space-2);
 }
 
-/* Inspector drawer: a modal sheet on the right edge. It never takes width from the matrix. */
+/* Inspector drawer: a wider modal sheet on the right edge focused on learning order, materials, and duration. */
 dialog.inspector {
   position: fixed;
   inset: 0 0 0 auto;
-  width: min(400px, 100vw);
+  width: min(560px, 100vw);
   max-width: 100vw;
   height: 100dvh;
   max-height: 100dvh;
@@ -7708,22 +7746,58 @@ dialog.inspector::backdrop {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
-  gap: 2px var(--space-3);
-  padding: var(--space-5) var(--space-4) var(--space-4) var(--space-5);
-  border-bottom: var(--hairline);
+  gap: 6px var(--space-3);
+  padding: var(--space-5) var(--space-6) var(--space-3);
+  border-bottom: 0;
+}
+
+.inspector-context-row {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px var(--space-3);
 }
 
 .inspector-context {
-  grid-column: 1;
   margin: 0;
   font-size: 13px;
   color: var(--color-text-secondary);
 }
 
+.step-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-pager li {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--tint-12);
+}
+
+.step-pager li[data-done="true"] {
+  background: var(--color-success-text);
+}
+
+.step-pager li[data-current="true"] {
+  width: 9px;
+  height: 9px;
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 2px var(--color-text-primary);
+}
+
 .inspector-head h2 {
   grid-column: 1;
-  font-size: 20px;
-  line-height: 1.3;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.28;
 }
 
 .inspector-close {
@@ -7751,9 +7825,9 @@ dialog.inspector::backdrop {
   display: grid;
   flex: 1 1 auto;
   align-content: start;
-  gap: var(--space-4);
+  gap: var(--space-6);
   min-height: 0;
-  padding: var(--space-4) var(--space-5) var(--space-5);
+  padding: var(--space-3) var(--space-6) var(--space-6);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -7762,29 +7836,39 @@ dialog.inspector::backdrop {
   margin: 0;
 }
 
-/* Header controls: the three-state status control, and on a gate the objective proficiency pill */
+/* Header controls: quiet tri-state status indicator (zero black fill at rest) and gate proficiency pill */
 .inspector-pills {
   display: flex;
   flex-wrap: wrap;
   grid-column: 1 / -1;
   align-items: safe center;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 .status-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  flex: 1 1 100%;
+  flex: 0 1 320px;
+  max-width: 100%;
 }
 
 .status-control .seg-btn {
   padding-inline: var(--space-2);
+  color: var(--color-text-secondary);
+}
+
+.status-control .seg-btn[aria-pressed="true"] {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--color-text-primary);
+  font-weight: 600;
 }
 
 .status-control .seg-btn[data-status="completed"][aria-pressed="true"] {
-  background: var(--color-success-text);
-  color: var(--color-surface);
+  background: var(--color-success-surface);
+  color: var(--color-success-text);
+  box-shadow: none;
 }
 
 /* Done: one emerald ring pulse and one light sweep, only when motion is allowed. Nothing loops.
@@ -7875,6 +7959,151 @@ dialog.inspector::backdrop {
   .mobile-step-nav {
     display: none;
   }
+
+  .inspector-order-section {
+    display: none;
+  }
+}
+
+/* Subtasks: the activity is the parent task. Each material, the concept check, and each criterion is one row
+   with one round checkbox, listed in working order. */
+.subtasks-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.subtasks-count {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.subtask-list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.subtask {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+/* The global button rule sets a 44px minimum size. The circle stays 20px, and ::after keeps a 44px hit area. */
+.subtask-check {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 1.5px solid var(--color-text-secondary);
+  border-radius: 999px;
+  background: transparent;
+  color: transparent;
+}
+
+.subtask-check::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+
+.subtask-check .sf-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3;
+}
+
+.subtask-check[aria-checked="true"] {
+  border-color: var(--color-success-text);
+  background: var(--color-success-text);
+  color: var(--color-surface);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .subtask-check[aria-checked="false"]:hover {
+    border-color: var(--color-success-text);
+    color: var(--color-success-text);
+  }
+}
+
+.subtask-body {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* min-width: 0 keeps a wide formula scrolling inside its surface instead of widening the row */
+.subtask-body > * {
+  min-width: 0;
+  margin: 0;
+}
+
+.subtask-body > .study-workspace {
+  margin-top: var(--space-2);
+}
+
+.subtask-title {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.subtask[data-done="true"] .subtask-title {
+  color: var(--color-text-secondary);
+  text-decoration: line-through;
+}
+
+.subtask-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-3);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+/* Concept check: Submit answer is the one bordered button. Hint and worked solution are text actions,
+   and each one leaves once its note shows. */
+.practice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.practice-aid {
+  min-width: 0;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .practice-aid:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+}
+
+.inspector-reference-group {
+  display: grid;
+  gap: var(--space-5);
 }
 
 /* Recommended first: each earlier step that is not done yet, one click away */
@@ -7904,13 +8133,75 @@ dialog.inspector::backdrop {
   text-align: left;
 }
 
-/* Source card: what the material is, where it lives, its access terms, and one button that opens it */
+/* Ordered learning sequence inside the unit (mobile fallback when parent board is not visible) */
+.inspector-order-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inspector-order-item {
+  border-radius: var(--radius-control);
+}
+
+.inspector-order-btn {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--layout-touch-target-min);
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspector-order-item[data-current="true"] .inspector-order-btn {
+  background: var(--color-swimlane-selected);
+  font-weight: 600;
+}
+
+.inspector-order-item[data-done="true"]:not([data-current="true"]) .inspector-order-title {
+  color: var(--color-text-secondary);
+}
+
+.inspector-order-num {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.inspector-order-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-order-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Source material block: unboxed tonal swimlane inside Step 1 with inline link and ordered section markers */
 .source-card {
   display: grid;
-  gap: var(--space-1);
+  gap: 6px;
   padding: var(--space-4);
-  border: var(--hairline);
-  border-radius: var(--radius-surface);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: var(--color-swimlane);
 }
 
 .source-card > * {
@@ -7918,27 +8209,76 @@ dialog.inspector::backdrop {
 }
 
 .source-title {
-  font-size: 16px;
+  margin: 0;
+  font-size: 15.5px;
+  font-weight: 600;
   line-height: 1.35;
+  color: var(--color-text-primary);
 }
 
-.source-publisher,
+.source-open-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--layout-touch-target-min);
+  margin: -10px 0;
+  padding: 0 2px;
+  color: var(--color-accent);
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.source-open-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .source-section {
-  font-size: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.source-section::before {
+  content: "§ ";
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.source-meta-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin-top: 2px;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+}
+
+.source-meta-inline > * {
+  margin: 0;
+}
+
+.source-publisher {
+  font-size: 13px;
   color: var(--color-text-secondary);
 }
 
 .source-location {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 14px;
+  gap: 4px;
+  font-size: 13px;
   overflow-wrap: anywhere;
 }
 
 .source-tags,
 .spec-chips {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   gap: 6px;
   margin: 0;
@@ -7946,11 +8286,24 @@ dialog.inspector::backdrop {
   list-style: none;
 }
 
-.source-tags {
-  margin-top: var(--space-1);
+.source-tags li {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 12.5px;
+  font-weight: 400;
 }
 
-.source-tags li,
+.source-tags li + li::before {
+  content: "·";
+  margin-right: 6px;
+  color: var(--color-text-secondary);
+}
+
 .spec-chips li {
   display: inline-flex;
   align-items: center;
@@ -7960,10 +8313,6 @@ dialog.inspector::backdrop {
   background: var(--tint-8);
   font-size: 13px;
   font-weight: 500;
-}
-
-.source-open {
-  margin-top: var(--space-3);
 }
 
 /* What this builds: the objectives behind the step, and the gate it prepares for */
@@ -7984,7 +8333,7 @@ dialog.inspector::backdrop {
   align-items: center;
   gap: var(--space-2);
   margin: var(--space-2) 0 0;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--color-text-secondary);
 }
 
@@ -8048,50 +8397,91 @@ dialog.inspector::backdrop {
   margin-top: 2px;
 }
 
-/* Details table: an icon and key on the left, the value on the right */
+/* Time & duration summary: borderless 2x2 grid without horizontal divider spam */
 .meta-table {
+  display: block;
   width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
+  font-size: 13.5px;
+}
+
+.meta-table tbody {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-4);
+}
+
+.meta-table tr {
+  display: grid;
+  gap: 2px;
 }
 
 .meta-table th,
 .meta-table td {
-  padding: var(--space-2) 0;
-  border-top: var(--hairline);
+  padding: 0;
+  border: 0;
   text-align: left;
   vertical-align: top;
 }
 
-.meta-table tr:first-child > * {
-  border-top: 0;
-}
-
 .meta-table th {
-  width: 7.5rem;
-  padding-right: var(--space-3);
+  font-size: 12.5px;
   font-weight: 500;
   color: var(--color-text-secondary);
+}
+
+.meta-table td {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .meta-key {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 6px;
 }
 
 .inspector-section h3 {
   margin-bottom: var(--space-2);
   font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
+/* Footer: one single primary button full-width, with Skip stacked quietly beneath */
 .inspector-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-5) calc(var(--space-4) + env(safe-area-inset-bottom));
-  border-top: var(--hairline);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: var(--space-3) var(--space-6) calc(var(--space-2) + env(safe-area-inset-bottom));
+  border-top: 0;
   background: var(--color-surface);
+}
+
+.inspector-actions .btn-primary {
+  width: 100%;
+  margin-inline-start: 0;
+}
+
+.inspector-skip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.inspector-skip-btn:hover {
+  color: var(--color-text-primary);
 }
 
 .compact-bottom-nav {

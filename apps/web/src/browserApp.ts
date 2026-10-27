@@ -37,7 +37,7 @@ import {
   type DeepDiveMode, type FlowOrder, type FlowView, type SpacedReviewMode, type StudyActivity, type StudyModule,
 } from "./components/StudyFlowBoard.tsx";
 import {
-  INSPECTOR_ID, InspectorDrawer, SETTABLE_STATUSES,
+  INSPECTOR_ID, InspectorDrawer, SETTABLE_STATUSES, activitySubtasks, conceptCheckSubtaskId,
   type ConceptCheck, type InspectorMode, type SelfCheckRubric, type SettableStatus,
 } from "./components/InspectorDrawer.tsx";
 import {
@@ -121,6 +121,7 @@ export interface CurriculumWebAppStateInput {
   readonly hintRequested?: boolean; readonly workedSolutionRevealed?: boolean;
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
   readonly skippedActivityIds?: readonly string[];
+  readonly completedSubtaskIds?: readonly string[];
   readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly reminderTimezone?: string; readonly keyVisible?: boolean;
   readonly diagnosticControl?: "active" | "paused" | "stopped";
   readonly adaptationChoice?: "pending" | "accept_reviewed" | "keep_current";
@@ -1587,6 +1588,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       conceptCheck: CONCEPT_CHECKS[selectedPlan.publicationId ?? ""] ?? null,
       practice: { hintRequested, workedSolutionRevealed, submitted: practiceSubmitted, choice: practiceChoice },
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
+      completedSubtaskIds: inputState.completedSubtaskIds ?? [],
     })
     : "";
 
@@ -2602,6 +2604,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let practiceSubmitted = initialState.practiceSubmitted ?? false;
   let practiceChoice: string | null = initialState.practiceChoice ?? null;
   let skippedActivityIds: string[] = [...(initialState.skippedActivityIds ?? [])];
+  let completedSubtaskIds: string[] = [...(initialState.completedSubtaskIds ?? [])];
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
   let reminderTimezone = initialState.reminderTimezone ?? "America/New_York";
@@ -2680,6 +2683,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   // completion events, so a corrected mistake no longer counts toward completions or study minutes.
   function setActivityStatus(activityId: string, status: SettableStatus) {
     if (!signedIn()) return requireSignIn(placeOf(topLevel, learnSubDestination));
+    syncSubtasks(activityId, status);
     if (status === "completed") {
       if (!isClosed(todayController.getState().activityExecutionStates[activityId] ?? "not_started")) recordCompletion(activityId);
       return getState();
@@ -2688,6 +2692,41 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     recordedProgressEvents = recordedProgressEvents.filter((ev) => (ev.activityId ?? ev.activity_id) !== activityId);
     todayController = buildToday();
     return getState();
+  }
+
+  // The activity's subtask ids, from the same list the drawer renders.
+  function subtaskIdsOf(activityId: string): readonly string[] {
+    const { curriculum, publicationId } = planData();
+    const modules = buildCurrentPlanModel().outlineModules;
+    const activity = modules.flatMap((mod) => mod.activities).find((act) => act.activityId === activityId);
+    if (!activity) return [];
+    const conceptCheck = CONCEPT_CHECKS[publicationId ?? ""] ?? null;
+    return activitySubtasks(modules, activity, rubricOf(curriculum, activityId), conceptCheck).map(({ subtaskId }) => subtaskId);
+  }
+
+  // A Done activity shows every subtask as checked, even one completed elsewhere, so a change starts from all of them.
+  function checkedSubtasksOf(activityId: string): readonly string[] {
+    const ids = subtaskIdsOf(activityId);
+    const done = isClosed(todayController.getState().activityExecutionStates[activityId] ?? "not_started");
+    return done ? ids : ids.filter((sid) => completedSubtaskIds.includes(sid));
+  }
+
+  // Not started clears the activity's checked subtasks, and Done checks them all. In progress keeps them as they are.
+  function syncSubtasks(activityId: string, status: SettableStatus): void {
+    if (status === "in_progress") return;
+    const ids = subtaskIdsOf(activityId);
+    completedSubtaskIds = [...completedSubtaskIds.filter((sid) => !ids.includes(sid)), ...(status === "completed" ? ids : [])];
+  }
+
+  // Checked subtasks set the status: none is Not started, some is In progress, and all is Done.
+  function setSubtaskChecked(activityId: string, subtaskId: string, checked: boolean) {
+    if (!signedIn()) return requireSignIn(placeOf(topLevel, learnSubDestination));
+    const ids = subtaskIdsOf(activityId);
+    if (!ids.includes(subtaskId)) return getState();
+    const before = checkedSubtasksOf(activityId);
+    const after = ids.filter((sid) => (sid === subtaskId ? checked : before.includes(sid)));
+    completedSubtaskIds = [...completedSubtaskIds.filter((sid) => !ids.includes(sid)), ...after];
+    return setActivityStatus(activityId, after.length === 0 ? "not_started" : after.length === ids.length ? "completed" : "in_progress");
   }
 
   const buildCurrentPlanModel = (): PlanMapAndOutlineModel =>
@@ -2757,6 +2796,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     recordedProgressEvents = [];
     statusOverrides.clear();
     skippedActivityIds = [];
+    completedSubtaskIds = [];
     resetPractice();
     keyVisible = false;
     editingCredentialProviderId = null;
@@ -2938,6 +2978,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       adminNotice,
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
+      completedSubtaskIds: [...completedSubtaskIds] as readonly string[],
       remindersEnabled, remindersPaused, reminderTimezone, keyVisible,
       byokCredentials: [...byokCredentials] as readonly MaskedCredentialRecord[],
       primaryCredentialRef,
@@ -3015,6 +3056,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         requireSignIn(placeOf(topLevel, learnSubDestination));
         return null;
       }
+      syncSubtasks(activityId, "completed");
       return recordCompletion(activityId, explicitEventId);
     },
     setActivityStatus,
@@ -3211,6 +3253,10 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       } else if (action === "submit-practice") {
         practiceSubmitted = true;
         practiceChoice = submittedChoice;
+        if (submittedChoice && selectedActivityId) setSubtaskChecked(selectedActivityId, conceptCheckSubtaskId(selectedActivityId), true);
+      } else if (action === "toggle-subtask" && data["activityId"] && data["subtaskId"]) {
+        const { activityId, subtaskId } = data;
+        setSubtaskChecked(activityId, subtaskId, !checkedSubtasksOf(activityId).includes(subtaskId));
       } else if (action === "set-activity-status" && data["activityId"] && isOneOf(SETTABLE_STATUSES, data["status"])) {
         setActivityStatus(data["activityId"], data["status"]);
       } else if (action === "skip-activity" && data["activityId"]) {
