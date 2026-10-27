@@ -2463,6 +2463,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       myPlans,
       marketplaceListings: listings,
     });
+    const activePrimaryCred =
+      byokState.credentials.find((c) => c.credential_ref === (byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref)) ??
+      byokState.credentials[0];
+    const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
+    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-4.1";
     return renderToString(
       h(NewCurriculumDialog, {
         open: openDialogId === "dialog-new-curriculum",
@@ -2478,6 +2483,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
         intakeNote,
         fitEvaluation,
         lastPipelineReceipt: inputState.lastPipelineReceipt ?? null,
+        designatedProviderId,
+        designatedModelId,
       }),
     );
   })()}
@@ -3153,6 +3160,21 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         if (nextModel) {
           providerModels = { ...providerModels, [providerId]: nextModel };
         }
+      } else if (action === "set-intake-ai-model" && (data["compoundModel"] || data["value"])) {
+        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
+        const compound = (data["compoundModel"] ?? data["value"] ?? "").trim();
+        const colonIdx = compound.indexOf(":");
+        if (colonIdx > 0) {
+          const providerId = compound.slice(0, colonIdx);
+          const nextModel = compound.slice(colonIdx + 1);
+          if (providerId && nextModel) {
+            providerModels = { ...providerModels, [providerId]: nextModel };
+            const matchedCred = (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS).find((c) => c.provider_id === providerId);
+            if (matchedCred) {
+              primaryCredentialRef = matchedCred.credential_ref;
+            }
+          }
+        }
       } else if (action === "replace-key") keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
       else if (action === "delete-connection") keyActionNote = "Delete connection would remove this app's encrypted copy only. It would not revoke the key at the issuer. No live delete was sent.";
       else if (action === "load-more") loadMoreNote = "No further public revisions are available in this preview.";
@@ -3280,6 +3302,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           myPlans: currentPlans(),
           marketplaceListings: listings(),
         });
+        const byokRecords = initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS;
+        const activePrimaryCred =
+          byokRecords.find((c) => c.credential_ref === primaryCredentialRef) ?? byokRecords[0];
+        const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
+        const designatedModelId = providerModels[designatedProviderId] ?? "gpt-4.1";
         const pipelineResult = executeIntakeGenerationPipeline({
           fitEvaluation,
           goalTitle: intakeGoalTitle,
@@ -3292,6 +3319,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           fitMode: intakeFitMode,
           accountId: account.accountId,
           catalogResources,
+          designatedProviderId,
+          designatedModelId,
         });
         catalogResources = pipelineResult.updatedCatalogResources;
         generatedPlans = [

@@ -36,6 +36,94 @@ export type IntakeMaterialsChoice = (typeof INTAKE_MATERIALS_CHOICES)[number];
 export const INTAKE_FIT_MODES = ["fill_gaps", "use_selected_only"] as const;
 export type IntakeFitMode = (typeof INTAKE_FIT_MODES)[number];
 
+export interface DesignatedAiModelOption {
+  readonly providerId: "openai" | "anthropic" | "google_gemini";
+  readonly providerLabel: string;
+  readonly modelId: string;
+  readonly modelLabel: string;
+  readonly webSearchTool: string;
+}
+
+export const DESIGNATED_AI_MODELS: readonly DesignatedAiModelOption[] = [
+  {
+    providerId: "openai",
+    providerLabel: "OpenAI",
+    modelId: "gpt-4.1",
+    modelLabel: "GPT-4.1",
+    webSearchTool: "Responses API · Web search",
+  },
+  {
+    providerId: "openai",
+    providerLabel: "OpenAI",
+    modelId: "gpt-4o",
+    modelLabel: "GPT-4o",
+    webSearchTool: "Responses API · Web search",
+  },
+  {
+    providerId: "openai",
+    providerLabel: "OpenAI",
+    modelId: "o3",
+    modelLabel: "o3 (Reasoning)",
+    webSearchTool: "Responses API · Web search",
+  },
+  {
+    providerId: "openai",
+    providerLabel: "OpenAI",
+    modelId: "o4-mini",
+    modelLabel: "o4-mini (Fast)",
+    webSearchTool: "Responses API · Web search",
+  },
+  {
+    providerId: "anthropic",
+    providerLabel: "Anthropic",
+    modelId: "claude-sonnet-4-20250514",
+    modelLabel: "Claude Sonnet 4",
+    webSearchTool: "Messages API · Web search",
+  },
+  {
+    providerId: "anthropic",
+    providerLabel: "Anthropic",
+    modelId: "claude-opus-4-20250514",
+    modelLabel: "Claude Opus 4",
+    webSearchTool: "Messages API · Web search",
+  },
+  {
+    providerId: "anthropic",
+    providerLabel: "Anthropic",
+    modelId: "claude-3-7-sonnet-latest",
+    modelLabel: "Claude 3.7 Sonnet",
+    webSearchTool: "Messages API · Web search",
+  },
+  {
+    providerId: "anthropic",
+    providerLabel: "Anthropic",
+    modelId: "claude-3-5-haiku-latest",
+    modelLabel: "Claude 3.5 Haiku",
+    webSearchTool: "Messages API · Web search",
+  },
+  {
+    providerId: "google_gemini",
+    providerLabel: "Google Gemini",
+    modelId: "gemini-2.5-pro",
+    modelLabel: "Gemini 2.5 Pro",
+    webSearchTool: "Google Search grounding",
+  },
+  {
+    providerId: "google_gemini",
+    providerLabel: "Google Gemini",
+    modelId: "gemini-2.5-flash",
+    modelLabel: "Gemini 2.5 Flash",
+    webSearchTool: "Google Search grounding",
+  },
+  {
+    providerId: "google_gemini",
+    providerLabel: "Google Gemini",
+    modelId: "gemini-2.0-flash",
+    modelLabel: "Gemini 2.0 Flash",
+    webSearchTool: "Google Search grounding",
+  },
+] as const;
+
 export const DEFAULT_SUBJECT_TOPICS: Readonly<Record<IntakeSubject, readonly string[]>> = {
   Engineering: ["Python", "RAG", "Attention", "Vector Indexing", "Linear Algebra", "Evaluation"],
   Systems: ["Rust", "Async", "Concurrency", "Wakers", "Work Stealing"],
@@ -274,6 +362,8 @@ export interface IntakePipelineExecutionReceipt {
   readonly reusedResourceIds: readonly string[];
   readonly newlyIndexedResourceIds: readonly string[];
   readonly generatedCurriculumId: string;
+  readonly designatedProviderId: string;
+  readonly designatedModelId: string;
   readonly summaryNote: string;
 }
 
@@ -773,6 +863,8 @@ export function executeIntakeGenerationPipeline(params: {
   readonly fitMode: IntakeFitMode;
   readonly accountId: string;
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
+  readonly designatedProviderId?: string;
+  readonly designatedModelId?: string;
 }): {
   readonly generatedPlan: ActiveCurriculum;
   readonly updatedCatalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
@@ -789,6 +881,8 @@ export function executeIntakeGenerationPipeline(params: {
     fitMode,
     accountId,
     catalogResources,
+    designatedProviderId = "openai",
+    designatedModelId = "gpt-4.1",
   } = params;
 
   const nextCatalog: Record<string, CatalogResourceMetadataInput> = { ...catalogResources };
@@ -1163,9 +1257,16 @@ export function executeIntakeGenerationPipeline(params: {
     draft: true,
   };
 
+  const matchedModelOption = DESIGNATED_AI_MODELS.find(
+    (opt) => opt.providerId === designatedProviderId && opt.modelId === designatedModelId,
+  );
+  const modelDescriptor = matchedModelOption
+    ? `${matchedModelOption.providerLabel} · ${matchedModelOption.modelLabel}`
+    : `${designatedProviderId} · ${designatedModelId}`;
+
   const summaryNote = fitEvaluation.webSearchRequired
-    ? `AI pipeline complete: Reused ${reusedIds.length} indexed resource(s), ran delta web search for [${fitEvaluation.deltaTopicsToSearch.join(", ")}] (bypassing ${fitEvaluation.bypassedCanonicalUrls.length} indexed URLs), and indexed ${newlyIndexedResourceIds.length} new resource(s) (Book TOC + YouTube syllabus) into Resources.`
-    : `AI pipeline complete: Synthesized draft from ${reusedIds.length} selected indexed resource(s) with 0 web search calls.`;
+    ? `AI pipeline complete (${modelDescriptor}): Reused ${reusedIds.length} indexed resource(s), ran delta web search for [${fitEvaluation.deltaTopicsToSearch.join(", ")}] (bypassing ${fitEvaluation.bypassedCanonicalUrls.length} indexed URLs), and indexed ${newlyIndexedResourceIds.length} new resource(s) (Book TOC + YouTube syllabus) into Resources.`
+    : `AI pipeline complete (${modelDescriptor}): Synthesized draft from ${reusedIds.length} selected indexed resource(s) with 0 web search calls.`;
 
   return {
     generatedPlan,
@@ -1179,6 +1280,8 @@ export function executeIntakeGenerationPipeline(params: {
       reusedResourceIds: reusedIds,
       newlyIndexedResourceIds,
       generatedCurriculumId,
+      designatedProviderId,
+      designatedModelId,
       summaryNote,
     },
   };
@@ -1282,6 +1385,8 @@ export interface NewCurriculumDialogProps {
   readonly intakeNote: string | null;
   readonly fitEvaluation: IntakeResourceFitEvaluation;
   readonly lastPipelineReceipt: IntakePipelineExecutionReceipt | null;
+  readonly designatedProviderId?: string;
+  readonly designatedModelId?: string;
 }
 
 export function NewCurriculumDialog({
@@ -1298,7 +1403,10 @@ export function NewCurriculumDialog({
   intakeNote,
   fitEvaluation,
   lastPipelineReceipt,
+  designatedProviderId = "openai",
+  designatedModelId = "gpt-4.1",
 }: NewCurriculumDialogProps): VNode {
+  const activeCompoundModel = `${designatedProviderId}:${designatedModelId}`;
   const taxonomy = SUBJECT_TOPIC_TAXONOMY[subject];
   const hasIntakeIntent = goalTitle.trim().length > 0 || requestedTopics.length > 0;
   const disclosedSubtopics: { readonly topic: string; readonly parentTopic: string }[] = [];
@@ -1682,7 +1790,31 @@ export function NewCurriculumDialog({
           </div>
         ) : null}
 
-        <footer class="dialog-footer">
+        <footer class="dialog-footer intake-dialog-footer">
+          <div class="intake-model-picker">
+            <select
+              id="intake-ai-model"
+              class="intake-model-select"
+              name="intake-ai-model"
+              aria-label="Designated AI model for synthesis and web search"
+              data-action="set-intake-ai-model"
+              data-designated-provider={designatedProviderId}
+              data-designated-model={designatedModelId}
+            >
+              {DESIGNATED_AI_MODELS.map((opt) => {
+                const compound = `${opt.providerId}:${opt.modelId}`;
+                return (
+                  <option
+                    key={compound}
+                    value={compound}
+                    selected={compound === activeCompoundModel}
+                  >
+                    {opt.providerLabel} · {opt.modelLabel} · {opt.webSearchTool}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
           <button type="button" class="btn-primary" data-action="generate-curriculum-ai">
             <SfIcon name="sparkles" size={15} />
             <span>Generate curriculum</span>
