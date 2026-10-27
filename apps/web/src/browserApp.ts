@@ -2451,7 +2451,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       byokState.credentials.find((c) => c.credential_ref === (byokState.selectedCredentialRef ?? byokState.credentials[0]?.credential_ref)) ??
       byokState.credentials[0];
     const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-5.4";
+    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-6-astra";
     return renderToString(
       h(NewCurriculumDialog, {
         open: openDialogId === "dialog-new-curriculum",
@@ -2613,9 +2613,9 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let keyVisible = initialState.keyVisible ?? false;
   let primaryCredentialRef = initialState.primaryCredentialRef ?? (initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)[0]?.credential_ref ?? "cred-openai-1";
   let providerModels: Record<string, string> = {
-    openai: "gpt-5.4",
-    anthropic: "claude-sonnet-4-6",
-    google_gemini: "gemini-3.1-pro-preview",
+    openai: "gpt-6-astra",
+    anthropic: "claude-opus-5-5",
+    google_gemini: "gemini-4-argon",
     ...(initialState.providerModels ?? {}),
   };
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
@@ -3290,7 +3290,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         const activePrimaryCred =
           byokRecords.find((c) => c.credential_ref === primaryCredentialRef) ?? byokRecords[0];
         const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-        const designatedModelId = providerModels[designatedProviderId] ?? "gpt-5.4";
+        const designatedModelId = providerModels[designatedProviderId] ?? "gpt-6-astra";
         const pipelineResult = executeIntakeGenerationPipeline({
           fitEvaluation,
           goalTitle: intakeGoalTitle,

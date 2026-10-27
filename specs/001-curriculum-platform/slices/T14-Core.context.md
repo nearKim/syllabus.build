@@ -1,9 +1,9 @@
 <!-- GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md -->
-<!-- Specification SHA-256: a1afc279f66cb3747704da12ed93dcb78d044d6b8de5a4ab07789f543b08f486 -->
+<!-- Specification SHA-256: ee4dbda41428a2013428fc1127973a35fb5bd5c0f31bd1b6f23d34ca4d418883 -->
 
 # T14-Core: Slice 2 — Design Tokens, Fail-Closed SafeActivityRenderer & Learn/Explore/Settings Shell
 
-- **Source of Truth:** `specs/product.md` (SHA-256: `a1afc279f66cb3747704da12ed93dcb78d044d6b8de5a4ab07789f543b08f486`)
+- **Source of Truth:** `specs/product.md` (SHA-256: `ee4dbda41428a2013428fc1127973a35fb5bd5c0f31bd1b6f23d34ca4d418883`)
 - **Release Tier:** Tier 1: Private Alpha (Foundation Tracer Bullet)
 - **Canonical Parent Slice:** `T14` (Complete responsive UI and accessibility)
 - **Mapped Requirements:** 8
