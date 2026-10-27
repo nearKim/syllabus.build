@@ -8,16 +8,29 @@ use curriculum_jobs::{
 use curriculum_persistence::{PostgresTransactionalStatements, MIGRATIONS};
 use curriculum_providers::{DeterministicFakeProvider, InferenceProvider};
 
+const DEFAULT_WORKER_ID: &str = "worker-main";
+const INITIAL_TICK_NOW_MS: u64 = 1_000;
+const EXPECTED_MIGRATION_COUNT: usize = 7;
+const DEFAULT_MAX_DEAD_TUPLE_RATIO: f64 = 0.20;
+
+/// Verifies that the workspace contract registry, deterministic provider, and embedded SQL
+/// migrations are consistent on worker startup, returning the default `OutboxQueueConfig`.
+#[must_use]
 pub fn verify_worker_bootstrap() -> OutboxQueueConfig {
-    let _registry = ContractRegistry::load_from_workspace()
-        .expect("contract registry must load cleanly on worker bootstrap");
+    assert!(
+        ContractRegistry::load_from_workspace().is_ok(),
+        "contract registry must load cleanly on worker bootstrap"
+    );
     let fake_provider = DeterministicFakeProvider::default();
-    assert_eq!(fake_provider.capabilities().provider_id, "deterministic-fake");
+    assert_eq!(
+        fake_provider.capabilities().provider_id,
+        "deterministic-fake"
+    );
     let migration_bundle = PostgresTransactionalStatements::render_full_migration_bundle();
     assert!(migration_bundle.contains("CREATE TABLE IF NOT EXISTS outbox_jobs"));
     assert!(PostgresTransactionalStatements::claim_next_outbox_job_sql()
         .contains("FOR UPDATE SKIP LOCKED"));
-    assert_eq!(MIGRATIONS.len(), 7);
+    assert_eq!(MIGRATIONS.len(), EXPECTED_MIGRATION_COUNT);
     OutboxQueueConfig::default()
 }
 
@@ -25,6 +38,7 @@ pub fn verify_worker_bootstrap() -> OutboxQueueConfig {
 /// 1. Reaps expired leases (`reap_expired_leases`).
 /// 2. Claims and completes available queued jobs for `worker_id`.
 /// 3. Prunes retained terminal jobs past retention windows (`prune_retained_jobs`).
+#[must_use]
 pub fn run_worker_maintenance_tick(
     queue: &OutboxJobQueue,
     worker_id: &str,
@@ -38,15 +52,17 @@ pub fn run_worker_maintenance_tick(
     queue.metrics_snapshot(now_ms)
 }
 
+/// Evaluates PostgreSQL table tuple bloat health against the worker's dead-tuple ratio threshold.
+#[must_use]
 pub fn check_worker_pg_bloat_health(stats: &[PgTableTupleStats]) -> PgBloatHealthReport {
-    evaluate_pg_bloat_health(stats, 0.20)
+    evaluate_pg_bloat_health(stats, DEFAULT_MAX_DEAD_TUPLE_RATIO)
 }
 
 #[tokio::main]
 async fn main() {
     let cfg = verify_worker_bootstrap();
     let queue = OutboxJobQueue::new(cfg);
-    let snapshot = run_worker_maintenance_tick(&queue, "worker-main", 1_000);
+    let snapshot = run_worker_maintenance_tick(&queue, DEFAULT_WORKER_ID, INITIAL_TICK_NOW_MS);
     println!(
         "curriculum-worker bootstrap verified (lease={}s, max_attempts={}, queued={})",
         cfg.lease_duration_seconds, cfg.max_attempts, snapshot.queued_depth
@@ -55,8 +71,9 @@ async fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use serde_json::json;
+
+    use super::*;
 
     #[test]
     fn worker_bootstrap_verifies_contracts_and_provider_capabilities() {
@@ -76,7 +93,7 @@ mod tests {
                 json!({"curriculum_id": "cur-1"}),
                 1_000,
             )
-            .unwrap();
+            .expect("enqueue test job");
 
         let metrics = run_worker_maintenance_tick(&queue, "worker-test-1", 2_000);
         assert_eq!(metrics.queued_depth, 0);

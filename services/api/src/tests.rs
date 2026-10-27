@@ -1,6 +1,7 @@
-    use super::*;
-    use axum::body::Body;
-    use axum::http::{Request, StatusCode};
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use curriculum_application::SystemReadinessReport;
     use curriculum_contracts::generated::CANONICAL_SPEC_SHA256;
     use curriculum_domain::ObjectiveProficiencyState;
@@ -10,6 +11,15 @@
     };
     use serde_json::Value;
     use tower::ServiceExt;
+
+    use crate::handlers_commerce::DEFAULT_WEBHOOK_SIGNING_SECRET;
+    use super::*;
+
+    fn test_app() -> (ApiAppState, Router) {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        (state, app)
+    }
 
     async fn read_body_json(response: Response) -> Value {
         let bytes = axum::body::to_bytes(response.into_body(), 64 * 1024)
@@ -2338,4 +2348,93 @@
             .unwrap();
         let cur_list_body = read_body_json(cur_list_after).await;
         assert!(cur_list_body["items"].as_array().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn idempotent_validation_error_releases_lock_and_curriculum_proposal_route_verifies_curriculum_id(
+    ) {
+        let (_state, app) = test_app();
+        let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. [P0-1]: Invalid assistance_level on idempotent submit_assessment_attempt records 422
+        // and replays deterministically instead of leaving the key stuck InFlight (409).
+        let bad_attempt_payload = json!({
+            "attempt_id": "att-bad-assistance",
+            "session_id": "sess-1",
+            "assistance_level": "not_a_valid_level",
+            "responses": {}
+        });
+        for expected_replay in [false, true] {
+            let resp = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/assessments/assess-anchor-tokenization/attempts")
+                        .header("authorization", learner_a_bearer)
+                        .header("idempotency-key", "idem-attempt-invalid-level")
+                        .header("content-type", "application/json")
+                        .body(Body::from(
+                            serde_json::to_vec(&bad_attempt_payload).unwrap(),
+                        ))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            assert_eq!(
+                resp.headers().get("Idempotency-Replayed").is_some(),
+                expected_replay
+            );
+        }
+
+        // 2. [P0-5]: GET /v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}
+        // enforces that proposal.curriculum_id matches the path curriculum_id.
+        let preview_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/curricula/cur-learner-a-1/adaptations/preview")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "proposal_id": "adapt-prop-check-cur",
+                            "trigger_kind": "missed_sessions"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(preview_resp.status(), StatusCode::CREATED);
+
+        let matching_cur_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-check-cur")
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(matching_cur_resp.status(), StatusCode::OK);
+
+        let wrong_cur_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/curricula/cur-other-curriculum/adaptation-proposals/adapt-prop-check-cur")
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(wrong_cur_resp.status(), StatusCode::NOT_FOUND);
     }

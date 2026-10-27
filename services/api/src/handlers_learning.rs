@@ -1,19 +1,44 @@
 //! Learning & adaptation HTTP handlers: assessments, attempts, assistance events, defect reports,
 //! key corrections, prerequisite gates, diagnostics, adaptation proposals, notifications, and reminders.
 
-use crate::*;
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
     Json,
 };
 use curriculum_domain::{
     AssistanceLevel, DiagnosticStopReason, LearnerGateDecision, MathDepthPreference,
 };
-use curriculum_persistence::{IdempotencyBeginOutcome, PersistenceError};
+use curriculum_persistence::PersistenceError;
+use curriculum_security::AuthenticatedPrincipal;
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+
+use crate::{
+    extract_idempotency_key, extract_if_match, json_bool, json_i64, json_str, json_string_map,
+    json_string_vec, json_u64, json_with_etag, ApiAppState, ApiResult, AuthPrincipal,
+};
+
+const DEFAULT_ASSISTANCE_EVENT_LEVEL: &str = "hint_used";
+const DEFAULT_DECLARED_ASSISTANCE_LEVEL: &str = "independent";
+const DEFAULT_SESSION_ID: &str = "sess-initial-1";
+const DEFAULT_DEFECTIVE_ITEM_ID: &str = "item-tok-1";
+const DEFAULT_DEFECT_REASON_CODE: &str = "broken_answer_key";
+const DEFAULT_DEFECT_DETAILS: &str = "Reported defective assessment item";
+const DEFAULT_KEY_CORRECTION_RATIONALE: &str = "Curator corrected defective answer key";
+const DEFAULT_DIAGNOSTIC_ID: &str = "diag-session-1";
+const DEFAULT_TOPIC_ID: &str = "rag-python";
+const DEFAULT_ADAPTATION_PROPOSAL_ID: &str = "adapt-prop-001";
+const DEFAULT_NOTIFICATION_CHANNEL: &str = "in_app";
+const DEFAULT_TIMEZONE: &str = "UTC";
+const DEFAULT_REMINDER_TIME_HHMM: &str = "19:00";
+const DEFAULT_PUSH_SUBSCRIPTION_ID: &str = "push-sub-1";
+const DEFAULT_PUSH_ENDPOINT_URL: &str = "https://fcm.googleapis.com/fcm/send/example-token";
+const DEFAULT_PUSH_P256DH: &str =
+    "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM";
+const DEFAULT_PUSH_AUTH_SECRET: &str = "tBHItJI5svbpez7KI4CCXg";
+const DEFAULT_SNOOZE_MINUTES: u64 = 30;
+const DEFAULT_SNOOZE_NOW_EPOCH_SECONDS: i64 = 1_775_156_400;
 
 // =============================================================================
 // T05 Handlers: Assessments, Attempts, Assistance Events, Defect Reports & Key Corrections
@@ -21,311 +46,171 @@ use std::collections::BTreeMap;
 
 pub(crate) async fn get_assessment_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(assessment_id): Path<String>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    match state.store.get_assessment_view(&principal, &assessment_id) {
-        Ok(view) => (StatusCode::OK, Json(view)).into_response(),
-        Err(err) => error_response(err),
-    }
+) -> ApiResult {
+    let view = state.store.get_assessment_view(&principal, &assessment_id)?;
+    Ok((StatusCode::OK, Json(view)).into_response())
 }
 
 pub(crate) async fn record_attempt_assistance_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path((assessment_id, attempt_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
-) -> Response {
-    record_assistance_inner(state, headers, assessment_id, Some(attempt_id), payload)
+) -> ApiResult {
+    record_assistance_inner(
+        &state,
+        &principal,
+        &assessment_id,
+        Some(attempt_id.as_str()),
+        &payload,
+    )
 }
 
 pub(crate) async fn record_assessment_assistance_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(assessment_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let attempt_id = payload
-        .get("attempt_id")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    record_assistance_inner(state, headers, assessment_id, attempt_id, payload)
+) -> ApiResult {
+    let attempt_id = json_str(&payload, &["attempt_id"]);
+    record_assistance_inner(&state, &principal, &assessment_id, attempt_id, &payload)
 }
 
-pub(crate) fn record_assistance_inner(
-    state: ApiAppState,
-    headers: HeaderMap,
-    assessment_id: String,
-    attempt_id: Option<String>,
-    payload: Value,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let level_str = payload
-        .get("assistance_level")
-        .or_else(|| payload.get("kind"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("hint_used");
-    let level = match AssistanceLevel::from_wire(level_str) {
-        Ok(l) => l,
-        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
-    };
-    match state.store.record_assessment_assistance_event(
-        &principal,
-        &assessment_id,
-        attempt_id.as_deref(),
+fn record_assistance_inner(
+    state: &ApiAppState,
+    principal: &AuthenticatedPrincipal,
+    assessment_id: &str,
+    attempt_id: Option<&str>,
+    payload: &Value,
+) -> ApiResult {
+    let level_str =
+        json_str(payload, &["assistance_level", "kind"]).unwrap_or(DEFAULT_ASSISTANCE_EVENT_LEVEL);
+    let level = AssistanceLevel::from_wire(level_str)?;
+    let res = state.store.record_assessment_assistance_event(
+        principal,
+        assessment_id,
+        attempt_id,
         level,
-    ) {
-        Ok(res) => (StatusCode::OK, Json(res)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::OK, Json(res)).into_response())
 }
 
 pub(crate) async fn submit_assessment_attempt_handler(
     State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
     Path(assessment_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-
-    let idem_key = extract_header_str(&headers, "idempotency-key");
+) -> ApiResult {
+    let idem_key = extract_idempotency_key(&headers);
     let operation_id = "submitAssessmentAttempt";
-    if idem_key.is_some() {
-        match state.store.begin_idempotent_command(
-            &principal.account_id,
-            operation_id,
-            idem_key,
-            &payload,
-            10_000,
-            86_400_000,
-        ) {
-            Ok(IdempotencyBeginOutcome::Replayed(stored)) => {
-                let status =
-                    StatusCode::from_u16(stored.status_code).unwrap_or(StatusCode::CREATED);
-                let mut resp = (status, Json(stored.body)).into_response();
-                resp.headers_mut()
-                    .insert("Idempotency-Replayed", HeaderValue::from_static("true"));
-                return resp;
-            }
-            Ok(IdempotencyBeginOutcome::Acquired) => {}
-            Err(err) => return error_response(err),
-        }
-    }
 
-    let attempt_id = payload
-        .get("attempt_id")
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            format!(
-                "att-{assessment_id}-{}",
-                idem_key.unwrap_or("default")
-            )
-        });
-    let session_id = payload
-        .get("session_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("sess-initial-1");
-    let assistance_str = payload
-        .get("assistance_level")
-        .and_then(|v| v.as_str())
-        .unwrap_or("independent");
-    let declared_assistance = match AssistanceLevel::from_wire(assistance_str) {
-        Ok(l) => l,
-        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
-    };
-    let mut responses = BTreeMap::new();
-    if let Some(obj) = payload.get("responses").and_then(|v| v.as_object()) {
-        for (k, v) in obj {
-            if let Some(s) = v.as_str() {
-                responses.insert(k.clone(), s.to_string());
-            }
-        }
-    }
-    let explicit_score_bp = payload
-        .get("score_bp")
-        .and_then(|v| v.as_u64())
-        .map(|n| n as u32);
+    state.execute_optional_idempotent(
+        &principal.account_id,
+        operation_id,
+        idem_key,
+        &payload,
+        StatusCode::CREATED,
+        |key_str| {
+            let attempt_id = json_str(&payload, &["attempt_id"])
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("att-{assessment_id}-{key_str}"));
+            let session_id = json_str(&payload, &["session_id"]).unwrap_or(DEFAULT_SESSION_ID);
+            let assistance_str = json_str(&payload, &["assistance_level"])
+                .unwrap_or(DEFAULT_DECLARED_ASSISTANCE_LEVEL);
+            let declared_assistance = AssistanceLevel::from_wire(assistance_str)
+                .map_err(|err| PersistenceError::Validation(err.to_string()))?;
+            let responses = json_string_map(&payload, &["responses"]);
+            let explicit_score_bp = json_u64(&payload, &["score_bp"])
+                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
 
-    match state.store.submit_assessment_attempt(
-        &principal,
-        &assessment_id,
-        &attempt_id,
-        session_id,
-        declared_assistance,
-        responses,
-        explicit_score_bp,
-    ) {
-        Ok(record) => {
+            let record = state.store.submit_assessment_attempt(
+                &principal,
+                &assessment_id,
+                &attempt_id,
+                session_id,
+                declared_assistance,
+                responses,
+                explicit_score_bp,
+            )?;
             let body = serde_json::to_value(&record).unwrap_or(Value::Null);
-            if let Some(k) = idem_key {
-                state.store.complete_idempotent_command(
-                    &principal.account_id,
-                    operation_id,
-                    k,
-                    201,
-                    body.clone(),
-                );
-            }
-            (StatusCode::CREATED, Json(body)).into_response()
-        }
-        Err(err) => {
-            if let Some(k) = idem_key {
-                state.store.complete_idempotent_command(
-                    &principal.account_id,
-                    operation_id,
-                    k,
-                    err.http_status_code(),
-                    json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
-                );
-            }
-            error_response(err)
-        }
-    }
+            Ok((StatusCode::CREATED, body, None))
+        },
+    )
 }
 
 pub(crate) async fn get_assessment_attempt_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(attempt_id): Path<String>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    match state.store.get_assessment_attempt(&principal, &attempt_id) {
-        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
-        Err(err) => error_response(err),
-    }
+) -> ApiResult {
+    let rec = state.store.get_assessment_attempt(&principal, &attempt_id)?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
 }
 
 pub(crate) async fn report_defective_item_path_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path((assessment_id, item_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
-) -> Response {
-    report_defective_item_inner(state, headers, assessment_id, item_id, payload)
+) -> ApiResult {
+    report_defective_item_inner(&state, &principal, &assessment_id, &item_id, &payload)
 }
 
 pub(crate) async fn report_defective_item_body_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(assessment_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let item_id = payload
-        .get("item_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("item-tok-1")
-        .to_string();
-    report_defective_item_inner(state, headers, assessment_id, item_id, payload)
+) -> ApiResult {
+    let item_id = json_str(&payload, &["item_id"]).unwrap_or(DEFAULT_DEFECTIVE_ITEM_ID);
+    report_defective_item_inner(&state, &principal, &assessment_id, item_id, &payload)
 }
 
-pub(crate) fn report_defective_item_inner(
-    state: ApiAppState,
-    headers: HeaderMap,
-    assessment_id: String,
-    item_id: String,
-    payload: Value,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let reason_code = payload
-        .get("reason_code")
-        .or_else(|| payload.get("reason"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("broken_answer_key");
-    let details = payload
-        .get("details")
-        .or_else(|| payload.get("description"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("Reported defective assessment item");
-    match state.store.report_defective_assessment_item(
-        &principal,
-        &assessment_id,
-        &item_id,
+fn report_defective_item_inner(
+    state: &ApiAppState,
+    principal: &AuthenticatedPrincipal,
+    assessment_id: &str,
+    item_id: &str,
+    payload: &Value,
+) -> ApiResult {
+    let reason_code =
+        json_str(payload, &["reason_code", "reason"]).unwrap_or(DEFAULT_DEFECT_REASON_CODE);
+    let details =
+        json_str(payload, &["details", "description"]).unwrap_or(DEFAULT_DEFECT_DETAILS);
+    let report = state.store.report_defective_assessment_item(
+        principal,
+        assessment_id,
+        item_id,
         reason_code,
         details,
-    ) {
-        Ok(report) => (StatusCode::CREATED, Json(report)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::CREATED, Json(report)).into_response())
 }
 
 pub(crate) async fn apply_key_correction_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(assessment_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let mut updated_key = BTreeMap::new();
-    if let Some(obj) = payload
-        .get("updated_answer_key")
-        .or_else(|| payload.get("answer_key"))
-        .and_then(|v| v.as_object())
-    {
-        for (k, v) in obj {
-            if let Some(s) = v.as_str() {
-                updated_key.insert(k.clone(), s.to_string());
-            }
-        }
-    }
-    let rationale = payload
-        .get("rationale")
-        .and_then(|v| v.as_str())
-        .unwrap_or("Curator corrected defective answer key");
-    match state.store.apply_assessment_key_correction(
+) -> ApiResult {
+    let updated_key = json_string_map(&payload, &["updated_answer_key", "answer_key"]);
+    let rationale =
+        json_str(&payload, &["rationale"]).unwrap_or(DEFAULT_KEY_CORRECTION_RATIONALE);
+    let correction = state.store.apply_assessment_key_correction(
         &principal,
         &assessment_id,
         updated_key,
         rationale,
-    ) {
-        Ok(correction) => (StatusCode::OK, Json(correction)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::OK, Json(correction)).into_response())
 }
 
-pub(crate) async fn evaluate_prerequisite_gate_handler(
-    State(state): State<ApiAppState>,
-    headers: HeaderMap,
-    Path((curriculum_id, objective_id)): Path<(String, String)>,
-    Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let prereq_ids: Vec<String> = payload
-        .get("prerequisite_objective_ids")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let is_mastery_gated = payload
-        .get("is_mastery_gated")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
-    let decision = match payload.get("learner_decision").and_then(|v| v.as_str()) {
+#[must_use]
+fn parse_learner_gate_decision(raw: Option<&str>) -> Option<LearnerGateDecision> {
+    match raw {
         Some("prerequisite_override_recorded" | "override") => {
             Some(LearnerGateDecision::PrerequisiteOverrideRecorded)
         }
@@ -333,19 +218,28 @@ pub(crate) async fn evaluate_prerequisite_gate_handler(
             Some(LearnerGateDecision::UnverifiedPrerequisiteAcknowledged)
         }
         _ => None,
-    };
+    }
+}
 
-    match state.store.evaluate_and_record_prerequisite_gate(
+pub(crate) async fn evaluate_prerequisite_gate_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path((curriculum_id, objective_id)): Path<(String, String)>,
+    Json(payload): Json<Value>,
+) -> ApiResult {
+    let prereq_ids = json_string_vec(&payload, "prerequisite_objective_ids");
+    let is_mastery_gated = json_bool(&payload, &["is_mastery_gated"]).unwrap_or(true);
+    let decision = parse_learner_gate_decision(json_str(&payload, &["learner_decision"]));
+
+    let eval = state.store.evaluate_and_record_prerequisite_gate(
         &principal,
         &curriculum_id,
         &objective_id,
         &prereq_ids,
         is_mastery_gated,
         decision,
-    ) {
-        Ok(eval) => (StatusCode::OK, Json(eval)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::OK, Json(eval)).into_response())
 }
 
 // =============================================================================
@@ -354,297 +248,204 @@ pub(crate) async fn evaluate_prerequisite_gate_handler(
 
 pub(crate) async fn start_diagnostic_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let diagnostic_id = payload
-        .get("diagnostic_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("diag-session-1")
-        .to_string();
-    let curriculum_id = payload
-        .get("curriculum_id")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let topic_id = payload
-        .get("topic_id")
-        .or_else(|| payload.get("topic"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("rag-python");
-    let candidate_objectives: Vec<String> = payload
-        .get("objective_ids")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default();
-    let math_depth = match payload
-        .get("math_depth_preference")
-        .or_else(|| payload.get("math_depth"))
-        .and_then(|v| v.as_str())
-    {
-        Some(s) => match MathDepthPreference::from_wire(s) {
-            Ok(p) => Some(p),
-            Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
-        },
-        None => None,
-    };
+) -> ApiResult {
+    let diagnostic_id = json_str(&payload, &["diagnostic_id"]).unwrap_or(DEFAULT_DIAGNOSTIC_ID);
+    let curriculum_id = json_str(&payload, &["curriculum_id"]).map(str::to_string);
+    let topic_id = json_str(&payload, &["topic_id", "topic"]).unwrap_or(DEFAULT_TOPIC_ID);
+    let candidate_objectives = json_string_vec(&payload, "objective_ids");
+    let math_depth = json_str(&payload, &["math_depth_preference", "math_depth"])
+        .map(MathDepthPreference::from_wire)
+        .transpose()?;
 
-    match state.store.start_diagnostic_session(
+    let rec = state.store.start_diagnostic_session(
         &principal,
-        &diagnostic_id,
+        diagnostic_id,
         curriculum_id,
         topic_id,
         candidate_objectives,
         math_depth,
-    ) {
-        Ok(rec) => (StatusCode::CREATED, Json(rec)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::CREATED, Json(rec)).into_response())
 }
 
 pub(crate) async fn get_diagnostic_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(diagnostic_id): Path<String>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    match state
+) -> ApiResult {
+    let rec = state
         .store
-        .get_diagnostic_session(&principal, &diagnostic_id)
-    {
-        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
-        Err(err) => error_response(err),
-    }
+        .get_diagnostic_session(&principal, &diagnostic_id)?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
 }
 
 pub(crate) async fn submit_diagnostic_attempt_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(diagnostic_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let item_id = payload
-        .get("item_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let answer = payload
-        .get("answer")
-        .or_else(|| payload.get("response"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let assistance_str = payload
-        .get("assistance_level")
-        .and_then(|v| v.as_str())
-        .unwrap_or("independent");
-    let assistance = match AssistanceLevel::from_wire(assistance_str) {
-        Ok(a) => a,
-        Err(e) => return error_response(PersistenceError::Validation(e.to_string())),
-    };
+) -> ApiResult {
+    let item_id = json_str(&payload, &["item_id"]).unwrap_or("");
+    let answer = json_str(&payload, &["answer", "response"]).unwrap_or("");
+    let assistance_str =
+        json_str(&payload, &["assistance_level"]).unwrap_or(DEFAULT_DECLARED_ASSISTANCE_LEVEL);
+    let assistance = AssistanceLevel::from_wire(assistance_str)?;
 
-    match state.store.submit_diagnostic_item_attempt(
+    let rec = state.store.submit_diagnostic_item_attempt(
         &principal,
         &diagnostic_id,
         item_id,
         answer,
         assistance,
-    ) {
-        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
-        Err(err) => error_response(err),
+    )?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
+}
+
+#[must_use]
+fn parse_diagnostic_stop_reason(raw: &str) -> DiagnosticStopReason {
+    match raw {
+        "uncertainty_bound_reached" => DiagnosticStopReason::UncertaintyBoundReached,
+        "all_items_answered" => DiagnosticStopReason::AllItemsAnswered,
+        _ => DiagnosticStopReason::LearnerStopped,
     }
 }
 
 pub(crate) async fn stop_diagnostic_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(diagnostic_id): Path<String>,
     payload: Option<Json<Value>>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
+) -> ApiResult {
     let reason = payload
         .as_ref()
-        .and_then(|Json(v)| v.get("stop_reason").and_then(|r| r.as_str()))
-        .map(|s| match s {
-            "uncertainty_bound_reached" => DiagnosticStopReason::UncertaintyBoundReached,
-            "all_items_answered" => DiagnosticStopReason::AllItemsAnswered,
-            _ => DiagnosticStopReason::LearnerStopped,
-        });
-    match state
+        .and_then(|Json(v)| json_str(v, &["stop_reason"]))
+        .map(parse_diagnostic_stop_reason);
+    let rec = state
         .store
-        .stop_diagnostic_session(&principal, &diagnostic_id, reason)
-    {
-        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
-        Err(err) => error_response(err),
-    }
+        .stop_diagnostic_session(&principal, &diagnostic_id, reason)?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
 }
 
 pub(crate) async fn preview_adaptation_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(curriculum_id): Path<String>,
     payload: Option<Json<Value>>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let body = payload.map(|Json(v)| v).unwrap_or_else(|| json!({}));
-    let proposal_id = body
-        .get("proposal_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("adapt-prop-001");
-    let trigger_kind = body.get("trigger_kind").and_then(|v| v.as_str());
+) -> ApiResult {
+    let body = payload.map_or_else(|| json!({}), |Json(v)| v);
+    let proposal_id = json_str(&body, &["proposal_id"]).unwrap_or(DEFAULT_ADAPTATION_PROPOSAL_ID);
+    let trigger_kind = json_str(&body, &["trigger_kind"]);
 
-    match state
-        .store
-        .create_adaptation_proposal(&principal, &curriculum_id, proposal_id, trigger_kind)
-    {
-        Ok(rec) => (StatusCode::CREATED, Json(rec.payload)).into_response(),
-        Err(err) => error_response(err),
-    }
+    let rec = state.store.create_adaptation_proposal(
+        &principal,
+        &curriculum_id,
+        proposal_id,
+        trigger_kind,
+    )?;
+    Ok((StatusCode::CREATED, Json(rec.payload)).into_response())
 }
 
 pub(crate) async fn get_adaptation_proposal_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(proposal_id): Path<String>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    match state
+) -> ApiResult {
+    let rec = state
         .store
-        .get_adaptation_proposal(&principal, &proposal_id)
-    {
-        Ok(rec) => (StatusCode::OK, Json(rec.payload)).into_response(),
-        Err(err) => error_response(err),
-    }
+        .get_adaptation_proposal(&principal, &proposal_id)?;
+    Ok((StatusCode::OK, Json(rec.payload)).into_response())
 }
 
 pub(crate) async fn get_curriculum_adaptation_proposal_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
-    Path((_curriculum_id, proposal_id)): Path<(String, String)>,
-) -> Response {
-    get_adaptation_proposal_handler(State(state), headers, Path(proposal_id)).await
+    AuthPrincipal(principal): AuthPrincipal,
+    Path((curriculum_id, proposal_id)): Path<(String, String)>,
+) -> ApiResult {
+    let rec = state
+        .store
+        .get_adaptation_proposal(&principal, &proposal_id)?;
+    if rec.curriculum_id != curriculum_id {
+        return Err(PersistenceError::NotFound {
+            resource_type: "adaptation_proposal",
+            resource_id: proposal_id,
+        }
+        .into());
+    }
+    Ok((StatusCode::OK, Json(rec.payload)).into_response())
 }
 
 pub(crate) async fn accept_adaptation_body_handler(
     State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
     Path(curriculum_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let proposal_id = payload
-        .get("proposal_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("adapt-prop-001")
-        .to_string();
-    accept_adaptation_inner(state, headers, curriculum_id, proposal_id, payload)
+) -> ApiResult {
+    let proposal_id =
+        json_str(&payload, &["proposal_id"]).unwrap_or(DEFAULT_ADAPTATION_PROPOSAL_ID);
+    accept_adaptation_inner(
+        &state,
+        &principal,
+        &headers,
+        &curriculum_id,
+        proposal_id,
+        &payload,
+    )
 }
 
 pub(crate) async fn accept_adaptation_path_handler(
     State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
     Path((curriculum_id, proposal_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
-) -> Response {
-    accept_adaptation_inner(state, headers, curriculum_id, proposal_id, payload)
+) -> ApiResult {
+    accept_adaptation_inner(
+        &state,
+        &principal,
+        &headers,
+        &curriculum_id,
+        &proposal_id,
+        &payload,
+    )
 }
 
-pub(crate) fn accept_adaptation_inner(
-    state: ApiAppState,
-    headers: HeaderMap,
-    curriculum_id: String,
-    proposal_id: String,
-    payload: Value,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-
-    let idem_key = extract_header_str(&headers, "idempotency-key");
+fn accept_adaptation_inner(
+    state: &ApiAppState,
+    principal: &AuthenticatedPrincipal,
+    headers: &HeaderMap,
+    curriculum_id: &str,
+    proposal_id: &str,
+    payload: &Value,
+) -> ApiResult {
+    let idem_key = extract_idempotency_key(headers);
     let operation_id = "acceptAdaptation";
 
-    match state.store.begin_idempotent_command(
+    state.execute_idempotent(
         &principal.account_id,
         operation_id,
         idem_key,
-        &payload,
-        10_000,
-        86_400_000,
-    ) {
-        Ok(IdempotencyBeginOutcome::Replayed(stored)) => {
-            let status = StatusCode::from_u16(stored.status_code).unwrap_or(StatusCode::OK);
-            let mut resp = (status, Json(stored.body)).into_response();
-            resp.headers_mut()
-                .insert("Idempotency-Replayed", HeaderValue::from_static("true"));
-            resp
-        }
-        Ok(IdempotencyBeginOutcome::Acquired) => {
-            let key_str = idem_key.unwrap_or_default();
-            let expected_sha = payload
-                .get("expected_proposal_sha256")
-                .or_else(|| payload.get("proposal_sha256"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let base_cur = payload
-                .get("base_curriculum_revision_id")
-                .and_then(|v| v.as_str());
-            let base_sched = payload
-                .get("base_schedule_revision_id")
-                .and_then(|v| v.as_str());
+        payload,
+        StatusCode::OK,
+        |_key_str| {
+            let expected_sha =
+                json_str(payload, &["expected_proposal_sha256", "proposal_sha256"]).unwrap_or("");
+            let base_cur = json_str(payload, &["base_curriculum_revision_id"]);
+            let base_sched = json_str(payload, &["base_schedule_revision_id"]);
 
-            match state.store.accept_adaptation_proposal(
-                &principal,
-                &curriculum_id,
-                &proposal_id,
+            let rec = state.store.accept_adaptation_proposal(
+                principal,
+                curriculum_id,
+                proposal_id,
                 expected_sha,
                 base_cur,
                 base_sched,
-            ) {
-                Ok(rec) => {
-                    state.store.complete_idempotent_command(
-                        &principal.account_id,
-                        operation_id,
-                        key_str,
-                        200,
-                        rec.payload.clone(),
-                    );
-                    (StatusCode::OK, Json(rec.payload)).into_response()
-                }
-                Err(err) => {
-                    state.store.complete_idempotent_command(
-                        &principal.account_id,
-                        operation_id,
-                        key_str,
-                        err.http_status_code(),
-                        json!({"error": {"code": err.error_code(), "message": err.to_string()}}),
-                    );
-                    error_response(err)
-                }
-            }
-        }
-        Err(err) => error_response(err),
-    }
+            )?;
+            Ok((StatusCode::OK, rec.payload, None))
+        },
+    )
 }
 
 // =============================================================================
@@ -653,68 +454,38 @@ pub(crate) fn accept_adaptation_inner(
 
 pub(crate) async fn get_notification_preferences_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
     let prefs = state.store.get_notification_preferences(&principal);
-    let etag = prefs.etag.clone();
-    let mut resp = (StatusCode::OK, Json(prefs)).into_response();
-    if let Ok(hv) = HeaderValue::from_str(&etag) {
-        resp.headers_mut().insert(axum::http::header::ETAG, hv);
-    }
-    resp
+    Ok(json_with_etag(StatusCode::OK, &prefs.etag, &prefs))
 }
 
 pub(crate) async fn put_notification_preferences_handler(
     State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let if_match = extract_header_str(&headers, "if-match");
-    let enabled = payload
-        .get("enabled")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let channel = payload
-        .get("channel")
-        .and_then(|v| v.as_str())
-        .unwrap_or("in_app");
-    let iana_timezone = payload
-        .get("iana_timezone")
-        .or_else(|| payload.get("timezone"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("UTC");
-    let local_time_hhmm = payload
-        .get("local_time_hhmm")
-        .or_else(|| payload.get("reminder_time"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("19:00");
+) -> ApiResult {
+    let if_match = extract_if_match(&headers);
+    let enabled = json_bool(&payload, &["enabled"]).unwrap_or(false);
+    let channel = json_str(&payload, &["channel"]).unwrap_or(DEFAULT_NOTIFICATION_CHANNEL);
+    let iana_timezone =
+        json_str(&payload, &["iana_timezone", "timezone"]).unwrap_or(DEFAULT_TIMEZONE);
+    let local_time_hhmm = json_str(&payload, &["local_time_hhmm", "reminder_time"])
+        .unwrap_or(DEFAULT_REMINDER_TIME_HHMM);
     let days_of_week: Vec<u8> = payload
         .get("days_of_week")
-        .and_then(|v| v.as_array())
+        .and_then(Value::as_array)
         .map(|arr| {
             arr.iter()
-                .filter_map(|x| x.as_u64().map(|n| n as u8))
+                .filter_map(|x| x.as_u64().and_then(|n| u8::try_from(n).ok()))
                 .collect()
         })
         .unwrap_or_else(|| vec![1, 2, 3, 4, 5]);
-    let quiet_start = payload
-        .get("quiet_hours_start_hhmm")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
-    let quiet_end = payload
-        .get("quiet_hours_end_hhmm")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
+    let quiet_start = json_str(&payload, &["quiet_hours_start_hhmm"]).map(str::to_string);
+    let quiet_end = json_str(&payload, &["quiet_hours_end_hhmm"]).map(str::to_string);
 
-    match state.store.update_notification_preferences(
+    let updated = state.store.update_notification_preferences(
         &principal,
         if_match,
         enabled,
@@ -724,112 +495,71 @@ pub(crate) async fn put_notification_preferences_handler(
         days_of_week,
         quiet_start,
         quiet_end,
-    ) {
-        Ok(updated) => {
-            let etag = updated.etag.clone();
-            let mut resp = (StatusCode::OK, Json(updated)).into_response();
-            if let Ok(hv) = HeaderValue::from_str(&etag) {
-                resp.headers_mut().insert(axum::http::header::ETAG, hv);
-            }
-            resp
-        }
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok(json_with_etag(StatusCode::OK, &updated.etag, &updated))
 }
 
 pub(crate) async fn post_push_subscription_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let subscription_id = payload
-        .get("subscription_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("push-sub-1");
-    let endpoint_url = payload
-        .get("endpoint_url")
-        .or_else(|| payload.get("endpoint"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("https://fcm.googleapis.com/fcm/send/example-token");
-    let p256dh = payload
-        .get("p256dh_key")
-        .or_else(|| payload.get("p256dh"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM");
-    let auth_secret = payload
-        .get("auth_secret")
-        .or_else(|| payload.get("auth"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("tBHItJI5svbpez7KI4CCXg");
+) -> ApiResult {
+    let subscription_id =
+        json_str(&payload, &["subscription_id"]).unwrap_or(DEFAULT_PUSH_SUBSCRIPTION_ID);
+    let endpoint_url =
+        json_str(&payload, &["endpoint_url", "endpoint"]).unwrap_or(DEFAULT_PUSH_ENDPOINT_URL);
+    let p256dh = json_str(&payload, &["p256dh_key", "p256dh"]).unwrap_or(DEFAULT_PUSH_P256DH);
+    let auth_secret =
+        json_str(&payload, &["auth_secret", "auth"]).unwrap_or(DEFAULT_PUSH_AUTH_SECRET);
 
-    match state.store.upsert_push_subscription(
+    let sub = state.store.upsert_push_subscription(
         &principal,
         subscription_id,
         endpoint_url,
         p256dh,
         auth_secret,
-    ) {
-        Ok(sub) => (StatusCode::CREATED, Json(sub)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::CREATED, Json(sub)).into_response())
 }
 
 pub(crate) async fn delete_default_push_subscription_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
-) -> Response {
-    delete_push_subscription_handler(State(state), headers, Path("default".to_string())).await
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
+    state
+        .store
+        .delete_push_subscription(&principal, "default")?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 pub(crate) async fn delete_push_subscription_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(subscription_id): Path<String>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    match state
+) -> ApiResult {
+    state
         .store
-        .delete_push_subscription(&principal, &subscription_id)
-    {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
-        Err(err) => error_response(err),
-    }
+        .delete_push_subscription(&principal, &subscription_id)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 pub(crate) async fn snooze_reminder_handler(
     State(state): State<ApiAppState>,
-    headers: HeaderMap,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(occurrence_id): Path<String>,
     Json(payload): Json<Value>,
-) -> Response {
-    let principal = match authenticate_request(&state, &headers) {
-        Ok(p) => p,
-        Err(err) => return error_response(err),
-    };
-    let snooze_minutes = payload
-        .get("snooze_minutes")
-        .or_else(|| payload.get("duration_minutes"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(30) as u32;
-    let now_epoch = payload
-        .get("now_utc_epoch_seconds")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(1_775_156_400);
+) -> ApiResult {
+    let snooze_minutes_u64 =
+        json_u64(&payload, &["snooze_minutes", "duration_minutes"]).unwrap_or(DEFAULT_SNOOZE_MINUTES);
+    let snooze_minutes = u32::try_from(snooze_minutes_u64).unwrap_or(u32::MAX);
+    let now_epoch = json_i64(&payload, &["now_utc_epoch_seconds"])
+        .unwrap_or(DEFAULT_SNOOZE_NOW_EPOCH_SECONDS);
 
-    match state.store.snooze_reminder_occurrence(
+    let rec = state.store.snooze_reminder_occurrence(
         &principal,
         &occurrence_id,
         snooze_minutes,
         now_epoch,
-    ) {
-        Ok(rec) => (StatusCode::OK, Json(rec)).into_response(),
-        Err(err) => error_response(err),
-    }
+    )?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
 }
