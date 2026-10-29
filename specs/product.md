@@ -49,13 +49,13 @@ The application source code is licensed under the OSI-approved **Apache License,
 
 ## 1. Revision changes
 
-**Current revision: 0.3.0 · Updated: 2026-10-26.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
+**Current revision: 0.3.0 · Updated: 2026-10-28.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
 
 ### Decisions incorporated in this revision
 
 - Establish `specs/product.md` as the single manually maintained source of truth. Embed both the core OpenAPI contract (`openapi.yaml`) and the companion application contract (`app-companion.openapi.yaml`) directly inside `specs/product.md`, require generated-file notices on extracted artifacts, enforce drift detection via `extract_spec.py --check`, and derive requirement, scenario, operation, and P0 counts dynamically from the specification scripts rather than hard-coding counts into release logic.
 - Confirm initial-release product decisions `D01` (adult self-directed learners studying AI/LLM engineering, systems, mathematics, physics, and literature across the seeded domain catalog), `D02` (responsive web and installable PWA initially; native wrappers deferred), `D03` (provider links and approved metadata by default; explicit permissions required for full-text ingestion, embedding, model submission, and derived assessment generation), `D09` (external coding environments only at launch; no hosted arbitrary-code execution), `D10` (English first with language-tagged records and contracts), and `D12` (provider-neutral inference interface: deterministic fake provider first, plus OpenAI, Anthropic, and Google Gemini with native API web-search grounding and per-provider model selection, no provider-specific domain leakage, and no silent fallback from BYOK to hosted paid inference).
-- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, PostgreSQL + `pgvector`, SQLx with explicit SQL migrations, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, CSS variables generated from canonical UI tokens, KaTeX / accessible MathML rendering via `MathText.tsx` and `SafeActivityRenderer`, TomSelect curriculum picker, Cropper.js profile photo modal, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
+- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, standard PostgreSQL 16 + `bm25` crate (`TfIdfCorpusIndex`) + native PostgreSQL `tsvector`/`GIN`, SQLx with explicit SQL migrations `0000`–`0007`, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, `minisearch` in-memory BM25/TF-IDF search index, live E2E curriculum generation with fast provider defaults + incremental catalog auto-indexing, CSS variables generated from canonical UI tokens, KaTeX / accessible MathML rendering via `MathText.tsx` and `SafeActivityRenderer`, TomSelect curriculum picker, Cropper.js profile photo modal, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
 - Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn**, the visible sidebar sub-navigation is consolidated into 3 focused tabs—**Today**, **Progress**, and **Resources**—by merging Plan actions (`Activate plan`, `Share with Community`), macro curriculum `Goal` / `Covers` context, and unit-gate progression directly into **Today**, while keeping the active curricula switcher (`Your curricula`) in the left sidebar and retaining synchronized **Plan** (**Map** / **Outline**) deep-link state for programmatic inspection.
 - Implement the **5-step curriculum intake & synthesis pipeline (`Step 0`–`Step 4`)** with polymorphic resource indexing (`ResourceIndexDescriptor`: `BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) and progressive disclosure in the **New Curriculum** modal:
   - Starts in a focused empty state until the learner enters a multi-line `Goal` or selects a topic.
@@ -194,7 +194,7 @@ The application is OSI-approved open-source software licensed under the **Apache
 | BYOK and paid hosted AI | Both modes are first-class; BYOK supports OpenAI, Anthropic, and Google Gemini with per-provider model selection, Primary/Standby keys, and native API web-search grounding; source material purchases are separate |
 | Open-source software and contributions | OSI-approved `Apache-2.0` license (`LICENSE`) with `LEGAL.md` governing BYOK direct provider terms, `CC BY 4.0` shared community curricula, and metadata/link-only third-party resources |
 | Goal-based curriculum generation | 5-step intake pipeline (`Step 0`–`Step 4`) combining a seeded, reviewed catalog with polymorphic Book/YouTube indexing, `Step 1.5` fit evaluation, and native API web-search gap discovery |
-| RAG and vector indexing | Retrieval assists selection and grounding; structured facts and polymorphic resource index descriptors (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) remain authoritative |
+| Catalog retrieval and TF-IDF cosine indexing | Sublinear TF-IDF + L2-normalized cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`) assists selection and grounding with zero external embedding API dependency; structured facts and polymorphic resource index descriptors (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) remain authoritative |
 | Paid/free preferences | Enforce eligibility and disclose costs, subscriptions, and unknowns |
 | Extremely credible materials | Verify individual works and creator expertise; platform name alone is insufficient |
 | Theory, coding, quizzes, optional certification | Support distinct activity types aligned with measurable objectives |
@@ -512,7 +512,7 @@ The full specification remains authoritative across all `105` requirements (`103
 
 #### Tier 1 — Private Alpha gate (`T00 → T01 → T14-Core → T02 → T03 → T04`)
 
-- Proves the end-to-end architecture locally using the development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering (with `pgvector` schema available but no vector retrieval efficacy claim until evaluated against a reviewed retrieval benchmark), and `DeterministicFakeProvider`.
+- Proves the end-to-end architecture locally using the development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering combined with sublinear TF-IDF cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`, without requiring `pgvector` or external embedding APIs), and `DeterministicFakeProvider`.
 - Persists one validated, immutable `CurriculumRevision`, renders the `Plan` **Outline** plus a basic **Map** (`SafeActivityRenderer` failing closed on unknown major schema versions), activates the revision, and records one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
 - Enforces CI drift checks (`scripts/extract_spec.py --check specs/product.md .`), JSON Schema Draft 2020-12 runtime validation, and byte-for-byte RFC 8785 JCS digest verification.
 
@@ -534,7 +534,7 @@ The full specification remains authoritative across all `105` requirements (`103
 #### Pedagogical evaluation workstream and educational claims gate
 
 Software acceptance tests verify engineering behavior only and must never be treated as evidence that the product improves learning. A dedicated pedagogical evaluation workstream covers:
-1. **Catalog and retrieval relevance:** Curator-labeled retrieval benchmark comparing deterministic metadata filtering against hybrid FTS + `pgvector` before claiming vector retrieval value.
+1. **Catalog and retrieval relevance:** Curator-labeled retrieval benchmark comparing deterministic metadata filtering and sublinear TF-IDF cosine similarity (`tfidf-cosine-v1`) against alternative hybrid retrieval models before claiming broader retrieval value.
 2. **Expert curriculum-quality review:** Domain-expert audit of generated curricula for factual accuracy, prerequisite soundness, and objective-practice-assessment alignment (`@S42`).
 3. **Assessment quality:** Review of anchor item clarity, rubric inter-rater agreement, distractor quality, and answer-key correction rates (`T05`, `T12`).
 4. **Delayed learning and transfer evaluation (`T11`):** An initial pilot measures feasibility and usability; it does not establish causality. To claim improved learning, compare against a credible baseline using equivalent materials/time, predeclare outcomes, and measure delayed retention and novel transfer with independent assessments (`@S44`).
@@ -2003,7 +2003,7 @@ Approved implementation stack: a polyglot Rust + TypeScript monorepo using a Car
   - `crates/domain/` — Framework-independent domain rules, pure workload math, DAG acyclicity checks, proficiency/waiver state machines, and schedule recalculation.
   - `crates/application/` — Use cases and transaction orchestration.
   - `crates/contracts/` — Generated contract models, authoritative runtime JSON Schema Draft 2020-12 validator (`jsonschema` crate), and RFC 8785 JCS canonicalizer verified byte-for-byte against all supplied digest fixtures.
-  - `crates/persistence/` — PostgreSQL + `pgvector` repositories and explicit SQLx SQL migrations.
+  - `crates/persistence/` — Standard PostgreSQL 16 repositories, TF-IDF inverted index / incremental catalog statements, and explicit SQLx SQL migrations (`0000`–`0007`).
   - `crates/providers/` — Provider-neutral AI adapters (`DeterministicFakeProvider`, `OpenAiProvider`, `AnthropicProvider`, `GeminiProvider`).
   - `crates/jobs/` — Transactional outbox/job definitions and execution.
   - `crates/security/` — Envelope-encrypted secret custody, authorization helpers, and SSRF-safe controlled egress.
@@ -2031,7 +2031,7 @@ flowchart TB
   L --> D
   B --> D
   G --> D
-  C --> V[("Search and vector index")]
+  C --> V[("Search and TF-IDF index")]
   G --> V
   G --> M["Provider adapter"]
   B --> S["Secret store"]
@@ -2084,7 +2084,7 @@ Schema validation is structural assurance. It does not establish factual correct
 
 Curator submission or permitted connector → raw staging → rights and provenance checks → normalized resource version → educational review → approval → indexing. Treat source pages and documents as untrusted data. A resource may be approved for recommendation while remaining ineligible for full-text retrieval.
 
-Store factual filters in relational columns and attach an optional polymorphic `index_descriptor` (`ResourceIndexDescriptor` in `crates/domain/src/catalog.rs`: `BookIndex` with chapters/pages/summaries, `YoutubePlaylistIndex` with playlist items/durations/topics, `CourseIndex` with modules/lectures/assignments, or `RepositoryLabIndex` with lab exercises/paths/objectives) to each `CatalogResourceVersionRecord` so the `Step 1.5` fit evaluator and UI can inspect fine-grained syllabus coverage without ingesting copyrighted full text. Index approved curator descriptions and other text only within recorded permissions. Combine keyword retrieval with semantic similarity, then rank by objective relevance, level, access, instructional fit, and complementary coverage. Evaluate retrieval on a curator-labeled set of representative goals and missing-resource cases. Do not choose a vector backend or an embedding model solely because it is fashionable.
+Store factual filters in relational columns (`resource_versions`, `catalog_resource_segments`, `catalog_changes`) and attach an optional polymorphic `index_descriptor` (`ResourceIndexDescriptor` in `crates/domain/src/catalog.rs`: `BookIndex` with chapters/pages/summaries, `YoutubePlaylistIndex` with playlist items/durations/topics, `CourseIndex` with modules/lectures/assignments, or `RepositoryLabIndex` with lab exercises/paths/objectives) to each `CatalogResourceVersionRecord` so the `Step 1.5` fit evaluator and UI can inspect fine-grained syllabus coverage without ingesting copyrighted full text. Index approved curator descriptions and polymorphic segment titles using established full-text / BM25 / TF-IDF libraries—`minisearch` in `apps/web/src/tfidfIndex.ts`, the `bm25` crate (`SearchEngineBuilder` + Snowball stemmer) in `crates/domain/src/catalog.rs`, and built-in PostgreSQL `tsvector` + `GIN` (`ts_rank_cd` / `websearch_to_tsquery`) + `catalog_resource_tfidf_terms` in `crates/persistence`—with zero external embedding API cost or provider-key dependency. Newly discovered web resources from `Step 2` are incrementally auto-indexed into the catalog (`POST /v1/catalog/search-and-index` and `addCatalogResources`) without requiring a redeploy. Evaluate retrieval on a curator-labeled set of representative goals and missing-resource cases. Do not choose a vector database or external neural embedding model when deterministic metadata filtering + BM25/TF-IDF similarity suffices.
 
 Keep topic taxonomy and prerequisite relationships explicit. Their provenance can be curator-authored, source-supported, or model-proposed awaiting review. A top-ranked text chunk does not by itself prove a prerequisite relation.
 
@@ -2179,7 +2179,7 @@ Adoption uses either a planning-only deterministic branch, requiring no AI key o
 - [JSON Schema Draft 2020-12](https://json-schema.org/draft/2020-12): document validation dialect.
 - [OpenAPI 3.1.2](https://spec.openapis.org/oas/v3.1.2.html): deliberately pinned API contract dialect; not a claim that it is the latest.
 - [OWASP improper output handling](https://genai.owasp.org/llmrisk/llm052025-improper-output-handling/): validate and safely render generated output.
-- [PostgreSQL full-text search](https://www.postgresql.org/docs/current/textsearch.html), [pgvector](https://github.com/pgvector/pgvector): candidate retrieval foundation.
+- [PostgreSQL full-text search](https://www.postgresql.org/docs/current/textsearch.html) and relational inverted TF-IDF indexing (`catalog_resource_tfidf_terms`): candidate retrieval foundation without external C extensions.
 - [Next.js documentation](https://nextjs.org/docs), [Expo documentation](https://docs.expo.dev/): candidate web and optional native clients.
 
 These choices should be revisited when concrete load, device, organizational, or deployment constraints justify a change.
@@ -2673,7 +2673,7 @@ Verify before each public release that:
 
 - [ ] Implement resource/permission/review records, states, verified source links, and an approval interface.
 - [ ] Seed a small, genuinely reviewed objective slice in PostgreSQL; preserve synthetic fixtures separately.
-- [ ] Implement deterministic metadata filtering first for the Private Alpha tracer bullet; keep `pgvector` schema/indexing available for hybrid retrieval, but do not claim vector retrieval value until evaluated against a reviewed retrieval benchmark.
+- [ ] Implement deterministic metadata filtering combined with sublinear TF-IDF cosine similarity (`TfIdfCorpusIndex` / `tfidf-cosine-v1` / `catalog_resource_tfidf_terms`) and zero-deploy incremental auto-indexing (`catalog_changes`, `catalog_resource_segments`), without requiring `pgvector` or external neural embedding APIs.
 - [ ] Implement snapshotting, quarantine overlays, and freshness jobs with allowed acquisition methods and evidence-backed timestamps.
 
 **Exit:** every required objective in the chosen slice has an auditable path; free-only, unknown-price, no-permission, and revoked-resource scenarios pass.
@@ -2804,7 +2804,7 @@ Split into `T14-Core` (Private Alpha shell) and `T14-Full` (Public Beta UI/acces
 
 The canonical implementation and release-tier dependency ordering is:
 
-- **Tier 1 — Private Alpha (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Proves the end-to-end architecture with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering (keeping `pgvector` available without claiming retrieval value before a benchmark), `DeterministicFakeProvider`, one persisted `CurriculumRevision`, `Plan` Outline plus basic Map, explicit activation, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
+- **Tier 1 — Private Alpha (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Proves the end-to-end architecture with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering + sublinear TF-IDF cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`), `DeterministicFakeProvider`, one persisted `CurriculumRevision`, `Plan` Outline plus basic Map, explicit activation, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
 - **Tier 2 — Closed Beta (`D11 Auth Gate → T05 → T06 → T12 → T07A → T08`):** Requires production authentication (`D11`) before any internet-facing beta or BYOK storage; delivers reviewed anchor assessments and `mastery_gated` rules (`T05`), `ScheduleRevision` + `ReviewScheduleItem` recalculation (`T06`), objective diagnostics/waivers/adaptation (`T12`), BYOK custody + OpenAI live adapter via `reqwest` (`T07A`), and opt-in PWA study reminders (`T08`).
 - **Tier 3 — Public Beta (`T07B → T07C → T07D → T13 → T14-Full → T09`):** Delivers the hosted inference ledger (`T07B`), Anthropic and Google Gemini adapters (`T07C`), payment checkout and webhook reconciliation (`T07D`), public sharing/discovery/partial adoption/votes/moderation (`T13`), complete UI states + automated accessibility regression checks and manual WCAG 2.2 AA evaluation evidence (`T14-Full`), and separately executed release operations, export/deletion, backup restoration, and public-beta gates (`T09`).
 - **Ongoing & Post-Launch (`T10`, `T11`, Pedagogical Evaluation Workstream):** Evaluates catalog/retrieval relevance, expert curriculum quality, anchor assessment quality, and delayed learning/transfer (`T11`), plus optional native clients/alarms (`T10`).
@@ -3852,9 +3852,9 @@ Curriculum revisions describe intended learning; schedule revisions place work i
 
 ## Modular service with a relational source of truth
 
-Build a modular polyglot system with a Rust backend (`services/api` using Axum and `services/worker` using Tokio, organized into `crates/{domain,application,contracts,persistence,providers,jobs,security,test-support}`), a TypeScript frontend (`apps/web` using Preact + `@preact/signals` and `packages/{ui,api-client}`), and PostgreSQL-owned state (`sqlx` + `pgvector`), with full-text/vector indexes and transactional outbox jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) derived from approved records. This keeps transactional progress, runtime JSON Schema 2020-12 validation (`jsonschema` crate), RFC 8785 JCS hashing, and billing together while allowing retrieval infrastructure and clients to change.
+Build a modular polyglot system with a Rust backend (`services/api` using Axum and `services/worker` using Tokio, organized into `crates/{domain,application,contracts,persistence,providers,jobs,security,test-support}`), a TypeScript frontend (`apps/web` using Preact + `@preact/signals` and `packages/{ui,api-client}`), and standard PostgreSQL-owned state (`sqlx`), with sublinear TF-IDF cosine similarity indexes (`catalog_resource_tfidf_terms` / `TfIdfCorpusIndex` / `tfidf-cosine-v1`), incremental catalog change logs (`catalog_changes`), and transactional outbox jobs (`SELECT ... FOR UPDATE SKIP LOCKED`) derived from approved records. This keeps transactional progress, runtime JSON Schema 2020-12 validation (`jsonschema` crate), RFC 8785 JCS hashing, and billing together while allowing retrieval infrastructure and clients to change.
 
-**Consequences:** module boundaries, contract-first generation, and authorization remain explicit across Cargo crates and TypeScript packages. PostgreSQL plus `pgvector` is an engineering architecture decision, not a pedagogy requirement or a universal scaling claim.
+**Consequences:** module boundaries, contract-first generation, and authorization remain explicit across Cargo crates and TypeScript packages. Standard PostgreSQL plus relational sublinear TF-IDF cosine indexing avoids external C-extension and embedding-API dependencies while remaining an engineering architecture decision rather than a pedagogy requirement or a universal scaling claim.
 
 ---
 
