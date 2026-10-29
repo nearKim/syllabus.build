@@ -10,6 +10,8 @@
   --color-border-control: #7D8794;
   --color-border-subtle: #D5DAE0;
   --color-canvas: #F7F8FA;
+  /* The app shell's background. Any opaque or sticky layer that sits on the page paints with it, so it shows no band. */
+  --color-shell: var(--color-surface);
   --color-danger-surface: #FFF0EE;
   --color-danger-text: #B42318;
   --color-success-surface: #EAF6EF;
@@ -67,6 +69,7 @@
   --color-border-control: #8793A5;
   --color-border-subtle: #3D4654;
   --color-canvas: #101216;
+  --color-shell: var(--color-canvas);
   --color-danger-surface: #3A2020;
   --color-danger-text: #FFA6A0;
   --color-success-surface: #162E23;
@@ -134,14 +137,9 @@ body {
   overflow-x: clip;
   overflow-wrap: break-word;
   word-break: normal;
-  background-color: var(--color-surface);
+  background-color: var(--color-shell);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
-}
-
-[data-theme="dark"] .curriculum-app-shell,
-.curriculum-app-shell[data-theme="dark"] {
-  background-color: var(--color-canvas);
 }
 
 h1,
@@ -2097,9 +2095,9 @@ textarea {
   border-radius: 999px;
   background: var(--color-accent);
   color: var(--color-action-text);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   line-height: 16px;
   pointer-events: none;
 }
@@ -2115,10 +2113,6 @@ textarea {
   @media (prefers-reduced-motion: no-preference) {
     animation: next-up-pulse 2.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   }
-}
-
-.curriculum-app-shell[data-reduce-motion="true"] .node-card[data-next-up="true"]::after {
-  animation: none;
 }
 
 .gate-diamond[data-next-up="true"] .gate-shape rect {
@@ -5057,245 +5051,8 @@ button[interestfor="plan-relationship-legend"] {
   max-width: 60ch;
 }
 
-/* The impact panel ranks its facts. Learners reached is the focal card with the emblem, study hours and
-   upvotes support it, and the license seal closes the panel. */
-.philanthropy-impact {
-  --impact-hero: #166534;
-  --impact-hero-ink: #FFFFFF;
-  --impact-hero-muted: color-mix(in srgb, #FFFFFF 80%, var(--impact-hero));
-  --impact-lit: #F3CD7A;
-  display: grid;
-  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
-  grid-template-areas:
-    "hero ."
-    "hero ."
-    "seal seal";
-  gap: var(--space-2);
-  margin: 0;
-}
-
-[data-theme="dark"] .philanthropy-impact {
-  --impact-hero: #1D5236;
-  --impact-hero-ink: #F4F6F8;
-}
-
-.philanthropy-impact dd {
-  margin: 0;
-}
-
-.impact-value {
-  order: -1;
-  font-weight: 700;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.impact-hero {
-  grid-area: hero;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 6px;
-  min-height: 248px;
-  padding: var(--space-5);
-  padding-inline-end: calc(var(--space-4) + 200px + var(--space-5));
-  overflow: clip;
-  border-radius: var(--radius-surface);
-  background: var(--impact-hero);
-  color: var(--impact-hero-ink);
-}
-
-.impact-hero dt {
-  font-size: 16px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.impact-hero .impact-value {
-  margin-bottom: 2px;
-  font-size: 52px;
-  letter-spacing: -0.035em;
-}
-
-.impact-hero .impact-caption {
-  max-width: 30ch;
-  font-size: 14px;
-  line-height: 1.45;
-  color: var(--impact-hero-muted);
-}
-
-/* The emblem sits in the card's open side. Its pages and lit learners share one warm color. */
-.philanthropy-art {
-  --art-ink: var(--color-success-text);
-  --art-lit: var(--subject-physics);
-  --art-core: var(--color-surface);
-  --art-page: color-mix(in srgb, var(--art-lit) 30%, var(--art-core));
-  flex: none;
-  width: 152px;
-  height: 152px;
-}
-
-.impact-hero .philanthropy-art {
-  --art-ink: var(--impact-hero-ink);
-  --art-lit: var(--impact-lit);
-  --art-core: color-mix(in srgb, var(--impact-hero-ink) 12%, var(--impact-hero));
-  --art-page: color-mix(in srgb, var(--impact-lit) 62%, var(--impact-hero));
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-end: var(--space-4);
-  width: 200px;
-  height: 200px;
-  translate: 0 -50%;
-}
-
-.philanthropy-art .art-orbit {
-  stroke: var(--art-ink);
-  stroke-opacity: 0.3;
-}
-
-.philanthropy-art .art-link {
-  stroke: var(--art-ink);
-  stroke-opacity: 0.42;
-  transition: stroke-opacity 400ms var(--ease-out);
-}
-
-.philanthropy-art .art-core {
-  fill: var(--art-core);
-}
-
-.philanthropy-art .art-learner {
-  fill: var(--art-core);
-  stroke: var(--art-ink);
-  stroke-width: 1.25;
-}
-
-.philanthropy-art .art-learner-lit {
-  fill: var(--art-lit);
-}
-
-.philanthropy-art .art-book {
-  fill: var(--art-page);
-  stroke: var(--art-ink);
-  stroke-width: 2.25;
-}
-
-.philanthropy-art .art-book-lines {
-  stroke: var(--art-ink);
-  stroke-width: 1.5;
-}
-
-/* Supporting cards are lighter and smaller, each led by a solid icon badge. */
-.impact-support {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  padding: var(--space-4);
-  padding-inline-start: calc(var(--space-4) + 44px + 14px);
-  border-radius: var(--radius-control);
-  background: var(--color-success-surface);
-}
-
-.impact-icon-badge {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: var(--space-4);
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--impact-hero);
-  color: var(--impact-hero-ink);
-  translate: 0 -50%;
-}
-
-.impact-icon-badge .sf-icon {
-  width: 22px;
-  height: 22px;
-}
-
-.impact-support dt {
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
-  color: var(--color-success-text);
-}
-
-.impact-support .impact-value {
-  font-size: 28px;
-  letter-spacing: -0.02em;
-  color: var(--color-text-primary);
-}
-
-.impact-support .impact-caption {
-  font-size: 13px;
-  line-height: 1.4;
-  color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
-}
-
-/* The seal reads as a stamp: a perforated emblem, the license, and what each adoption gives. */
-.impact-seal {
-  grid-area: seal;
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  padding: var(--space-4) var(--space-5);
-  padding-inline-start: calc(var(--space-5) + 52px + var(--space-4));
-  border: 1px solid color-mix(in srgb, var(--color-success-text) 28%, transparent);
-  border-radius: var(--radius-control);
-  background: var(--color-surface);
-}
-
-.impact-seal-emblem {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-start: var(--space-5);
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  outline: 1.5px dashed color-mix(in srgb, var(--color-success-text) 55%, transparent);
-  outline-offset: -5px;
-  background: var(--color-success-surface);
-  color: var(--color-success-text);
-  translate: 0 -50%;
-}
-
-.impact-seal-emblem .sf-icon {
-  width: 24px;
-  height: 24px;
-}
-
-.impact-seal dt {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.impact-license {
-  order: -1;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: var(--impact-hero);
-  color: var(--impact-hero-ink);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.5;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.impact-seal .impact-caption {
-  flex-basis: 100%;
-  max-width: 72ch;
-  font-size: 13px;
-  line-height: 1.45;
-  color: var(--color-text-secondary);
+.my-publications .impact-summary {
+  margin-bottom: var(--space-3);
 }
 
 .publication-list {
@@ -5434,11 +5191,6 @@ button[interestfor="plan-relationship-legend"] {
     background: color-mix(in srgb, var(--subject, var(--color-text-secondary)) 22%, var(--color-surface));
     scale: 1.08;
   }
-
-  /* The constellation brightens while the pointer rests on the card it belongs to. */
-  :is(.impact-hero, .publish-invite):hover .art-link {
-    stroke-opacity: 0.75;
-  }
 }
 
 /* The invitation shows when the learner has not published yet. The emblem shows what a first share starts. */
@@ -5463,21 +5215,6 @@ button[interestfor="plan-relationship-legend"] {
   color: color-mix(in srgb, var(--color-success-text) 70%, var(--color-text-primary));
 }
 
-/* Below 720px the focal card spans the full width, and the supporting cards share the row beneath it. */
-@container (width < 720px) {
-  .philanthropy-impact {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    grid-template-areas:
-      "hero hero"
-      ". ."
-      "seal seal";
-  }
-
-  .impact-hero {
-    min-height: 216px;
-  }
-}
-
 @container (width < 600px) {
   .publication-list li {
     grid-template-columns: 44px minmax(0, 1fr);
@@ -5493,57 +5230,6 @@ button[interestfor="plan-relationship-legend"] {
     flex-direction: column;
     align-items: flex-start;
     padding: var(--space-4) var(--space-4) var(--space-5);
-  }
-
-  .publish-invite .philanthropy-art {
-    width: 112px;
-    height: 112px;
-  }
-}
-
-/* On a phone the emblem moves above the number, and each badge sits above its own number. */
-@container (width < 440px) {
-  .impact-hero {
-    min-height: 0;
-    padding: calc(var(--space-4) + 112px) var(--space-5) var(--space-5);
-  }
-
-  .impact-hero .philanthropy-art {
-    inset-block-start: var(--space-3);
-    width: 112px;
-    height: 112px;
-    translate: none;
-  }
-
-  .impact-hero .impact-value {
-    font-size: 44px;
-  }
-
-  .impact-support {
-    justify-content: flex-start;
-    padding: calc(var(--space-4) + 40px + 12px) var(--space-4) var(--space-4);
-  }
-
-  .impact-icon-badge {
-    inset-block-start: var(--space-4);
-    width: 40px;
-    height: 40px;
-    translate: none;
-  }
-
-  .impact-icon-badge .sf-icon {
-    width: 20px;
-    height: 20px;
-  }
-
-  .impact-seal {
-    padding: calc(var(--space-4) + 52px + var(--space-3)) var(--space-4) var(--space-4);
-  }
-
-  .impact-seal-emblem {
-    inset-block-start: var(--space-4);
-    inset-inline-start: var(--space-4);
-    translate: none;
   }
 }
 
@@ -6037,7 +5723,7 @@ ul.adopt-resources {
   padding: 1px 6px;
   border-radius: 999px;
   background: color-mix(in srgb, currentColor 16%, transparent);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.35;
 }
@@ -6136,6 +5822,21 @@ ul.adopt-resources {
   .intake-subject-topics-grid,
   .intake-controls-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* On a phone the label sits above its control, and the options share the full width, so Pace never clips. */
+  .intake-control-cell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+
+  .intake-controls-grid .segmented {
+    width: 100%;
+  }
+
+  .intake-controls-grid .seg-btn {
+    flex: 1 1 0;
+    padding-inline: 4px;
   }
 }
 
@@ -6480,52 +6181,6 @@ ul.adopt-resources {
   background: transparent;
 }
 
-.impact-avatar-stack {
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-.impact-stack-avatar,
-.impact-stack-more {
-  display: inline-grid;
-  place-items: center;
-  height: 36px;
-  border: 2px solid var(--color-surface);
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.impact-stack-avatar {
-  width: 36px;
-  background: var(--color-accent-surface);
-  color: var(--color-accent);
-}
-
-.impact-stack-avatar[data-tone="2"] {
-  background: var(--color-surface-secondary);
-  color: var(--color-text-primary);
-}
-
-.impact-stack-avatar[data-tone="3"] {
-  background: var(--color-warning-surface);
-  color: var(--color-warning-text);
-}
-
-.impact-stack-avatar + .impact-stack-avatar,
-.impact-stack-avatar + .impact-stack-more {
-  margin-inline-start: -10px;
-}
-
-.impact-stack-more {
-  padding-inline: 10px;
-  background: var(--color-action-fill);
-  color: var(--color-action-text);
-  font-variant-numeric: tabular-nums;
-}
-
 .impact-copy-group {
   display: grid;
   gap: 4px;
@@ -6745,7 +6400,7 @@ ul.adopt-resources {
   position: sticky;
   inset-block-start: 0;
   z-index: 2;
-  background: var(--color-surface);
+  background: var(--color-shell);
 }
 
 .providers-data-table th,
@@ -6764,7 +6419,7 @@ ul.adopt-resources {
   letter-spacing: 0;
   text-transform: none;
   color: var(--color-text-secondary);
-  background: var(--color-surface);
+  background: var(--color-shell);
 }
 
 .providers-data-table thead th.provider-actions-head,
@@ -6782,14 +6437,7 @@ ul.adopt-resources {
   inset-inline-start: 0;
   z-index: 1;
   font-weight: 400;
-  background: var(--color-surface);
-}
-
-/* The shell is surface in light mode and canvas in dark mode, so the sticky cells follow it and show no band. */
-[data-theme="dark"] .providers-data-table thead,
-[data-theme="dark"] .providers-data-table thead th,
-[data-theme="dark"] .providers-data-table tbody th.provider-primary-cell {
-  background: var(--color-canvas);
+  background: var(--color-shell);
 }
 
 .providers-data-table tbody tr:last-child th,
@@ -7880,7 +7528,7 @@ dialog.inspector::backdrop {
 }
 
 /* Done: one emerald ring pulse and one light sweep, only when motion is allowed. Nothing loops.
-   The app's Reduce motion setting also stops both, through the global animation override. */
+   Under Reduce motion, the app setting or the system one, Done gets the status-fade color fade instead. */
 @media (prefers-reduced-motion: no-preference) {
   .status-celebration {
     position: relative;
@@ -8754,15 +8402,20 @@ dialog.inspector::backdrop {
   }
 }
 
-/* Reduced motion, reduced transparency, and forced colors */
+/* Reduced motion, reduced transparency, and forced colors.
+   Reduce motion stops movement, not feedback. Nothing moves, scales, slides, or loops. Color and opacity keep
+   their short fades, so state changes still read, and Done gets one color fade instead of the ring and sweep. */
 [data-reduce-motion="true"] *,
 [data-reduce-motion="true"] *::before,
 [data-reduce-motion="true"] *::after,
 [data-reduce-motion="true"] *::backdrop {
-  animation-duration: 0.01ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 0.01ms !important;
+  animation: none !important;
+  transition-property: color, background-color, border-color, outline-color, opacity, fill, stroke !important;
   scroll-behavior: auto !important;
+}
+
+[data-reduce-motion="true"] .status-celebration {
+  animation: status-fade 700ms var(--ease-out) 1 !important;
 }
 
 [data-reduce-motion="true"] :active {
@@ -8778,14 +8431,23 @@ dialog.inspector::backdrop {
   *::before,
   *::after,
   *::backdrop {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition-property: color, background-color, border-color, outline-color, opacity, fill, stroke !important;
     scroll-behavior: auto !important;
+  }
+
+  .status-celebration {
+    animation: status-fade 700ms var(--ease-out) 1 !important;
   }
 
   :active {
     transform: none !important;
+  }
+}
+
+@keyframes status-fade {
+  from {
+    background-color: color-mix(in srgb, var(--color-success-text) 24%, var(--color-success-surface));
   }
 }
 
@@ -8797,7 +8459,6 @@ dialog.inspector::backdrop {
 
   .node-card,
   .macro-node,
-  .philanthropy-impact > div,
   .publish-invite,
   .proficiency-pill,
   .first-steps,

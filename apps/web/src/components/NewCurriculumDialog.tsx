@@ -8,6 +8,8 @@ import {
 import { SfIcon, type SfIconName } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
 import { categoryIcon, classifyResourceCategory, type ResourceCategory } from "./ResourcesView.tsx";
+import type { CurriculumDraft, DraftResource } from "../liveDraft.ts";
+import { buildTfidfIndex, foldAccents, searchTfidf, TFIDF_ENGINE, type TfidfIndex } from "../tfidfIndex.ts";
 
 const SUBJECT_ICON_MAP: Readonly<Record<string, SfIconName>> = {
   Engineering: "engineering",
@@ -129,7 +131,22 @@ export const DESIGNATED_AI_MODELS: readonly DesignatedAiModelOption[] = [
     modelLabel: "Gemini 3.5 Flash",
     webSearchTool: "Google Search grounding",
   },
+  {
+    providerId: "google_gemini",
+    providerLabel: "Google Gemini",
+    modelId: "gemini-3.5-flash-lite",
+    modelLabel: "Gemini 3.5 Flash-Lite (Lightweight)",
+    webSearchTool: "Google Search grounding",
+  },
 ] as const;
+
+// Generation and auto-indexing default to each provider's cheapest model with native web search.
+// Prices per million input/output tokens, checked 2026-10-28: Luna $0.10/$0.50, Haiku 5.5 $0.10/$0.50.
+export const CHEAP_MODEL_BY_PROVIDER: Readonly<Record<DesignatedAiModelOption["providerId"], string>> = {
+  openai: "gpt-6-luna",
+  anthropic: "claude-haiku-5-5",
+  google_gemini: "gemini-3.5-flash-lite",
+};
 
 export const DEFAULT_SUBJECT_TOPICS: Readonly<Record<IntakeSubject, readonly string[]>> = {
   Engineering: ["Python", "RAG", "Attention", "Vector Indexing", "Linear Algebra", "Evaluation"],
@@ -321,6 +338,8 @@ export interface IndexedMaterialCandidate {
   readonly partialTopics: readonly string[];
   readonly polymorphicIndex: PolymorphicResourceIndex;
   readonly source?: "indexed" | "web";
+  // TF-IDF cosine similarity to the goal and topics. A web result that is not indexed yet has none.
+  readonly matchScore?: number;
 }
 
 export type TopicCoverageState = "covered" | "partial" | "missing";
@@ -371,6 +390,8 @@ export interface IntakePipelineExecutionReceipt {
   readonly generatedCurriculumId: string;
   readonly designatedProviderId: string;
   readonly designatedModelId: string;
+  // True when a live model wrote the plan. False when the deterministic fixture provider wrote it.
+  readonly liveDraft: boolean;
   readonly summaryNote: string;
 }
 
@@ -538,13 +559,74 @@ const POLYMORPHIC_INDEX_CATALOG: Readonly<
   },
 };
 
+// A catalog record as the index reads it. Web-discovered records also carry the topics they were found for.
+export type IndexedCatalogResource = CatalogResourceMetadataInput & { readonly topics?: readonly string[] | undefined };
+
+function polymorphicIndexText(index: PolymorphicResourceIndex): string[] {
+  switch (index.kind) {
+    case "book":
+      return [index.briefSummary, ...index.tocChapters.flatMap((ch) => [ch.title, ch.summary])];
+    case "youtube_playlist":
+      return [index.channelTitle, ...index.syllabusVideos.flatMap((video) => [video.title, video.transcriptSummary])];
+    case "course":
+      return [index.institution, ...index.syllabusModules.map((mod) => mod.title)];
+    case "code_lab":
+      return [index.runtimeLanguage, ...index.labExercises.map((lab) => lab.title)];
+  }
+}
+
+// The text the index holds for one resource: title, publisher, subject, topics, summary, and section titles.
+export function catalogSearchText(resourceVersionId: string, raw: IndexedCatalogResource): string {
+  const meta = POLYMORPHIC_INDEX_CATALOG[resourceVersionId];
+  return [
+    raw.title,
+    raw.provider?.display_name,
+    raw.subject ?? meta?.subject,
+    ...(meta?.coveredTopics ?? []),
+    ...(meta?.partialTopics ?? []),
+    ...(raw.topics ?? []),
+    ...(meta ? polymorphicIndexText(meta.polymorphicIndex) : []),
+    ...(raw.segments ?? []).map((seg) => seg.title),
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+// Each catalog object is immutable, so its index is built once. A catalog with new resources is a new
+// object, so newly discovered resources are searchable on the next read.
+const catalogIndexes = new WeakMap<object, TfidfIndex>();
+
+export function catalogIndexOf(catalogResources: Readonly<Record<string, IndexedCatalogResource>>): TfidfIndex {
+  let index = catalogIndexes.get(catalogResources);
+  if (!index) {
+    index = buildTfidfIndex(
+      Object.fromEntries(Object.entries(catalogResources).map(([id, raw]) => [id, catalogSearchText(id, raw)])),
+    );
+    catalogIndexes.set(catalogResources, index);
+  }
+  return index;
+}
+
+// MiniSearch normalized BM25/TF-IDF floors in (0, 1), set on the seeded catalog.
+const MATCH_MIN = 0.12;
+const COVER_MIN = 0.15;
+
 export function buildIndexedMaterialCandidates(
-  catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>,
+  catalogResources: Readonly<Record<string, IndexedCatalogResource>>,
   subject: IntakeSubject,
   requestedTopics: readonly string[],
   materialsAccess: IntakeMaterialsChoice,
+  goalTitle: string,
 ): readonly IndexedMaterialCandidate[] {
   const normTopics = requestedTopics.map((t) => t.toLowerCase());
+  const index = catalogIndexOf(catalogResources);
+  const scores = new Map(searchTfidf(index, [goalTitle, ...requestedTopics].join(" ")).map((hit) => [hit.id, hit.score]));
+  const topicHits = new Map(
+    requestedTopics.map((topic) => [
+      topic,
+      new Set(searchTfidf(index, topic).filter((hit) => hit.score >= COVER_MIN).map((hit) => hit.id)),
+    ]),
+  );
   const candidates: IndexedMaterialCandidate[] = [];
 
   for (const [resourceVersionId, raw] of Object.entries(catalogResources)) {
@@ -553,43 +635,57 @@ export function buildIndexedMaterialCandidates(
       continue;
     }
     const meta = POLYMORPHIC_INDEX_CATALOG[resourceVersionId];
-    if (!meta && !resourceVersionId.startsWith("discovered-")) continue;
     const category = classifyResourceCategory(
       resourceVersionId,
       raw.title ?? resourceVersionId,
       raw.provider?.display_name ?? "",
+      raw.category,
     );
-    const candidateSubject: IntakeSubject = meta?.subject ?? subject;
-    const coveredTopics = meta?.coveredTopics ?? [];
+    const candidateSubject = (meta?.subject ?? raw.subject ?? subject) as IntakeSubject;
+    // Curated topics win. Otherwise a requested topic counts as covered when MiniSearch matches it above COVER_MIN.
+    const coveredTopics =
+      meta?.coveredTopics ??
+      raw.topics ??
+      requestedTopics.filter((topic) => topicHits.get(topic)?.has(resourceVersionId));
     const partialTopics = meta?.partialTopics ?? [];
+    const matchScore = scores.get(resourceVersionId) ?? 0;
 
     const matchesSubject = candidateSubject === subject;
     const matchesAnyTopic =
       coveredTopics.some((t) => normTopics.includes(t.toLowerCase())) ||
       partialTopics.some((t) => normTopics.includes(t.toLowerCase()));
 
-    if (!matchesSubject && !matchesAnyTopic) continue;
+    if (!matchesSubject && !matchesAnyTopic && matchScore < MATCH_MIN) continue;
 
+    const curatorVerified = raw.vector_index?.discovered_by !== "AI Web Search";
     const fallbackIndex: PolymorphicResourceIndex =
       category === "YouTube"
         ? {
             kind: "youtube_playlist",
-            channelTitle: raw.provider?.display_name ?? "Verified YouTube Channel",
-            transcriptAvailable: true,
+            channelTitle: raw.provider?.display_name ?? "YouTube channel",
+            transcriptAvailable: curatorVerified,
             syllabusVideos: (raw.segments ?? []).map((seg, i) => ({
               timestampOrIndex: `Video ${i + 1}`,
               title: seg.title ?? `Video ${i + 1}`,
-              transcriptSummary: "Verified segment transcript indexed in catalog.",
+              transcriptSummary: curatorVerified ? "Verified segment transcript indexed in catalog." : "Found by web search. A curator has not verified it yet.",
             })),
           }
-        : {
+        : category === "Course"
+          ? {
+              kind: "course",
+              institution: raw.provider?.display_name ?? "Course provider",
+              syllabusModules: (raw.segments ?? []).map((seg, i) => ({ unit: `Unit ${i + 1}`, title: seg.title ?? `Unit ${i + 1}` })),
+            }
+          : {
             kind: "book",
             isbn13: "978-0-000-00000-0",
-            briefSummary: `Curator-verified ${category.toLowerCase()} from ${raw.provider?.display_name ?? "Catalog"}.`,
+            briefSummary: curatorVerified
+              ? `Curator-verified ${category.toLowerCase()} from ${raw.provider?.display_name ?? "Catalog"}.`
+              : `${category} found by web search from ${raw.provider?.display_name ?? "the web"}. A curator has not verified it yet.`,
             tocChapters: (raw.segments ?? []).map((seg, i) => ({
               number: `Sec. ${i + 1}`,
               title: seg.title ?? `Section ${i + 1}`,
-              summary: "Verified catalog section.",
+              summary: curatorVerified ? "Verified catalog section." : "Section title from web search.",
             })),
           };
 
@@ -605,90 +701,12 @@ export function buildIndexedMaterialCandidates(
       partialTopics,
       polymorphicIndex: meta?.polymorphicIndex ?? fallbackIndex,
       source: resourceVersionId.startsWith("discovered-") ? "web" : "indexed",
+      matchScore,
     });
   }
 
-  return candidates;
-}
-
-function buildWebDiscoveredMaterialCandidates(
-  subject: IntakeSubject,
-  deltaTopics: readonly string[],
-  catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>,
-): readonly IndexedMaterialCandidate[] {
-  if (deltaTopics.length === 0) return [];
-  const primaryTopic = deltaTopics[0] ?? subject;
-  const discovered: IndexedMaterialCandidate[] = [];
-
-  const bookId = "discovered-book-hnsw-vector-v1";
-  const bookUrl = "https://example.invalid/catalog/hnsw-vector-indexing-book";
-  if (!catalogResources[bookId]) {
-    discovered.push({
-      resourceVersionId: bookId,
-      title: `Book: Approximate Nearest Neighbor & HNSW Vector Indexing (${primaryTopic})`,
-      publisher: "Open ML Press · Web search",
-      canonicalUrl: bookUrl,
-      accessModel: "free",
-      category: "Book",
-      subject,
-      coveredTopics: [...deltaTopics],
-      partialTopics: [],
-      source: "web",
-      polymorphicIndex: {
-        kind: "book",
-        isbn13: "978-0-262-54811-3",
-        briefSummary: `Web-discovered monograph covering ${deltaTopics.join(", ")}, navigable small world graphs, and recall bounds.`,
-        tocChapters: [
-          {
-            number: "Ch. 1",
-            title: "Navigable Small World Graphs & Recall@k Bounds",
-            summary: "Hierarchical proximity graphs and greedy routing.",
-          },
-          {
-            number: "Ch. 2",
-            title: "Product Quantization & Memory-Bounded Search",
-            summary: "Asymmetric distance computation and codebook quantization.",
-          },
-        ],
-      },
-    });
-  }
-
-  const ytId = "discovered-youtube-rag-eval-playlist-v1";
-  const ytUrl = "https://example.invalid/catalog/youtube-rag-evaluation-playlist";
-  if (!catalogResources[ytId]) {
-    discovered.push({
-      resourceVersionId: ytId,
-      title: "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
-      publisher: "AI Evaluation Lab · Web search",
-      canonicalUrl: ytUrl,
-      accessModel: "free",
-      category: "YouTube",
-      subject,
-      coveredTopics: [...deltaTopics],
-      partialTopics: [],
-      source: "web",
-      polymorphicIndex: {
-        kind: "youtube_playlist",
-        channelTitle: "AI Evaluation Lab · YouTube",
-        transcriptAvailable: true,
-        syllabusVideos: [
-          {
-            timestampOrIndex: "06:20",
-            title: "Deriving Context Recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$",
-            transcriptSummary: "Ground-truth chunk retrieval recall and precision tradeoffs.",
-          },
-          {
-            timestampOrIndex: "18:05",
-            title: "Faithfulness & Groundedness Scoring Rubrics",
-            transcriptSummary: "Claim-level entailment verification against retrieved context.",
-          },
-        ],
-      },
-    });
-  }
-
-  return discovered;
+  // Best cosine match first. Equal scores keep catalog order.
+  return candidates.sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));
 }
 
 export function evaluateIntakeResourceFit(params: {
@@ -773,7 +791,7 @@ export function evaluateIntakeResourceFit(params: {
     }
   }
 
-  const catalogCandidates = buildIndexedMaterialCandidates(catalogResources, subject, effectiveTopics, materialsAccess);
+  const catalogCandidates = buildIndexedMaterialCandidates(catalogResources, subject, effectiveTopics, materialsAccess, goalTitle);
   const activeCatalogIds = selectedResourceIds.filter((id) => !skippedResourceIds.includes(id));
   const selectedCatalogMaterials = catalogCandidates.filter((item) =>
     activeCatalogIds.includes(item.resourceVersionId),
@@ -805,22 +823,11 @@ export function evaluateIntakeResourceFit(params: {
       ? []
       : topicCoverage.filter((c) => c.status !== "covered").map((c) => c.topic);
 
+  // Web results are unknown until the search runs, so the tray lists only indexed resources.
   const webSearchRequired = fitMode === "fill_gaps" && deltaTopicsToSearch.length > 0;
-  const webDiscoveredMaterials = webSearchRequired
-    ? buildWebDiscoveredMaterialCandidates(subject, deltaTopicsToSearch, catalogResources)
-    : [];
-  const indexedMaterials: readonly IndexedMaterialCandidate[] = [
-    ...catalogCandidates,
-    ...webDiscoveredMaterials,
-  ];
-  const activeWebIds = webDiscoveredMaterials
-    .map((m) => m.resourceVersionId)
-    .filter((id) => !skippedResourceIds.includes(id));
-  const activeSelectedIds = [
-    ...activeCatalogIds,
-    ...activeWebIds.filter((id) => !activeCatalogIds.includes(id)),
-  ];
-  const selectedMaterials = indexedMaterials.filter((item) => activeSelectedIds.includes(item.resourceVersionId));
+  const indexedMaterials = catalogCandidates;
+  const activeSelectedIds = selectedCatalogMaterials.map((item) => item.resourceVersionId);
+  const selectedMaterials = selectedCatalogMaterials;
 
   const bypassedCanonicalUrls = Object.values(catalogResources)
     .map((r) => r.canonical_url)
@@ -858,6 +865,172 @@ export function evaluateIntakeResourceFit(params: {
   };
 }
 
+// The deterministic draft used when no live model call ran. It keeps the seeded attention and retrieval text.
+function fixtureDraft(subject: IntakeSubject, requestedTopics: readonly string[], deltaTopics: readonly string[], summary: string): CurriculumDraft {
+  const first = requestedTopics[0] ?? subject;
+  return {
+    summary,
+    modules: [
+      {
+        title: `Module 1: ${first} & Mathematical Foundations`,
+        summary: "Core representations, $\\frac{1}{\\sqrt{d_k}}$ variance scaling, and reused catalog anchors.",
+        objective: {
+          title: `Master core ${first} representations and scaling laws`,
+          description:
+            "Connect subword sequence representations to scaled dot-product attention $\\mathrm{Attention}(Q,K,V) = \\operatorname{softmax}\\!\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$.",
+          successCriterion: "Derive variance stabilization $\\mathrm{Var}(q \\cdot k) = 1$ and verify tensor shapes on unseen inputs.",
+        },
+        read: {
+          title: `Read: ${first} Foundations & Scaling Laws`,
+          prompt: "Derive why scaling dot products by $\\frac{1}{\\sqrt{d_k}}$ preserves unit variance $\\mathrm{Var}(q \\cdot k) = 1$.",
+        },
+        practice: {
+          title: "Worked Example: Softmax Jacobian & Attention Weights",
+          prompt:
+            "Compute $\\mathrm{Attention}(Q,K,V) = \\operatorname{softmax}\\!\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$ for a $2 \\times 2$ toy query-key matrix.",
+        },
+        checkpoint: {
+          title: "Checkpoint 1: Representation & Scaling Verification",
+          prompt: "Verify attention scaling and subword sequence bounds before unlocking Module 2.",
+        },
+      },
+      {
+        title: `Module 2: ${deltaTopics.join(" & ") || requestedTopics.slice(1).join(" & ") || "Synthesis & Evaluation"}`,
+        summary: "Indexed book chapters, video syllabus walkthroughs, and $\\mathrm{Recall}@k$ evaluation.",
+        objective: {
+          title: `Implement and evaluate ${requestedTopics.slice(1).join(" & ") || "retrieval & synthesis"}`,
+          description:
+            "Evaluate retrieval quality via $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$ and grounded generation faithfulness.",
+          successCriterion: "Achieve deterministic recall and faithfulness thresholds across the benchmark test suite.",
+        },
+        read: {
+          title: `Read: ${deltaTopics[0] ?? "Retrieval"} & Recall Bounds`,
+          prompt:
+            "Analyze why top-$k$ retrieval recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$ bounds downstream answer faithfulness.",
+        },
+        practice: {
+          title: "Code Lab: Index Construction & Recall@k Harness",
+          prompt: "Implement the retrieval evaluator and verify $\\mathrm{Recall}@k \\ge 0.85$ on the test split.",
+        },
+        checkpoint: {
+          title: "Checkpoint 2: End-to-End Evaluation & Synthesis Gate",
+          prompt: "Compute $\\mathrm{Recall}@k$ and diagnose ungrounded synthesis spans.",
+        },
+      },
+    ],
+    resources: [],
+  };
+}
+
+// The fixture provider's web search: two fixed resources for the uncovered topics.
+function fixtureDiscoveries(subject: IntakeSubject, deltaTopics: readonly string[], handle: string): Record<string, IndexedCatalogResource> {
+  const access = {
+    model: "free",
+    tier_label: "Free",
+    cost_label: "$0",
+    rights_label: "Link & metadata",
+    certificate_included: false,
+    optional_certificate_price_minor: null,
+    access_verified_at: "2026-10-23T12:00:00Z",
+  };
+  const vectorIndex = {
+    status: "indexed",
+    index_type: TFIDF_ENGINE,
+    discovered_by: "AI Web Search",
+    discovered_by_handle: handle,
+    last_indexed_at: "2026-10-23T12:00:00Z",
+  };
+  const shared = {
+    captured_at: "2026-10-23T12:00:00Z",
+    subject,
+    topics: [...deltaTopics],
+    access,
+    ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
+    vector_index: vectorIndex,
+  };
+  return {
+    "discovered-book-hnsw-vector-v1": {
+      ...shared,
+      resource_version_id: "discovered-book-hnsw-vector-v1",
+      title: `Book: Approximate Nearest Neighbor & HNSW Vector Indexing (${deltaTopics[0] ?? subject})`,
+      canonical_url: "https://example.invalid/catalog/hnsw-vector-indexing-book",
+      category: "Book",
+      provider: { provider_id: "open-ml-press", display_name: "Open ML Press · Indexed Book TOC & Summary" },
+      segments: [
+        { segment_id: "seg-hnsw-ch1", title: "Ch. 1: Navigable Small World Graphs & Recall@k Bounds", verified: true },
+        { segment_id: "seg-hnsw-ch2", title: "Ch. 2: Product Quantization & Memory-Bounded Search", verified: true },
+      ],
+    },
+    "discovered-youtube-rag-eval-playlist-v1": {
+      ...shared,
+      resource_version_id: "discovered-youtube-rag-eval-playlist-v1",
+      title: "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
+      canonical_url: "https://example.invalid/catalog/youtube-rag-evaluation-playlist",
+      category: "YouTube",
+      provider: { provider_id: "ai-eval-youtube", display_name: "AI Evaluation Lab · YouTube Syllabus & Transcript" },
+      segments: [
+        { segment_id: "seg-yt-eval-1", title: "06:20 — Deriving Context Recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$", verified: true },
+        { segment_id: "seg-yt-eval-2", title: "18:05 — Faithfulness & Groundedness Scoring Rubrics", verified: true },
+      ],
+    },
+  };
+}
+
+// A short stable id suffix for a URL (32-bit FNV-1a), so the same URL always maps to the same resource id.
+function urlHash(url: string): string {
+  let hash = 0x811c9dc5;
+  for (const char of url) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193);
+  return (hash >>> 0).toString(36);
+}
+
+// A resource the live model found, as a catalog record. Its access is the model's claim until a curator verifies it.
+export function discoveredCatalogEntry(
+  resource: DraftResource,
+  subject: IntakeSubject,
+  handle: string,
+  now: string,
+): readonly [string, IndexedCatalogResource] {
+  const slug = foldAccents(resource.title).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+  const id = `discovered-${slug}-${urlHash(resource.url)}`;
+  return [
+    id,
+    {
+      resource_version_id: id,
+      title: resource.title,
+      canonical_url: resource.url,
+      captured_at: now,
+      category: resource.category,
+      subject,
+      topics: resource.topics,
+      provider: { provider_id: new URL(resource.url).hostname, display_name: `${resource.publisher} · Web search` },
+      access: { model: "free", tier_label: "Free", cost_label: "$0", rights_label: "Link & metadata", certificate_included: false, optional_certificate_price_minor: null },
+      ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
+      vector_index: { status: "indexed", index_type: TFIDF_ENGINE, discovered_by: "AI Web Search", discovered_by_handle: handle, last_indexed_at: now },
+      segments: resource.sections.map((title, i) => ({ segment_id: `${id}-s${i + 1}`, title, verified: false })),
+    },
+  ];
+}
+
+const DURATION_ZERO = { media_minutes: 0, reading_minutes: 0, practice_minutes: 0, assessment_minutes: 0, review_minutes: 0 };
+
+function duration(
+  minutes: Partial<typeof DURATION_ZERO>,
+  lower: Partial<typeof DURATION_ZERO>,
+  upper: Partial<typeof DURATION_ZERO>,
+): Record<string, unknown> {
+  return {
+    ...DURATION_ZERO,
+    ...minutes,
+    lower_bounds: { ...DURATION_ZERO, ...lower },
+    upper_bounds: { ...DURATION_ZERO, ...upper },
+    range_interpretation: "planning_bounds_not_confidence_interval",
+  };
+}
+
+function assignment(resourceVersionId: string, selectionRationale: string): Record<string, unknown> {
+  return { resource_version_id: resourceVersionId, role: "primary", segment_ids: [], selection_rationale: selectionRationale };
+}
+
 export function executeIntakeGenerationPipeline(params: {
   readonly fitEvaluation: IntakeResourceFitEvaluation;
   readonly goalTitle: string;
@@ -869,12 +1042,18 @@ export function executeIntakeGenerationPipeline(params: {
   readonly weeklyMinutes: number;
   readonly fitMode: IntakeFitMode;
   readonly accountId: string;
-  readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
-  readonly designatedProviderId?: string;
-  readonly designatedModelId?: string;
+  readonly handle: string;
+  readonly catalogResources: Readonly<Record<string, IndexedCatalogResource>>;
+  readonly designatedProviderId: string;
+  readonly designatedModelId: string;
+  // The plan's sequence among this learner's generated plans. It keeps plan, module, and activity ids unique.
+  readonly sequence: number;
+  // The live model's draft. Without one, the deterministic fixture provider writes the plan.
+  readonly liveDraft: CurriculumDraft | null;
+  readonly now: string;
 }): {
   readonly generatedPlan: ActiveCurriculum;
-  readonly updatedCatalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
+  readonly updatedCatalogResources: Readonly<Record<string, IndexedCatalogResource>>;
   readonly receipt: IntakePipelineExecutionReceipt;
 } {
   const {
@@ -887,94 +1066,31 @@ export function executeIntakeGenerationPipeline(params: {
     weeklyMinutes,
     fitMode,
     accountId,
+    handle,
     catalogResources,
-    designatedProviderId = "openai",
-    designatedModelId = "gpt-6-astra",
+    designatedProviderId,
+    designatedModelId,
+    sequence,
+    liveDraft,
+    now,
   } = params;
 
-  const nextCatalog: Record<string, CatalogResourceMetadataInput> = { ...catalogResources };
+  const nextCatalog: Record<string, IndexedCatalogResource> = { ...catalogResources };
   const newlyIndexedResourceIds: string[] = [];
+  const knownUrls = new Set(fitEvaluation.bypassedCanonicalUrls);
 
-  // Step 2 & Step 4: If Fill Gaps mode has uncovered topics, run delta web search (bypassing indexed URLs)
-  // and index the newly discovered Book (TOC + summary) and YouTube Playlist (syllabus + transcript) into DB.
-  if (fitEvaluation.webSearchRequired) {
-    const bookId = "discovered-book-hnsw-vector-v1";
-    const bookUrl = "https://example.invalid/catalog/hnsw-vector-indexing-book";
-    if (!fitEvaluation.bypassedCanonicalUrls.includes(bookUrl) && !nextCatalog[bookId]) {
-      nextCatalog[bookId] = {
-        resource_version_id: bookId,
-        title: `Book: Approximate Nearest Neighbor & HNSW Vector Indexing (${fitEvaluation.deltaTopicsToSearch[0] ?? subject})`,
-        canonical_url: bookUrl,
-        captured_at: "2026-10-23T12:00:00Z",
-        category: "Book",
-        subject,
-        provider: { provider_id: "open-ml-press", display_name: "Open ML Press · Indexed Book TOC & Summary" },
-        access: {
-          model: "free",
-          tier_label: "Free",
-          cost_label: "$0",
-          rights_label: "Link & metadata",
-          certificate_included: false,
-          optional_certificate_price_minor: null,
-          access_verified_at: "2026-10-23T12:00:00Z",
-        },
-        ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
-        vector_index: {
-          status: "indexed",
-          embedding_model: "text-embedding-3-large",
-          dimensions: 1536,
-          index_type: "pgvector · HNSW",
-          chunk_count: 37,
-          discovered_by: "AI Web Search",
-          discovered_by_handle: "@alex",
-          last_indexed_at: "2026-10-23T12:00:00Z",
-        },
-        segments: [
-          { segment_id: "seg-hnsw-ch1", title: "Ch. 1: Navigable Small World Graphs & Recall@k Bounds", verified: true },
-          { segment_id: "seg-hnsw-ch2", title: "Ch. 2: Product Quantization & Memory-Bounded Search", verified: true },
-        ],
-      };
-      newlyIndexedResourceIds.push(bookId);
-    }
-
-    const ytId = "discovered-youtube-rag-eval-playlist-v1";
-    const ytUrl = "https://example.invalid/catalog/youtube-rag-evaluation-playlist";
-    if (!fitEvaluation.bypassedCanonicalUrls.includes(ytUrl) && !nextCatalog[ytId]) {
-      nextCatalog[ytId] = {
-        resource_version_id: ytId,
-        title: "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
-        canonical_url: ytUrl,
-        captured_at: "2026-10-23T12:00:00Z",
-        category: "YouTube",
-        subject,
-        provider: { provider_id: "ai-eval-youtube", display_name: "AI Evaluation Lab · YouTube Syllabus & Transcript" },
-        access: {
-          model: "free",
-          tier_label: "Free",
-          cost_label: "$0",
-          rights_label: "Link & metadata",
-          certificate_included: false,
-          optional_certificate_price_minor: null,
-          access_verified_at: "2026-10-23T12:00:00Z",
-        },
-        ingestion_permissions: { basis: "link_and_metadata_only", permissions: { display_excerpts: "denied" } },
-        vector_index: {
-          status: "indexed",
-          embedding_model: "text-embedding-3-large",
-          dimensions: 1536,
-          index_type: "pgvector · HNSW",
-          chunk_count: 21,
-          discovered_by: "AI Web Search",
-          discovered_by_handle: "@alex",
-          last_indexed_at: "2026-10-23T12:00:00Z",
-        },
-        segments: [
-          { segment_id: "seg-yt-eval-1", title: "06:20 — Deriving Context Recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$", verified: true },
-          { segment_id: "seg-yt-eval-2", title: "18:05 — Faithfulness & Groundedness Scoring Rubrics", verified: true },
-        ],
-      };
-      newlyIndexedResourceIds.push(ytId);
-    }
+  // Step 2 & Step 4: Fill Gaps searches the web for the uncovered topics, skips indexed URLs, and indexes what it finds.
+  // Adding a record to the catalog is the whole indexing step: the TF-IDF index rebuilds from the new catalog object.
+  const discovered: readonly (readonly [string, IndexedCatalogResource])[] = liveDraft
+    ? liveDraft.resources.map((resource) => discoveredCatalogEntry(resource, subject, handle, now))
+    : fitEvaluation.webSearchRequired
+      ? Object.entries(fixtureDiscoveries(subject, fitEvaluation.deltaTopicsToSearch, handle))
+      : [];
+  for (const [id, entry] of discovered) {
+    if (nextCatalog[id] || knownUrls.has(entry.canonical_url ?? "")) continue;
+    nextCatalog[id] = entry;
+    knownUrls.add(entry.canonical_url ?? "");
+    newlyIndexedResourceIds.push(id);
   }
 
   const reusedIds =
@@ -992,29 +1108,43 @@ export function executeIntakeGenerationPipeline(params: {
   const effectiveTopics: readonly string[] =
     requestedTopics.length > 0 ? requestedTopics : DEFAULT_SUBJECT_TOPICS[subject].slice(0, 4);
   const effectiveTitle = goalTitle.trim() || DEFAULT_SUBJECT_GOAL_PLACEHOLDERS[subject];
-  const generatedCurriculumId = "curriculum-ai-generated-001";
+  const key = `ai-generated-${String(sequence).padStart(3, "0")}`;
+  const generatedCurriculumId = `curriculum-${key}`;
+  const revisionId = `revision-${key}-v1`;
   const gateStyle =
     subject === "Systems"
       ? "Code Lab Gate"
       : subject === "Mathematics" || subject === "Physics"
         ? "Problem Set Gate"
         : "Reviewed Quiz";
+  const draft =
+    liveDraft ??
+    fixtureDraft(
+      subject,
+      requestedTopics,
+      fitEvaluation.deltaTopicsToSearch,
+      `Generated via ${fitMode === "use_selected_only" ? "selected indexed materials only (0 web searches)" : "hybrid catalog reuse + delta web search"} with ${depth} mathematical depth.`,
+    );
+  const [module1, module2] = draft.modules;
+  // Engineering and Systems practise in code. Other subjects practise on a worked example.
+  const codes = subject === "Engineering" || subject === "Systems";
+  const id = (name: string) => `${key}-${name}`;
 
   const generatedCurriculum: Record<string, unknown> = {
     schema_version: "0.2.0",
     curriculum_id: generatedCurriculumId,
-    revision_id: "revision-ai-generated-v1",
+    revision_id: revisionId,
     revision_number: 1,
     predecessor_revision_id: null,
     account_id: accountId,
-    created_at: "2026-10-23T12:00:00Z",
+    created_at: now,
     revision_reason: "initial_generation",
     subject,
     gate_style: gateStyle,
     topic_tags: [...effectiveTopics],
     goal: {
       title: effectiveTitle,
-      summary: `Generated via ${fitMode === "use_selected_only" ? "selected indexed materials only (0 web searches)" : "hybrid catalog reuse + delta web search"} with ${depth} mathematical depth.`,
+      summary: draft.summary,
       included_topics: [...effectiveTopics],
       excluded_topics: [...fitEvaluation.skippedResourceIds],
       scope_note: fitEvaluation.costAndBypassBadge,
@@ -1026,272 +1156,158 @@ export function executeIntakeGenerationPipeline(params: {
       topic_math_depth_overrides: [],
       known_material_review: "skip_if_demonstrated",
     },
-    objectives: [
-      {
-        objective_id: "objective-ai-foundations",
-        objective_version_id: "objective-ai-foundations-v1",
-        topic_id: "topic-ai-foundations",
-        title: `Master core ${requestedTopics[0] ?? subject} representations and scaling laws`,
-        description:
-          "Connect subword sequence representations to scaled dot-product attention $\\mathrm{Attention}(Q,K,V) = \\operatorname{softmax}\\!\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$.",
-        success_criterion:
-          "Derive variance stabilization $\\mathrm{Var}(q \\cdot k) = 1$ and verify tensor shapes on unseen inputs.",
-        level: "applied",
-        requirement_level: "required",
-        assessment_activity_ids: ["ai-act-gate-1"],
-        prior_evidence_refs: [],
-      },
-      {
-        objective_id: "objective-ai-synthesis",
-        objective_version_id: "objective-ai-synthesis-v1",
-        topic_id: "topic-ai-synthesis",
-        title: `Implement and evaluate ${requestedTopics.slice(1).join(" & ") || "retrieval & synthesis"}`,
-        description:
-          "Evaluate retrieval quality via $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$ and grounded generation faithfulness.",
-        success_criterion:
-          "Achieve deterministic recall and faithfulness thresholds across the benchmark test suite.",
-        level: "advanced",
-        requirement_level: "required",
-        assessment_activity_ids: ["ai-act-gate-2"],
-        prior_evidence_refs: [],
-      },
-    ],
-    prerequisite_edges: [
-      { from_objective_id: "objective-ai-foundations", to_objective_id: "objective-ai-synthesis" },
-    ],
+    objectives: [module1, module2].map((mod, i) => ({
+      objective_id: id(`objective-${i + 1}`),
+      objective_version_id: id(`objective-${i + 1}-v1`),
+      topic_id: id(`topic-${i + 1}`),
+      title: mod.objective.title,
+      description: mod.objective.description,
+      success_criterion: mod.objective.successCriterion,
+      level: i === 0 ? "applied" : "advanced",
+      requirement_level: "required",
+      assessment_activity_ids: [id(`act-gate-${i + 1}`)],
+      prior_evidence_refs: [],
+    })),
+    prerequisite_edges: [{ from_objective_id: id("objective-1"), to_objective_id: id("objective-2") }],
     modules: [
       {
-        module_id: "ai-module-1",
-        title: `Module 1: ${requestedTopics[0] ?? subject} & Mathematical Foundations`,
-        summary: "Core representations, $\\frac{1}{\\sqrt{d_k}}$ variance scaling, and reused catalog anchors.",
+        module_id: id("module-1"),
+        title: module1.title,
+        summary: module1.summary,
         requirement_level: "required",
         prerequisite_module_ids: [],
-        objective_ids: ["objective-ai-foundations"],
-        activity_ids: ["ai-act-theory-1", "ai-act-example-1", "ai-act-gate-1"],
+        objective_ids: [id("objective-1")],
+        activity_ids: [id("act-theory-1"), id("act-example-1"), id("act-gate-1")],
       },
       {
-        module_id: "ai-module-2",
-        title: `Module 2: ${fitEvaluation.deltaTopicsToSearch.join(" & ") || requestedTopics.slice(1).join(" & ") || "Synthesis & Evaluation"}`,
-        summary: "Indexed book chapters, video syllabus walkthroughs, and $\\mathrm{Recall}@k$ evaluation.",
+        module_id: id("module-2"),
+        title: module2.title,
+        summary: module2.summary,
         requirement_level: "required",
-        prerequisite_module_ids: ["ai-module-1"],
-        objective_ids: ["objective-ai-synthesis"],
-        activity_ids: ["ai-act-theory-2", "ai-act-coding-2", "ai-act-gate-2"],
+        prerequisite_module_ids: [id("module-1")],
+        objective_ids: [id("objective-2")],
+        activity_ids: [id("act-theory-2"), id("act-practice-2"), id("act-gate-2")],
       },
     ],
     activities: [
       {
-        activity_id: "ai-act-theory-1",
+        activity_id: id("act-theory-1"),
         type: "theory",
-        title: `Read: ${requestedTopics[0] ?? subject} Foundations & Scaling Laws`,
+        title: module1.read.title,
         requirement_level: "required",
-        objective_ids: ["objective-ai-foundations"],
+        objective_ids: [id("objective-1")],
         prerequisite_activity_ids: [],
-        resource_assignments: [
-          {
-            resource_version_id: primaryResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: "Reused directly from existing indexed catalog (bypassed web search).",
-          },
-        ],
-        duration_estimate: {
-          media_minutes: 0,
-          reading_minutes: 20,
-          practice_minutes: 0,
-          assessment_minutes: 0,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 0, reading_minutes: 15, practice_minutes: 0, assessment_minutes: 0, review_minutes: 0 },
-          upper_bounds: { media_minutes: 0, reading_minutes: 30, practice_minutes: 0, assessment_minutes: 0, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          study_prompt:
-            "Derive why scaling dot products by $\\frac{1}{\\sqrt{d_k}}$ preserves unit variance $\\mathrm{Var}(q \\cdot k) = 1$.",
-        },
+        resource_assignments: [assignment(primaryResId, "Reused directly from existing indexed catalog (bypassed web search).")],
+        duration_estimate: duration({ reading_minutes: 20 }, { reading_minutes: 15 }, { reading_minutes: 30 }),
+        content: { study_prompt: module1.read.prompt },
       },
       {
-        activity_id: "ai-act-example-1",
+        activity_id: id("act-example-1"),
         type: "worked_example",
-        title: "Worked Example: Softmax Jacobian & Attention Weights",
+        title: module1.practice.title,
         requirement_level: "required",
-        objective_ids: ["objective-ai-foundations"],
-        prerequisite_activity_ids: ["ai-act-theory-1"],
-        resource_assignments: [
-          {
-            resource_version_id: videoResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: "Indexed YouTube syllabus walkthrough with timestamped transcript.",
-          },
-        ],
-        duration_estimate: {
-          media_minutes: 15,
-          reading_minutes: 5,
-          practice_minutes: 10,
-          assessment_minutes: 0,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 12, reading_minutes: 4, practice_minutes: 8, assessment_minutes: 0, review_minutes: 0 },
-          upper_bounds: { media_minutes: 20, reading_minutes: 8, practice_minutes: 15, assessment_minutes: 0, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          example_prompt:
-            "Compute $\\mathrm{Attention}(Q,K,V) = \\operatorname{softmax}\\!\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V$ for a $2 \\times 2$ toy query-key matrix.",
-        },
+        objective_ids: [id("objective-1")],
+        prerequisite_activity_ids: [id("act-theory-1")],
+        resource_assignments: [assignment(videoResId, "Indexed YouTube syllabus walkthrough with timestamped transcript.")],
+        duration_estimate: duration(
+          { media_minutes: 15, reading_minutes: 5, practice_minutes: 10 },
+          { media_minutes: 12, reading_minutes: 4, practice_minutes: 8 },
+          { media_minutes: 20, reading_minutes: 8, practice_minutes: 15 },
+        ),
+        content: { example_prompt: module1.practice.prompt },
       },
       {
-        activity_id: "ai-act-gate-1",
+        activity_id: id("act-gate-1"),
         type: "quiz",
-        title: "Checkpoint 1: Representation & Scaling Verification",
+        title: module1.checkpoint.title,
         requirement_level: "required",
         mastery_gated: true,
-        objective_ids: ["objective-ai-foundations"],
-        prerequisite_activity_ids: ["ai-act-example-1"],
-        resource_assignments: [
-          {
-            resource_version_id: primaryResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: "Formative checkpoint anchored to indexed reference.",
-          },
-        ],
-        duration_estimate: {
-          media_minutes: 0,
-          reading_minutes: 0,
-          practice_minutes: 0,
-          assessment_minutes: 15,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 0, reading_minutes: 0, practice_minutes: 0, assessment_minutes: 10, review_minutes: 0 },
-          upper_bounds: { media_minutes: 0, reading_minutes: 0, practice_minutes: 0, assessment_minutes: 20, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          assessment_prompt: "Verify attention scaling and subword sequence bounds before unlocking Module 2.",
-        },
+        objective_ids: [id("objective-1")],
+        prerequisite_activity_ids: [id("act-example-1")],
+        resource_assignments: [assignment(primaryResId, "Formative checkpoint anchored to indexed reference.")],
+        duration_estimate: duration({ assessment_minutes: 15 }, { assessment_minutes: 10 }, { assessment_minutes: 20 }),
+        content: { assessment_prompt: module1.checkpoint.prompt },
       },
       {
-        activity_id: "ai-act-theory-2",
+        activity_id: id("act-theory-2"),
         type: "theory",
-        title: `Read: ${fitEvaluation.deltaTopicsToSearch[0] ?? "Retrieval"} & Recall Bounds`,
+        title: module2.read.title,
         requirement_level: "required",
-        objective_ids: ["objective-ai-synthesis"],
-        prerequisite_activity_ids: ["ai-act-gate-1"],
+        objective_ids: [id("objective-2")],
+        prerequisite_activity_ids: [id("act-gate-1")],
         resource_assignments: [
-          {
-            resource_version_id: secondaryResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: newlyIndexedResourceIds.includes(secondaryResId)
-              ? "Newly discovered via delta web search and indexed with Book TOC & summary."
+          assignment(
+            secondaryResId,
+            newlyIndexedResourceIds.includes(secondaryResId)
+              ? "Newly discovered via delta web search and indexed into the catalog."
               : "Reused from selected indexed catalog materials.",
-          },
+          ),
         ],
-        duration_estimate: {
-          media_minutes: 0,
-          reading_minutes: 25,
-          practice_minutes: 0,
-          assessment_minutes: 0,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 0, reading_minutes: 20, practice_minutes: 0, assessment_minutes: 0, review_minutes: 0 },
-          upper_bounds: { media_minutes: 0, reading_minutes: 35, practice_minutes: 0, assessment_minutes: 0, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          study_prompt:
-            "Analyze why top-$k$ retrieval recall $\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}$ bounds downstream answer faithfulness.",
-        },
+        duration_estimate: duration({ reading_minutes: 25 }, { reading_minutes: 20 }, { reading_minutes: 35 }),
+        content: { study_prompt: module2.read.prompt },
       },
       {
-        activity_id: "ai-act-coding-2",
-        type: "coding",
-        title: "Code Lab: Index Construction & Recall@k Harness",
+        activity_id: id("act-practice-2"),
+        type: codes ? "coding" : "worked_example",
+        title: module2.practice.title,
         requirement_level: "required",
-        objective_ids: ["objective-ai-synthesis"],
-        prerequisite_activity_ids: ["ai-act-theory-2"],
-        resource_assignments: [
-          {
-            resource_version_id: secondaryResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: "Hands-on implementation and evaluation harness.",
-          },
-        ],
-        duration_estimate: {
-          media_minutes: 0,
-          reading_minutes: 5,
-          practice_minutes: 25,
-          assessment_minutes: 0,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 0, reading_minutes: 4, practice_minutes: 20, assessment_minutes: 0, review_minutes: 0 },
-          upper_bounds: { media_minutes: 0, reading_minutes: 8, practice_minutes: 35, assessment_minutes: 0, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          task_prompt: "Implement the retrieval evaluator and verify $\\mathrm{Recall}@k \\ge 0.85$ on the test split.",
-          deliverable_description: "Working index builder and evaluation script passing all recall assertions.",
-          assessment_ref: null,
-          execution_mode: "external",
-        },
+        objective_ids: [id("objective-2")],
+        prerequisite_activity_ids: [id("act-theory-2")],
+        resource_assignments: [assignment(secondaryResId, "Hands-on implementation and evaluation harness.")],
+        duration_estimate: duration(
+          { reading_minutes: 5, practice_minutes: 25 },
+          { reading_minutes: 4, practice_minutes: 20 },
+          { reading_minutes: 8, practice_minutes: 35 },
+        ),
+        content: codes
+          ? {
+              task_prompt: module2.practice.prompt,
+              deliverable_description: module2.objective.successCriterion,
+              assessment_ref: null,
+              execution_mode: "external",
+            }
+          : { example_prompt: module2.practice.prompt },
       },
       {
-        activity_id: "ai-act-gate-2",
+        activity_id: id("act-gate-2"),
         type: "quiz",
-        title: "Checkpoint 2: End-to-End Evaluation & Synthesis Gate",
+        title: module2.checkpoint.title,
         requirement_level: "required",
         mastery_gated: true,
-        objective_ids: ["objective-ai-synthesis"],
-        prerequisite_activity_ids: ["ai-act-coding-2"],
-        resource_assignments: [
-          {
-            resource_version_id: videoResId,
-            role: "primary",
-            segment_ids: [],
-            selection_rationale: "Anchored to evaluation rubric.",
-          },
-        ],
-        duration_estimate: {
-          media_minutes: 0,
-          reading_minutes: 0,
-          practice_minutes: 0,
-          assessment_minutes: 15,
-          review_minutes: 0,
-          lower_bounds: { media_minutes: 0, reading_minutes: 0, practice_minutes: 0, assessment_minutes: 10, review_minutes: 0 },
-          upper_bounds: { media_minutes: 0, reading_minutes: 0, practice_minutes: 0, assessment_minutes: 20, review_minutes: 0 },
-          range_interpretation: "planning_bounds_not_confidence_interval",
-        },
-        content: {
-          assessment_prompt: "Compute $\\mathrm{Recall}@k$ and diagnose ungrounded synthesis spans.",
-        },
+        objective_ids: [id("objective-2")],
+        prerequisite_activity_ids: [id("act-practice-2")],
+        resource_assignments: [assignment(videoResId, "Anchored to evaluation rubric.")],
+        duration_estimate: duration({ assessment_minutes: 15 }, { assessment_minutes: 10 }, { assessment_minutes: 20 }),
+        content: { assessment_prompt: module2.checkpoint.prompt },
       },
     ],
     certification_options: [],
   };
 
   const generatedSchedule: Record<string, unknown> = {
-    schedule_id: "schedule-ai-generated-1",
-    schedule_revision_id: "schedule-revision-ai-generated-1",
+    schedule_id: `schedule-${key}`,
+    schedule_revision_id: `schedule-revision-${key}`,
     version: 1,
-    curriculum_revision_id: "revision-ai-generated-v1",
+    curriculum_revision_id: revisionId,
     timezone: "America/New_York",
     weekly_minutes: weeklyMinutes,
     sessions: [
       {
-        session_id: "ai-session-1",
+        session_id: id("session-1"),
         start_at: "2026-10-27T18:00:00-04:00",
         duration_minutes: 65,
-        activity_ids: ["ai-act-theory-1", "ai-act-example-1", "ai-act-gate-1"],
+        activity_ids: [id("act-theory-1"), id("act-example-1"), id("act-gate-1")],
         reminder_enabled: true,
       },
       {
-        session_id: "ai-session-2",
+        session_id: id("session-2"),
         start_at: "2026-10-29T18:00:00-04:00",
         duration_minutes: 70,
-        activity_ids: ["ai-act-theory-2", "ai-act-coding-2", "ai-act-gate-2"],
+        activity_ids: [id("act-theory-2"), id("act-practice-2"), id("act-gate-2")],
         reminder_enabled: true,
       },
     ],
-    generated_at: "2026-10-23T12:00:00Z",
+    generated_at: now,
   };
 
   const generatedPlan: ActiveCurriculum = {
@@ -1310,10 +1326,14 @@ export function executeIntakeGenerationPipeline(params: {
   const modelDescriptor = matchedModelOption
     ? `${matchedModelOption.providerLabel} · ${matchedModelOption.modelLabel}`
     : `${designatedProviderId} · ${designatedModelId}`;
+  const writer = liveDraft
+    ? `Live draft from ${modelDescriptor}`
+    : `Fixture draft, no model call: the server has no API key for ${modelDescriptor}`;
+  const webSearchExecuted = fitEvaluation.webSearchRequired;
 
-  const summaryNote = fitEvaluation.webSearchRequired
-    ? `AI pipeline complete (${modelDescriptor}): Reused ${reusedIds.length} indexed resource(s), ran delta web search for [${fitEvaluation.deltaTopicsToSearch.join(", ")}] (bypassing ${fitEvaluation.bypassedCanonicalUrls.length} indexed URLs), and indexed ${newlyIndexedResourceIds.length} new resource(s) (Book TOC + YouTube syllabus) into Resources.`
-    : `AI pipeline complete (${modelDescriptor}): Synthesized draft from ${reusedIds.length} selected indexed resource(s) with 0 web search calls.`;
+  const summaryNote = webSearchExecuted
+    ? `${writer}. Reused ${reusedIds.length} indexed resource(s), searched the web for [${fitEvaluation.deltaTopicsToSearch.join(", ")}] (skipping ${fitEvaluation.bypassedCanonicalUrls.length} indexed URLs), and indexed ${newlyIndexedResourceIds.length} new resource(s) into Resources.`
+    : `${writer}. Built from ${reusedIds.length} selected indexed resource(s) with 0 web searches.`;
 
   return {
     generatedPlan,
@@ -1321,7 +1341,7 @@ export function executeIntakeGenerationPipeline(params: {
     receipt: {
       searchPrompt: fitEvaluation.searchPrompt,
       fitMode,
-      webSearchExecuted: fitEvaluation.webSearchRequired,
+      webSearchExecuted,
       searchedDeltaTopics: fitEvaluation.deltaTopicsToSearch,
       bypassedCanonicalUrls: fitEvaluation.bypassedCanonicalUrls,
       reusedResourceIds: reusedIds,
@@ -1329,6 +1349,7 @@ export function executeIntakeGenerationPipeline(params: {
       generatedCurriculumId,
       designatedProviderId,
       designatedModelId,
+      liveDraft: liveDraft !== null,
       summaryNote,
     },
   };
@@ -1452,7 +1473,7 @@ export function NewCurriculumDialog({
   fitEvaluation,
   lastPipelineReceipt,
   designatedProviderId = "openai",
-  designatedModelId = "gpt-6-astra",
+  designatedModelId = CHEAP_MODEL_BY_PROVIDER.openai,
   configuredProviderIds = ["openai", "anthropic", "google_gemini"],
 }: NewCurriculumDialogProps): VNode {
   const activeCompoundModel = `${designatedProviderId}:${designatedModelId}`;
@@ -1792,6 +1813,7 @@ export function NewCurriculumDialog({
                       data-fit-resource-source={mat.source ?? "indexed"}
                       data-fit-resource-used={String(isUsed)}
                       data-fit-resource-skipped={String(isSkipped)}
+                      data-match-score={mat.matchScore?.toFixed(2)}
                     >
                       <div class="intake-material-badge-col">
                         <span class="resource-category-badge" data-category={mat.category}>
@@ -1803,7 +1825,8 @@ export function NewCurriculumDialog({
                         <div class="intake-material-inner">
                           <strong class="intake-material-title">{mat.title}</strong>
                           <p class="meta-text">
-                            {mat.publisher} · {mat.coveredTopics.join(", ")}
+                            {[mat.publisher, mat.coveredTopics.join(", ")].filter(Boolean).join(" · ")}
+                            {mat.matchScore ? ` · ${mat.matchScore.toFixed(2)} match` : ""}
                           </p>
                           {renderPolymorphicIndexDetails(mat.polymorphicIndex)}
                         </div>

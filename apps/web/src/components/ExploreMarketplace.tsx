@@ -10,7 +10,7 @@ import { resolveTransitiveAdoptionScope, type PublicCurriculumContentBlock } fro
 import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
-import { OpenKnowledgeArt, SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
+import { SfIcon, StatusGlyph, type SfIconName } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
 import { displayUnitTitle, effortWords, humanize, isOneOf, type StudyActivity } from "./StudyFlowBoard.tsx";
 
@@ -571,10 +571,9 @@ export function ExploreMarketplace({
   const published = ownedListings.length > 0;
   const ownedTotal = (countOf: (listing: MarketplaceListing) => number): number =>
     ownedListings.reduce((sum, listing) => sum + countOf(listing), 0);
-  const supportingImpact: readonly (readonly [SfIconName, string, number, string?])[] = [
-    ["clock", "Study hours gifted", ownedTotal(studyHoursOf), "Each plan's study time, multiplied by its adoptions"],
-    ["upvote", "Community upvotes", ownedTotal(upvotesOf)],
-  ];
+  const learnersReached = ownedTotal(adoptionsOf);
+  const hoursGifted = ownedTotal(studyHoursOf);
+  const upvotesReceived = ownedTotal(upvotesOf);
   const shareButton = (label: string, kind: "btn-primary" | "btn-secondary"): VNode => (
     <button type="button" class={kind} data-action="open-dialog" data-dialog-id="dialog-publication-preview">
       {label}
@@ -854,7 +853,7 @@ export function ExploreMarketplace({
               <h2 id="my-publications-title">My Publications</h2>
               {published ? (
                 <p class="meta-text">
-                  Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free.
+                  Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free under CC BY 4.0.
                 </p>
               ) : null}
             </div>
@@ -862,42 +861,22 @@ export function ExploreMarketplace({
           </div>
           {published ? (
             <>
-              <dl class="philanthropy-impact">
-                <div class="impact-hero">
-                  <dt>
-                    <OpenKnowledgeArt />
-                    Learners reached
-                  </dt>
-                  <dd class="impact-value">{ownedTotal(adoptionsOf)}</dd>
-                  <dd class="impact-caption">
-                    Self-learners studying your shared {ownedListings.length === 1 ? "syllabus" : "syllabi"} at no cost
-                  </dd>
-                </div>
-                {supportingImpact.map(([icon, label, value, caption]) => (
-                  <div key={label} class="impact-support">
-                    <dt>
-                      <span class="impact-icon-badge">
-                        <SfIcon name={icon} />
-                      </span>
-                      {label}
-                    </dt>
-                    <dd class="impact-value">{value}</dd>
-                    {caption ? <dd class="impact-caption">{caption}</dd> : null}
-                  </div>
-                ))}
-                <div class="impact-seal">
-                  <dt>
-                    <span class="impact-seal-emblem">
-                      <SfIcon name="globe" />
-                    </span>
-                    Free for every learner
-                  </dt>
-                  <dd class="impact-license">CC BY 4.0</dd>
-                  <dd class="impact-caption">
-                    Each adoption gives a learner your plan's structured study hours at no cost. Anyone may reuse and adapt it with credit to you.
-                  </dd>
-                </div>
-              </dl>
+              {/* The same sentence as Settings › Your contributions: plain totals, no metric cards. */}
+              <p class="impact-summary">
+                Your shared {ownedListings.length === 1 ? "plan" : "plans"} reached{" "}
+                <strong>
+                  {learnersReached} {learnersReached === 1 ? "learner" : "learners"}
+                </strong>
+                , who planned about{" "}
+                <strong>
+                  {hoursGifted} {hoursGifted === 1 ? "study hour" : "study hours"}
+                </strong>{" "}
+                with {ownedListings.length === 1 ? "it" : "them"}.{" "}
+                <strong>
+                  {upvotesReceived} {upvotesReceived === 1 ? "person" : "people"}
+                </strong>{" "}
+                upvoted your work.
+              </p>
               <ul class="publication-list">
                 {ownedListings.map((listing) => {
                   const title = goalTitleOf(listing.curriculum);
@@ -961,7 +940,6 @@ export function ExploreMarketplace({
             </>
           ) : (
             <div class="publish-invite">
-              <OpenKnowledgeArt />
               <div>
                 <h3>Help the next learner start where you did</h3>
                 <p class="prose meta-text">

@@ -65,12 +65,13 @@ import {
 } from "./components/AdminResourcesView.tsx";
 import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
 import {
-  DEFAULT_SUBJECT_TOPICS, DESIGNATED_AI_MODELS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
+  CHEAP_MODEL_BY_PROVIDER, DEFAULT_SUBJECT_TOPICS, DESIGNATED_AI_MODELS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
   INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
   evaluateIntakeResourceFit, executeIntakeGenerationPipeline, inferIntakeSubjectFromGoal, resolveDependentTopicToggle,
   type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
   type IntakePipelineExecutionReceipt, type IntakeSubject,
 } from "./components/NewCurriculumDialog.tsx";
+import { buildLiveDraftPrompt, type LiveDraftOutcome, type LiveDraftRequest } from "./liveDraft.ts";
 import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state/store.ts";
 
 export {
@@ -2144,12 +2145,6 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
             </div>
             ${ownedListings.length > 0 ? `<div class="community-impact-banner">
-              <div class="impact-avatar-stack" aria-hidden="true">
-                <span class="impact-stack-avatar" data-tone="1">MD</span>
-                <span class="impact-stack-avatar" data-tone="2">KM</span>
-                <span class="impact-stack-avatar" data-tone="3">AL</span>
-                <span class="impact-stack-more">+${Math.max(1, totalLearnersReached - 3)}</span>
-              </div>
               <div class="impact-copy-group">
                 <p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
                 <p class="row-meta">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
@@ -2415,7 +2410,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     const intakeMaterials: IntakeMaterialsChoice = inputState.intakeMaterials ?? "free_only";
     const intakeWeeklyMinutes = inputState.intakeWeeklyMinutes ?? 120;
     const intakeFitMode: IntakeFitMode = inputState.intakeFitMode ?? "fill_gaps";
-    const defaultCandidateIds = buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials)
+    const defaultCandidateIds = buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials, intakeGoalTitle)
       .map((m) => m.resourceVersionId);
     const intakeSelectedResourceIds = inputState.intakeSelectedResourceIds ?? defaultCandidateIds;
     const intakeSkippedResourceIds = inputState.intakeSkippedResourceIds ?? [];
@@ -2438,7 +2433,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       activeByokCredentials.find((c) => c.credential_ref === effectivePrimaryRef) ??
       activeByokCredentials[0];
     const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-    const designatedModelId = inputState.providerModels?.[designatedProviderId] ?? "gpt-6-astra";
+    const designatedModelId =
+      inputState.providerModels?.[designatedProviderId] ?? CHEAP_MODEL_BY_PROVIDER[designatedProviderId as keyof typeof CHEAP_MODEL_BY_PROVIDER];
     const configuredProviderIds = activeByokCredentials.map((c) => c.provider_id);
     return renderToString(
       h(NewCurriculumDialog, {
@@ -2617,9 +2613,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     byokCredentials.find((c) => c.status === "active")?.credential_ref ??
     "";
   let providerModels: Record<string, string> = {
-    openai: "gpt-6-astra",
-    anthropic: "claude-opus-5-5",
-    google_gemini: "gemini-4-argon",
+    ...CHEAP_MODEL_BY_PROVIDER,
     ...(initialState.providerModels ?? {}),
   };
   let diagnosticControl: "active" | "paused" | "stopped" = initialState.diagnosticControl ?? "active";
@@ -2648,7 +2642,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let intakeFitMode: IntakeFitMode = initialState.intakeFitMode ?? "fill_gaps";
   let intakeSelectedResourceIds: string[] = [
     ...(initialState.intakeSelectedResourceIds ??
-      buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials).map(
+      buildIndexedMaterialCandidates(catalogResources, intakeSubject, intakeTopics, intakeMaterials, intakeGoalTitle).map(
         (m) => m.resourceVersionId,
       )),
   ];
@@ -2998,11 +2992,67 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     };
   };
 
+  function intakeFitEvaluation() {
+    return evaluateIntakeResourceFit({
+      goalTitle: intakeGoalTitle,
+      subject: intakeSubject,
+      requestedTopics: intakeTopics,
+      depth: intakeDepth,
+      flowOrder: intakeFlow,
+      materialsAccess: intakeMaterials,
+      weeklyMinutes: intakeWeeklyMinutes,
+      fitMode: intakeFitMode,
+      selectedResourceIds: intakeSelectedResourceIds,
+      skippedResourceIds: intakeSkippedResourceIds,
+      catalogResources,
+      myPlans: currentPlans(),
+      marketplaceListings: listings(),
+    });
+  }
+
+  // The provider and model that write the curriculum: the primary key's provider, or null without an active key.
+  function designatedModel(): { readonly providerId: string; readonly modelId: string } | null {
+    const activeByok = byokCredentials.filter((c) => c.status === "active" && Boolean(c.masked_suffix));
+    const cred = activeByok.find((c) => c.credential_ref === primaryCredentialRef) ?? activeByok[0];
+    if (!cred) return null;
+    const providerId = cred.provider_id;
+    return { providerId, modelId: providerModels[providerId] ?? CHEAP_MODEL_BY_PROVIDER[providerId as keyof typeof CHEAP_MODEL_BY_PROVIDER] };
+  }
+
+  function applyGenerateFields(data: Readonly<Record<string, string | undefined>>) {
+    if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
+    const parsed = Number.parseInt(data["weeklyMinutes"] ?? "", 10);
+    if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
+  }
+
   return {
     getState,
     renderHtml: (): string => {
       const { activityStates: _a, ...restState } = getState();
       return renderCurriculumWebAppHtml({ ...initialState, ...restState, activityStates: activityStatesInput() });
+    },
+    // The prompt and model for a live draft, or null when nobody is signed in or no key is configured.
+    // The server sends it with the key from its own environment, then passes the outcome to applyUiAction.
+    liveGenerationRequest(data: Readonly<Record<string, string | undefined>> = {}): LiveDraftRequest | null {
+      if (!signedIn()) return null;
+      applyGenerateFields(data);
+      const model = designatedModel();
+      if (!model) return null;
+      const fit = intakeFitEvaluation();
+      return {
+        ...model,
+        prompt: buildLiveDraftPrompt({
+          searchPrompt: fit.searchPrompt,
+          deltaTopics: fit.deltaTopicsToSearch,
+          reusedTitles: fit.indexedMaterials.filter((m) => fit.selectedResourceIds.includes(m.resourceVersionId)).map((m) => m.title),
+          bypassedUrls: fit.bypassedCanonicalUrls,
+        }),
+      };
+    },
+    // Resources that other sessions indexed. A record this session already holds stays as it is.
+    addCatalogResources(entries: Readonly<Record<string, CatalogResourceMetadataInput>>) {
+      const missing = Object.entries(entries).filter(([id]) => !catalogResources[id]);
+      if (missing.length > 0) catalogResources = { ...catalogResources, ...Object.fromEntries(missing) };
     },
     navigateTopLevel(destination: TopLevelDestination) {
       if (destination !== "Explore" && !signedIn()) return requireSignIn(placeOf(destination, learnSubDestination));
@@ -3087,7 +3137,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       openDialogId = null;
       return getState();
     },
-    applyUiAction(action: string, data: Readonly<Record<string, string | undefined>> = {}, submittedChoice: string | null = null) {
+    // The live draft for generate-curriculum-ai. Only the server sets it, after its own model call.
+    applyUiAction(
+      action: string,
+      data: Readonly<Record<string, string | undefined>> = {},
+      submittedChoice: string | null = null,
+      liveOutcome: LiveDraftOutcome | null = null,
+    ) {
       const value = (key: string) => data[key];
       // Without a valid session only reading, filtering, appearance, and signing in run. Anything else asks for sign-in.
       if (!signedIn() && !OPEN_ACTIONS.has(action)) {
@@ -3205,7 +3261,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
             },
           },
         };
-        adminNotice = `Re-indexed ${resId} into pgvector · HNSW (1536d).`;
+        adminNotice = `Re-indexed ${resId} into the TF-IDF cosine index.`;
       } else if (action === "admin-reindex-all" && isAdminAccount(account)) {
         const now = new Date().toISOString();
         const nextOverrides: Record<string, Partial<CatalogResourceMetadataInput>> = { ...adminResourceOverrides };
@@ -3226,13 +3282,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           };
         }
         adminResourceOverrides = nextOverrides;
-        adminNotice = "Re-indexed all global corpus resources into pgvector · HNSW (1536d).";
+        adminNotice = "Re-indexed all global corpus resources into the TF-IDF cosine index.";
       } else if (action === "admin-remove-resource" && data["resourceId"] && isAdminAccount(account)) {
         const resId = data["resourceId"];
         if (!adminRemovedResourceIds.includes(resId)) {
           adminRemovedResourceIds = [...adminRemovedResourceIds, resId];
         }
-        adminNotice = `Removed ${resId} from the global vector database corpus.`;
+        adminNotice = `Removed ${resId} from the global resource index.`;
       } else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
         selectCurriculum(data["curriculumId"]);
         topLevel = "Learn";
@@ -3381,6 +3437,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
             intakeSubject,
             intakeTopics,
             intakeMaterials,
+            intakeGoalTitle,
           ).map((m) => m.resourceVersionId);
           intakeSkippedResourceIds = [];
         }
@@ -3393,6 +3450,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           intakeSubject,
           intakeTopics,
           intakeMaterials,
+          intakeGoalTitle,
         ).map((m) => m.resourceVersionId);
         intakeSkippedResourceIds = [];
       } else if (action === "toggle-intake-topic" && data["intakeTopic"]) {
@@ -3415,6 +3473,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           intakeSubject,
           intakeTopics,
           intakeMaterials,
+          intakeGoalTitle,
         )
           .map((m) => m.resourceVersionId)
           .filter((id) => !intakeSkippedResourceIds.includes(id));
@@ -3470,36 +3529,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
       } else if (action === "generate-curriculum-ai") {
-        if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
-        if (data["weeklyMinutes"]) {
-          const parsed = Number.parseInt(data["weeklyMinutes"], 10);
-          if (Number.isFinite(parsed) && parsed > 0) intakeWeeklyMinutes = parsed;
-        }
-        const fitEvaluation = evaluateIntakeResourceFit({
-          goalTitle: intakeGoalTitle,
-          subject: intakeSubject,
-          requestedTopics: intakeTopics,
-          depth: intakeDepth,
-          flowOrder: intakeFlow,
-          materialsAccess: intakeMaterials,
-          weeklyMinutes: intakeWeeklyMinutes,
-          fitMode: intakeFitMode,
-          selectedResourceIds: intakeSelectedResourceIds,
-          skippedResourceIds: intakeSkippedResourceIds,
-          catalogResources,
-          myPlans: currentPlans(),
-          marketplaceListings: listings(),
-        });
-        const activeByok = byokCredentials.filter((c) => c.status === "active" && Boolean(c.masked_suffix));
-        if (activeByok.length === 0) {
+        applyGenerateFields(data);
+        const model = designatedModel();
+        if (!model) {
           intakeNote = "Configure at least one AI provider API key in Settings before generating a curriculum.";
+        } else if (liveOutcome && "error" in liveOutcome) {
+          intakeNote = `Live generation with ${model.modelId} failed: ${liveOutcome.error}. No curriculum was created.`;
         } else {
-          const activePrimaryCred =
-            activeByok.find((c) => c.credential_ref === primaryCredentialRef) ?? activeByok[0];
-          const designatedProviderId = activePrimaryCred?.provider_id ?? "openai";
-          const designatedModelId = providerModels[designatedProviderId] ?? "gpt-6-astra";
           const pipelineResult = executeIntakeGenerationPipeline({
-            fitEvaluation,
+            fitEvaluation: intakeFitEvaluation(),
             goalTitle: intakeGoalTitle,
             subject: intakeSubject,
             requestedTopics: intakeTopics,
@@ -3509,15 +3547,16 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
             weeklyMinutes: intakeWeeklyMinutes,
             fitMode: intakeFitMode,
             accountId: account.accountId,
+            handle: handleOf(account),
             catalogResources,
-            designatedProviderId,
-            designatedModelId,
+            designatedProviderId: model.providerId,
+            designatedModelId: model.modelId,
+            sequence: generatedPlans.length + 1,
+            liveDraft: liveOutcome?.draft ?? null,
+            now: new Date().toISOString(),
           });
           catalogResources = pipelineResult.updatedCatalogResources;
-          generatedPlans = [
-            ...generatedPlans.filter((p) => p.curriculumId !== pipelineResult.generatedPlan.curriculumId),
-            pipelineResult.generatedPlan,
-          ];
+          generatedPlans = [...generatedPlans, pipelineResult.generatedPlan];
           lastPipelineReceipt = pipelineResult.receipt;
           intakeNote = pipelineResult.receipt.summaryNote;
           openDialogId = null;
@@ -3737,6 +3776,8 @@ export function mountCurriculumWebApp(
   return {
     getState: () => controller.getState(),
     renderHtml: () => controller.renderHtml(),
+    liveGenerationRequest: withSync(controller.liveGenerationRequest),
+    addCatalogResources: withSync(controller.addCatalogResources),
     navigateTopLevel: withSync(controller.navigateTopLevel),
     navigateLearnSubDestination: withSync(controller.navigateLearnSubDestination),
     switchPlanView: withSync(controller.switchPlanView),

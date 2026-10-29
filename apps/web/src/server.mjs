@@ -7,8 +7,13 @@
  *   interactivity in the browser via `/client.js`.
  * - Proxies `/v1/*` API calls to `API_BASE_URL` (default `http://127.0.0.1:8080`) when available,
  *   or serves deterministic synthetic state for instant local inspection.
+ * - Gives each visitor a session cookie and a controller of their own. Resources that any session indexes
+ *   go to one shared store, saved to `.data/web-store.json`, so every session can find them at once.
+ * - Generates curricula with a live model call when the server environment holds the provider's key
+ *   (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`). Without a key the fixture provider runs.
  */
 
+import crypto from "node:crypto";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,6 +24,8 @@ import {
   renderCurriculumWebAppHtml,
 } from "./browserApp.ts";
 import { isAdminAccount } from "./components/AdminResourcesView.tsx";
+import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
+import { PROVIDER_KEY_ENV, requestLiveDraft } from "./liveDraft.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -379,6 +386,20 @@ ${fallbackScript}
           if (canvas) patch.avatarUrl = canvas.toDataURL("image/png");
         }
       }
+      if (action === "generate-curriculum-ai") {
+        // A live model call takes seconds. Show that it runs, and allow a retry if the request fails.
+        target.disabled = true;
+        target.setAttribute("aria-busy", "true");
+        const label = target.querySelector("span");
+        if (label) label.textContent = "Generating\u2026";
+        dispatchServerRender(patch).then((ok) => {
+          if (ok) return;
+          target.disabled = false;
+          target.removeAttribute("aria-busy");
+          if (label) label.textContent = "Generate curriculum";
+        });
+        return;
+      }
       if (action === "replace-key") {
         const providerId = target.dataset.providerId || "openai";
         const keySelector = providerId === "openai" ? "#byok-key" : "#byok-key-" + CSS.escape(providerId);
@@ -546,10 +567,67 @@ function proxyOrFallbackApiRequest(req, res, apiBaseUrl) {
   req.pipe(proxyReq);
 }
 
+const SESSION_COOKIE = "cio_sid";
+
+// The shared store: resources indexed by any session, and each session's generated curricula.
+// With a storePath it is one JSON file that survives a restart. Without one it lives in memory.
+function openStore(storePath) {
+  const saved = storePath && fs.existsSync(storePath) ? JSON.parse(fs.readFileSync(storePath, "utf8")) : {};
+  const data = {
+    resources: { ...catalogResourcesJson.global_discovered_resources, ...saved.resources },
+    sessions: saved.sessions ?? {},
+  };
+  return {
+    data,
+    save() {
+      if (!storePath) return;
+      fs.mkdirSync(path.dirname(storePath), { recursive: true });
+      fs.writeFileSync(storePath, JSON.stringify(data));
+    },
+  };
+}
+
+function cookieOf(req, name) {
+  for (const part of (req.headers.cookie ?? "").split(";")) {
+    const [key, value] = part.trim().split("=");
+    if (key === name) return value;
+  }
+  return undefined;
+}
+
 export function createWebAppServer(options = {}) {
   const apiBaseUrl =
     options.apiBaseUrl ?? process.env.API_BASE_URL ?? "http://127.0.0.1:8080";
-  const controller = createCurriculumWebAppController(options.initialState ?? {});
+  const store = openStore(options.storePath);
+  // ponytail: sessions live until the process exits. Add an idle timeout if the server ever faces real traffic.
+  const controllers = new Map();
+
+  // An unknown or missing cookie gets a new random session, so a client cannot choose its session id.
+  function sessionFor(req, res) {
+    let sid = cookieOf(req, SESSION_COOKIE);
+    if (!sid || !(controllers.has(sid) || store.data.sessions[sid])) {
+      sid = crypto.randomUUID();
+      res.setHeader("Set-Cookie", `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax`);
+    }
+    let controller = controllers.get(sid);
+    if (!controller) {
+      controller = createCurriculumWebAppController({ ...options.initialState, ...store.data.sessions[sid] });
+      controllers.set(sid, controller);
+    }
+    controller.addCatalogResources(store.data.resources);
+    return { sid, controller };
+  }
+
+  // Saves the resources this session indexed and its generated curricula, when either changed.
+  function persist(sid, controller) {
+    const { catalogResources, generatedPlans } = controller.getState();
+    const fresh = Object.entries(catalogResources).filter(([id]) => id.startsWith("discovered-") && !store.data.resources[id]);
+    const plansChanged = JSON.stringify(generatedPlans) !== JSON.stringify(store.data.sessions[sid]?.generatedPlans ?? []);
+    if (fresh.length === 0 && !plansChanged) return;
+    Object.assign(store.data.resources, Object.fromEntries(fresh));
+    store.data.sessions[sid] = { generatedPlans };
+    store.save();
+  }
 
   const server = http.createServer((req, res) => {
     const parsedUrl = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -640,11 +718,12 @@ export function createWebAppServer(options = {}) {
     }
 
     if (pathname === "/api/ui-state" && req.method === "POST") {
+      const { sid, controller } = sessionFor(req, res);
       let body = "";
       req.on("data", (chunk) => {
         body += chunk;
       });
-      req.on("end", () => {
+      req.on("end", async () => {
         try {
           const cmd = body ? JSON.parse(body) : {};
           if (cmd.action === "navigate-top" && cmd.destination) {
@@ -673,8 +752,17 @@ export function createWebAppServer(options = {}) {
             controller.closeDialog();
           } else if (typeof cmd.action === "string") {
             const data = Object.fromEntries(Object.entries(cmd).filter(([, value]) => typeof value === "string"));
-            controller.applyUiAction(cmd.action, data, data.practiceChoice ?? null);
+            let live = null;
+            if (cmd.action === "generate-curriculum-ai") {
+              const request = controller.liveGenerationRequest(data);
+              const apiKey = request ? process.env[PROVIDER_KEY_ENV[request.providerId]] : undefined;
+              if (apiKey) {
+                live = await requestLiveDraft(request, apiKey).then((draft) => ({ draft }), (err) => ({ error: err.message }));
+              }
+            }
+            controller.applyUiAction(cmd.action, data, data.practiceChoice ?? null, live);
           }
+          persist(sid, controller);
 
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
@@ -692,6 +780,7 @@ export function createWebAppServer(options = {}) {
     }
 
     // Default HTML entry route ("/" and deep links)
+    const { controller } = sessionFor(req, res);
     const templateHtml = fs.readFileSync(
       path.join(PUBLIC_DIR, "index.html"),
       "utf8"
@@ -734,7 +823,7 @@ export function createWebAppServer(options = {}) {
     res.end(fullPage);
   });
 
-  return { server, controller };
+  return { server };
 }
 
 const isMainModule =
@@ -744,7 +833,7 @@ const isMainModule =
 if (isMainModule) {
   const port = Number(process.env.WEB_PORT ?? 3000);
   const host = process.env.WEB_HOST ?? "127.0.0.1";
-  const { server } = createWebAppServer();
+  const { server } = createWebAppServer({ storePath: path.resolve(__dirname, "../.data/web-store.json") });
   server.listen(port, host, () => {
     console.log(
       `Curriculum.io Interactive Web App listening at http://${host}:${port}`

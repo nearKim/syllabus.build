@@ -1,13 +1,5 @@
 {
   "schema_version": "0.3.0",
-  "vector_db_config": {
-    "engine": "pgvector",
-    "index_type": "HNSW",
-    "distance_metric": "cosine",
-    "embedding_model": "text-embedding-3-large",
-    "dimensions": 1536,
-    "hybrid_lexical_index": "PostgreSQL FTS (BM25)"
-  },
   "resources": {
     "synthetic-resource-tokenization-v1": {
       "resource_version_id": "synthetic-resource-tokenization-v1",
@@ -37,10 +29,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 42,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@alex",
         "last_indexed_at": "2026-10-20T16:00:00Z"
@@ -81,10 +70,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 28,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@alex",
         "last_indexed_at": "2026-10-20T16:00:00Z"
@@ -119,10 +105,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 19,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@alex",
         "last_indexed_at": "2026-10-20T16:00:00Z"
@@ -163,10 +146,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 31,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@alex",
         "last_indexed_at": "2026-10-20T16:00:00Z"
@@ -201,10 +181,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 24,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@spectral_sam",
         "last_indexed_at": "2026-10-12T15:00:00Z"
@@ -245,10 +222,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 64,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@spectral_sam",
         "last_indexed_at": "2026-10-12T15:00:00Z"
@@ -294,10 +268,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 18,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Community Published",
         "discovered_by_handle": "@spectral_sam",
         "last_indexed_at": "2026-10-12T15:00:00Z"
@@ -343,10 +314,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 15,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@spectral_sam",
         "last_indexed_at": "2026-10-12T15:00:00Z"
@@ -381,10 +349,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 112,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@tolstoy_seminar",
         "last_indexed_at": "2026-10-16T18:00:00Z"
@@ -430,10 +395,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 96,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@tolstoy_seminar",
         "last_indexed_at": "2026-10-16T18:00:00Z"
@@ -479,10 +441,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 14,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Community Published",
         "discovered_by_handle": "@tolstoy_seminar",
         "last_indexed_at": "2026-10-16T18:00:00Z"
@@ -517,10 +476,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 53,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Community Published",
         "discovered_by_handle": "@ferris_ops",
         "last_indexed_at": "2026-10-18T12:00:00Z"
@@ -566,10 +522,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 22,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Community Published",
         "discovered_by_handle": "@ferris_ops",
         "last_indexed_at": "2026-10-18T12:00:00Z"
@@ -615,10 +568,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 48,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
         "discovered_by_handle": "@ada_curates",
         "last_indexed_at": "2026-10-08T10:00:00Z"
@@ -664,10 +614,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 20,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "Community Published",
         "discovered_by_handle": "@ada_curates",
         "last_indexed_at": "2026-10-08T10:00:00Z"
@@ -715,10 +662,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 37,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "AI Web Search",
         "discovered_by_handle": "@maya_dev",
         "last_indexed_at": "2026-10-26T18:00:00Z"
@@ -769,10 +713,7 @@
       },
       "vector_index": {
         "status": "indexed",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 21,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "AI Web Search",
         "discovered_by_handle": "@kenji_ml",
         "last_indexed_at": "2026-10-26T18:00:00Z"
@@ -823,10 +764,7 @@
       },
       "vector_index": {
         "status": "pending_reindex",
-        "embedding_model": "text-embedding-3-large",
-        "dimensions": 1536,
-        "index_type": "pgvector · HNSW",
-        "chunk_count": 34,
+        "index_type": "tfidf-cosine-v1",
         "discovered_by": "AI Web Search",
         "discovered_by_handle": "@ferris_ops",
         "last_indexed_at": "2026-10-25T14:20:00Z"

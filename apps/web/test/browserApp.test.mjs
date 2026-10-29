@@ -1179,34 +1179,25 @@ test("Share with Community previews the public projection, then publishes it to 
   assert.ok(dialog().includes("This plan is already shared with the Community as revision 1."));
 });
 
-test("My Publications thanks the author, totals what their shared plans gave, and invites a first share", () => {
+test("My Publications thanks the author, states its totals in one sentence, and invites a first share", () => {
   const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const sectionOf = (html) => {
     const start = html.indexOf('<section class="surface-panel my-publications"');
     return html.slice(start, html.indexOf("</section>", start));
   };
-  // Each impact card reads as its tier, its term, and its headline value.
-  const impactOf = (html) => [...(sectionOf(html).match(/<dl class="philanthropy-impact">[\s\S]*?<\/dl>/)?.[0] ?? "")
-    .matchAll(/<div class="impact-(\w+)"><dt>([\s\S]*?)<\/dt><dd class="impact-(?:value|license)">([^<]+)<\/dd>/g)]
-    .map(([, tier, term, value]) => `${tier} · ${text(term)}: ${value}`);
+  const impactOf = (html) => text(sectionOf(html).match(/<p class="impact-summary">[\s\S]*?<\/p>/)?.[0] ?? "");
   const rowOf = (html, id) => sectionOf(html).match(new RegExp(`<li data-publication-id="${id}">[\\s\\S]*?</li>`))?.[0] ?? "";
 
-  // The header thanks the author and offers the next share. Learners reached is the focal card with the emblem.
-  // Study hours (98 estimated minutes × 142 adoptions ≈ 232 hours) and upvotes support it with icon badges,
-  // and the seal names the free license.
+  // The header thanks the author, names the license, and offers the next share. The totals are one plain sentence,
+  // the same one Settings uses, with no metric cards and no decorative art.
+  // Study hours are 98 estimated minutes × 142 adoptions ≈ 232 hours.
   const mine = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore" }));
-  assert.ok(mine.includes("Thank you for teaching in the open."));
+  assert.ok(mine.includes("Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free under CC BY 4.0."));
   assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another curriculum</button>'));
-  assert.deepEqual(impactOf(mine), [
-    "hero · Learners reached: 142",
-    "support · Study hours gifted: 232",
-    "support · Community upvotes: 14",
-    "seal · Free for every learner: CC BY 4.0",
-  ]);
-  assert.match(mine, /<div class="impact-hero"><dt><svg class="philanthropy-art"[\s\S]*?<\/svg>Learners reached<\/dt>/);
-  assert.equal(mine.match(/<span class="impact-icon-badge"><svg class="sf-icon"/g)?.length, 2);
-  assert.ok(text(mine).includes("142 Self-learners studying your shared syllabus at no cost"));
-  assert.ok(text(mine).includes("CC BY 4.0 Each adoption gives a learner your plan's structured study hours at no cost."));
+  assert.equal(impactOf(mine), "Your shared plan reached 142 learners , who planned about 232 study hours with it. 14 people upvoted your work.");
+  for (const removed of ["philanthropy", "impact-hero", "impact-icon-badge", "<dl"]) {
+    assert.equal(mine.includes(removed), false, `My Publications still renders ${removed}`);
+  }
 
   // Each row shows the subject icon, the revision, the topics, its own impact pills, Open for a plan the learner has,
   // and a quiet Unpublish.
@@ -1223,16 +1214,16 @@ test("My Publications thanks the author, totals what their shared plans gave, an
   // The totals follow live votes, and Unpublish opens the dialog that states the full consequences.
   const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
   click({ action: "toggle-upvote", revisionId: "public-revision-synthetic-001" });
-  assert.equal(impactOf(root.innerHTML)[2], "support · Community upvotes: 15");
+  assert.ok(impactOf(root.innerHTML).endsWith("15 people upvoted your work."));
   click(buttonsIn(rowOf(root.innerHTML, "publication-synthetic-001")).find((button) => button.label === "Unpublish").data);
   assert.equal(app.getState().openDialogId, "dialog-unpublish");
   const unpublish = root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-unpublish"'));
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
-  // A learner with no publication sees an invitation with the emblem instead of an empty impact panel.
+  // A learner with no publication sees an invitation instead of an empty summary.
   const newcomer = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@curriculum.io", role: "Learner" } }));
-  assert.equal(newcomer.includes("philanthropy-impact") || newcomer.includes("Share another curriculum"), false);
-  assert.ok(newcomer.includes('<div class="publish-invite"><svg class="philanthropy-art"'));
+  assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another curriculum") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
+  assert.ok(newcomer.includes('<div class="publish-invite"><div><h3>'));
   assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first curriculum$/);
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button>'));
 });
@@ -1404,6 +1395,10 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
   try {
     const indexRes = await fetch(`${baseUrl}/?topLevel=Learn&learnSub=Plan&planView=Map`);
     assert.equal(indexRes.status, 200);
+    // Each visitor gets an HttpOnly session cookie. The requests below send it back, as a browser does.
+    const setCookie = indexRes.headers.get("set-cookie") ?? "";
+    assert.match(setCookie, /^cio_sid=[0-9a-f-]{36}; Path=\/; HttpOnly; SameSite=Lax$/);
+    const cookie = setCookie.split(";")[0];
     const indexHtml = await indexRes.text();
     assert.ok(indexHtml.includes("<!doctype html>"));
     assert.ok(indexHtml.includes('data-current-learn-sub="Plan"'));
@@ -1425,7 +1420,7 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
 
     const stateRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({
         action: "complete-activity",
         activityId: "activity-theory",
@@ -1442,7 +1437,7 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.ok(clientJs.includes('dialog.id === INSPECTOR_ID ? "close-study-detail" : "close-dialog"'));
     const flowRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({ action: "set-flow-order", flowOrder: "application_first" }),
     });
     const flowJson = await flowRes.json();
@@ -1453,18 +1448,25 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     // replaces the control that opened it, so focus can return there on close.
     const statusRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({ action: "set-activity-status", activityId: "activity-example", status: "in_progress" }),
     });
     const statusJson = await statusRes.json();
     assert.equal(statusJson.state.activityStates["activity-example"], "in_progress");
+    // A visitor with a forged or missing cookie gets a new session, so it sees none of the first visitor's state.
+    const other = await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST", headers: { "Content-Type": "application/json", cookie: "cio_sid=forged" }, body: JSON.stringify({ action: "noop" }),
+    });
+    assert.match(other.headers.get("set-cookie") ?? "", /^cio_sid=[0-9a-f-]{36};/);
+    const otherState = (await other.json()).state;
+    assert.deepEqual([otherState.selfReportedCompletedCount, otherState.activityStates["activity-example"]], [0, "not_started"]);
     assert.ok(statusJson.html.includes('data-activity-id="activity-example" data-execution-status="in_progress"'));
     assert.ok(clientJs.includes('&& !target.closest("dialog")) {\n      inspectorOpenerKey = keyFor(target);'));
 
     // Plan switching travels the same route. The client sends a select's choice on change, never on click.
     const planRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", cookie },
       body: JSON.stringify({ action: "open-curriculum-plan", curriculumId: "curriculum-tolstoy-lit-003" }),
     });
     const planJson = await planRes.json();
@@ -1479,7 +1481,7 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
 
     // Signing out goes through the same route. A guest's request for Learn opens sign-in instead.
     const post = async (body) => (await fetch(`${baseUrl}/api/ui-state`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      method: "POST", headers: { "Content-Type": "application/json", cookie }, body: JSON.stringify(body),
     })).json();
     const signedOut = await post({ action: "sign-out" });
     assert.deepEqual([signedOut.state.authStatus, signedOut.state.topLevel], ["guest", "Explore"]);
@@ -1521,10 +1523,12 @@ test("the navbar shows Learn and Explore, and Admin opens only at its protected 
       await new Promise((resolve) => server.close(resolve));
     }
   };
-  const admin = await fetchWith({}, "/admin");
+  const curator = { account: { accountId: "curator-ada", email: "ada@curriculum.io", displayName: "Ada Lovelace", role: "Curator" } };
+  const admin = await fetchWith(curator, "/admin");
   assert.equal(admin.status, 200);
   assert.ok(admin.html.includes('data-admin-authorized="true"'));
-  assert.equal((await fetchWith({}, "/?topLevel=Admin")).status, 200);
+  assert.equal((await fetchWith(curator, "/?topLevel=Admin")).status, 200);
+  assert.equal((await fetchWith({}, "/admin")).status, 403, "the default learner is not an admin");
   const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@curriculum.io", role: "Learner" } };
   const denied = await fetchWith(learner, "/admin");
   assert.equal(denied.status, 403);
@@ -2083,15 +2087,20 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
     false
   );
 
-  // 2. Clicking "Admin corpus →" opens the Admin Global Resource & Vector Index Console
+  // 2. Admin is a role. The default learner gets the 403 boundary, and the curator persona opens the console.
+  click({ action: "open-admin-resources" });
+  assert.ok(root.innerHTML.includes("403 Unauthorized Role"));
+  app.applyUiAction("submit-sign-in", { email: "ada@curriculum.io" });
   click({ action: "open-admin-resources" });
   assert.equal(app.getState().adminConsoleOpen, true);
   const adminPanel = root.innerHTML.slice(
     root.innerHTML.indexOf('id="panel-admin-resources"'),
     root.innerHTML.indexOf('</main>')
   );
-  assert.ok(adminPanel.includes("Global resource &amp; vector index"));
-  assert.ok(adminPanel.includes("pgvector · HNSW (1536d)"));
+  assert.ok(adminPanel.includes("Global resource index"));
+  assert.ok(adminPanel.includes('data-vector-engine="tfidf-cosine-v1"'));
+  assert.equal(/pgvector|HNSW \(1536d\)|text-embedding/.test(adminPanel), false, "the console names no embedding model it does not run");
+  assert.match(adminPanel, /Indexed · \d+ terms/);
   assert.ok(adminPanel.includes("Library Loan"));
   assert.ok(adminPanel.includes("Institutional / Loan"));
   // Shows all 18 discovered resources across all learners (15 base/community + 3 global AI web-search discoveries)
@@ -2099,6 +2108,14 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   assert.ok(adminPanel.includes("Book: Approximate Nearest Neighbor &amp; HNSW Vector Indexing"));
   assert.ok(adminPanel.includes("YouTube Playlist: RAG Triad Evaluation, Faithfulness &amp; Context Recall Walkthrough"));
   assert.ok(adminPanel.includes("Open Course: GPU Kernel Programming with OpenAI Triton &amp; FlashAttention-3"));
+
+  // 2b. A query ranks rows by TF-IDF cosine, so wording that appears in no title still finds the HNSW book.
+  app.applyUiAction("set-admin-resource-query", { query: "approximate nearest neighbor search" });
+  const searched = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-admin-resources"'), root.innerHTML.indexOf('</main>'));
+  const searchedIds = [...searched.matchAll(/data-resource-version-id="([^"]+)"/g)].map((m) => m[1]);
+  assert.equal(searchedIds[0], "discovered-book-hnsw-vector-v1");
+  assert.match(searched, /discovered-book-hnsw-vector-v1 · 0\.\d\d match/);
+  app.applyUiAction("clear-admin-resource-query");
 
   // 3. Filter by Discovery Source = AI Web Search (3 resources, 1 pending vector re-index)
   click({ action: "set-admin-resource-source", adminSource: "AI Web Search" });

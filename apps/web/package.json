@@ -15,6 +15,7 @@
     "cropperjs": "^1.7.0",
     "esbuild": "^0.28.2",
     "flatpickr": "^4.6.13",
+    "minisearch": "^7.2.0",
     "preact": "^11.0.1",
     "preact-render-to-string": "^6.8.1",
     "tom-select": "^2.6.2",

@@ -1,9 +1,11 @@
 import type { VNode } from "preact";
 import type { CatalogResourceMetadataInput } from "../../../../packages/ui/src/index.ts";
 import catalogResourcesJson from "../data/catalogResources.json" with { type: "json" };
+import { searchTfidf, TFIDF_ENGINE } from "../tfidfIndex.ts";
 import type { Account } from "./HeaderBar.tsx";
 import { SfIcon } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
+import { catalogIndexOf } from "./NewCurriculumDialog.tsx";
 import {
   RESOURCE_CATEGORIES,
   categoryIcon,
@@ -32,23 +34,18 @@ export interface AdminGlobalResourceRow {
   readonly subject: string;
   readonly accessJson: StructuredResourceAccessJson;
   readonly vectorStatus: "indexed" | "pending_reindex" | "quarantined";
-  readonly embeddingModel: string;
-  readonly dimensions: number;
   readonly indexType: string;
-  readonly chunkCount: number;
+  // Distinct terms in the resource's TF-IDF vector.
+  readonly termCount: number;
   readonly discoveredBy: Exclude<AdminDiscoverySource, "All">;
   readonly discoveredByHandle: string;
   readonly lastIndexedAt: string;
   readonly segments: readonly { readonly segment_id: string; readonly title: string }[];
 }
 
+// Admin is a role, never an account id or an email address.
 export function isAdminAccount(account: Account): boolean {
-  return (
-    account.role === "Moderator" ||
-    account.role === "Curator" ||
-    account.accountId === "learner-default" ||
-    account.email.toLowerCase() === "alex@curriculum.io"
-  );
+  return account.role === "Moderator" || account.role === "Curator";
 }
 
 export function buildGlobalCorpusCatalog(
@@ -100,6 +97,7 @@ export function buildGlobalCorpusCatalog(
 export function buildAdminGlobalResourceRows(
   globalCatalog: Readonly<Record<string, CatalogResourceMetadataInput>>,
 ): readonly AdminGlobalResourceRow[] {
+  const index = catalogIndexOf(globalCatalog);
   return Object.entries(globalCatalog).map(([id, raw]) => {
     const resourceVersionId = raw.resource_version_id ?? id;
     const title = raw.title ?? resourceVersionId;
@@ -145,10 +143,8 @@ export function buildAdminGlobalResourceRows(
       subject,
       accessJson,
       vectorStatus,
-      embeddingModel: rawVec?.embedding_model ?? catalogResourcesJson.vector_db_config.embedding_model,
-      dimensions: rawVec?.dimensions ?? catalogResourcesJson.vector_db_config.dimensions,
-      indexType: rawVec?.index_type ?? "pgvector · HNSW",
-      chunkCount: rawVec?.chunk_count ?? Math.max(12, segments.length * 10),
+      indexType: rawVec?.index_type ?? TFIDF_ENGINE,
+      termCount: index.termCounts.get(id) ?? 0,
       discoveredBy,
       discoveredByHandle: rawVec?.discovered_by_handle ?? "@alex",
       lastIndexedAt: rawVec?.last_indexed_at ?? capturedAt,
@@ -186,17 +182,22 @@ export function AdminResourcesView({
   );
   const allRows = buildAdminGlobalResourceRows(globalCatalog);
 
+  // A query ranks rows by TF-IDF cosine similarity. An exact ID or @handle also matches, with no score.
   const normalizedQuery = adminSearchQuery.trim().toLowerCase();
-  const filteredRows = allRows.filter((row) => {
-    if (adminSourceFilter !== "All" && row.discoveredBy !== adminSourceFilter) return false;
-    if (adminCategoryFilter !== "All" && row.category !== adminCategoryFilter) return false;
-    if (normalizedQuery.length > 0) {
-      const haystack =
-        `${row.title} ${row.resourceVersionId} ${row.verifiedPublisher} ${row.subject} ${row.discoveredByHandle}`.toLowerCase();
-      if (!haystack.includes(normalizedQuery)) return false;
-    }
-    return true;
-  });
+  const scores = new Map(
+    normalizedQuery ? searchTfidf(catalogIndexOf(globalCatalog), normalizedQuery).map((hit) => [hit.id, hit.score]) : [],
+  );
+  const filteredRows = allRows
+    .filter((row) => {
+      if (adminSourceFilter !== "All" && row.discoveredBy !== adminSourceFilter) return false;
+      if (adminCategoryFilter !== "All" && row.category !== adminCategoryFilter) return false;
+      if (normalizedQuery.length > 0) {
+        const idMatch = `${row.resourceVersionId} ${row.discoveredByHandle}`.toLowerCase().includes(normalizedQuery);
+        if (!idMatch && !scores.has(row.resourceVersionId)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => (scores.get(b.resourceVersionId) ?? 0) - (scores.get(a.resourceVersionId) ?? 0));
 
   const countForSource = (src: AdminDiscoverySource): number =>
     src === "All" ? allRows.length : allRows.filter((r) => r.discoveredBy === src).length;
@@ -204,7 +205,7 @@ export function AdminResourcesView({
   const countForCategory = (cat: ResourceCategory): number =>
     cat === "All" ? allRows.length : allRows.filter((r) => r.category === cat).length;
 
-  const totalChunks = allRows.reduce((sum, r) => sum + r.chunkCount, 0);
+  const vocabularySize = catalogIndexOf(globalCatalog).engine.termCount;
   const indexedCount = allRows.filter((r) => r.vectorStatus === "indexed").length;
   const pendingCount = allRows.filter((r) => r.vectorStatus === "pending_reindex").length;
   const aiDiscoveredCount = allRows.filter((r) => r.discoveredBy === "AI Web Search").length;
@@ -250,14 +251,15 @@ export function AdminResourcesView({
       data-admin-authorized="true"
       data-admin-source={adminSourceFilter}
       data-admin-category={adminCategoryFilter}
-      data-vector-engine={catalogResourcesJson.vector_db_config.engine}
+      data-vector-engine={TFIDF_ENGINE}
     >
       <div class="section-header">
         <div class="page-heading-group">
-          <h1 class="page-title">Global resource &amp; vector index</h1>
+          <h1 class="page-title">Global resource index</h1>
           <p class="page-description">
-            Manage all study resources discovered across every learner and curriculum, indexed in{" "}
-            <code>pgvector · HNSW (1536d)</code> for instant intake retrieval.
+            Manage all study resources discovered across every learner and curriculum. Intake ranks them by TF-IDF
+            cosine similarity over titles, publishers, subjects, topics, summaries, and section titles. No embedding
+            model runs.
           </p>
         </div>
         <div class="plan-toolbar">
@@ -280,7 +282,7 @@ export function AdminResourcesView({
         </div>
       </div>
 
-      <div class="progress-overview-strip admin-vector-overview-strip" aria-label="Vector database telemetry">
+      <div class="progress-overview-strip admin-vector-overview-strip" aria-label="Resource index status">
         <div class="progress-overview-col">
           <div class="progress-overview-head">
             <span class="progress-overview-label">Global corpus</span>
@@ -295,27 +297,20 @@ export function AdminResourcesView({
 
         <div class="progress-overview-col">
           <div class="progress-overview-head">
-            <span class="progress-overview-label">Vector DB index</span>
-            <span class="progress-overview-meta">
-              {catalogResourcesJson.vector_db_config.engine} · {catalogResourcesJson.vector_db_config.index_type}
-            </span>
+            <span class="progress-overview-label">Index</span>
+            <span class="progress-overview-meta">{TFIDF_ENGINE}</span>
           </div>
-          <p class="progress-overview-value">
-            {totalChunks} syllabus chunks · <code>{catalogResourcesJson.vector_db_config.embedding_model}</code> (
-            {catalogResourcesJson.vector_db_config.dimensions}d)
-          </p>
+          <p class="progress-overview-value">{vocabularySize} terms</p>
         </div>
 
         <div class="progress-overview-col">
           <div class="progress-overview-head">
-            <span class="progress-overview-label">Hybrid retrieval status</span>
+            <span class="progress-overview-label">Retrieval</span>
             <span class="progress-overview-meta">
               {pendingCount > 0 ? `${pendingCount} pending re-index` : "Healthy"}
             </span>
           </div>
-          <p class="progress-overview-value">
-            Cosine similarity + {catalogResourcesJson.vector_db_config.hybrid_lexical_index}
-          </p>
+          <p class="progress-overview-value">TF-IDF cosine</p>
         </div>
       </div>
 
@@ -327,7 +322,7 @@ export function AdminResourcesView({
 
       <section class="resources-library-panel" aria-labelledby="admin-resources-heading" data-opaque-surface="true">
         <h2 id="admin-resources-heading" class="st-sr">
-          All discovered resources in vector database
+          All discovered resources in the global index
         </h2>
 
         <div class="admin-resources-filters">
@@ -358,7 +353,7 @@ export function AdminResourcesView({
                 type="search"
                 name="query"
                 class="admin-search-input"
-                placeholder="Filter by title, publisher, @handle, or ID…"
+                placeholder="Search resources, IDs, or @handles…"
                 value={adminSearchQuery}
               />
               {adminSearchQuery ? (
@@ -412,14 +407,14 @@ export function AdminResourcesView({
           >
             <table class="resources-data-table admin-resources-data-table">
               <caption id="admin-resources-table-caption" class="st-sr">
-                Global discovered resources and pgvector index status
+                Global discovered resources and their index status
               </caption>
               <thead>
                 <tr>
                   <th scope="col">Type</th>
-                  <th scope="col">Resource &amp; syllabus chunks</th>
+                  <th scope="col">Resource &amp; sections</th>
                   <th scope="col">Discovered by</th>
-                  <th scope="col">Vector DB index</th>
+                  <th scope="col">Index</th>
                   <th scope="col">Access (JSON)</th>
                   <th scope="col">Manage</th>
                 </tr>
@@ -434,7 +429,7 @@ export function AdminResourcesView({
                         : "unconfigured";
                   const vecLabel =
                     row.vectorStatus === "indexed"
-                      ? `Indexed · ${row.dimensions}d`
+                      ? `Indexed · ${row.termCount} terms`
                       : row.vectorStatus === "pending_reindex"
                         ? "Pending re-index"
                         : "Quarantined";
@@ -465,9 +460,10 @@ export function AdminResourcesView({
                           <h3 class="resource-row-title">{row.title}</h3>
                           <p class="meta-text">
                             {row.verifiedPublisher} · {row.resourceVersionId}
+                            {scores.has(row.resourceVersionId) ? ` · ${scores.get(row.resourceVersionId)!.toFixed(2)} match` : ""}
                           </p>
                           {row.segments.length > 0 ? (
-                            <ul class="resource-segments-inline" aria-label="Indexed syllabus chunks">
+                            <ul class="resource-segments-inline" aria-label="Indexed sections">
                               {row.segments.map((seg) => (
                                 <li key={seg.segment_id} class="resource-segment-item">
                                   <MathText text={seg.title} />
@@ -491,9 +487,7 @@ export function AdminResourcesView({
                             <span class="status-dot" data-status={vecTone} aria-hidden="true" />
                             <span class="resource-access-tier">{vecLabel}</span>
                           </div>
-                          <span class="row-meta">
-                            {row.chunkCount} chunks · {row.indexType}
-                          </span>
+                          <span class="row-meta">{row.indexType}</span>
                         </div>
                       </td>
                       <td class="resource-access-cell">
@@ -532,7 +526,7 @@ export function AdminResourcesView({
                             class="provider-icon-btn provider-remove-btn"
                             data-action="admin-remove-resource"
                             data-resource-id={row.resourceVersionId}
-                            aria-label={`Remove ${row.title} from global vector index`}
+                            aria-label={`Remove ${row.title} from the global index`}
                             title="Remove from global index"
                           >
                             <svg
