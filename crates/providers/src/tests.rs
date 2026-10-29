@@ -297,3 +297,43 @@ use super::*;
         assert_eq!(gemini_out.usage.output_tokens, 1000);
         assert_eq!(gemini_out.usage.hosted_credits_charged_minor_units, 0);
     }
+
+    #[test]
+    fn cheap_default_models_and_constructors_configure_fast_frontier_models() {
+        assert_eq!(DEFAULT_CHEAP_OPENAI_MODEL, "gpt-6-mini");
+        assert_eq!(DEFAULT_CHEAP_ANTHROPIC_MODEL, "claude-haiku-5-5");
+        assert_eq!(DEFAULT_CHEAP_GEMINI_MODEL, "gemini-4-flash");
+        assert_eq!(default_cheap_model_for_provider("openai"), "gpt-6-mini");
+        assert_eq!(
+            default_cheap_model_for_provider("anthropic"),
+            "claude-haiku-5-5"
+        );
+        assert_eq!(
+            default_cheap_model_for_provider("google-gemini"),
+            "gemini-4-flash"
+        );
+
+        let binding = PinnedByokBinding {
+            account_id: "00000000-0000-4000-8000-000000000001".to_string(),
+            credential_id: "cred-cheap-1".to_string(),
+            credential_version: 1,
+            status: curriculum_domain::CredentialStatus::Active,
+            allow_hosted_fallback: false,
+        };
+        let mode = OpenAiTransportMode::Simulated200Ok {
+            prompt_tokens: 900,
+            completion_tokens: 650,
+        };
+
+        let openai = OpenAiHttpProvider::new_cheap_default(binding.clone(), mode)
+            .expect("cheap OpenAI provider");
+        assert_eq!(openai.capabilities().model_id, "gpt-6-mini");
+
+        let anthropic = AnthropicHttpProvider::new_cheap_default(binding.clone(), mode)
+            .expect("cheap Anthropic provider");
+        assert_eq!(anthropic.capabilities().model_id, "claude-haiku-5-5");
+
+        let gemini =
+            GeminiHttpProvider::new_cheap_default(binding, mode).expect("cheap Gemini provider");
+        assert_eq!(gemini.capabilities().model_id, "gemini-4-flash");
+    }

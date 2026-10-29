@@ -18,10 +18,11 @@ use curriculum_contracts::jcs::sha256_bytes_hex;
 use curriculum_contracts::ContractRegistry;
 pub use curriculum_domain::{
     evaluate_resource_fit_and_coverage, normalize_canonical_resource_identity,
-    validate_dag_acyclic, validate_pedagogical_triad_coverage, ActivityComponentBreakdown,
-    BookTocChapter, CourseSyllabusUnit, EffortTriplet, GoalSpecification, IndexedMaterialCandidate,
-    RepositoryLabExercise, ResourceFitDecisionMode, ResourceFitEvaluation, ResourceIndexDescriptor,
-    TopicCoverageItem, TopicCoverageStatus, YoutubeSyllabusItem,
+    tokenize_search_terms, validate_dag_acyclic, validate_pedagogical_triad_coverage,
+    ActivityComponentBreakdown, BookTocChapter, CourseSyllabusUnit, EffortTriplet,
+    GoalSpecification, IndexedMaterialCandidate, RepositoryLabExercise, ResourceFitDecisionMode,
+    ResourceFitEvaluation, ResourceIndexDescriptor, TfIdfCorpusIndex, TopicCoverageItem,
+    TopicCoverageStatus, YoutubeSyllabusItem,
 };
 pub use curriculum_persistence::{
     serde_json::{self, json, Value},
@@ -31,6 +32,10 @@ pub use curriculum_persistence::{
     GenerationJobRecord, InMemoryTransactionalStore, PersistenceError, ResourceAlertRecord,
     ResourceFreshnessState, ResourceOperationKind, ResourceQuarantineOverlayRecord,
     ResourceReviewStatus, DEFAULT_ALLOWED_CATALOG_HOSTS,
+};
+pub use curriculum_providers::{
+    default_cheap_model_for_provider, DEFAULT_CHEAP_ANTHROPIC_MODEL, DEFAULT_CHEAP_GEMINI_MODEL,
+    DEFAULT_CHEAP_OPENAI_MODEL,
 };
 use curriculum_providers::{
     CandidateGenerationRequest, DeterministicFakeProvider, FakeFaultInjection, InferenceAuthMode,
@@ -1604,7 +1609,7 @@ pub struct DiscoveredWebResourceCandidate {
 }
 
 /// Receipt returned by the 6-stage AI curriculum search, fit-bypass, and polymorphic indexing pipeline.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchAndIndexPipelineReceipt {
     pub search_prompt: CurriculumSearchPromptSpec,
     pub fit_evaluation: ResourceFitEvaluation,
@@ -1614,6 +1619,8 @@ pub struct SearchAndIndexPipelineReceipt {
     pub bypassed_existing_resource_version_ids: Vec<String>,
     pub newly_indexed_resources: Vec<IndexedMaterialCandidate>,
     pub pinned_synthesis_resource_version_ids: Vec<String>,
+    pub tfidf_corpus_document_count: usize,
+    pub tfidf_ranked_scores: Vec<(String, f64)>,
 }
 
 /// Executes Steps 0 -> 1 -> 1.5 -> 2 -> 3 -> 4:
@@ -1623,6 +1630,8 @@ pub struct SearchAndIndexPipelineReceipt {
 /// - For `FillGaps` (`Path B`) or `SearchAllTopics` (`Path C`), searches only uncovered topics,
 ///   deduplicating against already-indexed `canonical_url` / `external_id` and learner-`[Skip]`ped IDs.
 /// - Indexes newly discovered polymorphic resources (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) (`Step 4`).
+/// - Incrementally updates the sublinear [`TfIdfCorpusIndex`] with newly discovered resources and returns
+///   L2-normalized cosine similarity rankings (`Step 4`).
 #[allow(clippy::too_many_arguments)]
 pub fn execute_search_and_index_pipeline(
     goal_title: &str,
@@ -1654,6 +1663,9 @@ pub fn execute_search_and_index_pipeline(
         free_only,
         weekly_minutes,
     );
+
+    // Build initial TF-IDF corpus index from existing indexed candidates
+    let mut tfidf_index = TfIdfCorpusIndex::from_candidates(indexed_candidates);
 
     // Step 1 & Step 1.5: Evaluate existing indexed resource fit & coverage over accepted resources
     let fit_evaluation = evaluate_resource_fit_and_coverage(
@@ -1747,10 +1759,20 @@ pub fn execute_search_and_index_pipeline(
                 quarantined: false,
                 index_descriptor: Some(disc.index_descriptor.clone()),
             };
+            tfidf_index.upsert_candidate(&indexed_candidate);
             pinned_synthesis_resource_version_ids.push(disc.resource_version_id.clone());
             newly_indexed_resources.push(indexed_candidate);
         }
     }
+
+    let tfidf_query = format!(
+        "{} {} {}",
+        goal_title.trim(),
+        subject.trim(),
+        search_prompt.topic_tags.join(" ")
+    );
+    let tfidf_ranked_scores = tfidf_index.rank_documents(&tfidf_query);
+    let tfidf_corpus_document_count = tfidf_index.document_count();
 
     Ok(SearchAndIndexPipelineReceipt {
         search_prompt,
@@ -1761,6 +1783,8 @@ pub fn execute_search_and_index_pipeline(
         bypassed_existing_resource_version_ids,
         newly_indexed_resources,
         pinned_synthesis_resource_version_ids,
+        tfidf_corpus_document_count,
+        tfidf_ranked_scores,
     })
 }
 
@@ -2135,6 +2159,9 @@ mod tests {
             receipt_path_b.newly_indexed_resources[0].resource_version_id,
             "synthetic-resource-flash-attention-yt-v1"
         );
+        assert_eq!(receipt_path_b.tfidf_corpus_document_count, 2);
+        assert_eq!(receipt_path_b.tfidf_ranked_scores.len(), 2);
+        assert!(receipt_path_b.tfidf_ranked_scores[0].1 > 0.0);
         assert!(receipt_path_b
             .search_prompt
             .latex_equation_instruction

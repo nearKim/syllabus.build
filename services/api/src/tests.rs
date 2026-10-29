@@ -2438,3 +2438,178 @@
             .unwrap();
         assert_eq!(wrong_cur_resp.status(), StatusCode::NOT_FOUND);
     }
+
+    #[tokio::test]
+    async fn catalog_search_and_index_tfidf_ranking_incremental_auto_index_and_cheap_model_generation(
+    ) {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state.clone());
+        let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
+
+        // 1. POST /v1/catalog/search-and-index runs TF-IDF + cosine similarity ranking and incrementally
+        //    auto-indexes a newly discovered FlashAttention resource into the live catalog store without redeploy.
+        let search_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/catalog/search-and-index")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "goal_title": "Hardware-Aware FlashAttention & Subword Tokenization",
+                            "subject": "Engineering",
+                            "topic_tags": ["Tokenization", "FlashAttention"],
+                            "math_depth": "formal",
+                            "sequence_preference": "theory_first",
+                            "free_only": true,
+                            "weekly_minutes": 150,
+                            "requested_mode": "fill_gaps",
+                            "web_search_discoveries": [
+                                {
+                                    "resource_id": "res-auto-flash-attention",
+                                    "resource_version_id": "res-auto-flash-attention-v1",
+                                    "title": "Hardware-Aware FlashAttention SRAM Tiling Lecture Series",
+                                    "canonical_url": "https://huggingface.co/learn/nlp-course/flash-attention",
+                                    "external_id": "yt:playlist:PL_FLASH_AUTO_01",
+                                    "resource_type": "video",
+                                    "subject": "Engineering",
+                                    "topic_tags": ["FlashAttention", "rag-python"],
+                                    "supported_math_depths": ["formal"],
+                                    "supported_roles": ["instruction", "practice"],
+                                    "access_model": "free_public",
+                                    "price_minor_units": 0,
+                                    "index_descriptor": {
+                                        "index_kind": "youtube_playlist_index",
+                                        "channel_title": "Systems ML Channel",
+                                        "playlist_id": "PL_FLASH_AUTO_01",
+                                        "total_videos": 1,
+                                        "syllabus_items": [
+                                            {
+                                                "segment_id": "seg-sram-tiling",
+                                                "video_id": "vid-sram-1",
+                                                "index": 1,
+                                                "title": "SRAM Tiling & Online Softmax Rescaling",
+                                                "duration_minutes": 30,
+                                                "key_concepts": ["FlashAttention", "Online Softmax"]
+                                            }
+                                        ],
+                                        "transcript_outline": "00:00 HBM bandwidth; 10:00 Online softmax."
+                                    }
+                                }
+                            ]
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(search_resp.status(), StatusCode::OK);
+        let search_body = read_body_json(search_resp).await;
+        assert_eq!(search_body["web_search_executed"], json!(true));
+        assert_eq!(
+            search_body["newly_indexed_resources"][0]["resource_version_id"],
+            json!("res-auto-flash-attention-v1")
+        );
+        assert!(
+            search_body["tfidf_corpus_document_count"]
+                .as_u64()
+                .unwrap_or(0)
+                >= 2
+        );
+        let ranked_scores = search_body["tfidf_ranked_scores"]
+            .as_array()
+            .expect("tfidf_ranked_scores array");
+        assert!(!ranked_scores.is_empty());
+        assert!(ranked_scores[0][1].as_f64().unwrap_or(0.0) > 0.0);
+
+        // Verify the newly discovered resource was incrementally auto-registered into the live catalog store
+        let cat_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/catalog/resources?topic=rag-python&free_only=true")
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cat_resp.status(), StatusCode::OK);
+        let cat_body = read_body_json(cat_resp).await;
+        let eligible = cat_body["eligible_resources"]
+            .as_array()
+            .expect("eligible_resources array");
+        assert!(eligible
+            .iter()
+            .any(|r| r["resource_version_id"] == json!("res-auto-flash-attention-v1")));
+
+        // 2. Verify BYOK generation defaults to cheap frontier model (`gpt-6-mini`) and records it in /v1/me/usage
+        let create_cred_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/me/credentials")
+                    .header("authorization", learner_a_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "credential_ref": "cred-learner-a-openai",
+                            "provider_id": "openai",
+                            "label": "OpenAI Cheap E2E Key",
+                            "api_key": "sk-proj-cheap-e2e-key-99999999"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(create_cred_resp.status(), StatusCode::CREATED);
+
+        let gen_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/generations")
+                    .header("authorization", learner_a_bearer)
+                    .header("idempotency-key", "idem-cheap-model-gen-1")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "goal": "Build a Python RAG pipeline with FlashAttention and subword tokenization",
+                            "credential_mode": "byok",
+                            "credential_ref": "cred-learner-a-openai",
+                            "allow_hosted_fallback": false
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(gen_resp.status(), StatusCode::ACCEPTED);
+
+        let usage_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/me/usage")
+                    .header("authorization", learner_a_bearer)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(usage_resp.status(), StatusCode::OK);
+        let usage_body = read_body_json(usage_resp).await;
+        let usage_items = usage_body["items"].as_array().expect("usage items");
+        assert!(usage_items
+            .iter()
+            .any(|item| item["model_id"] == json!("gpt-6-mini")));
+    }

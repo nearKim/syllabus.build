@@ -58,7 +58,7 @@ use self::{
         post_curriculum_progress_event_handler, post_progress_event_handler,
         put_active_revision_handler, quarantine_catalog_resource_handler,
         review_catalog_resource_handler, revoke_credential_handler, rotate_credential_handler,
-        start_generation_handler,
+        search_and_index_catalog_handler, start_generation_handler,
     },
     handlers_learning::{
         accept_adaptation_body_handler, accept_adaptation_path_handler,
@@ -682,6 +682,14 @@ fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
         .route(
             "/v1/catalog/resources/{resource_version_id}/quarantine",
             post(quarantine_catalog_resource_handler),
+        )
+        .route(
+            "/v1/catalog/search-and-index",
+            post(search_and_index_catalog_handler),
+        )
+        .route(
+            "/v1/catalog/index",
+            post(search_and_index_catalog_handler),
         )
         // T03: Goal intake & async curriculum generation routes
         .route("/v1/goals/interpret", post(interpret_goal_handler))

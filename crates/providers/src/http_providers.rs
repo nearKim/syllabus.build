@@ -21,6 +21,29 @@ pub const OPENAI_CHAT_COMPLETIONS_URL: &str = "https://api.openai.com/v1/chat/co
 /// Allowed outbound DNS hosts for `OpenAiHttpProvider` (`@S31`).
 pub const OPENAI_ALLOWED_EGRESS_HOSTS: [&str; 1] = ["api.openai.com"];
 
+/// Default fast, cost-efficient OpenAI model for live E2E synthesis (`gpt-6-mini`).
+pub const DEFAULT_CHEAP_OPENAI_MODEL: &str = "gpt-6-mini";
+
+/// Default fast, cost-efficient Anthropic model for live E2E synthesis (`claude-haiku-5-5`).
+pub const DEFAULT_CHEAP_ANTHROPIC_MODEL: &str = "claude-haiku-5-5";
+
+/// Default fast, cost-efficient Google Gemini model for live E2E synthesis (`gemini-4-flash`).
+pub const DEFAULT_CHEAP_GEMINI_MODEL: &str = "gemini-4-flash";
+
+/// Official Google Gemini `generateContent` endpoint for the cheap default model (`gemini-4-flash`).
+pub const GEMINI_CHEAP_GENERATE_CONTENT_URL: &str =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-4-flash:generateContent";
+
+/// Resolves the canonical cheap, low-latency model identifier for a given provider ID.
+#[must_use]
+pub fn default_cheap_model_for_provider(provider_id: &str) -> &'static str {
+    match provider_id.trim().to_ascii_lowercase().as_str() {
+        "anthropic" => DEFAULT_CHEAP_ANTHROPIC_MODEL,
+        "google" | "gemini" | "google-gemini" => DEFAULT_CHEAP_GEMINI_MODEL,
+        _ => DEFAULT_CHEAP_OPENAI_MODEL,
+    }
+}
+
 /// Pinned BYOK credential binding passed to HTTP providers (`BILL-001`, `BILL-007`, `@S28`, `@S66`, `@S67`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PinnedByokBinding {
@@ -124,6 +147,19 @@ impl OpenAiHttpProvider {
             transport_mode,
             http_client,
         })
+    }
+
+    /// Constructs a new `OpenAiHttpProvider` configured with [`DEFAULT_CHEAP_OPENAI_MODEL`] (`gpt-6-mini`).
+    pub fn new_cheap_default(
+        pinned_binding: PinnedByokBinding,
+        transport_mode: OpenAiTransportMode,
+    ) -> Result<Self, ProviderError> {
+        Self::new(
+            OPENAI_CHAT_COMPLETIONS_URL,
+            DEFAULT_CHEAP_OPENAI_MODEL,
+            pinned_binding,
+            transport_mode,
+        )
     }
 
     #[must_use]
@@ -366,6 +402,19 @@ impl AnthropicHttpProvider {
         })
     }
 
+    /// Constructs a new `AnthropicHttpProvider` configured with [`DEFAULT_CHEAP_ANTHROPIC_MODEL`] (`claude-haiku-5-5`).
+    pub fn new_cheap_default(
+        pinned_binding: PinnedByokBinding,
+        transport_mode: OpenAiTransportMode,
+    ) -> Result<Self, ProviderError> {
+        Self::new(
+            ANTHROPIC_MESSAGES_URL,
+            DEFAULT_CHEAP_ANTHROPIC_MODEL,
+            pinned_binding,
+            transport_mode,
+        )
+    }
+
     #[must_use]
     pub fn endpoint_url(&self) -> &str {
         &self.endpoint_url
@@ -495,6 +544,19 @@ impl GeminiHttpProvider {
             transport_mode,
             http_client,
         })
+    }
+
+    /// Constructs a new `GeminiHttpProvider` configured with [`DEFAULT_CHEAP_GEMINI_MODEL`] (`gemini-4-flash`).
+    pub fn new_cheap_default(
+        pinned_binding: PinnedByokBinding,
+        transport_mode: OpenAiTransportMode,
+    ) -> Result<Self, ProviderError> {
+        Self::new(
+            GEMINI_CHEAP_GENERATE_CONTENT_URL,
+            DEFAULT_CHEAP_GEMINI_MODEL,
+            pinned_binding,
+            transport_mode,
+        )
     }
 
     #[must_use]

@@ -8,7 +8,10 @@ use axum::{
     Json,
 };
 use curriculum_application::{
-    execute_generation_job, interpret_goal_request, CatalogFilterQuery, CatalogReviewInput,
+    default_cheap_model_for_provider, execute_generation_job, execute_search_and_index_pipeline,
+    interpret_goal_request, AcquisitionPermission, CatalogFilterQuery, CatalogResourceVersionRecord,
+    CatalogReviewEvidence, CatalogReviewInput, DiscoveredWebResourceCandidate,
+    IndexedMaterialCandidate, ResourceFitDecisionMode, ResourceFreshnessState,
 };
 use curriculum_domain::ActivityExecutionStatus;
 use curriculum_persistence::{
@@ -30,7 +33,6 @@ const DEFAULT_QUARANTINE_AT: &str = "2026-10-20T18:00:00Z";
 const DEFAULT_TOPIC_ID: &str = "rag-python";
 const DEFAULT_CURRENCY: &str = "USD";
 const DEFAULT_PROVIDER_ID: &str = "openai";
-const DEFAULT_BYOK_MODEL_ID: &str = "gpt-4o-2024-08-06";
 const DEFAULT_BYOK_LABEL: &str = "BYOK Credential";
 
 /// Request payload for establishing a new learner authentication session.
@@ -378,6 +380,167 @@ pub(crate) async fn quarantine_catalog_resource_handler(
     Ok((StatusCode::OK, Json(overlay)).into_response())
 }
 
+fn default_catalog_subject() -> String {
+    "Engineering".to_string()
+}
+
+fn default_math_depth() -> String {
+    "formal".to_string()
+}
+
+fn default_sequence_preference() -> String {
+    "theory_first".to_string()
+}
+
+const fn default_true_flag() -> bool {
+    true
+}
+
+const fn default_weekly_minutes() -> u32 {
+    120
+}
+
+/// Request payload for executing the 6-stage AI catalog search, sublinear TF-IDF ranking,
+/// fit-bypass evaluation, and incremental polymorphic auto-indexing pipeline (`POST /v1/catalog/search-and-index`).
+#[derive(Debug, Deserialize)]
+pub(crate) struct SearchAndIndexCatalogRequestDto {
+    pub(crate) goal_title: String,
+    #[serde(default = "default_catalog_subject")]
+    pub(crate) subject: String,
+    #[serde(default)]
+    pub(crate) topic_tags: Vec<String>,
+    #[serde(default = "default_math_depth")]
+    pub(crate) math_depth: String,
+    #[serde(default = "default_sequence_preference")]
+    pub(crate) sequence_preference: String,
+    #[serde(default = "default_true_flag")]
+    pub(crate) free_only: bool,
+    #[serde(default = "default_weekly_minutes")]
+    pub(crate) weekly_minutes: u32,
+    #[serde(default)]
+    pub(crate) indexed_candidates: Vec<IndexedMaterialCandidate>,
+    #[serde(default)]
+    pub(crate) selected_resource_version_ids: Vec<String>,
+    #[serde(default)]
+    pub(crate) skipped_resource_version_ids: Vec<String>,
+    #[serde(default)]
+    pub(crate) requested_mode: Option<ResourceFitDecisionMode>,
+    #[serde(default)]
+    pub(crate) web_search_discoveries: Vec<DiscoveredWebResourceCandidate>,
+}
+
+pub(crate) async fn search_and_index_catalog_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(_principal): AuthPrincipal,
+    Json(req): Json<SearchAndIndexCatalogRequestDto>,
+) -> ApiResult {
+    let mut candidates = req.indexed_candidates;
+    if candidates.is_empty() {
+        for rec in state.store.list_catalog_resources(false) {
+            candidates.push(IndexedMaterialCandidate {
+                resource_version_id: rec.resource_version_id,
+                resource_id: rec.resource_id,
+                title: rec.title,
+                resource_type: rec.resource_type,
+                subject: req.subject.clone(),
+                topic_tags: rec.topics,
+                supported_math_depths: vec![
+                    "intuition_first".to_string(),
+                    "applied".to_string(),
+                    "formal".to_string(),
+                ],
+                supported_roles: vec!["instruction".to_string(), "practice".to_string()],
+                access_model: rec.access_model,
+                price_minor_units: rec.price_minor_units,
+                review_status: rec.review_status,
+                quarantined: false,
+                index_descriptor: None,
+            });
+        }
+    }
+
+    let receipt = execute_search_and_index_pipeline(
+        &req.goal_title,
+        &req.subject,
+        &req.topic_tags,
+        &req.math_depth,
+        &req.sequence_preference,
+        req.free_only,
+        req.weekly_minutes,
+        &candidates,
+        &req.selected_resource_version_ids,
+        &req.skipped_resource_version_ids,
+        req.requested_mode,
+        &req.web_search_discoveries,
+    )?;
+
+    // Incrementally auto-register newly discovered resources into the live catalog store
+    for disc in &req.web_search_discoveries {
+        let was_newly_indexed = receipt
+            .newly_indexed_resources
+            .iter()
+            .any(|c| c.resource_version_id == disc.resource_version_id);
+        if !was_newly_indexed {
+            continue;
+        }
+        state
+            .store
+            .upsert_catalog_resource(CatalogResourceVersionRecord {
+                resource_version_id: disc.resource_version_id.clone(),
+                resource_id: disc.resource_id.clone(),
+                version_number: 1,
+                title: disc.title.clone(),
+                provider_id: "auto-indexed-web".to_string(),
+                provider_display_name: "Auto-Indexed Web Discovery".to_string(),
+                canonical_url: disc.canonical_url.clone(),
+                resource_type: disc.resource_type.clone(),
+                language: "en".to_string(),
+                description: format!(
+                    "Auto-indexed {} resource covering {}.",
+                    disc.resource_type,
+                    disc.topic_tags.join(", ")
+                ),
+                topics: disc.topic_tags.clone(),
+                level: "intermediate".to_string(),
+                objective_ids: vec!["objective-tokenization".to_string()],
+                access_model: disc.access_model,
+                currency: Some(DEFAULT_CURRENCY.to_string()),
+                price_minor_units: disc.price_minor_units,
+                subscription_ids: Vec::new(),
+                is_optional_certification: false,
+                review_status: curriculum_application::ResourceReviewStatus::Approved,
+                review_evidence: Some(CatalogReviewEvidence {
+                    reviewer_principal_id: "00000000-0000-4000-8000-000000000099".to_string(),
+                    reviewed_at: "2026-10-28T00:00:00Z".to_string(),
+                    pedagogical_fit_score: 5,
+                    accuracy_score: 5,
+                    accessibility_score: 5,
+                    rights_verified: true,
+                    rationale: "Incremental polymorphic auto-indexer verified metadata and egress safety.".to_string(),
+                    credibility_basis: "Primary educational resource syllabus index".to_string(),
+                    evidence_url: disc.canonical_url.clone(),
+                }),
+                freshness_state: ResourceFreshnessState::Healthy,
+                acquisition_permission: AcquisitionPermission {
+                    allow_metadata: true,
+                    allow_link_out: true,
+                    allow_short_excerpt: true,
+                    allow_full_text_storage: false,
+                    allow_embedding: true,
+                    allow_redistribution: false,
+                    license_spdx_or_custom: "LinkOut-Metadata-Only".to_string(),
+                    requires_attribution: true,
+                    attribution_text: Some(disc.title.clone()),
+                    notes: None,
+                },
+                is_synthetic_fixture: false,
+                metadata_embedding: None,
+            });
+    }
+
+    Ok((StatusCode::OK, Json(receipt)).into_response())
+}
+
 pub(crate) async fn interpret_goal_handler(
     AuthPrincipal(_principal): AuthPrincipal,
     Json(payload): Json<Value>,
@@ -421,12 +584,14 @@ fn validate_and_record_byok_generation_usage(
         state
             .store
             .open_credential_for_pinned_inference(principal, cred_ref, pinned_ver)?;
+        let model_id = json_str(payload, &["model_id", "model"])
+            .unwrap_or_else(|| default_cheap_model_for_provider(&meta.provider_id));
         let _ = state.store.record_inference_usage(
             principal,
             cred_ref,
             pinned_ver,
             &meta.provider_id,
-            DEFAULT_BYOK_MODEL_ID,
+            model_id,
             "curriculum_generation",
             1_500,
             1_100,
