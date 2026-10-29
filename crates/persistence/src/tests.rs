@@ -5,12 +5,17 @@ use serde_json::json;
 
     #[test]
     fn baseline_and_t01_migrations_are_embedded_and_valid() {
-        assert_eq!(MIGRATIONS.len(), 7);
+        assert_eq!(MIGRATIONS.len(), 8);
         assert!(POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL
             .contains("ADD COLUMN IF NOT EXISTS index_descriptor JSONB"));
+        assert!(INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS catalog_resource_tfidf_terms"));
+        assert!(INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS catalog_resource_segments"));
+        assert!(INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS catalog_changes"));
         assert!(BASELINE_MIGRATION_SQL.contains("SELECT 1;"));
-        assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
-            .contains("CREATE EXTENSION IF NOT EXISTS vector;"));
+        assert!(!INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL.contains("CREATE EXTENSION IF NOT EXISTS vector"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS accounts"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
@@ -35,8 +40,8 @@ use serde_json::json;
             .contains("CREATE TABLE IF NOT EXISTS catalog_resources"));
         assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS resource_versions"));
-        assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
-            .contains("metadata_embedding vector(1536) NULL"));
+        assert!(!REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
+            .contains("vector(1536)"));
         assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS acquisition_permissions"));
         assert!(REVIEWED_CATALOG_AND_RETRIEVAL_MIGRATION_SQL
@@ -87,6 +92,10 @@ use serde_json::json;
             .contains("CREATE TABLE IF NOT EXISTS account_export_jobs"));
         assert!(HOSTED_LEDGER_SHARING_AND_RELEASE_OPS_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS account_deletion_requests"));
+        assert!(PostgresTransactionalStatements::upsert_tfidf_term_sql()
+            .contains("ON CONFLICT (resource_version_id, term) DO UPDATE"));
+        assert!(PostgresTransactionalStatements::tfidf_cosine_similarity_ranking_sql()
+            .contains("SUM(q.query_weight * d.normalized_tfidf_weight)"));
     }
 
     #[test]

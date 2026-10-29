@@ -724,4 +724,39 @@ mod tests {
         assert!(eval_selected_only.web_search_bypassed);
         assert_eq!(eval_selected_only.cost_badge_label, "No web search · AI synthesis required");
     }
+
+    #[test]
+    fn sublinear_tfidf_corpus_index_and_cosine_similarity_ranking() {
+        let mut index = TfIdfCorpusIndex::new();
+        index.upsert_document(
+            "doc-bpe-monograph",
+            "Subword Tokenization Byte Pair Encoding BPE merge tables attention and vocabulary construction",
+        );
+        index.upsert_document(
+            "doc-flash-attention",
+            "FlashAttention IO-aware exact scaled dot-product attention kernel in CUDA",
+        );
+        index.upsert_document(
+            "doc-linear-algebra",
+            "Linear Algebra eigenvalues singular value decomposition and matrix calculus",
+        );
+        assert_eq!(index.document_count(), 3);
+
+        // Query for "BPE subword tokenization merge tables" must rank doc-bpe-monograph first
+        let ranked = index.rank_documents("BPE subword tokenization merge tables");
+        assert_eq!(ranked[0].0, "doc-bpe-monograph");
+        assert!(ranked[0].1 > 0.0);
+        assert!(ranked[0].1 > ranked[1].1);
+
+        // Incremental upsert of a newly discovered resource updates corpus rankings on the fly
+        index.upsert_document(
+            "doc-discovered-rope",
+            "Rotary Position Embeddings RoPE complex plane rotation for transformer attention",
+        );
+        assert_eq!(index.document_count(), 4);
+        let rope_ranked = index.rank_documents("rotary position embeddings RoPE");
+        assert_eq!(rope_ranked[0].0, "doc-discovered-rope");
+        assert!(rope_ranked[0].1 > 0.0);
+        assert!(rope_ranked[0].1 > rope_ranked[1].1);
+    }
 }

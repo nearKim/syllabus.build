@@ -77,6 +77,9 @@ EXPECTED_TABLES=(
   "moderation_actions"
   "account_export_jobs"
   "account_deletion_requests"
+  "catalog_resource_tfidf_terms"
+  "catalog_resource_segments"
+  "catalog_changes"
 )
 
 echo "==> Verifying schema tables in PostgreSQL"

@@ -7,5 +7,6 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
+bm25.workspace = true
 serde.workspace = true
 thiserror.workspace = true

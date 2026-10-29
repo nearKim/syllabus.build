@@ -1,5 +1,7 @@
 //! Catalog access models, review states, acquisition permissions, goal intake, and SSRF egress validation.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::DomainError;
@@ -363,6 +365,183 @@ pub struct IndexedMaterialCandidate {
     pub index_descriptor: Option<ResourceIndexDescriptor>,
 }
 
+impl IndexedMaterialCandidate {
+    /// Concatenates structured metadata and polymorphic segment titles/summaries into a single
+    /// searchable corpus document for sublinear TF-IDF indexing (`Step 1` & `Step 4`).
+    #[must_use]
+    pub fn searchable_corpus_text(&self) -> String {
+        let mut parts = vec![
+            self.title.as_str(),
+            self.subject.as_str(),
+            self.resource_type.as_str(),
+        ];
+        for tag in &self.topic_tags {
+            parts.push(tag.as_str());
+        }
+        let mut extra = Vec::new();
+        if let Some(desc) = &self.index_descriptor {
+            match desc {
+                ResourceIndexDescriptor::BookIndex {
+                    authors,
+                    publisher,
+                    brief_summary,
+                    table_of_contents,
+                    ..
+                } => {
+                    extra.push(publisher.clone());
+                    extra.push(brief_summary.clone());
+                    extra.extend(authors.iter().cloned());
+                    for ch in table_of_contents {
+                        extra.push(ch.title.clone());
+                        extra.extend(ch.subtopics.iter().cloned());
+                    }
+                }
+                ResourceIndexDescriptor::YoutubePlaylistIndex {
+                    channel_title,
+                    syllabus_items,
+                    transcript_outline,
+                    ..
+                } => {
+                    extra.push(channel_title.clone());
+                    if let Some(outline) = transcript_outline {
+                        extra.push(outline.clone());
+                    }
+                    for item in syllabus_items {
+                        extra.push(item.title.clone());
+                        extra.extend(item.key_concepts.iter().cloned());
+                    }
+                }
+                ResourceIndexDescriptor::CourseIndex {
+                    platform,
+                    instructors,
+                    syllabus_units,
+                } => {
+                    extra.push(platform.clone());
+                    extra.extend(instructors.iter().cloned());
+                    for unit in syllabus_units {
+                        extra.push(unit.title.clone());
+                        extra.extend(unit.lecture_topics.iter().cloned());
+                        extra.extend(unit.problem_sets.iter().cloned());
+                    }
+                }
+                ResourceIndexDescriptor::RepositoryLabIndex {
+                    repo_full_name,
+                    programming_language,
+                    lab_exercises,
+                    ..
+                } => {
+                    extra.push(repo_full_name.clone());
+                    extra.push(programming_language.clone());
+                    for lab in lab_exercises {
+                        extra.push(lab.title.clone());
+                        extra.push(lab.deliverable_summary.clone());
+                    }
+                }
+            }
+        }
+        let mut combined = parts.join(" ");
+        if !extra.is_empty() {
+            combined.push(' ');
+            combined.push_str(&extra.join(" "));
+        }
+        combined
+    }
+}
+
+/// Tokenizes a document or query string into normalized, stemmed English search terms
+/// using [`bm25::DefaultTokenizer`] (`unicode-segmentation` + `deunicode` + `stop-words` + Snowball stemmer).
+#[must_use]
+pub fn tokenize_search_terms(text: &str) -> Vec<String> {
+    use bm25::{DefaultTokenizer, Language, Tokenizer};
+    DefaultTokenizer::new(Language::English).tokenize(text)
+}
+
+/// Corpus search index backed by the [`bm25`] crate (`SearchEngineBuilder` + English Snowball stemmer).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TfIdfCorpusIndex {
+    documents: BTreeMap<String, String>,
+}
+
+impl TfIdfCorpusIndex {
+    /// Creates an empty [`TfIdfCorpusIndex`].
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Builds a [`TfIdfCorpusIndex`] from an initial slice of [`IndexedMaterialCandidate`]s.
+    #[must_use]
+    pub fn from_candidates(candidates: &[IndexedMaterialCandidate]) -> Self {
+        let mut index = Self::new();
+        for candidate in candidates {
+            index.upsert_candidate(candidate);
+        }
+        index
+    }
+
+    /// Returns the number of indexed documents in the corpus.
+    #[must_use]
+    pub fn document_count(&self) -> usize {
+        self.documents.len()
+    }
+
+    /// Inserts or updates a document by `doc_id`.
+    pub fn upsert_document(&mut self, doc_id: impl Into<String>, text: &str) {
+        self.documents.insert(doc_id.into(), text.to_string());
+    }
+
+    /// Indexes or updates an [`IndexedMaterialCandidate`] in the corpus.
+    pub fn upsert_candidate(&mut self, candidate: &IndexedMaterialCandidate) {
+        self.upsert_document(
+            candidate.resource_version_id.clone(),
+            &candidate.searchable_corpus_text(),
+        );
+    }
+
+    /// Returns the BM25 relevance score between `query` and the indexed document `doc_id`.
+    #[must_use]
+    pub fn cosine_similarity(&self, query: &str, doc_id: &str) -> f64 {
+        self.rank_documents(query)
+            .into_iter()
+            .find_map(|(id, score)| (id == doc_id).then_some(score))
+            .unwrap_or(0.0)
+    }
+
+    /// Ranks all indexed documents by descending [`bm25`] relevance score to `query`
+    /// with deterministic lexicographical `doc_id` tie-breaking.
+    #[must_use]
+    pub fn rank_documents(&self, query: &str) -> Vec<(String, f64)> {
+        use bm25::{Document, Language, SearchEngineBuilder};
+
+        if self.documents.is_empty() {
+            return Vec::new();
+        }
+        let engine = SearchEngineBuilder::<String>::with_documents(
+            Language::English,
+            self.documents
+                .iter()
+                .map(|(id, text)| Document::new(id.clone(), text.clone())),
+        )
+        .build();
+        let hits: BTreeMap<String, f64> = engine
+            .search(query, self.documents.len())
+            .into_iter()
+            .map(|r| {
+                let raw = f64::from(r.score).max(0.0);
+                let normalized = if raw > 0.0 { raw / (raw + 2.0) } else { 0.0 };
+                (r.document.id, normalized)
+            })
+            .collect();
+        let mut ranked: Vec<(String, f64)> = self
+            .documents
+            .keys()
+            .map(|doc_id| (doc_id.clone(), hits.get(doc_id).copied().unwrap_or(0.0)))
+            .collect();
+        ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        ranked
+    }
+}
+
 /// Learner's execution mode choice in Step 1.5 ("Review existing fit").
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -461,11 +640,20 @@ pub fn evaluate_resource_fit_and_coverage(
         .cloned()
         .collect();
 
-    // 2. Deterministic ranking:
+    // 2. Deterministic hybrid ranking:
     //    (a) Number of requested topics supported at required depth
     //    (b) Supports both instruction and practice roles
     //    (c) Lower known acquisition cost
-    //    (d) Stable resource_version_id tie-breaker
+    //    (d) Sublinear TF-IDF cosine similarity (in basis points) against query
+    //    (e) Stable resource_version_id tie-breaker
+    let tfidf_index = TfIdfCorpusIndex::from_candidates(&eligible);
+    let mut query_terms = vec![requested_subject.trim().to_string()];
+    query_terms.extend(req_topics_norm.iter().map(|(orig, _)| orig.clone()));
+    if !norm_depth.is_empty() {
+        query_terms.push(norm_depth.clone());
+    }
+    let composite_query = query_terms.join(" ");
+
     eligible.sort_by(|a, b| {
         let count_a = req_topics_norm
             .iter()
@@ -483,6 +671,12 @@ pub fn evaluate_resource_fit_and_coverage(
                     .any(|ct| ct.trim().to_ascii_lowercase() == *t_norm)
             })
             .count();
+        let sim_a_bp =
+            (tfidf_index.cosine_similarity(&composite_query, &a.resource_version_id) * 10_000.0)
+                .round() as i64;
+        let sim_b_bp =
+            (tfidf_index.cosine_similarity(&composite_query, &b.resource_version_id) * 10_000.0)
+                .round() as i64;
         count_b
             .cmp(&count_a)
             .then_with(|| b.supported_roles.len().cmp(&a.supported_roles.len()))
@@ -491,6 +685,7 @@ pub fn evaluate_resource_fit_and_coverage(
                     .unwrap_or(0)
                     .cmp(&b.price_minor_units.unwrap_or(0))
             })
+            .then_with(|| sim_b_bp.cmp(&sim_a_bp))
             .then_with(|| a.resource_version_id.cmp(&b.resource_version_id))
     });
 

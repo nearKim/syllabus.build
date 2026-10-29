@@ -2,9 +2,6 @@
 -- Separate Public Template Projections, Schedule Optimistic Concurrency, and Append-Only Progress Events
 -- Source of Truth: specs/product.md (T01, CTRL-002, CTRL-030, CTRL-070, NFR-001, NFR-006, NFR-007)
 
--- Enable pgvector extension for derived rebuildable vector indexes (CTRL-002)
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- Authoritative tenant accounts table
 CREATE TABLE IF NOT EXISTS accounts (
     account_id TEXT PRIMARY KEY CHECK (length(account_id) BETWEEN 3 AND 128),

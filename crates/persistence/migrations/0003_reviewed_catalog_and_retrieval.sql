@@ -1,5 +1,5 @@
 -- T02 Migration 0003: Small Reviewed Catalog, Rights/Egress Guards, Quarantine Overlays,
--- and Deterministic Metadata Filtering (with optional pgvector embedding column for future hybrid retrieval)
+-- and Deterministic Metadata + TF-IDF Cosine Retrieval
 -- Source of Truth: specs/product.md (T02, CAT-001..CAT-008, OPS-001..OPS-005, CTRL-002, CTRL-010..CTRL-014, CTRL-020..CTRL-024)
 
 -- Canonical catalog resource identity
@@ -25,8 +25,8 @@ CREATE TABLE IF NOT EXISTS catalog_resources (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Versioned catalog resource snapshots; pgvector metadata_embedding is nullable/optional
--- because Private Alpha uses deterministic metadata filtering first (T02, CTRL-002).
+-- Versioned catalog resource snapshots; retrieval uses deterministic metadata filtering
+-- and L2-normalized sublinear TF-IDF cosine similarity (`catalog_resource_tfidf_terms`).
 CREATE TABLE IF NOT EXISTS resource_versions (
     resource_version_id TEXT PRIMARY KEY CHECK (length(resource_version_id) BETWEEN 3 AND 128),
     resource_id TEXT NOT NULL REFERENCES catalog_resources(resource_id) ON DELETE RESTRICT,
@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS resource_versions (
     ),
     is_synthetic_fixture BOOLEAN NOT NULL DEFAULT FALSE,
     etag_version BIGINT NOT NULL DEFAULT 1 CHECK (etag_version >= 1),
-    metadata_embedding vector(1536) NULL,
     payload_json JSONB NOT NULL,
     captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (resource_id, version_number)

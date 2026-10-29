@@ -41,11 +41,11 @@ jobs:
         run: git diff --exit-code
 
   rust-workspace-and-postgres-migrations:
-    name: Rust Workspace & PostgreSQL 16 (pgvector) Migrations
+    name: Rust Workspace & PostgreSQL 16 Migrations
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: curriculum
           POSTGRES_PASSWORD: curriculum
@@ -69,7 +69,7 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Apply PostgreSQL 16 + pgvector migrations (0000..0005)
+      - name: Apply PostgreSQL 16 migrations (0000..0007)
         run: ./scripts/apply_migrations.sh
 
       - name: Run Rust workspace test suite

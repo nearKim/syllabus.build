@@ -17,6 +17,8 @@ pub const HOSTED_LEDGER_SHARING_AND_RELEASE_OPS_MIGRATION_SQL: &str =
     include_str!("../migrations/0005_hosted_ledger_sharing_and_release_ops.sql");
 pub const POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL: &str =
     include_str!("../migrations/0006_polymorphic_resource_indices_and_tags.sql");
+pub const INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL: &str =
+    include_str!("../migrations/0007_incremental_catalog_and_hybrid_index.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +29,7 @@ pub struct SqlMigration {
 }
 
 /// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
-pub const MIGRATIONS: [SqlMigration; 7] = [
+pub const MIGRATIONS: [SqlMigration; 8] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -62,6 +64,11 @@ pub const MIGRATIONS: [SqlMigration; 7] = [
         version: 6,
         name: "0006_polymorphic_resource_indices_and_tags.sql",
         sql: POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 7,
+        name: "0007_incremental_catalog_and_hybrid_index.sql",
+        sql: INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL,
     },
 ];
 
@@ -167,5 +174,42 @@ impl PostgresTransactionalStatements {
          FROM pg_stat_user_tables \
          WHERE relname IN ('outbox_jobs', 'idempotency_keys', 'progress_events', 'schedule_revisions') \
          ORDER BY dead_tuple_ratio DESC;"
+    }
+
+    /// Parameterized upsert of a single L2-normalized sublinear TF-IDF term weight into `catalog_resource_tfidf_terms` (`T02`, `CTRL-002`).
+    #[must_use]
+    pub fn upsert_tfidf_term_sql() -> &'static str {
+        "INSERT INTO catalog_resource_tfidf_terms (resource_version_id, term, raw_tf, sublinear_tf, normalized_tfidf_weight, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, NOW()) \
+         ON CONFLICT (resource_version_id, term) DO UPDATE SET \
+             raw_tf = EXCLUDED.raw_tf, \
+             sublinear_tf = EXCLUDED.sublinear_tf, \
+             normalized_tfidf_weight = EXCLUDED.normalized_tfidf_weight, \
+             updated_at = NOW();"
+    }
+
+    /// Parameterized SQL dot-product cosine similarity query over L2-normalized `catalog_resource_tfidf_terms` (`T02`, `CTRL-002`).
+    #[must_use]
+    pub fn tfidf_cosine_similarity_ranking_sql() -> &'static str {
+        "WITH query_terms AS ( \
+             SELECT UNNEST($1::TEXT[]) AS term, UNNEST($2::DOUBLE PRECISION[]) AS query_weight \
+         ) \
+         SELECT d.resource_version_id, \
+                LEAST(1.0, GREATEST(0.0, SUM(q.query_weight * d.normalized_tfidf_weight))) AS cosine_similarity \
+         FROM catalog_resource_tfidf_terms d \
+         INNER JOIN query_terms q ON q.term = d.term \
+         GROUP BY d.resource_version_id \
+         HAVING SUM(q.query_weight * d.normalized_tfidf_weight) > 0.0 \
+         ORDER BY cosine_similarity DESC, d.resource_version_id ASC;"
+    }
+
+    /// Built-in PostgreSQL full-text ranking query using `ts_rank_cd` and `websearch_to_tsquery('english', $1)` (`T02`, `CTRL-002`).
+    #[must_use]
+    pub fn pg_fts_rank_sql() -> &'static str {
+        "SELECT resource_version_id, \
+                ts_rank_cd(search_tsv, websearch_to_tsquery('english', $1)) AS rank_score \
+         FROM resource_versions \
+         WHERE search_tsv @@ websearch_to_tsquery('english', $1) \
+         ORDER BY rank_score DESC, resource_version_id ASC;"
     }
 }
