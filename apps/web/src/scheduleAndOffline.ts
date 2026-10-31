@@ -34,8 +34,8 @@ export interface ScheduleConflictResolutionState {
 }
 
 export interface ScheduleEditorControllerOptions {
-  readonly curriculumId?: string; readonly curriculum_id?: string;
-  readonly curriculum?: Record<string, unknown>; readonly schedule?: Record<string, unknown>;
+  readonly syllabusId?: string; readonly syllabus_id?: string;
+  readonly syllabus?: Record<string, unknown>; readonly schedule?: Record<string, unknown>;
   readonly ifMatch?: string; readonly etag?: string;
   readonly maxSessionMinutes?: number; readonly intervalPolicyVersion?: string;
 }
@@ -54,10 +54,10 @@ function parseScheduleSessions(rawSessions: unknown, fallback: readonly Schedule
 }
 
 export function createScheduleEditorController(options: ScheduleEditorControllerOptions = {}) {
-  const curriculum = options.curriculum ?? {};
+  const syllabus = options.syllabus ?? {};
   const schedule = options.schedule ?? {};
-  const curriculumId = sanitizeId(options.curriculumId ?? options.curriculum_id ?? curriculum["curriculum_id"], "synthetic-curriculum-1");
-  const immutableCurriculumRevisionId = sanitizeId(schedule["curriculum_revision_id"] ?? curriculum["revision_id"], "synthetic-revision-1");
+  const syllabusId = sanitizeId(options.syllabusId ?? options.syllabus_id ?? syllabus["syllabus_id"], "synthetic-syllabus-1");
+  const immutableSyllabusRevisionId = sanitizeId(schedule["syllabus_revision_id"] ?? syllabus["revision_id"], "synthetic-revision-1");
   const scheduleId = sanitizeId(schedule["schedule_id"], "synthetic-schedule-1");
   let scheduleRevisionId = sanitizeId(schedule["schedule_revision_id"], "synthetic-schedule-revision-1");
   let version = typeof schedule["version"] === "number" ? schedule["version"] : 1;
@@ -72,7 +72,7 @@ export function createScheduleEditorController(options: ScheduleEditorController
   const activityTypeById = new Map<string, string>();
   const activityObjectiveIdsById = new Map<string, readonly string[]>();
 
-  for (const rawAct of Array.isArray(curriculum["activities"]) ? curriculum["activities"] : []) {
+  for (const rawAct of Array.isArray(syllabus["activities"]) ? syllabus["activities"] : []) {
     if (rawAct && typeof rawAct === "object") {
       const act = rawAct as Record<string, unknown>;
       const actId = sanitizeId(act["activity_id"] ?? act["id"], "");
@@ -184,8 +184,8 @@ export function createScheduleEditorController(options: ScheduleEditorController
       beforeTotalMinutes, afterTotalMinutes, savedMediaMinutes: Math.max(0, beforeTotalMinutes - afterTotalMinutes),
       readingCodingSetupAssessmentReviewUnchanged: true as const,
       reviewHiddenInMediaSpeedAdjustment: false as const,
-      mutatesCurriculumRevision: false as const,
-      curriculumRevisionId: immutableCurriculumRevisionId,
+      mutatesSyllabusRevision: false as const,
+      syllabusRevisionId: immutableSyllabusRevisionId,
       sessions: sessionPreviews,
     };
   }
@@ -256,8 +256,8 @@ export function createScheduleEditorController(options: ScheduleEditorController
       recoveryOptions: (finalFeasible ? [] : ["reduce_scope", "extend_deadline", "increase_weekly_availability"]) as readonly (
         | "reduce_scope" | "extend_deadline" | "increase_weekly_availability"
       )[],
-      mutatesCurriculumRevision: false as const,
-      curriculumRevisionId: immutableCurriculumRevisionId,
+      mutatesSyllabusRevision: false as const,
+      syllabusRevisionId: immutableSyllabusRevisionId,
     };
     missedSessionPreview = preview;
     return preview;
@@ -297,8 +297,8 @@ export function createScheduleEditorController(options: ScheduleEditorController
       hiddenInMediaSpeedAdjustment: false as const,
       erasesDatedDemonstrationWhenDue: false as const,
       invalidatesPrerequisiteWaiverWhenDue: false as const,
-      mutatesCurriculumRevision: false as const,
-      curriculumRevisionId: immutableCurriculumRevisionId,
+      mutatesSyllabusRevision: false as const,
+      syllabusRevisionId: immutableSyllabusRevisionId,
     };
   }
 
@@ -319,12 +319,12 @@ export function createScheduleEditorController(options: ScheduleEditorController
       retainsGenuinePrerequisites: true as const,
       retainsPracticeFeedbackAndReview: true as const,
       diagnosesLearningStyle: false as const,
-      mutatesCurriculumRevision: false as const,
+      mutatesSyllabusRevision: false as const,
     };
   }
 
   const getState = () => ({
-    curriculumId, curriculumRevisionId: immutableCurriculumRevisionId,
+    syllabusId, syllabusRevisionId: immutableSyllabusRevisionId,
     scheduleId, scheduleRevisionId, version, etag: currentEtag,
     timezone, weeklyMinutes, maxSessionMinutes, playbackSpeed,
     sessions: [...sessions] as readonly ScheduleSessionItem[],
@@ -332,7 +332,7 @@ export function createScheduleEditorController(options: ScheduleEditorController
     intervalPolicyVersion, pendingPatch: { ...pendingPatch },
     playbackPreview: previewPlaybackSpeed(playbackSpeed),
     missedSessionPreview, reviewSpacingPreview: previewReviewScheduleSpacing(),
-    conflictState, mutatesCurriculumRevision: false as const, surfaceStyle,
+    conflictState, mutatesSyllabusRevision: false as const, surfaceStyle,
   });
 
   return {
@@ -355,7 +355,7 @@ export function createScheduleEditorController(options: ScheduleEditorController
       const ifMatchToUse = reqOptions?.ifMatch !== undefined ? reqOptions.ifMatch : currentEtag;
       return {
         operationId: "patchSchedule" as const, method: "PATCH" as const,
-        path: `/curricula/${curriculumId}/schedule`,
+        path: `/syllabi/${syllabusId}/schedule`,
         headers: buildOperationHeaders("patchSchedule", { ifMatch: ifMatchToUse }),
         body: reqOptions?.patch ?? (Object.keys(pendingPatch).length > 0 ? pendingPatch : { timezone, weekly_minutes: weeklyMinutes }),
       };
@@ -414,7 +414,7 @@ export type OfflineProgressEventType =
   | "prerequisite_override_recorded" | "unverified_prerequisite_acknowledged";
 
 export interface OfflineProgressEventPayload {
-  readonly event_id: string; readonly curriculum_revision_id: string; readonly activity_id: string;
+  readonly event_id: string; readonly syllabus_revision_id: string; readonly activity_id: string;
   readonly type: OfflineProgressEventType; readonly occurred_at: string; readonly client_timezone: string;
   readonly note: string | null; readonly time_spent_minutes: number | null;
 }
@@ -464,10 +464,10 @@ function detectForbiddenOfflineCacheContent(
 }
 
 export function createBoundedOfflineQueue(options?: {
-  readonly accountId?: string | null; readonly curriculumId?: string; readonly maxCapacity?: number;
+  readonly accountId?: string | null; readonly syllabusId?: string; readonly maxCapacity?: number;
 }) {
   let accountId: string | null = options?.accountId ?? "synthetic-account";
-  const curriculumId = options?.curriculumId ?? "synthetic-curriculum-1";
+  const syllabusId = options?.syllabusId ?? "synthetic-syllabus-1";
   const maxCapacity = options?.maxCapacity ?? 100;
 
   const queuedById = new Map<string, OfflineProgressEventPayload>();
@@ -484,7 +484,7 @@ export function createBoundedOfflineQueue(options?: {
   const getState = () => {
     const queuedEvents = Array.from(queuedById.values());
     return {
-      accountId, curriculumId, maxCapacity, size: queuedEvents.length,
+      accountId, syllabusId, maxCapacity, size: queuedEvents.length,
       queuedEvents: queuedEvents as readonly OfflineProgressEventPayload[],
       syncedEventIds: Array.from(syncedEventIds) as readonly string[],
       rejectedCount, pendingSynchronizationVisible: queuedEvents.length > 0,
@@ -521,7 +521,7 @@ export function createBoundedOfflineQueue(options?: {
     const rawTime = rawEvent["time_spent_minutes"] ?? rawEvent["timeSpentMinutes"];
     queuedById.set(eventId, {
       event_id: eventId,
-      curriculum_revision_id: sanitizeId(rawEvent["curriculum_revision_id"] ?? rawEvent["curriculumRevisionId"], "synthetic-revision-1"),
+      syllabus_revision_id: sanitizeId(rawEvent["syllabus_revision_id"] ?? rawEvent["syllabusRevisionId"], "synthetic-revision-1"),
       activity_id: sanitizeId(rawEvent["activity_id"] ?? rawEvent["activityId"], "activity-theory"),
       type: (rawEvent["type"] as OfflineProgressEventType) ?? "self_reported_completed",
       occurred_at: sanitizeId(rawEvent["occurred_at"] ?? rawEvent["occurredAt"], "2026-10-26T18:10:00-04:00"),
@@ -546,7 +546,7 @@ export function createBoundedOfflineQueue(options?: {
       }
       const req: OfflineReplayRequestDescriptor = {
         operationId: "appendProgressEvent", method: "POST",
-        path: `/curricula/${curriculumId}/progress-events`,
+        path: `/syllabi/${syllabusId}/progress-events`,
         headers: buildOperationHeaders("appendProgressEvent"), body: payload,
       };
       const res = dispatcher?.(req);

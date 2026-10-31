@@ -1,13 +1,13 @@
 //! Shared test fixtures and deterministic test harnesses (`T00`).
 
-use curriculum_contracts::workspace_root;
+use syllabus_contracts::workspace_root;
 use serde_json::Value;
 
-/// Loads a synthetic fixture by relative filename under `specs/001-curriculum-platform/examples/`.
+/// Loads a synthetic fixture by relative filename under `specs/001-syllabus-platform/examples/`.
 #[must_use]
 pub fn load_synthetic_fixture(name: &str) -> Value {
     let path = workspace_root()
-        .join("specs/001-curriculum-platform/examples")
+        .join("specs/001-syllabus-platform/examples")
         .join(name);
     let raw = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("failed to read fixture {}: {}", path.display(), e));
@@ -20,8 +20,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn loads_canonical_synthetic_curriculum_fixture() {
-        let curriculum = load_synthetic_fixture("curriculum.synthetic.json");
-        assert_eq!(curriculum["schema_version"].as_str(), Some("0.2.0"));
+    fn loads_canonical_synthetic_syllabus_fixture() {
+        let syllabus = load_synthetic_fixture("syllabus.synthetic.json");
+        assert_eq!(syllabus["schema_version"].as_str(), Some("0.2.0"));
     }
 }

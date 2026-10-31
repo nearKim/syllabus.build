@@ -396,7 +396,7 @@ export type GoalIntakeState = ReturnType<GoalIntakeController["getState"]>;
 export type StartGenerationRequestDescriptor = ReturnType<GoalIntakeController["buildStartGenerationRequest"]>;
 
 export interface RevisionActivationOptions {
-  readonly curriculumId?: string; readonly curriculum_id?: string;
+  readonly syllabusId?: string; readonly syllabus_id?: string;
   readonly revisionId?: string; readonly revision_id?: string;
   readonly ifMatch?: string; readonly etag?: string;
   readonly confirmed?: boolean; readonly confirmedByLearner?: boolean; readonly learnerConfirmed?: boolean;
@@ -406,23 +406,23 @@ export interface RevisionActivationOptions {
 export function buildRevisionActivationRequest(options: RevisionActivationOptions) {
   if (!(options.confirmedByLearner === true || options.confirmed === true || options.learnerConfirmed === true)) {
     throw new Error(
-      "Explicit learner confirmation (confirmedByLearner: true) is required before activating a curriculum revision; unreviewed revisions are never auto-activated.",
+      "Explicit learner confirmation (confirmedByLearner: true) is required before activating a syllabus revision; unreviewed revisions are never auto-activated.",
     );
   }
-  const curriculumId = requireNonEmpty(
-    options.curriculumId ?? options.curriculum_id,
-    "Both curriculumId and revisionId are required to activate a revision.",
+  const syllabusId = requireNonEmpty(
+    options.syllabusId ?? options.syllabus_id,
+    "Both syllabusId and revisionId are required to activate a revision.",
   );
   const revisionId = requireNonEmpty(
     options.revisionId ?? options.revision_id,
-    "Both curriculumId and revisionId are required to activate a revision.",
+    "Both syllabusId and revisionId are required to activate a revision.",
   );
   const ifMatch = options.ifMatch ?? options.etag;
   return {
-    operationId: "activateCurriculumRevision" as const, method: "PUT" as const,
-    path: `/curricula/${curriculumId}/active-revision`,
-    curriculumId, revisionId,
-    headers: buildOperationHeaders("activateCurriculumRevision", ifMatch !== undefined ? { ifMatch } : {}),
+    operationId: "activateSyllabusRevision" as const, method: "PUT" as const,
+    path: `/syllabi/${syllabusId}/active-revision`,
+    syllabusId, revisionId,
+    headers: buildOperationHeaders("activateSyllabusRevision", ifMatch !== undefined ? { ifMatch } : {}),
     body: {
       revision_id: revisionId,
       acknowledge_schedule_changes: Boolean(options.acknowledgeScheduleChanges ?? options.acknowledge_schedule_changes ?? true),
@@ -444,7 +444,7 @@ export interface AsyncSurfaceRecoveryBanner {
 
 export interface ProgressEventInput {
   readonly eventId?: string; readonly event_id?: string;
-  readonly curriculumRevisionId?: string; readonly curriculum_revision_id?: string;
+  readonly syllabusRevisionId?: string; readonly syllabus_revision_id?: string;
   readonly activityId?: string; readonly activity_id?: string;
   readonly type?: "self_reported_completed";
   readonly occurredAt?: string; readonly occurred_at?: string;
@@ -453,7 +453,7 @@ export interface ProgressEventInput {
 }
 
 export interface RecordedProgressEventReceipt {
-  readonly eventId: string; readonly curriculumRevisionId: string; readonly activityId: string;
+  readonly eventId: string; readonly syllabusRevisionId: string; readonly activityId: string;
   readonly type: "self_reported_completed"; readonly occurredAt: string; readonly clientTimezone: string;
   readonly note: string | null; readonly timeSpentMinutes: number;
   readonly deduplicated: boolean; readonly isDuplicate: boolean;
@@ -464,7 +464,7 @@ export interface RecordedProgressEventReceipt {
 }
 
 export interface TodayViewControllerOptions {
-  readonly curriculum?: Record<string, unknown>;
+  readonly syllabus?: Record<string, unknown>;
   readonly schedule?: Record<string, unknown>;
   readonly proficiency?: Record<string, unknown> | null;
   readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[];
@@ -475,13 +475,13 @@ const ASYNC_RECOVERY_MESSAGES: Readonly<
   Record<AsyncSurfaceRecoveryStateKind, readonly [role: "status" | "alert", title: string, message: string, actionableNextStep: string]>
 > = {
   ready: ["status", "Today study queue ready", "Your scheduled sessions and verified resource links are ready.", "Select Start on the next feasible session."],
-  loading: ["status", "Loading study queue", "Fetching the active curriculum revision and schedule.", "Wait for synchronization or open the cached Outline."],
-  generation_failed: ["alert", "Curriculum generation failed", "The generation job did not produce a valid plan.", "Retry generation with your saved intake draft or adjust constraints."],
+  loading: ["status", "Loading study queue", "Fetching the active syllabus revision and schedule.", "Wait for synchronization or open the cached Outline."],
+  generation_failed: ["alert", "Syllabus generation failed", "The generation job did not produce a valid plan.", "Retry generation with your saved intake draft or adjust constraints."],
   no_eligible_resources: ["alert", "No eligible catalog resources matched", "Approved catalog coverage was insufficient for the current filter constraints.", "Broaden resource types or allow owned subscriptions in Goal Intake."],
   insufficient_credit: ["alert", "Insufficient hosted AI credit", "Your hosted wallet balance cannot cover the estimated generation ceiling.", "Top up hosted credits or configure an approved BYOK connection."],
   notification_permission_denied: ["status", "Browser notification permission denied", "Study reminders cannot be delivered via Web Push while permission is blocked.", "Use the in-app Today view or enable notification permissions in Settings."],
   offline_with_pending_progress: ["alert", "Offline with pending self-reported progress", "Your progress event is retained locally with its stable event_id.", "Retry synchronization when reconnected; duplicate retries will not double-count."],
-  stale_source: ["alert", "Resource link or revision is stale", "A newer curriculum revision or catalog replacement is available.", "Refresh the plan or inspect replacement resources."],
+  stale_source: ["alert", "Resource link or revision is stale", "A newer syllabus revision or catalog replacement is available.", "Refresh the plan or inspect replacement resources."],
 };
 
 function normalizeTodayArgs(
@@ -490,11 +490,11 @@ function normalizeTodayArgs(
   thirdArg?: Record<string, unknown> | null,
   fourthArg?: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[],
 ): TodayViewControllerOptions {
-  if (firstArg && typeof firstArg === "object" && "curriculum" in firstArg && "schedule" in firstArg && firstArg["curriculum"] && typeof firstArg["curriculum"] === "object") {
+  if (firstArg && typeof firstArg === "object" && "syllabus" in firstArg && "schedule" in firstArg && firstArg["syllabus"] && typeof firstArg["syllabus"] === "object") {
     return firstArg as TodayViewControllerOptions;
   }
   return {
-    curriculum: (firstArg as Record<string, unknown>) ?? {},
+    syllabus: (firstArg as Record<string, unknown>) ?? {},
     schedule: secondArg ?? {},
     proficiency: thirdArg ?? null,
     ...(fourthArg ? { catalogResources: fourthArg } : {}),
@@ -502,13 +502,13 @@ function normalizeTodayArgs(
 }
 
 export function createTodayViewController(
-  curriculumOrOptions: Record<string, unknown> | TodayViewControllerOptions,
+  syllabusOrOptions: Record<string, unknown> | TodayViewControllerOptions,
   scheduleArg?: Record<string, unknown>,
   proficiencyArg?: Record<string, unknown> | null,
   catalogResourcesArg?: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[],
 ) {
-  const opts = normalizeTodayArgs(curriculumOrOptions, scheduleArg, proficiencyArg, catalogResourcesArg);
-  const curriculum = opts.curriculum ?? {};
+  const opts = normalizeTodayArgs(syllabusOrOptions, scheduleArg, proficiencyArg, catalogResourcesArg);
+  const syllabus = opts.syllabus ?? {};
   const schedule = opts.schedule ?? {};
   const proficiency = opts.proficiency ?? null;
 
@@ -525,7 +525,7 @@ export function createTodayViewController(
 
   function getState() {
     const planModel = buildPlanMapAndOutlineModel({
-      curriculum, proficiency, activityStates, ...(opts.catalogResources ? { catalogResources: opts.catalogResources } : {}),
+      syllabus, proficiency, activityStates, ...(opts.catalogResources ? { catalogResources: opts.catalogResources } : {}),
     });
 
     const activityById = new Map(planModel.outlineActivities.map((a) => [a.activityId, a]));
@@ -626,8 +626,8 @@ export function createTodayViewController(
       ) ?? todayCards[0] ?? null;
 
     return {
-      curriculumId: planModel.curriculumId,
-      curriculumRevisionId: planModel.revisionId,
+      syllabusId: planModel.syllabusId,
+      syllabusRevisionId: planModel.revisionId,
       scheduleId: typeof schedule["schedule_id"] === "string" ? schedule["schedule_id"] : "synthetic-schedule-1",
       scheduleRevisionId:
         typeof schedule["schedule_revision_id"] === "string" ? schedule["schedule_revision_id"] : "synthetic-schedule-revision-1",
@@ -656,7 +656,7 @@ export function createTodayViewController(
     }
 
     const activityId = requireNonEmpty(event.activityId ?? event.activity_id, "activity_id is required to record progress.");
-    const initialPlan = buildPlanMapAndOutlineModel({ curriculum, proficiency, activityStates });
+    const initialPlan = buildPlanMapAndOutlineModel({ syllabus, proficiency, activityStates });
     const matchedAct = initialPlan.outlineActivities.find((a) => a.activityId === activityId);
     const defaultMinutes = matchedAct?.durationTriplet.point ?? 10;
     const timeSpentMinutes = Math.max(0, Math.round(event.timeSpentMinutes ?? event.time_spent_minutes ?? defaultMinutes));
@@ -668,7 +668,7 @@ export function createTodayViewController(
     }
     totalStudyMinutes += timeSpentMinutes;
 
-    const updatedPlan = buildPlanMapAndOutlineModel({ curriculum, proficiency, activityStates });
+    const updatedPlan = buildPlanMapAndOutlineModel({ syllabus, proficiency, activityStates });
     const updatedAct = updatedPlan.outlineActivities.find((a) => a.activityId === activityId);
     const rawProfStatus = updatedAct?.objectiveProficiencyStatus ?? "unassessed";
     const honestProficiencyStatus: ObjectiveProficiencyBadgeStatus =
@@ -676,7 +676,7 @@ export function createTodayViewController(
 
     const receipt: RecordedProgressEventReceipt = {
       eventId,
-      curriculumRevisionId: event.curriculumRevisionId ?? event.curriculum_revision_id ?? updatedPlan.revisionId,
+      syllabusRevisionId: event.syllabusRevisionId ?? event.syllabus_revision_id ?? updatedPlan.revisionId,
       activityId, type: "self_reported_completed",
       occurredAt: event.occurredAt ?? event.occurred_at ?? "2026-10-26T18:10:00-04:00",
       clientTimezone: event.clientTimezone ?? event.client_timezone ?? "America/New_York",

@@ -1,11 +1,12 @@
-//! Core transactional store, identity/session management, tenancy, catalog, and curriculum revisions.
+//! Core transactional store, identity/session management, tenancy, catalog, and syllabus revisions.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use curriculum_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
-use curriculum_security::{
-    AuthenticatedPrincipal, CredentialVault, PrincipalRole, SealedCredentialEnvelope, SecurityError,
+use syllabus_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
+use syllabus_security::{
+    hash_password, verify_password, AuthenticatedPrincipal, CredentialVault, OAuthProvider,
+    PrincipalRole, SealedCredentialEnvelope, SecurityError,
 };
 use serde_json::{json, Value};
 
@@ -14,9 +15,10 @@ use crate::*;
 #[derive(Default)]
 pub(crate) struct StoreInner {
     pub(crate) accounts: BTreeMap<String, AccountRecord>,
+    pub(crate) oauth_identities: BTreeMap<(OAuthProvider, String), OAuthIdentityRecord>,
     pub(crate) sessions_by_token_sha: BTreeMap<String, AuthSessionRecord>,
-    pub(crate) private_revisions: BTreeMap<String, CurriculumRevisionRecord>,
-    pub(crate) curriculum_activation_versions: BTreeMap<String, u64>,
+    pub(crate) private_revisions: BTreeMap<String, SyllabusRevisionRecord>,
+    pub(crate) syllabus_activation_versions: BTreeMap<String, u64>,
     pub(crate) public_revisions: BTreeMap<String, PublicTemplateRevisionRecord>,
     pub(crate) schedules: BTreeMap<String, ScheduleRevisionRecord>,
     pub(crate) schedule_playback_speeds: BTreeMap<String, f64>,
@@ -54,12 +56,13 @@ pub(crate) struct StoreInner {
     pub(crate) publication_upvotes: BTreeSet<(String, String)>,
     pub(crate) publication_reports: Vec<PublicationReportRecord>,
     pub(crate) moderation_actions: Vec<ModerationActionRecord>,
-    pub(crate) adopted_curricula_by_publication: BTreeMap<String, Vec<String>>,
+    pub(crate) adopted_syllabi_by_publication: BTreeMap<String, Vec<String>>,
     pub(crate) account_exports: BTreeMap<String, AccountExportRecord>,
     pub(crate) account_deletion_requests: BTreeMap<String, AccountDeletionReceiptRecord>,
     pub(crate) idempotency_keys: BTreeMap<(String, String, String), IdempotencyRecord>,
     pub(crate) deletion_tombstones: Vec<DeletionTombstone>,
     pub(crate) catalog_resources: BTreeMap<String, CatalogResourceVersionRecord>,
+    pub(crate) catalog_tfidf_index: syllabus_domain::TfIdfCorpusIndex,
     pub(crate) quarantine_overlays: BTreeMap<String, ResourceQuarantineOverlayRecord>,
     pub(crate) candidate_archives: BTreeMap<String, CandidateArchiveRecord>,
     pub(crate) generation_jobs: BTreeMap<String, GenerationJobRecord>,
@@ -118,6 +121,9 @@ impl InMemoryTransactionalStore {
             email: "learner-a@example.test".to_string(),
             email_verified: true,
             roles: vec![PrincipalRole::Learner],
+            display_name: Some("Learner A".to_string()),
+            avatar_url: None,
+            password_hash: None,
             deleted_at_ms: None,
         });
         store.upsert_account(AccountRecord {
@@ -125,6 +131,9 @@ impl InMemoryTransactionalStore {
             email: "learner-b@example.test".to_string(),
             email_verified: true,
             roles: vec![PrincipalRole::Learner],
+            display_name: Some("Learner B".to_string()),
+            avatar_url: None,
+            password_hash: None,
             deleted_at_ms: None,
         });
 
@@ -140,7 +149,7 @@ impl InMemoryTransactionalStore {
         };
 
         store
-            .commit_private_curriculum_revision(
+            .commit_private_syllabus_revision(
                 &principal_a,
                 "cur-learner-a-1",
                 "rev-learner-a-1",
@@ -149,10 +158,10 @@ impl InMemoryTransactionalStore {
                     "objectives": ["obj-la-1", "obj-la-2"]
                 }),
             )
-            .expect("seed learner A curriculum");
+            .expect("seed learner A syllabus");
 
         store
-            .commit_private_curriculum_revision(
+            .commit_private_syllabus_revision(
                 &principal_b,
                 "cur-learner-b-1",
                 "rev-learner-b-1",
@@ -161,7 +170,7 @@ impl InMemoryTransactionalStore {
                     "objectives": ["obj-ds-1"]
                 }),
             )
-            .expect("seed learner B curriculum");
+            .expect("seed learner B syllabus");
 
         store
             .create_credential(
@@ -257,21 +266,37 @@ impl InMemoryTransactionalStore {
                     email: email.to_string(),
                     email_verified: true,
                     roles: roles.clone(),
+                    display_name: None,
+                    avatar_url: None,
+                    password_hash: None,
                     deleted_at_ms: None,
                 },
             );
-            guard.proficiency_by_account.insert(
-                account_id.clone(),
-                LearnerProficiencyProjection {
-                    account_id: account_id.clone(),
-                    objectives: BTreeMap::new(),
-                    completed_activities: BTreeSet::new(),
-                    skipped_activities: BTreeSet::new(),
-                    total_time_spent_minutes: 0,
-                },
-            );
+            Self::ensure_proficiency_locked(&mut guard, &account_id);
         }
 
+        Ok(Self::issue_session_locked(&mut guard, seq, account_id, roles))
+    }
+
+    fn ensure_proficiency_locked(guard: &mut StoreInner, account_id: &str) {
+        guard
+            .proficiency_by_account
+            .entry(account_id.to_string())
+            .or_insert_with(|| LearnerProficiencyProjection {
+                account_id: account_id.to_string(),
+                objectives: BTreeMap::new(),
+                completed_activities: BTreeSet::new(),
+                skipped_activities: BTreeSet::new(),
+                total_time_spent_minutes: 0,
+            });
+    }
+
+    fn issue_session_locked(
+        guard: &mut StoreInner,
+        seq: u64,
+        account_id: String,
+        roles: Vec<PrincipalRole>,
+    ) -> AuthSessionRecord {
         let token = format!("sess-token-{seq}-{account_id}");
         let token_sha256 = sha256_bytes_hex(token.as_bytes());
         let record = AuthSessionRecord {
@@ -286,7 +311,278 @@ impl InMemoryTransactionalStore {
         guard
             .sessions_by_token_sha
             .insert(token_sha256, record.clone());
-        Ok(record)
+        record
+    }
+
+    fn normalize_email(raw: &str) -> Result<String, PersistenceError> {
+        let email = raw.trim().to_ascii_lowercase();
+        let mut parts = email.split('@');
+        let local = parts.next().unwrap_or("");
+        let domain = parts.next().unwrap_or("");
+        if local.is_empty()
+            || domain.is_empty()
+            || !domain.contains('.')
+            || parts.next().is_some()
+            || email.chars().any(char::is_whitespace)
+        {
+            return Err(PersistenceError::Validation(
+                "valid email address is required".to_string(),
+            ));
+        }
+        Ok(email)
+    }
+
+    fn default_roles_for_email(email: &str) -> Vec<PrincipalRole> {
+        match email {
+            "ada@syllabus.io" | "curator@example.test" => vec![PrincipalRole::Curator],
+            "mo@syllabus.io" | "moderator@example.test" => vec![PrincipalRole::Moderator],
+            "operator@example.test" => vec![PrincipalRole::Operator],
+            _ => vec![PrincipalRole::Learner],
+        }
+    }
+
+    /// Looks up an active (non-deleted) `AccountRecord` by `account_id`.
+    #[must_use]
+    pub fn get_account_by_id(&self, account_id: &str) -> Option<AccountRecord> {
+        let guard = self.read_inner();
+        guard
+            .accounts
+            .get(account_id)
+            .filter(|acct| acct.deleted_at_ms.is_none())
+            .cloned()
+    }
+
+    /// Registers a new email + password account (or attaches a password to a passwordless OAuth account)
+    /// and returns `(AccountRecord, AuthSessionRecord)`.
+    pub fn register_email_account(
+        &self,
+        email: &str,
+        password: &str,
+        display_name: Option<&str>,
+    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
+        let normalized_email = Self::normalize_email(email)?;
+        let default_username = normalized_email
+            .split('@')
+            .next()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let cleaned_name = display_name
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or(default_username);
+
+        let mut guard = self.write_inner();
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let salt = format!("syllabus-pw-salt-{seq}-{normalized_email}");
+        let pw_hash = hash_password(password, salt.as_bytes()).map_err(PersistenceError::Security)?;
+
+        if let Some(existing) = guard
+            .accounts
+            .values_mut()
+            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
+        {
+            if existing.password_hash.is_some() {
+                return Err(PersistenceError::Conflict {
+                    code: "account_already_exists",
+                    message: format!("an account for `{normalized_email}` already exists"),
+                });
+            }
+            existing.password_hash = Some(pw_hash);
+            if existing.display_name.is_none() {
+                existing.display_name = cleaned_name;
+            }
+            let acct = existing.clone();
+            let session =
+                Self::issue_session_locked(&mut guard, seq, acct.account_id.clone(), acct.roles.clone());
+            return Ok((acct, session));
+        }
+
+        let account_id = format!("usr-{seq:06}");
+        let roles = Self::default_roles_for_email(&normalized_email);
+        let acct = AccountRecord {
+            account_id: account_id.clone(),
+            email: normalized_email,
+            email_verified: false,
+            roles: roles.clone(),
+            display_name: cleaned_name,
+            avatar_url: None,
+            password_hash: Some(pw_hash),
+            deleted_at_ms: None,
+        };
+        guard.accounts.insert(account_id.clone(), acct.clone());
+        Self::ensure_proficiency_locked(&mut guard, &account_id);
+        let session = Self::issue_session_locked(&mut guard, seq, account_id, roles);
+        Ok((acct, session))
+    }
+
+    /// Authenticates an email + password account and mints a fresh `AuthSessionRecord`.
+    pub fn login_email_account(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
+        let normalized_email = Self::normalize_email(email)?;
+        if password.is_empty() {
+            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+        }
+
+        let mut guard = self.write_inner();
+        let Some(acct) = guard
+            .accounts
+            .values()
+            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
+            .cloned()
+        else {
+            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+        };
+
+        if let Some(ref stored_hash) = acct.password_hash {
+            if !verify_password(password, stored_hash) {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            }
+        } else {
+            // Passwordless OAuth-only account or pre-seeded dev fixture requires at least 6 chars in dev.
+            if password.len() < 6 {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            }
+        }
+
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let session =
+            Self::issue_session_locked(&mut guard, seq, acct.account_id.clone(), acct.roles.clone());
+        Ok((acct, session))
+    }
+
+    /// Links or creates an account from a verified OAuth 2.0 / OIDC identity (`Google` or `GitHub`)
+    /// and mints a fresh `AuthSessionRecord`.
+    pub fn authenticate_oauth_identity(
+        &self,
+        provider: OAuthProvider,
+        provider_subject: &str,
+        email: &str,
+        email_verified: bool,
+        display_name: Option<&str>,
+        avatar_url: Option<&str>,
+    ) -> Result<OAuthLoginOutcome, PersistenceError> {
+        let subject = provider_subject.trim();
+        if subject.is_empty() {
+            return Err(PersistenceError::Security(SecurityError::InvalidOAuthGrant(
+                "provider_subject must be non-empty".to_string(),
+            )));
+        }
+        let normalized_email = Self::normalize_email(email)?;
+        let default_username = normalized_email
+            .split('@')
+            .next()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        let cleaned_name = display_name
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or(default_username);
+        let cleaned_avatar = avatar_url
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+
+        let mut guard = self.write_inner();
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let key = (provider, subject.to_string());
+
+        // 1. Existing federated identity binding -> resolve linked account directly.
+        let existing_account_id = guard
+            .oauth_identities
+            .get(&key)
+            .map(|record| record.account_id.clone());
+
+        let (account, is_new_account) = if let Some(acct_id) = existing_account_id {
+            let Some(acct) = guard.accounts.get_mut(&acct_id) else {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            };
+            if acct.deleted_at_ms.is_some() {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            }
+            if acct.display_name.is_none() && cleaned_name.is_some() {
+                acct.display_name.clone_from(&cleaned_name);
+            }
+            if acct.avatar_url.is_none() && cleaned_avatar.is_some() {
+                acct.avatar_url.clone_from(&cleaned_avatar);
+            }
+            if email_verified {
+                acct.email_verified = true;
+            }
+            (acct.clone(), false)
+        } else if email_verified
+            && guard.accounts.values().any(|a| {
+                a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none()
+            })
+        {
+            // 2. Verified email matches an active local account -> link OAuth identity seamlessly.
+            let acct = guard
+                .accounts
+                .values_mut()
+                .find(|a| {
+                    a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none()
+                })
+                .expect("checked existence above");
+            acct.email_verified = true;
+            if acct.display_name.is_none() && cleaned_name.is_some() {
+                acct.display_name.clone_from(&cleaned_name);
+            }
+            if acct.avatar_url.is_none() && cleaned_avatar.is_some() {
+                acct.avatar_url.clone_from(&cleaned_avatar);
+            }
+            (acct.clone(), false)
+        } else {
+            // 3. Brand-new OAuth signup -> create a fresh account.
+            let account_id = format!("usr-{seq:06}");
+            let roles = Self::default_roles_for_email(&normalized_email);
+            let acct = AccountRecord {
+                account_id: account_id.clone(),
+                email: normalized_email.clone(),
+                email_verified,
+                roles,
+                display_name: cleaned_name.clone(),
+                avatar_url: cleaned_avatar.clone(),
+                password_hash: None,
+                deleted_at_ms: None,
+            };
+            guard.accounts.insert(account_id.clone(), acct.clone());
+            Self::ensure_proficiency_locked(&mut guard, &account_id);
+            (acct, true)
+        };
+
+        guard.oauth_identities.insert(
+            key,
+            OAuthIdentityRecord {
+                provider,
+                provider_subject: subject.to_string(),
+                account_id: account.account_id.clone(),
+                email: normalized_email,
+                display_name: cleaned_name,
+                avatar_url: cleaned_avatar,
+            },
+        );
+
+        let session = Self::issue_session_locked(
+            &mut guard,
+            seq,
+            account.account_id.clone(),
+            account.roles.clone(),
+        );
+        Ok(OAuthLoginOutcome {
+            account,
+            session,
+            is_new_account,
+            provider,
+        })
     }
 
     pub fn resolve_session_token(
@@ -337,26 +633,26 @@ impl InMemoryTransactionalStore {
         }
     }
 
-    /// Commits a private learner curriculum revision (`T01`, `@S09`, `SHARE-001`, `SHARE-002`).
+    /// Commits a private learner syllabus revision (`T01`, `@S09`, `SHARE-001`, `SHARE-002`).
     /// Enforces:
-    /// 1. Separate identifier namespace (`revision_id` and `curriculum_id` cannot use `pub_` / `pubrev_` prefixes).
+    /// 1. Separate identifier namespace (`revision_id` and `syllabus_id` cannot use `pub_` / `pubrev_` prefixes).
     /// 2. Server-owned `owner_account_id` is derived exclusively from `principal.account_id`;
     ///    if `payload` attempts to set `account_id`, `owner_account_id`, `mastered`, or `demonstrated`, it is rejected.
-    pub fn commit_private_curriculum_revision(
+    pub fn commit_private_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
         payload: Value,
-    ) -> Result<CurriculumRevisionRecord, PersistenceError> {
+    ) -> Result<SyllabusRevisionRecord, PersistenceError> {
         if revision_id.starts_with("pubrev_") || revision_id.starts_with("pubrev-") {
             return Err(PersistenceError::IdentifierNamespaceViolation(format!(
-                "private curriculum revision `{revision_id}` cannot use public template revision prefix"
+                "private syllabus revision `{revision_id}` cannot use public template revision prefix"
             )));
         }
-        if curriculum_id.starts_with("pub_") || curriculum_id.starts_with("pub-") {
+        if syllabus_id.starts_with("pub_") || syllabus_id.starts_with("pub-") {
             return Err(PersistenceError::IdentifierNamespaceViolation(format!(
-                "private curriculum `{curriculum_id}` cannot use public publication prefix"
+                "private syllabus `{syllabus_id}` cannot use public publication prefix"
             )));
         }
 
@@ -378,11 +674,11 @@ impl InMemoryTransactionalStore {
 
         let mut guard = self.write_inner();
 
-        // Verify ownership if curriculum_id already exists
-        let existing_revs: Vec<&CurriculumRevisionRecord> = guard
+        // Verify ownership if syllabus_id already exists
+        let existing_revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .collect();
         if let Some(first) = existing_revs.first() {
             principal.require_learner_ownership(&first.owner_account_id)?;
@@ -390,9 +686,9 @@ impl InMemoryTransactionalStore {
         let next_rev_num = existing_revs.len() as u32 + 1;
         let candidate_sha256 = jcs_sha256_hex(&payload);
 
-        let record = CurriculumRevisionRecord {
+        let record = SyllabusRevisionRecord {
             revision_id: revision_id.to_string(),
-            curriculum_id: curriculum_id.to_string(),
+            syllabus_id: syllabus_id.to_string(),
             owner_account_id: principal.account_id.clone(),
             revision_number: next_rev_num,
             candidate_sha256,
@@ -404,18 +700,18 @@ impl InMemoryTransactionalStore {
             .private_revisions
             .insert(revision_id.to_string(), record.clone());
         guard
-            .curriculum_activation_versions
-            .entry(curriculum_id.to_string())
+            .syllabus_activation_versions
+            .entry(syllabus_id.to_string())
             .or_insert(1);
 
         guard
             .schedules
-            .entry(curriculum_id.to_string())
+            .entry(syllabus_id.to_string())
             .or_insert_with(|| ScheduleRevisionRecord {
-                schedule_revision_id: format!("sched-{curriculum_id}-v1"),
-                curriculum_id: curriculum_id.to_string(),
+                schedule_revision_id: format!("sched-{syllabus_id}-v1"),
+                syllabus_id: syllabus_id.to_string(),
                 owner_account_id: principal.account_id.clone(),
-                curriculum_revision_id: revision_id.to_string(),
+                syllabus_revision_id: revision_id.to_string(),
                 etag_version: 1,
                 etag: "\"sched-v1\"".to_string(),
                 timezone: "UTC".to_string(),
@@ -447,17 +743,17 @@ impl InMemoryTransactionalStore {
         Ok(record)
     }
 
-    pub fn get_private_curriculum_revision(
+    pub fn get_private_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
         revision_id: &str,
-    ) -> Result<CurriculumRevisionRecord, PersistenceError> {
+    ) -> Result<SyllabusRevisionRecord, PersistenceError> {
         let guard = self.read_inner();
         let record = guard
             .private_revisions
             .get(revision_id)
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum_revision",
+                resource_type: "syllabus_revision",
                 resource_id: revision_id.to_string(),
             })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
@@ -505,7 +801,7 @@ impl InMemoryTransactionalStore {
             .private_revisions
             .get(source_private_revision_id)
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum_revision",
+                resource_type: "syllabus_revision",
                 resource_id: source_private_revision_id.to_string(),
             })?;
 
@@ -603,18 +899,18 @@ impl InMemoryTransactionalStore {
     ) -> Result<ProgressEventReceiptRecord, PersistenceError> {
         let mut guard = self.write_inner();
 
-        // Verify ownership of the target curriculum
-        let curriculum_owner = guard
+        // Verify ownership of the target syllabus
+        let syllabus_owner = guard
             .private_revisions
             .values()
-            .find(|r| r.curriculum_id == input.curriculum_id)
+            .find(|r| r.syllabus_id == input.syllabus_id)
             .map(|r| r.owner_account_id.clone())
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum",
-                resource_id: input.curriculum_id.clone(),
+                resource_type: "syllabus",
+                resource_id: input.syllabus_id.clone(),
             })?;
 
-        principal.require_learner_ownership(&curriculum_owner)?;
+        principal.require_learner_ownership(&syllabus_owner)?;
 
         let objective_id = input
             .objective_id
@@ -622,7 +918,7 @@ impl InMemoryTransactionalStore {
             .unwrap_or_else(|| format!("obj-for-{}", input.activity_id));
 
         let canonical_payload = json!({
-            "curriculum_id": input.curriculum_id,
+            "syllabus_id": input.syllabus_id,
             "activity_id": input.activity_id,
             "objective_id": objective_id,
             "status": input.status,
@@ -648,7 +944,7 @@ impl InMemoryTransactionalStore {
                 .unwrap_or(ObjectiveProficiencyState::SelfReported);
             return Ok(ProgressEventReceiptRecord {
                 event_id: existing.event_id,
-                curriculum_id: existing.curriculum_id,
+                syllabus_id: existing.syllabus_id,
                 activity_id: existing.activity_id,
                 status: existing.status,
                 time_spent_minutes: existing.time_spent_minutes,
@@ -665,7 +961,7 @@ impl InMemoryTransactionalStore {
         let stored_event = StoredProgressEvent {
             account_id: principal.account_id.clone(),
             event_id: input.event_id.clone(),
-            curriculum_id: input.curriculum_id.clone(),
+            syllabus_id: input.syllabus_id.clone(),
             activity_id: input.activity_id.clone(),
             objective_id: objective_id.clone(),
             status: input.status,
@@ -708,7 +1004,7 @@ impl InMemoryTransactionalStore {
 
         Ok(ProgressEventReceiptRecord {
             event_id: input.event_id,
-            curriculum_id: input.curriculum_id,
+            syllabus_id: input.syllabus_id,
             activity_id: input.activity_id,
             status: input.status,
             time_spent_minutes: input.time_spent_minutes,
@@ -724,15 +1020,15 @@ impl InMemoryTransactionalStore {
     pub fn get_schedule(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
     ) -> Result<ScheduleRevisionRecord, PersistenceError> {
         let guard = self.read_inner();
         let schedule = guard
             .schedules
-            .get(curriculum_id)
+            .get(syllabus_id)
             .ok_or_else(|| PersistenceError::NotFound {
                 resource_type: "schedule",
-                resource_id: curriculum_id.to_string(),
+                resource_id: syllabus_id.to_string(),
             })?;
         principal.require_learner_ownership(&schedule.owner_account_id)?;
         Ok(schedule.clone())
@@ -742,17 +1038,17 @@ impl InMemoryTransactionalStore {
     pub fn patch_schedule(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         if_match: Option<&str>,
         patch: SchedulePatchInput,
     ) -> Result<ScheduleRevisionRecord, PersistenceError> {
         let mut guard = self.write_inner();
         let schedule = guard
             .schedules
-            .get_mut(curriculum_id)
+            .get_mut(syllabus_id)
             .ok_or_else(|| PersistenceError::NotFound {
                 resource_type: "schedule",
-                resource_id: curriculum_id.to_string(),
+                resource_id: syllabus_id.to_string(),
             })?;
 
         // Enforce strict tenant isolation before revealing precondition state (@S36, @S64)
@@ -795,7 +1091,7 @@ impl InMemoryTransactionalStore {
 
         schedule.etag_version += 1;
         schedule.schedule_revision_id =
-            format!("sched-{curriculum_id}-v{}", schedule.etag_version);
+            format!("sched-{syllabus_id}-v{}", schedule.etag_version);
         schedule.etag = format!("\"sched-v{}\"", schedule.etag_version);
 
         Ok(schedule.clone())
@@ -1490,7 +1786,7 @@ impl InMemoryTransactionalStore {
                 canonical_url: "https://deeplearning.ai/certification/rag-engineering".to_string(),
                 resource_type: "certification".to_string(),
                 language: "en".to_string(),
-                description: "Optional proctored certification exam; not required for core curriculum completion.".to_string(),
+                description: "Optional proctored certification exam; not required for core syllabus completion.".to_string(),
                 topics: vec!["rag-python".to_string(), "rag evaluation".to_string()],
                 level: "intermediate".to_string(),
                 objective_ids: vec!["objective-rag-evaluation".to_string()],
@@ -1611,6 +1907,7 @@ impl InMemoryTransactionalStore {
 
         let mut guard = self.write_inner();
         for item in items {
+            Self::sync_catalog_tfidf_entry_locked(&mut guard, &item);
             guard
                 .catalog_resources
                 .insert(item.resource_version_id.clone(), item);
@@ -1619,6 +1916,7 @@ impl InMemoryTransactionalStore {
 
     pub fn upsert_catalog_resource(&self, record: CatalogResourceVersionRecord) {
         let mut guard = self.write_inner();
+        Self::sync_catalog_tfidf_entry_locked(&mut guard, &record);
         guard
             .catalog_resources
             .insert(record.resource_version_id.clone(), record);
@@ -2007,7 +2305,7 @@ impl InMemoryTransactionalStore {
     }
 
     /// Quarantines a catalog resource version via a non-destructive overlay (`CAT-004`, `@S07`, `@S09`, `@S63`).
-    /// Does NOT mutate any existing `CurriculumRevisionRecord` payloads or `candidate_sha256`.
+    /// Does NOT mutate any existing `SyllabusRevisionRecord` payloads or `candidate_sha256`.
     pub fn quarantine_resource_version(
         &self,
         principal: &AuthenticatedPrincipal,
@@ -2090,31 +2388,31 @@ impl InMemoryTransactionalStore {
         Ok(new_state)
     }
 
-    /// Lists non-destructive resource alerts for a learner's curriculum without mutating historical revisions (`@S07`, `@S63`).
-    pub fn list_curriculum_resource_alerts(
+    /// Lists non-destructive resource alerts for a learner's syllabus without mutating historical revisions (`@S07`, `@S63`).
+    pub fn list_syllabus_resource_alerts(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
     ) -> Result<Vec<ResourceAlertRecord>, PersistenceError> {
         let guard = self.read_inner();
-        let revisions: Vec<&CurriculumRevisionRecord> = guard
+        let revisions: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .collect();
         let first = revisions.first().ok_or_else(|| PersistenceError::NotFound {
-            resource_type: "curriculum",
-            resource_id: curriculum_id.to_string(),
+            resource_type: "syllabus",
+            resource_id: syllabus_id.to_string(),
         })?;
         principal.require_learner_ownership(&first.owner_account_id)?;
 
-        Ok(Self::collect_alerts_for_revisions(&guard, curriculum_id, &revisions))
+        Ok(Self::collect_alerts_for_revisions(&guard, syllabus_id, &revisions))
     }
 
     pub(crate) fn collect_alerts_for_revisions(
         guard: &StoreInner,
-        curriculum_id: &str,
-        revisions: &[&CurriculumRevisionRecord],
+        syllabus_id: &str,
+        revisions: &[&SyllabusRevisionRecord],
     ) -> Vec<ResourceAlertRecord> {
         let mut alerts = Vec::new();
         let mut seen = BTreeSet::new();
@@ -2186,7 +2484,7 @@ impl InMemoryTransactionalStore {
                     if overlay.lifted_at.is_none() {
                         alerts.push(ResourceAlertRecord {
                             alert_id: format!("alert-{}-{rv_id}", rev.revision_id),
-                            curriculum_id: curriculum_id.to_string(),
+                            syllabus_id: syllabus_id.to_string(),
                             revision_id: rev.revision_id.clone(),
                             resource_version_id: rv_id.clone(),
                             alert_type: "quarantined".to_string(),
@@ -2205,7 +2503,7 @@ impl InMemoryTransactionalStore {
                     {
                         alerts.push(ResourceAlertRecord {
                             alert_id: format!("alert-{}-{rv_id}", rev.revision_id),
-                            curriculum_id: curriculum_id.to_string(),
+                            syllabus_id: syllabus_id.to_string(),
                             revision_id: rev.revision_id.clone(),
                             resource_version_id: rv_id,
                             alert_type: "broken_link".to_string(),
@@ -2220,43 +2518,43 @@ impl InMemoryTransactionalStore {
         alerts
     }
 
-    /// Commits a semantically validated curriculum revision (`T03`, `T04`, `@S10`, `@S28`).
+    /// Commits a semantically validated syllabus revision (`T03`, `T04`, `@S10`, `@S28`).
     /// Preserves the exact `candidate_sha256` computed over the raw model candidate UTF-8 bytes
     /// and initializes the revision as draft (`initial_is_active = false`) until explicitly activated.
-    pub fn commit_validated_curriculum_revision(
+    pub fn commit_validated_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
         candidate_sha256: &str,
         payload: Value,
         initial_is_active: bool,
-    ) -> Result<CurriculumRevisionRecord, PersistenceError> {
+    ) -> Result<SyllabusRevisionRecord, PersistenceError> {
         if revision_id.starts_with("pubrev_") || revision_id.starts_with("pubrev-") {
             return Err(PersistenceError::IdentifierNamespaceViolation(format!(
-                "private curriculum revision `{revision_id}` cannot use public template revision prefix"
+                "private syllabus revision `{revision_id}` cannot use public template revision prefix"
             )));
         }
-        if curriculum_id.starts_with("pub_") || curriculum_id.starts_with("pub-") {
+        if syllabus_id.starts_with("pub_") || syllabus_id.starts_with("pub-") {
             return Err(PersistenceError::IdentifierNamespaceViolation(format!(
-                "private curriculum `{curriculum_id}` cannot use public publication prefix"
+                "private syllabus `{syllabus_id}` cannot use public publication prefix"
             )));
         }
 
         let mut guard = self.write_inner();
-        let existing_revs: Vec<&CurriculumRevisionRecord> = guard
+        let existing_revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .collect();
         if let Some(first) = existing_revs.first() {
             principal.require_learner_ownership(&first.owner_account_id)?;
         }
         let next_rev_num = existing_revs.len() as u32 + 1;
 
-        let record = CurriculumRevisionRecord {
+        let record = SyllabusRevisionRecord {
             revision_id: revision_id.to_string(),
-            curriculum_id: curriculum_id.to_string(),
+            syllabus_id: syllabus_id.to_string(),
             owner_account_id: principal.account_id.clone(),
             revision_number: next_rev_num,
             candidate_sha256: candidate_sha256.to_string(),
@@ -2268,18 +2566,18 @@ impl InMemoryTransactionalStore {
             .private_revisions
             .insert(revision_id.to_string(), record.clone());
         guard
-            .curriculum_activation_versions
-            .entry(curriculum_id.to_string())
+            .syllabus_activation_versions
+            .entry(syllabus_id.to_string())
             .or_insert(if initial_is_active { 1 } else { 0 });
 
         guard
             .schedules
-            .entry(curriculum_id.to_string())
+            .entry(syllabus_id.to_string())
             .or_insert_with(|| ScheduleRevisionRecord {
-                schedule_revision_id: format!("sched-{curriculum_id}-v1"),
-                curriculum_id: curriculum_id.to_string(),
+                schedule_revision_id: format!("sched-{syllabus_id}-v1"),
+                syllabus_id: syllabus_id.to_string(),
                 owner_account_id: principal.account_id.clone(),
-                curriculum_revision_id: revision_id.to_string(),
+                syllabus_revision_id: revision_id.to_string(),
                 etag_version: 1,
                 etag: "\"sched-v1\"".to_string(),
                 timezone: "UTC".to_string(),
@@ -2311,24 +2609,24 @@ impl InMemoryTransactionalStore {
         Ok(record)
     }
 
-    /// Lists all private curricula owned by `principal` (`T04`).
-    pub fn list_my_curricula(
+    /// Lists all private syllabi owned by `principal` (`T04`).
+    pub fn list_my_syllabi(
         &self,
         principal: &AuthenticatedPrincipal,
-    ) -> Result<Vec<CurriculumSummaryItem>, PersistenceError> {
+    ) -> Result<Vec<SyllabusSummaryItem>, PersistenceError> {
         let guard = self.read_inner();
-        let mut by_curriculum: BTreeMap<String, Vec<&CurriculumRevisionRecord>> = BTreeMap::new();
+        let mut by_syllabus: BTreeMap<String, Vec<&SyllabusRevisionRecord>> = BTreeMap::new();
         for rev in guard.private_revisions.values() {
             if rev.owner_account_id == principal.account_id {
-                by_curriculum
-                    .entry(rev.curriculum_id.clone())
+                by_syllabus
+                    .entry(rev.syllabus_id.clone())
                     .or_default()
                     .push(rev);
             }
         }
 
         let mut items = Vec::new();
-        for (curriculum_id, mut revs) in by_curriculum {
+        for (syllabus_id, mut revs) in by_syllabus {
             revs.sort_by_key(|r| r.revision_number);
             let latest = revs.last().expect("at least one revision");
             let active_revision_id = revs
@@ -2341,15 +2639,15 @@ impl InMemoryTransactionalStore {
                 .get("title")
                 .or_else(|| latest.payload.get("goal").and_then(|g| g.get("title")))
                 .and_then(|v| v.as_str())
-                .unwrap_or("Untitled Curriculum")
+                .unwrap_or("Untitled Syllabus")
                 .to_string();
             let act_ver = guard
-                .curriculum_activation_versions
-                .get(&curriculum_id)
+                .syllabus_activation_versions
+                .get(&syllabus_id)
                 .copied()
                 .unwrap_or(0);
-            items.push(CurriculumSummaryItem {
-                curriculum_id,
+            items.push(SyllabusSummaryItem {
+                syllabus_id,
                 title,
                 active_revision_id,
                 latest_revision_id: latest.revision_id.clone(),
@@ -2360,23 +2658,23 @@ impl InMemoryTransactionalStore {
         Ok(items)
     }
 
-    /// Returns the curriculum overview for `curriculum_id`, enforcing tenant isolation (`T04`).
-    pub fn get_curriculum_overview(
+    /// Returns the syllabus overview for `syllabus_id`, enforcing tenant isolation (`T04`).
+    pub fn get_syllabus_overview(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
-    ) -> Result<CurriculumOverviewRecord, PersistenceError> {
+        syllabus_id: &str,
+    ) -> Result<SyllabusOverviewRecord, PersistenceError> {
         let guard = self.read_inner();
-        let mut revs: Vec<&CurriculumRevisionRecord> = guard
+        let mut revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .collect();
         let owner_account_id = revs
             .first()
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum",
-                resource_id: curriculum_id.to_string(),
+                resource_type: "syllabus",
+                resource_id: syllabus_id.to_string(),
             })?
             .owner_account_id
             .clone();
@@ -2394,17 +2692,17 @@ impl InMemoryTransactionalStore {
             .get("title")
             .or_else(|| latest.payload.get("goal").and_then(|g| g.get("title")))
             .and_then(|v| v.as_str())
-            .unwrap_or("Untitled Curriculum")
+            .unwrap_or("Untitled Syllabus")
             .to_string();
         let act_ver = guard
-            .curriculum_activation_versions
-            .get(curriculum_id)
+            .syllabus_activation_versions
+            .get(syllabus_id)
             .copied()
             .unwrap_or(0);
-        let alerts = Self::collect_alerts_for_revisions(&guard, curriculum_id, &revs);
+        let alerts = Self::collect_alerts_for_revisions(&guard, syllabus_id, &revs);
 
-        Ok(CurriculumOverviewRecord {
-            curriculum_id: curriculum_id.to_string(),
+        Ok(SyllabusOverviewRecord {
+            syllabus_id: syllabus_id.to_string(),
             owner_account_id,
             title,
             active_revision_id,
@@ -2416,50 +2714,50 @@ impl InMemoryTransactionalStore {
         })
     }
 
-    /// Fetches a specific revision within `curriculum_id`, enforcing tenant isolation (`T04`).
-    pub fn get_curriculum_revision_by_curriculum_and_id(
+    /// Fetches a specific revision within `syllabus_id`, enforcing tenant isolation (`T04`).
+    pub fn get_syllabus_revision_by_syllabus_and_id(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
-    ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
+    ) -> Result<(SyllabusRevisionRecord, String), PersistenceError> {
         let guard = self.read_inner();
         let record = guard
             .private_revisions
             .get(revision_id)
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum_revision",
+                resource_type: "syllabus_revision",
                 resource_id: revision_id.to_string(),
             })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
         let act_ver = guard
-            .curriculum_activation_versions
-            .get(curriculum_id)
+            .syllabus_activation_versions
+            .get(syllabus_id)
             .copied()
             .unwrap_or(0);
         Ok((record.clone(), format!("\"cur-act-v{act_ver}\"")))
     }
 
-    /// Explicitly activates a curriculum revision with `If-Match` optimistic concurrency (`T04`, `@S22`, `@S24`).
+    /// Explicitly activates a syllabus revision with `If-Match` optimistic concurrency (`T04`, `@S22`, `@S24`).
     /// - Returns `428 Precondition Required` when `If-Match` is missing.
     /// - Returns `412 Precondition Failed` (`stale_revision`) when `If-Match` does not match the current activation ETag.
-    /// - Marks `revision_id` as `is_active = true` (and deactivates older revisions of the same curriculum), increments `activation_version`, and returns the updated revision + new ETag.
-    pub fn activate_curriculum_revision(
+    /// - Marks `revision_id` as `is_active = true` (and deactivates older revisions of the same syllabus), increments `activation_version`, and returns the updated revision + new ETag.
+    pub fn activate_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
         if_match: Option<&str>,
-    ) -> Result<(CurriculumRevisionRecord, String), PersistenceError> {
+    ) -> Result<(SyllabusRevisionRecord, String), PersistenceError> {
         let mut guard = self.write_inner();
         let owner_account_id = {
             let target = guard
                 .private_revisions
                 .get(revision_id)
-                .filter(|r| r.curriculum_id == curriculum_id)
+                .filter(|r| r.syllabus_id == syllabus_id)
                 .ok_or_else(|| PersistenceError::NotFound {
-                    resource_type: "curriculum_revision",
+                    resource_type: "syllabus_revision",
                     resource_id: revision_id.to_string(),
                 })?;
             target.owner_account_id.clone()
@@ -2467,22 +2765,22 @@ impl InMemoryTransactionalStore {
         principal.require_learner_ownership(&owner_account_id)?;
 
         let current_ver = guard
-            .curriculum_activation_versions
-            .get(curriculum_id)
+            .syllabus_activation_versions
+            .get(syllabus_id)
             .copied()
             .unwrap_or(0);
         let current_etag = format!("\"cur-act-v{current_ver}\"");
         evaluate_if_match(if_match, &current_etag)?;
 
         for rev in guard.private_revisions.values_mut() {
-            if rev.curriculum_id == curriculum_id {
+            if rev.syllabus_id == syllabus_id {
                 rev.is_active = rev.revision_id == revision_id;
             }
         }
         let next_ver = current_ver + 1;
         guard
-            .curriculum_activation_versions
-            .insert(curriculum_id.to_string(), next_ver);
+            .syllabus_activation_versions
+            .insert(syllabus_id.to_string(), next_ver);
         let next_etag = format!("\"cur-act-v{next_ver}\"");
 
         let updated = guard

@@ -48,8 +48,8 @@ export interface FlowView {
   readonly spacedReview: SpacedReviewMode;
 }
 
-export function plannedFlowOrder(curriculum: Record<string, unknown>): FlowOrder {
-  const applied = curriculum["sequence_preference_applied"];
+export function plannedFlowOrder(syllabus: Record<string, unknown>): FlowOrder {
+  const applied = syllabus["sequence_preference_applied"];
   return isOneOf(FLOW_ORDERS, applied) ? applied : "theory_first";
 }
 

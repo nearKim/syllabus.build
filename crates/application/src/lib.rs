@@ -3,20 +3,20 @@
 //!
 //! Architectural alignment:
 //! - **DDD & SOLID**: Defines narrow, segregated ports (`CatalogRetrievalPort`,
-//!   `CurriculumRevisionPersistencePort`, `GenerationJobRepositoryPort`) and pure application
+//!   `SyllabusRevisionPersistencePort`, `GenerationJobRepositoryPort`) and pure application
 //!   use-case services (`interpret_goal_request`, `validate_candidate_and_promote_to_revision`,
 //!   `execute_generation_job`).
 //! - **DRY**: Delegates DAG cycle detection (`validate_dag_acyclic`), pedagogical triad coverage
 //!   (`validate_pedagogical_triad_coverage`), playback-speed ceiling math
 //!   (`ActivityComponentBreakdown::adjusted_effort`), and URL egress safety
-//!   (`validate_outbound_egress_url`) to `curriculum-domain`.
+//!   (`validate_outbound_egress_url`) to `syllabus-domain`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use curriculum_contracts::generated::CANONICAL_SPEC_SHA256;
-use curriculum_contracts::jcs::sha256_bytes_hex;
-use curriculum_contracts::ContractRegistry;
-pub use curriculum_domain::{
+use syllabus_contracts::generated::CANONICAL_SPEC_SHA256;
+use syllabus_contracts::jcs::sha256_bytes_hex;
+use syllabus_contracts::ContractRegistry;
+pub use syllabus_domain::{
     evaluate_resource_fit_and_coverage, normalize_canonical_resource_identity,
     tokenize_search_terms, validate_dag_acyclic, validate_pedagogical_triad_coverage,
     ActivityComponentBreakdown, BookTocChapter, CourseSyllabusUnit, EffortTriplet,
@@ -24,24 +24,29 @@ pub use curriculum_domain::{
     ResourceFitEvaluation, ResourceIndexDescriptor, TfIdfCorpusIndex, TopicCoverageItem,
     TopicCoverageStatus, YoutubeSyllabusItem,
 };
-pub use curriculum_persistence::{
+pub use syllabus_persistence::{
     serde_json::{self, json, Value},
-    validate_egress_url, AcquisitionPermission, CandidateArchiveRecord, CatalogAccessModel,
-    CatalogFilterOutcome, CatalogFilterQuery, CatalogResourceVersionRecord, CatalogReviewEvidence,
-    CatalogReviewInput, CurriculumOverviewRecord, CurriculumRevisionRecord, CurriculumSummaryItem,
+    validate_egress_url, validate_manual_resource_egress_url, AcquisitionPermission,
+    CandidateArchiveRecord, CatalogAccessModel, CatalogFilterOutcome, CatalogFilterQuery,
+    CatalogResourcePatchInput, CatalogResourceVersionRecord, CatalogReviewEvidence,
+    CatalogReviewInput, SyllabusOverviewRecord, SyllabusResourceBindingInput,
+    SyllabusResourceMutationReceipt, SyllabusRevisionRecord, SyllabusSummaryItem,
     GenerationJobRecord, InMemoryTransactionalStore, PersistenceError, ResourceAlertRecord,
     ResourceFreshnessState, ResourceOperationKind, ResourceQuarantineOverlayRecord,
     ResourceReviewStatus, DEFAULT_ALLOWED_CATALOG_HOSTS,
 };
-pub use curriculum_providers::{
+
+pub mod manual_resource;
+pub use manual_resource::*;
+pub use syllabus_providers::{
     default_cheap_model_for_provider, DEFAULT_CHEAP_ANTHROPIC_MODEL, DEFAULT_CHEAP_GEMINI_MODEL,
     DEFAULT_CHEAP_OPENAI_MODEL,
 };
-use curriculum_providers::{
+use syllabus_providers::{
     CandidateGenerationRequest, DeterministicFakeProvider, FakeFaultInjection, InferenceAuthMode,
     InferenceProvider, ProviderError,
 };
-use curriculum_security::{AuthenticatedPrincipal, ReleaseFeatureGates};
+use syllabus_security::{AuthenticatedPrincipal, ReleaseFeatureGates};
 use serde::{Deserialize, Serialize};
 
 /// Segregated port for deterministic catalog metadata filtering and lookup (`T02`, ISP/DIP).
@@ -58,18 +63,18 @@ pub trait CatalogRetrievalPort {
 }
 
 /// Segregated port for archiving raw model candidates and committing validated revisions (`T03`, ISP/DIP).
-pub trait CurriculumRevisionPersistencePort {
+pub trait SyllabusRevisionPersistencePort {
     fn record_candidate_archive(&self, archive: CandidateArchiveRecord);
 
-    fn commit_validated_curriculum_revision(
+    fn commit_validated_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
         candidate_sha256: &str,
         payload: Value,
         initial_is_active: bool,
-    ) -> Result<CurriculumRevisionRecord, PersistenceError>;
+    ) -> Result<SyllabusRevisionRecord, PersistenceError>;
 }
 
 /// Segregated port for asynchronous generation job state transitions (`T03`, `T04`, ISP/DIP).
@@ -99,24 +104,24 @@ impl CatalogRetrievalPort for InMemoryTransactionalStore {
     }
 }
 
-impl CurriculumRevisionPersistencePort for InMemoryTransactionalStore {
+impl SyllabusRevisionPersistencePort for InMemoryTransactionalStore {
     fn record_candidate_archive(&self, archive: CandidateArchiveRecord) {
         InMemoryTransactionalStore::record_candidate_archive(self, archive);
     }
 
-    fn commit_validated_curriculum_revision(
+    fn commit_validated_syllabus_revision(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         revision_id: &str,
         candidate_sha256: &str,
         payload: Value,
         initial_is_active: bool,
-    ) -> Result<CurriculumRevisionRecord, PersistenceError> {
-        InMemoryTransactionalStore::commit_validated_curriculum_revision(
+    ) -> Result<SyllabusRevisionRecord, PersistenceError> {
+        InMemoryTransactionalStore::commit_validated_syllabus_revision(
             self,
             principal,
-            curriculum_id,
+            syllabus_id,
             revision_id,
             candidate_sha256,
             payload,
@@ -506,7 +511,7 @@ pub fn interpret_goal_request(
 /// Context parameters governing semantic validation and revision promotion (`T03`, `T04`).
 #[derive(Debug, Clone)]
 pub struct CandidateValidationContext {
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub revision_id: String,
     pub generation_job_id: String,
     pub request_snapshot_id: String,
@@ -524,12 +529,12 @@ pub struct CandidateValidationContext {
 impl Default for CandidateValidationContext {
     fn default() -> Self {
         Self {
-            curriculum_id: "cur-generated-1".to_string(),
+            syllabus_id: "cur-generated-1".to_string(),
             revision_id: "rev-generated-1".to_string(),
             generation_job_id: "gen-job-1".to_string(),
             request_snapshot_id: "req-snap-1".to_string(),
             provider_id: "deterministic-fake".to_string(),
-            model_id: "fake-curriculum-v1".to_string(),
+            model_id: "fake-syllabus-v1".to_string(),
             playback_speed: 1.0,
             free_only: true,
             max_budget_minor_units: Some(0),
@@ -600,28 +605,28 @@ fn detect_forbidden_fields_or_script(value: &Value, path: &str) -> Result<(), St
 /// Validates a raw UTF-8 model candidate against:
 /// 1. Raw UTF-8 SHA-256 archival (`@S28`, `NFR-005`)
 /// 2. Forbidden fields & executable script/HTML rejection (`@S09`, `@S11`, `GEN-004`)
-/// 3. JSON Schema Draft 2020-12 (`curriculum.schema.json#/$defs/modelCandidate`)
+/// 3. JSON Schema Draft 2020-12 (`syllabus.schema.json#/$defs/modelCandidate`)
 /// 4. Unique IDs (`objective_id`, `module_id`, `activity_id`) & DAG acyclicity (`@S10`, `@S11`, `GEN-003`)
 /// 5. Catalog resource resolution, synthetic fixture gate, quarantine/approval gate & budget/rights rules (`@S05`, `@S06`, `@S07`, `@S09`, `@S10`)
 /// 6. Pedagogical triad coverage (`instruction`, `practice`, `assessment` with `assessment_ref`) (`PED-001`, `@S10`, `@S13`)
 /// 7. Duration component bounds & playback-speed ceiling math (`SCHED-001`, `@S12`, `@S20`)
-/// 8. Promotion to a canonical `curriculum.schema.json` revision and validation against `curriculum.schema.json`.
+/// 8. Promotion to a canonical `syllabus.schema.json` revision and validation against `syllabus.schema.json`.
 pub fn validate_candidate_and_promote_to_revision<S>(
     store: &S,
     principal: &AuthenticatedPrincipal,
     raw_candidate_utf8: &str,
     ctx: &CandidateValidationContext,
-) -> Result<CurriculumRevisionRecord, PersistenceError>
+) -> Result<SyllabusRevisionRecord, PersistenceError>
 where
-    S: CatalogRetrievalPort + CurriculumRevisionPersistencePort,
+    S: CatalogRetrievalPort + SyllabusRevisionPersistencePort,
 {
     let candidate_sha256 = sha256_bytes_hex(raw_candidate_utf8.as_bytes());
-    let archive_id = format!("arch-{}-{}", ctx.curriculum_id, ctx.revision_id);
+    let archive_id = format!("arch-{}-{}", ctx.syllabus_id, ctx.revision_id);
 
     let fail_and_archive = |code: &str, msg: String| -> PersistenceError {
         store.record_candidate_archive(CandidateArchiveRecord {
             archive_id: archive_id.clone(),
-            curriculum_id: ctx.curriculum_id.clone(),
+            syllabus_id: ctx.syllabus_id.clone(),
             revision_id: None,
             provider_id: ctx.provider_id.clone(),
             raw_utf8_payload: raw_candidate_utf8.to_string(),
@@ -647,11 +652,11 @@ where
         ));
     }
 
-    // 3. Validate against curriculum.schema.json#/$defs/modelCandidate
+    // 3. Validate against syllabus.schema.json#/$defs/modelCandidate
     let registry =
         ContractRegistry::global().map_err(|e| PersistenceError::Validation(e.to_string()))?;
     if let Err(schema_err) = registry.validate_def(
-        "curriculum.schema.json",
+        "syllabus.schema.json",
         "modelCandidate",
         &parsed_candidate,
     ) {
@@ -797,7 +802,7 @@ where
                 if cat_res.is_synthetic_fixture && !ctx.allow_synthetic_fixtures_for_test {
                     store.record_candidate_archive(CandidateArchiveRecord {
                         archive_id: archive_id.clone(),
-                        curriculum_id: ctx.curriculum_id.clone(),
+                        syllabus_id: ctx.syllabus_id.clone(),
                         revision_id: None,
                         provider_id: ctx.provider_id.clone(),
                         raw_utf8_payload: raw_candidate_utf8.to_string(),
@@ -816,7 +821,7 @@ where
                 {
                     store.record_candidate_archive(CandidateArchiveRecord {
                         archive_id: archive_id.clone(),
-                        curriculum_id: ctx.curriculum_id.clone(),
+                        syllabus_id: ctx.syllabus_id.clone(),
                         revision_id: None,
                         provider_id: ctx.provider_id.clone(),
                         raw_utf8_payload: raw_candidate_utf8.to_string(),
@@ -836,7 +841,7 @@ where
                     CatalogAccessModel::UnknownPrice => {
                         return Err(PersistenceError::IneligibleCatalogResource {
                             resource_version_id: rv_id,
-                            reason: "unknown_price resource cannot be assigned to core curriculum activities".to_string(),
+                            reason: "unknown_price resource cannot be assigned to core syllabus activities".to_string(),
                         });
                     }
                     CatalogAccessModel::PaidPurchase | CatalogAccessModel::FreemiumTrial => {
@@ -1049,7 +1054,7 @@ where
             .map_err(|e| fail_and_archive("missing_pedagogical_triad", e.to_string()))?;
     }
 
-    // 7. Promote validated modelCandidate to canonical curriculum.schema.json revision
+    // 7. Promote validated modelCandidate to canonical syllabus.schema.json revision
     let coverage_limitations = parsed_candidate
         .get("coverage_limitations")
         .cloned()
@@ -1068,7 +1073,7 @@ where
 
     let promoted = json!({
         "schema_version": "0.2.0",
-        "curriculum_id": ctx.curriculum_id,
+        "syllabus_id": ctx.syllabus_id,
         "revision_id": ctx.revision_id,
         "revision_number": 1,
         "predecessor_revision_id": null,
@@ -1118,17 +1123,17 @@ where
         }
     });
 
-    // 8. Authoritative JSON Schema validation on promoted curriculum.schema.json document
-    if let Err(e) = registry.validate("curriculum.schema.json", &promoted) {
+    // 8. Authoritative JSON Schema validation on promoted syllabus.schema.json document
+    if let Err(e) = registry.validate("syllabus.schema.json", &promoted) {
         return Err(fail_and_archive(
-            "promoted_curriculum_schema_violation",
+            "promoted_syllabus_schema_violation",
             e.to_string(),
         ));
     }
 
     store.record_candidate_archive(CandidateArchiveRecord {
         archive_id,
-        curriculum_id: ctx.curriculum_id.clone(),
+        syllabus_id: ctx.syllabus_id.clone(),
         revision_id: Some(ctx.revision_id.clone()),
         provider_id: ctx.provider_id.clone(),
         raw_utf8_payload: raw_candidate_utf8.to_string(),
@@ -1137,9 +1142,9 @@ where
         validation_errors: Vec::new(),
     });
 
-    store.commit_validated_curriculum_revision(
+    store.commit_validated_syllabus_revision(
         principal,
-        &ctx.curriculum_id,
+        &ctx.syllabus_id,
         &ctx.revision_id,
         &candidate_sha256,
         promoted,
@@ -1154,12 +1159,12 @@ pub fn execute_generation_job<S>(
     store: &S,
     principal: &AuthenticatedPrincipal,
     job_id: &str,
-    curriculum_id: &str,
+    syllabus_id: &str,
     revision_id: &str,
     raw_request: &Value,
 ) -> Result<GenerationJobRecord, PersistenceError>
 where
-    S: CatalogRetrievalPort + CurriculumRevisionPersistencePort + GenerationJobRepositoryPort,
+    S: CatalogRetrievalPort + SyllabusRevisionPersistencePort + GenerationJobRepositoryPort,
 {
     let interpreted = interpret_goal_request(raw_request)?;
     let spec = &interpreted.goal_specification;
@@ -1201,7 +1206,7 @@ where
             owner_account_id: principal.account_id.clone(),
             status: "failed".to_string(),
             stage_history,
-            curriculum_id: None,
+            syllabus_id: None,
             revision_id: None,
             candidate_sha256: None,
             provider_id: "deterministic-fake".to_string(),
@@ -1250,7 +1255,7 @@ where
         max_output_tokens: 4_096,
     };
 
-    let candidate_output = match provider.generate_curriculum_candidate(&gen_req) {
+    let candidate_output = match provider.generate_syllabus_candidate(&gen_req) {
         Ok(out) => out,
         Err(prov_err) => {
             let (code, msg) = match &prov_err {
@@ -1264,7 +1269,7 @@ where
                 owner_account_id: principal.account_id.clone(),
                 status: "failed".to_string(),
                 stage_history,
-                curriculum_id: None,
+                syllabus_id: None,
                 revision_id: None,
                 candidate_sha256: None,
                 provider_id: provider.capabilities().provider_id.clone(),
@@ -1295,7 +1300,7 @@ where
         .unwrap_or(1.0);
 
     let val_ctx = CandidateValidationContext {
-        curriculum_id: curriculum_id.to_string(),
+        syllabus_id: syllabus_id.to_string(),
         revision_id: revision_id.to_string(),
         generation_job_id: job_id.to_string(),
         request_snapshot_id: format!("req-snap-{job_id}"),
@@ -1306,7 +1311,7 @@ where
         max_budget_minor_units: Some(spec.max_budget_minor_units),
         owned_subscription_ids: spec.owned_subscription_ids.clone(),
         allow_paid_fallback: spec.allow_paid_fallback,
-        // DeterministicFakeProvider emits the canonical `curriculum-candidate.synthetic.json` fixture
+        // DeterministicFakeProvider emits the canonical `syllabus-candidate.synthetic.json` fixture
         allow_synthetic_fixtures_for_test: provider.capabilities().provider_id
             == "deterministic-fake",
         // New generated revisions start as draft (`is_active: false`) until explicitly activated via If-Match (`T04`)
@@ -1326,7 +1331,7 @@ where
         owner_account_id: principal.account_id.clone(),
         status: "succeeded".to_string(),
         stage_history,
-        curriculum_id: Some(committed.curriculum_id),
+        syllabus_id: Some(committed.syllabus_id),
         revision_id: Some(committed.revision_id),
         candidate_sha256: Some(committed.candidate_sha256),
         provider_id: provider.capabilities().provider_id.clone(),
@@ -1344,7 +1349,7 @@ where
 // T09: Dynamic Release Readiness Gate Evaluator (`OPS-004`, `OPS-006`, `@S40`..`@S45`)
 // =============================================================================
 
-/// Single parsed requirement row from `specs/001-curriculum-platform/traceability.csv`.
+/// Single parsed requirement row from `specs/001-syllabus-platform/traceability.csv`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TraceabilityRequirementRow {
     pub requirement_id: String,
@@ -1404,7 +1409,7 @@ fn parse_csv_fields(line: &str) -> Vec<String> {
     fields
 }
 
-/// Parses `specs/001-curriculum-platform/traceability.csv` at runtime without hardcoding row counts (`@S40`..`@S45`).
+/// Parses `specs/001-syllabus-platform/traceability.csv` at runtime without hardcoding row counts (`@S40`..`@S45`).
 pub fn parse_traceability_csv(
     csv_text: &str,
 ) -> Result<Vec<TraceabilityRequirementRow>, PersistenceError> {
@@ -1443,11 +1448,11 @@ pub fn parse_traceability_csv(
     Ok(rows)
 }
 
-/// Reads and parses `specs/001-curriculum-platform/traceability.csv` from the workspace root at runtime.
+/// Reads and parses `specs/001-syllabus-platform/traceability.csv` from the workspace root at runtime.
 pub fn load_traceability_rows_from_workspace(
 ) -> Result<Vec<TraceabilityRequirementRow>, PersistenceError> {
-    let path = curriculum_contracts::workspace_root()
-        .join("specs/001-curriculum-platform/traceability.csv");
+    let path = syllabus_contracts::workspace_root()
+        .join("specs/001-syllabus-platform/traceability.csv");
     let raw = std::fs::read_to_string(&path).map_err(|e| {
         PersistenceError::Validation(format!("failed to read traceability.csv: {e}"))
     })?;
@@ -1534,9 +1539,9 @@ pub fn evaluate_dynamic_release_readiness(
     }
 }
 
-/// Structured search prompt specification built in Step 0 from the "New Curriculum" modal.
+/// Structured search prompt specification built in Step 0 from the "New Syllabus" modal.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumSearchPromptSpec {
+pub struct SyllabusSearchPromptSpec {
     pub goal_title: String,
     pub subject: String,
     pub topic_tags: Vec<String>,
@@ -1550,7 +1555,7 @@ pub struct CurriculumSearchPromptSpec {
 
 /// Step 0: Builds the structured search prompt and LaTeX synthesis instruction from modal inputs.
 #[must_use]
-pub fn build_curriculum_search_prompt(
+pub fn build_syllabus_search_prompt(
     goal_title: &str,
     subject: &str,
     topic_tags: &[String],
@@ -1558,7 +1563,7 @@ pub fn build_curriculum_search_prompt(
     sequence_preference: &str,
     free_only: bool,
     weekly_minutes: u32,
-) -> CurriculumSearchPromptSpec {
+) -> SyllabusSearchPromptSpec {
     let clean_goal = goal_title.trim();
     let clean_subject = subject.trim();
     let clean_tags: Vec<String> = topic_tags
@@ -1577,7 +1582,7 @@ pub fn build_curriculum_search_prompt(
     );
     let latex_equation_instruction = "Emit inline ($...$) and block ($$...$$) LaTeX representations for all mathematical equations in Study flow titles, summaries, study prompts, worked examples, and concept checks.".to_string();
 
-    CurriculumSearchPromptSpec {
+    SyllabusSearchPromptSpec {
         goal_title: clean_goal.to_string(),
         subject: clean_subject.to_string(),
         topic_tags: clean_tags,
@@ -1608,10 +1613,10 @@ pub struct DiscoveredWebResourceCandidate {
     pub index_descriptor: ResourceIndexDescriptor,
 }
 
-/// Receipt returned by the 6-stage AI curriculum search, fit-bypass, and polymorphic indexing pipeline.
+/// Receipt returned by the 6-stage AI syllabus search, fit-bypass, and polymorphic indexing pipeline.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchAndIndexPipelineReceipt {
-    pub search_prompt: CurriculumSearchPromptSpec,
+    pub search_prompt: SyllabusSearchPromptSpec,
     pub fit_evaluation: ResourceFitEvaluation,
     pub effective_mode: ResourceFitDecisionMode,
     pub web_search_executed: bool,
@@ -1654,7 +1659,7 @@ pub fn execute_search_and_index_pipeline(
     }
 
     // Step 0: Build structured search prompt
-    let search_prompt = build_curriculum_search_prompt(
+    let search_prompt = build_syllabus_search_prompt(
         goal_title,
         subject,
         topic_tags,
@@ -1711,7 +1716,7 @@ pub fn execute_search_and_index_pipeline(
     if web_search_executed {
         for disc in web_search_discoveries {
             // Validate outbound URL safety before staging
-            curriculum_domain::validate_outbound_egress_url(&disc.canonical_url, &[])
+            syllabus_domain::validate_outbound_egress_url(&disc.canonical_url, &[])
                 .map_err(|e| PersistenceError::Validation(e.to_string()))?;
 
             // Respect learner [Skip] decisions and free-only policy
@@ -1791,7 +1796,7 @@ pub fn execute_search_and_index_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use curriculum_security::PrincipalRole;
+    use syllabus_security::PrincipalRole;
 
     fn learner_a() -> AuthenticatedPrincipal {
         AuthenticatedPrincipal {
@@ -1802,9 +1807,9 @@ mod tests {
     }
 
     fn read_canonical_candidate() -> String {
-        let root = curriculum_contracts::workspace_root();
+        let root = syllabus_contracts::workspace_root();
         std::fs::read_to_string(
-            root.join("specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json"),
+            root.join("specs/001-syllabus-platform/examples/syllabus-candidate.synthetic.json"),
         )
         .expect("read canonical candidate fixture")
     }
@@ -1867,7 +1872,7 @@ mod tests {
             &real_candidate,
             &prod_ctx,
         )
-        .expect("valid real catalog candidate promotes to curriculum revision");
+        .expect("valid real catalog candidate promotes to syllabus revision");
         assert_eq!(promoted_real.payload["total_estimated_minutes"], json!(48));
         assert_eq!(
             promoted_real.payload["total_estimate_range_minutes"],
@@ -1877,7 +1882,7 @@ mod tests {
 
         // 3. Canonical synthetic candidate with `allow_synthetic_fixtures_for_test: true` preserves exact SHA-256
         let test_ctx = CandidateValidationContext {
-            curriculum_id: "cur-synth-1".to_string(),
+            syllabus_id: "cur-synth-1".to_string(),
             revision_id: "rev-synth-1".to_string(),
             allow_synthetic_fixtures_for_test: true,
             ..CandidateValidationContext::default()
@@ -1891,7 +1896,7 @@ mod tests {
         .expect("canonical synthetic candidate promotes");
         assert_eq!(
             promoted_synth.candidate_sha256,
-            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+            "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505"
         );
 
         // 4. Negative: executable <script> markup or forbidden field is rejected (@S11)
@@ -1995,7 +2000,7 @@ mod tests {
         );
         assert_eq!(
             job.candidate_sha256.as_deref(),
-            Some("3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de")
+            Some("435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505")
         );
 
         let archive = store
@@ -2004,7 +2009,7 @@ mod tests {
         assert!(archive.validation_succeeded);
         assert_eq!(
             archive.candidate_sha256,
-            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+            "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505"
         );
     }
 

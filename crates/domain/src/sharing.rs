@@ -59,7 +59,7 @@ impl ModerationVisibilityState {
     }
 }
 
-/// Pure domain sanitizer rules for public/unlisted curriculum snapshots (`SHARE-001`, `SHARE-002`, `SHARE-009`, `@S56`, `@S57`).
+/// Pure domain sanitizer rules for public/unlisted syllabus snapshots (`SHARE-001`, `SHARE-002`, `SHARE-009`, `@S56`, `@S57`).
 #[derive(Debug, Clone, Default)]
 pub struct PublicSnapshotSanitizer;
 
@@ -140,7 +140,7 @@ impl PublicationPreviewDigest {
     ) -> Result<(), DomainError> {
         if !accept_publication_terms {
             return Err(DomainError::PublicSharingInvariantViolation(
-                "accept_publication_terms must be true to publish a curriculum template"
+                "accept_publication_terms must be true to publish a syllabus template"
                     .to_string(),
             ));
         }
@@ -165,7 +165,7 @@ impl PublicationPreviewDigest {
     }
 }
 
-/// Provenance binding stored on an adopted private curriculum (`SHARE-004`, `@S59`).
+/// Provenance binding stored on an adopted private syllabus (`SHARE-004`, `@S59`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AdoptionOriginBinding {
     pub source_publication_id: String,

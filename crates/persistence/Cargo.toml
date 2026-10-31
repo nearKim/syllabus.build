@@ -1,5 +1,5 @@
 [package]
-name = "curriculum-persistence"
+name = "syllabus-persistence"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,9 +7,9 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
-curriculum-domain.workspace = true
-curriculum-contracts.workspace = true
-curriculum-security.workspace = true
+syllabus-domain.workspace = true
+syllabus-contracts.workspace = true
+syllabus-security.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

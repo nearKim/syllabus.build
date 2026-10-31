@@ -12,37 +12,37 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../../..");
 
-const canonicalCurriculum = JSON.parse(
+const canonicalSyllabus = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/curriculum.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/syllabus.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalProficiency = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/proficiency.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/proficiency.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalSchedule = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/schedule.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/schedule.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalProgressEvent = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/progress-event.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/progress-event.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalResource = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/resource.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/resource.synthetic.json"),
     "utf-8"
   )
 );
@@ -146,7 +146,7 @@ test("buildRevisionActivationRequest requires explicit learner confirmation and 
   assert.throws(
     () =>
       buildRevisionActivationRequest({
-        curriculumId: "synthetic-curriculum-1",
+        syllabusId: "synthetic-syllabus-1",
         revisionId: "synthetic-revision-2",
         ifMatch: '"rev-etag-1"',
         confirmedByLearner: false,
@@ -154,11 +154,11 @@ test("buildRevisionActivationRequest requires explicit learner confirmation and 
     /Explicit learner confirmation/
   );
 
-  // Rejects missing If-Match header via buildOperationHeaders("activateCurriculumRevision", ...)
+  // Rejects missing If-Match header via buildOperationHeaders("activateSyllabusRevision", ...)
   assert.throws(
     () =>
       buildRevisionActivationRequest({
-        curriculumId: "synthetic-curriculum-1",
+        syllabusId: "synthetic-syllabus-1",
         revisionId: "synthetic-revision-2",
         confirmedByLearner: true,
       }),
@@ -166,32 +166,32 @@ test("buildRevisionActivationRequest requires explicit learner confirmation and 
   );
 
   const actReq = buildRevisionActivationRequest({
-    curriculumId: "synthetic-curriculum-1",
+    syllabusId: "synthetic-syllabus-1",
     revisionId: "synthetic-revision-2",
     ifMatch: '"rev-etag-1"',
     confirmedByLearner: true,
     acknowledgeScheduleChanges: true,
   });
 
-  assert.equal(actReq.operationId, "activateCurriculumRevision");
+  assert.equal(actReq.operationId, "activateSyllabusRevision");
   assert.equal(actReq.method, "PUT");
-  assert.equal(actReq.path, "/curricula/synthetic-curriculum-1/active-revision");
+  assert.equal(actReq.path, "/syllabi/synthetic-syllabus-1/active-revision");
   assert.equal(actReq.headers["If-Match"], '"rev-etag-1"');
   assert.equal(actReq.body.revision_id, "synthetic-revision-2");
   assert.equal(actReq.confirmedByLearner, true);
   assert.equal(actReq.autoActivated, false);
 });
 
-test("createTodayViewController projects schedule.synthetic.json + curriculum.synthetic.json, enforces review separation (@S19), and deduplicates self_reported_completed events without inflating proficiency (@S17, @S23, @S24)", () => {
+test("createTodayViewController projects schedule.synthetic.json + syllabus.synthetic.json, enforces review separation (@S19), and deduplicates self_reported_completed events without inflating proficiency (@S17, @S23, @S24)", () => {
   const today = createTodayViewController({
-    curriculum: canonicalCurriculum,
+    syllabus: canonicalSyllabus,
     schedule: canonicalSchedule,
     proficiency: canonicalProficiency,
     catalogResources: [canonicalResource],
   });
 
   const initial = today.getState();
-  assert.equal(initial.curriculumId, "synthetic-curriculum-1");
+  assert.equal(initial.syllabusId, "synthetic-syllabus-1");
   assert.equal(initial.scheduleId, "synthetic-schedule-1");
   assert.equal(initial.todayCards.length, 3);
   assert.equal(initial.reviewSeparationValid, true);

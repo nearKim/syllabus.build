@@ -1,4 +1,4 @@
-# Curriculum Platform — Complete Product Specification
+# Syllabus Platform — Complete Product Specification
 
 **Current version:** 0.3.0  
 **Updated:** 2026-10-26  
@@ -6,11 +6,11 @@
 **Purpose:** complete specification for subsequent implementation with Codex.  
 **Status:** owner decisions incorporated; proposed defaults and remaining release decisions are explicit.
 
-This is the one maintained Markdown (`specs/product.md`) containing the latest product, pedagogy, UI, architecture, licensing policy, implementation plan, and embedded machine contracts. It supersedes the earlier versioned documents (`Curriculum_Product_Specification.md`) and specification ZIP. Future edits update `specs/product.md` in place. No companion archive is required.
+This is the one maintained Markdown (`specs/product.md`) containing the latest product, pedagogy, UI, architecture, licensing policy, implementation plan, and embedded machine contracts. It supersedes the earlier versioned documents (`Syllabus_Product_Specification.md`) and specification ZIP. Future edits update `specs/product.md` in place. No companion archive is required.
 
 Generated files may exist outside `specs/product.md` (such as extracted OpenAPI files, JSON Schemas, fixtures, design tokens, traceability CSVs, validation scripts, and generated Rust/TypeScript types), but they must never become independently maintained sources of truth. Every generated or extracted file that supports comments or metadata carries a generated-file notice (`GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md`), and CI runs `python3 scripts/extract_spec.py --check specs/product.md .` to fail the build whenever committed artifacts drift from `specs/product.md`.
 
-The application source code is licensed under the OSI-approved **Apache License, Version 2.0** (`SPDX-License-Identifier: Apache-2.0`) in root `LICENSE`, accompanied by `LEGAL.md` which governs four distinct legal boundaries: (1) `Apache-2.0` open-source software licensing for the codebase, (2) direct user responsibility with AI providers (OpenAI, Anthropic, Google Gemini) under Bring Your Own Key (BYOK) terms, (3) **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** open-knowledge licensing for user-shared curriculum structures in the Community marketplace, and (4) bibliographic metadata and canonical outbound links only for third-party books, videos, papers, and courses unless explicit publisher rights are recorded. The application itself is not scientifically validated by this document.
+The application source code is licensed under the OSI-approved **Apache License, Version 2.0** (`SPDX-License-Identifier: Apache-2.0`) in root `LICENSE`, accompanied by `LEGAL.md` which governs four distinct legal boundaries: (1) `Apache-2.0` open-source software licensing for the codebase, (2) direct user responsibility with AI providers (OpenAI, Anthropic, Google Gemini) under Bring Your Own Key (BYOK) terms, (3) **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** open-knowledge licensing for user-shared syllabus structures in the Community marketplace, and (4) bibliographic metadata and canonical outbound links only for third-party books, videos, papers, and courses unless explicit publisher rights are recorded. The application itself is not scientifically validated by this document.
 
 ## Contents
 
@@ -49,43 +49,43 @@ The application source code is licensed under the OSI-approved **Apache License,
 
 ## 1. Revision changes
 
-**Current revision: 0.3.0 · Updated: 2026-10-28.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Curriculum_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
+**Current revision: 0.3.0 · Updated: 2026-10-28.** This file (`specs/product.md`) supersedes the prior v0.1/v0.2 documents, `Syllabus_Product_Specification.md`, and ZIP as the sole maintained specification. Future revisions update this same Markdown. Historical copies are not parallel sources of authority.
 
 ### Decisions incorporated in this revision
 
 - Establish `specs/product.md` as the single manually maintained source of truth. Embed both the core OpenAPI contract (`openapi.yaml`) and the companion application contract (`app-companion.openapi.yaml`) directly inside `specs/product.md`, require generated-file notices on extracted artifacts, enforce drift detection via `extract_spec.py --check`, and derive requirement, scenario, operation, and P0 counts dynamically from the specification scripts rather than hard-coding counts into release logic.
 - Confirm initial-release product decisions `D01` (adult self-directed learners studying AI/LLM engineering, systems, mathematics, physics, and literature across the seeded domain catalog), `D02` (responsive web and installable PWA initially; native wrappers deferred), `D03` (provider links and approved metadata by default; explicit permissions required for full-text ingestion, embedding, model submission, and derived assessment generation), `D09` (external coding environments only at launch; no hosted arbitrary-code execution), `D10` (English first with language-tagged records and contracts), and `D12` (provider-neutral inference interface: deterministic fake provider first, plus OpenAI, Anthropic, and Google Gemini with native API web-search grounding and per-provider model selection, no provider-specific domain leakage, and no silent fallback from BYOK to hosted paid inference).
-- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, standard PostgreSQL 16 + `bm25` crate (`TfIdfCorpusIndex`) + native PostgreSQL `tsvector`/`GIN`, SQLx with explicit SQL migrations `0000`–`0007`, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, `minisearch` in-memory BM25/TF-IDF search index, live E2E curriculum generation with fast provider defaults + incremental catalog auto-indexing, CSS variables generated from canonical UI tokens, KaTeX / accessible MathML rendering via `MathText.tsx` and `SafeActivityRenderer`, TomSelect curriculum picker, Cropper.js profile photo modal, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
-- Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn**, the visible sidebar sub-navigation is consolidated into 3 focused tabs—**Today**, **Progress**, and **Resources**—by merging Plan actions (`Activate plan`, `Share with Community`), macro curriculum `Goal` / `Covers` context, and unit-gate progression directly into **Today**, while keeping the active curricula switcher (`Your curricula`) in the left sidebar and retaining synchronized **Plan** (**Map** / **Outline**) deep-link state for programmatic inspection.
-- Implement the **5-step curriculum intake & synthesis pipeline (`Step 0`–`Step 4`)** with polymorphic resource indexing (`ResourceIndexDescriptor`: `BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) and progressive disclosure in the **New Curriculum** modal:
+- Adopt a polyglot monorepo architecture with a **Rust** backend (`Cargo` workspace: Axum, Tokio, Tower/`tower-http`, Serde, standard PostgreSQL 16 + `bm25` crate (`TfIdfCorpusIndex`) + native PostgreSQL `tsvector`/`GIN`, SQLx with explicit SQL migrations `0000`–`0007`, PostgreSQL `SELECT ... FOR UPDATE SKIP LOCKED` transactional outbox/job worker, `jsonschema` Draft 2020-12 runtime validation, RFC 8785 JCS verified byte-for-byte against all digest fixtures, OpenTelemetry tracing) and a **TypeScript** frontend (`pnpm` workspace: Preact + `@preact/signals`, strict TypeScript `.tsx`, `minisearch` in-memory BM25/TF-IDF search index, live E2E syllabus generation with fast provider defaults + incremental catalog auto-indexing, CSS variables generated from canonical UI tokens, KaTeX / accessible MathML rendering via `MathText.tsx` and `SafeActivityRenderer`, TomSelect syllabus picker, Cropper.js profile photo modal, Playwright + `axe-core`), using Python solely for the specification extraction and validation scripts.
+- Resolve navigation hierarchy across the specification: top-level destinations are **Learn**, **Explore**, and **Settings**; inside **Learn**, the visible sidebar sub-navigation is consolidated into 3 focused tabs—**Today**, **Progress**, and **Resources**—by merging Plan actions (`Activate plan`, `Share with Community`), macro syllabus `Goal` / `Covers` context, and unit-gate progression directly into **Today**, while keeping the active syllabi switcher (`Your syllabi`) in the left sidebar and retaining synchronized **Plan** (**Map** / **Outline**) deep-link state for programmatic inspection.
+- Implement the **5-step syllabus intake & synthesis pipeline (`Step 0`–`Step 4`)** with polymorphic resource indexing (`ResourceIndexDescriptor`: `BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) and progressive disclosure in the **New Syllabus** modal:
   - Starts in a focused empty state until the learner enters a multi-line `Goal` or selects a topic.
   - Discloses a **3-tier cascading dependent tag tree** (`Subject` → `Topics` with prerequisite auto-selection and `prereq` / `+N` badges → `Sub-topics` with `via <Parent>` badges) and a **Suggested fit** (`Step 1.5`) tray with a live search-bypass status badge (`No AI generation · No web search`, `No web search · AI synthesis required`, or `Search N missing topics · AI synthesis required`).
-  - Separates **Existing curricula** (`Open plan →` for personal plans or `Use plan →` for Community templates) from **Materials**, which consolidates catalog matches and AI web-search discoveries into a single list with indented expandable polymorphic TOC/video details and a single check toggle per resource.
+  - Separates **Existing syllabi** (`Open plan →` for personal plans or `Use plan →` for Community templates) from **Materials**, which consolidates catalog matches and AI web-search discoveries into a single list with indented expandable polymorphic TOC/video details and a single check toggle per resource.
 - Clarify prerequisite and `mastery_gated` behavior (`PED-006`): ordinary learning content is never hard-locked; learners may study ahead with visible warnings and recommended bridging work; accessing or completing dependent content never creates prerequisite evidence; only activities explicitly marked `mastery_gated` require demonstrated proficiency, an auditable learner override when an active reviewed anchor exists, or an auditable acknowledgement (`Prerequisite unverified — no reviewed anchor available`) when no reviewed anchor exists; formative practice never creates `demonstrated` status.
-- Clarify review scheduling and deterministic adoption conflict handling: `CurriculumRevision` remains immutable while review occurrences live in `ScheduleRevision` and `ReviewScheduleItem`, recalculating future entries without rewriting past learning evidence; deterministic adoption substitutes an approved eligible replacement when available or omits ineligible resources with `coverage_status: "partial"` and explicit `coverage_limitations` requiring learner review before activation.
+- Clarify review scheduling and deterministic adoption conflict handling: `SyllabusRevision` remains immutable while review occurrences live in `ScheduleRevision` and `ReviewScheduleItem`, recalculating future entries without rewriting past learning evidence; deterministic adoption substitutes an approved eligible replacement when available or omits ineligible resources with `coverage_status: "partial"` and explicit `coverage_limitations` requiring learner review before activation.
 - Define a strict **Impeccable UI Craft Floor (`AGENTS.md` and `scripts/impeccable-gate.mjs`)** inspired by the owner's Neo Financial reference: zero box-in-box nesting (`[box-in-box]`), zero horizontal divider spam or decorative progress bars (`[line-abuse]`), zero thick side-tab accent borders (`[side-tab]`), and an unmistakable **4-tier typographic and spatial hierarchy** (`[hierarchy-blur]`) across Titles, regular-weight muted Descriptions (`#5B636E`), and structurally indented Contents, paired with Option H borderless tonal unit swimlanes (`var(--color-swimlane)`).
-- Replace the former custom personal-use license draft (`LICENSE-PERSONAL-USE.md`) with the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE` and a four-part legal boundary document in `LEGAL.md` (`D06`, `D15`, `OPS-006`, `@S40`): `Apache-2.0` open-source software license; direct user responsibility with AI providers under BYOK terms; `CC BY 4.0` open-knowledge licensing for published Community curriculum structures; and bibliographic metadata plus canonical outbound links only for third-party educational resources.
+- Replace the former custom personal-use license draft (`LICENSE-PERSONAL-USE.md`) with the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE` and a four-part legal boundary document in `LEGAL.md` (`D06`, `D15`, `OPS-006`, `@S40`): `Apache-2.0` open-source software license; direct user responsibility with AI providers under BYOK terms; `CC BY 4.0` open-knowledge licensing for published Community syllabus structures; and bibliographic metadata plus canonical outbound links only for third-party educational resources.
 - Upgrade **Explore** (Community marketplace) and **My Publications**:
   - Replace "Marketplace" user-facing wording with **Community** and organize discovery filters into a **3-tier hierarchy** (`Category` → `Subject` → `Topic`) plus cross-cutting `Difficulty` (`Formal`, `Applied`, `Intuitive`) and `Format` (`Quiz`, `Code Lab`, `Problem Set`, `Rubric`) facets.
-  - Provide a full curriculum **Details / Adopt** modal displaying every unit's activities, duration, and resource provenance with a `Select all` toggle and transitive prerequisite auto-inclusion.
+  - Provide a full syllabus **Details / Adopt** modal displaying every unit's activities, duration, and resource provenance with a `Select all` toggle and transitive prerequisite auto-inclusion.
   - Elevate **My Publications** into an open-knowledge philanthropy showcase with a custom `OpenKnowledgeArt` SVG emblem, hero focal card, icon badges, `CC BY 4.0` license seal, and community impact metrics.
 - Streamline **Authentication**, **Navbar**, and **Profile & Settings**:
   - Simplify auth to `guest` vs. `authenticated` (plus `session_expired` banner) with a navbar sun/moon theme toggle button and a standard avatar account dropdown (`Profile & Settings`, `Sign out`, without redundant account-switching menus).
-  - Structure **Profile & Settings** around five focused sections—(1) a left master-detail **Profile** form with a clickable circular avatar badge and interactive **Cropper.js** modal, (2) **Your contributions** featuring an impact banner with learner avatar stack, typographic underlines, shared curriculum status rows, and learner comments, (3) an unshaded **AI providers (BYOK)** data table with provider brand logos (OpenAI, Anthropic, Google Gemini), per-provider **Model** selector, inline API key input + checkmark apply button, Primary star vs. Standby status, and native API web-search grounding labels (`Responses API · Web search`, `Messages API · Web search`, `Google Search grounding`), (4) a Google Calendar–style **Reminders** bar with selectable IANA **Time zone** dropdown, weekday/weekend times, and lead-time selector, and (5) **Privacy & account** export/deletion and `Apache-2.0` / `CC BY 4.0` disclosures (removing separate Appearance and Usage & billing sections from Settings).
+  - Structure **Profile & Settings** around five focused sections—(1) a left master-detail **Profile** form with a clickable circular avatar badge and interactive **Cropper.js** modal, (2) **Your contributions** featuring an impact banner with learner avatar stack, typographic underlines, shared syllabus status rows, and learner comments, (3) an unshaded **AI providers (BYOK)** data table with provider brand logos (OpenAI, Anthropic, Google Gemini), per-provider **Model** selector, inline API key input + checkmark apply button, Primary star vs. Standby status, and native API web-search grounding labels (`Responses API · Web search`, `Messages API · Web search`, `Google Search grounding`), (4) a Google Calendar–style **Reminders** bar with selectable IANA **Time zone** dropdown, weekday/weekend times, and lead-time selector, and (5) **Privacy & account** export/deletion and `Apache-2.0` / `CC BY 4.0` disclosures (removing separate Appearance and Usage & billing sections from Settings).
 - Make diagnostic duration a burden/sampling target rather than a hidden speed test; preserve unknown evidence and provide accessible pause/stop behavior.
 
-The prior accepted scope remains: reviewed source catalog/RAG, hosted AI and encrypted server-mediated BYOK, reviewed assessment anchors, study reminders, public curriculum revisions/upvotes/private adoption, objective-level proficiency, and mathematical depth independent of prior knowledge and teaching order.
+The prior accepted scope remains: reviewed source catalog/RAG, hosted AI and encrypted server-mediated BYOK, reviewed assessment anchors, study reminders, public syllabus revisions/upvotes/private adoption, objective-level proficiency, and mathematical depth independent of prior knowledge and teaching order.
 
 ### Document and contract versioning
 
-This specification is version 0.3.0. Both embedded OpenAPI documents (`openapi.yaml` and `app-companion.openapi.yaml`) are version 0.3.0 and pin OpenAPI 3.1.2. Existing curriculum/resource/request payloads intentionally retain `schema_version` `0.2.0`: additive optional properties (`mastery_gated`, `coverage_status`, `review_schedule_items`) and companion endpoints preserve backward compatibility with all baseline fixtures and their cryptographic digests. Documentation versions, API description versions, and serialized payload versions are separate version spaces.
+This specification is version 0.3.0. Both embedded OpenAPI documents (`openapi.yaml` and `app-companion.openapi.yaml`) are version 0.3.0 and pin OpenAPI 3.1.2. Existing syllabus/resource/request payloads intentionally retain `schema_version` `0.2.0`: additive optional properties (`mastery_gated`, `coverage_status`, `review_schedule_items`) and companion endpoints preserve backward compatibility with all baseline fixtures and their cryptographic digests. Documentation versions, API description versions, and serialized payload versions are separate version spaces.
 
 No live payment processor integration, multi-tenant cloud production deployment, or longitudinal educational-efficacy study has been completed by this specification. See section 22 for actual artifact verification and remaining implementation work.
 ---
 
 ## 2. How to use the specification
 
-This is the single maintained product specification (`specs/product.md`) for a curriculum and study application on web and mobile. Read sections 3–6 for decisions, requirements, durable principles, and vocabulary; section 9 for the complete UI; sections 7–8 for evidence and adaptation; sections 10–17 for sharing, BYOK, operations, architecture, data, contracts, and rights. Section 18 defines implementation slices and section 19 gives the Codex handoff.
+This is the single maintained product specification (`specs/product.md`) for a syllabus and study application on web and mobile. Read sections 3–6 for decisions, requirements, durable principles, and vocabulary; section 9 for the complete UI; sections 7–8 for evidence and adaptation; sections 10–17 for sharing, BYOK, operations, architecture, data, contracts, and rights. Section 18 defines implementation slices and section 19 gives the Codex handoff.
 
 Use the stable requirement IDs, Given/When/Then acceptance scenarios, JSON Schema Draft 2020-12, and pinned OpenAPI contracts. [ISO/IEC/IEEE 29148](https://www.iso.org/standard/72089.html) is the requirements-engineering reference; formal conformity to its full text is not asserted. The organization and slice workflow draw on [GitHub Spec Kit](https://github.com/github/spec-kit), without claiming that one agent specification framework is a universal standard or requiring its installation.
 
@@ -106,7 +106,7 @@ The product rules and recorded decisions govern behavior. The embedded contracts
 | Appendix E | Requirement and supporting-control traceability CSVs |
 | Appendix F | Extraction/validation scripts and pinned validation dependencies |
 
-Embedded asset paths are intended extraction destinations for implementation and validation, not competing specification sources. The extraction script (`scripts/extract_spec.py`) writes generated files with generated-file notices, deterministically generates read-only task-specific slice context views (`specs/001-curriculum-platform/slices/*.context.md`) containing each slice's requirements, acceptance scenarios, OpenAPI operations, JSON Schemas, controls, and the canonical `specs/product.md` SHA-256 digest, refuses unsafe paths or unintended overwrites, and provides `--check` mode for CI drift enforcement. Changes to any contract, fixture, token, traceability artifact, or slice context view must first be reflected in `specs/product.md`. Do not create another independently maintained PRD, UX specification, companion contract, or dated Markdown on each revision.
+Embedded asset paths are intended extraction destinations for implementation and validation, not competing specification sources. The extraction script (`scripts/extract_spec.py`) writes generated files with generated-file notices, deterministically generates read-only task-specific slice context views (`specs/001-syllabus-platform/slices/*.context.md`) containing each slice's requirements, acceptance scenarios, OpenAPI operations, JSON Schemas, controls, and the canonical `specs/product.md` SHA-256 digest, refuses unsafe paths or unintended overwrites, and provides `--check` mode for CI drift enforcement. Changes to any contract, fixture, token, traceability artifact, or slice context view must first be reflected in `specs/product.md`. Do not create another independently maintained PRD, UX specification, companion contract, or dated Markdown on each revision.
 
 ### Product baseline and remaining defaults
 
@@ -134,13 +134,13 @@ The owner confirmed initial-release defaults for `D01`, `D02`, `D03`, `D06`, `D0
 | D03 | **Confirmed:** provider links and approved metadata by default | Full-text ingestion, embedding, model submission, and derived assessment generation require explicit recorded permissions (`CAT-003`). Polymorphic resource indexing (`ResourceIndexDescriptor`) stores structured chapter TOCs, brief summaries, and playlist video syllabi within permitted bounds. |
 | D04 | **Confirmed:** study reminders initially | Best-effort opt-in reminders configured via a Google Calendar–style reminder bar (IANA timezone selector, weekday/weekend times, and lead-time selector); no exact audible alarm requirement for launch. Native alarms stay an optional later extension (`T10`). |
 | D05 | **Delegated by owner:** follow established BYOK service practice | Adopt server-mediated encrypted credential custody, an unshaded multi-provider BYOK table (OpenAI, Anthropic, Google Gemini) with per-provider model selection, inline masked API key replacement, Primary vs. Standby routing, bounded jobs, and no automatic paid fallback. See [BYOK policy](#11-byok-and-routing). |
-| D06 | **Confirmed:** OSI-approved `Apache-2.0` open-source software license with separate content and BYOK legal boundaries | License the application source code under the Apache License, Version 2.0 (`LICENSE`, `SPDX-License-Identifier: Apache-2.0`) and document the four-part legal boundary in `LEGAL.md` (`Apache-2.0` software, BYOK direct provider responsibility, `CC BY 4.0` shared community curriculum structures, and bibliographic metadata + canonical links only for third-party educational resources). |
+| D06 | **Confirmed:** OSI-approved `Apache-2.0` open-source software license with separate content and BYOK legal boundaries | License the application source code under the Apache License, Version 2.0 (`LICENSE`, `SPDX-License-Identifier: Apache-2.0`) and document the four-part legal boundary in `LEGAL.md` (`Apache-2.0` software, BYOK direct provider responsibility, `CC BY 4.0` shared community syllabus structures, and bibliographic metadata + canonical links only for third-party educational resources). |
 | D08 | **Confirmed:** maintain reviewed assessment anchors | Use reviewed objective-aligned gates and diagnostics; generated practice remains a separate assurance level. |
 | D09 | **Confirmed:** external coding environments only at launch | Activities use `execution_mode: "external"`. No hosted arbitrary-code execution at launch (`CTRL-034`). |
-| D10 | **Confirmed:** English first (`en`), with all stored content and contracts language-tagged | Every resource, curriculum, request, and diagnostic carries a BCP 47 `language` tag. |
+| D10 | **Confirmed:** English first (`en`), with all stored content and contracts language-tagged | Every resource, syllabus, request, and diagnostic carries a BCP 47 `language` tag. |
 | D12 | **Confirmed:** provider-neutral inference interface with phased providers, per-provider model selection, and native API web-search grounding | Use direct official REST APIs through `reqwest` unless a separately reviewed Rust client is selected. Define an explicit `ProviderCapabilities` model (`structured_output`, `streaming`, `output_limit`, `usage_reporting`). Implement `DeterministicFakeProvider` first (Private Alpha), then OpenAI (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-luna`, `gpt-5.4` with Responses API `web_search_preview`), Anthropic (`claude-opus-5-5`, `claude-fable-5-1`, `claude-sonnet-5-5`, `claude-haiku-5-5` with Messages API `web_search_20250305`), and Google Gemini (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash` with `google_search` grounding). Provider-specific SDK or response types must never enter the domain model, and a failed BYOK request must never silently fall back to hosted paid inference. |
-| D13 | **Confirmed:** publish/share curricula and upvote in the Community marketplace | Private by default; public or unlisted immutable snapshots licensed under `CC BY 4.0`, 3-tier Community discovery (`Category`, `Subject`, `Topic`) + `Difficulty` / `Format` facets, full curriculum Details modal with `Select all` and transitive prerequisite closure, My Publications open-knowledge philanthropy showcase, revision-specific upvotes, and minimum moderation/privacy controls. |
-| D14 | **Confirmed:** assess topic proficiency and adjust curricula; mathematical thoroughness is configurable | Separate evidence from desired depth, sequence, outcomes, and available time. Diagnose relevant objectives and preview adaptations. Strong linear algebra does not imply less mathematics or strength in unrelated prerequisites. |
+| D13 | **Confirmed:** publish/share syllabi and upvote in the Community marketplace | Private by default; public or unlisted immutable snapshots licensed under `CC BY 4.0`, 3-tier Community discovery (`Category`, `Subject`, `Topic`) + `Difficulty` / `Format` facets, full syllabus Details modal with `Select all` and transitive prerequisite closure, My Publications open-knowledge philanthropy showcase, revision-specific upvotes, and minimum moderation/privacy controls. |
+| D14 | **Confirmed:** assess topic proficiency and adjust syllabi; mathematical thoroughness is configurable | Separate evidence from desired depth, sequence, outcomes, and available time. Diagnose relevant objectives and preview adaptations. Strong linear algebra does not imply less mathematics or strength in unrelated prerequisites. |
 | D15 | **Resolved:** OSI-approved `Apache-2.0` license adopted in `LICENSE` with `LEGAL.md` boundaries | `Cargo.toml`, `package.json`, `LICENSE`, and `LEGAL.md` are aligned on `SPDX-License-Identifier: Apache-2.0` (`@S40`, `OPS-006`). Production release sign-off remains guarded by `d15_operative_license_approved` in `ReleaseFeatureGates`. |
 | D17 | **Confirmed:** minimalist Neo Financial–inspired UI with Impeccable craft floor enforcement | Section 9 and `AGENTS.md` / `scripts/impeccable-gate.mjs` enforce neutral opaque study surfaces, Option H borderless tonal unit swimlanes, a strict 4-tier typographic and spatial hierarchy, zero `[box-in-box]` nesting, zero `[line-abuse]` divider spam, and accessible opaque fallbacks. |
 | D18 | **Confirmed:** one maintained Markdown (`specs/product.md`) containing the latest complete specification | `specs/product.md` is canonical. Contracts (`openapi.yaml` and `app-companion.openapi.yaml`), schemas, examples, acceptance criteria, and traceability are embedded appendices extracted and verified in CI. |
@@ -154,14 +154,14 @@ The following decisions remain guarded by explicit release gates (`ReleaseFeatur
 | D07 | Commercial pricing, payment/tax vendor, and refund/expiration terms | Separate service entitlement and inference ledger with deterministic payment/checkout fakes | Block live credit checkout and paid hosted-credit top-ups (`FEATURE_LIVE_BILLING_ENABLED=false`) until approved | Real checkout (`T07` / `T09`) |
 | D11 | Production cloud, secret-manager, and authentication vendor | Implement provider-neutral HTTP/domain `AuthVerifier` boundary with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`) for Private Alpha local work | Mandatory gate before any internet-facing beta, BYOK credential storage (`T07A`), hosted billing (`T07B`/`T07D`), or public publishing (`T13`) | Internet-facing Closed Beta / `T07A` / `T07B` / `T13` / `T09` |
 | D15 | Production operator sign-off on `Apache-2.0` `LICENSE` and `LEGAL.md` deployment notices | Ship `LICENSE` (`Apache-2.0`) and `LEGAL.md` in repository root and verify via `@S40` / `OPS-006` contract tests | Keep `d15_operative_license_approved` explicit in `ReleaseFeatureGates` for production deployment sign-off | Public production deployment (`T09`) |
-| D16 | Final public-curriculum retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit `CC BY 4.0` terms-version consent (`LEGAL.md`), configurable retention windows, and no third-party analytics by default | Block public curriculum publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until production retention periods are approved | First public publication (`T13` / `T09`) |
+| D16 | Final public-syllabus retention periods, backup RPO/RTO targets, and analytics vendor | Enforce explicit `CC BY 4.0` terms-version consent (`LEGAL.md`), configurable retention windows, and no third-party analytics by default | Block public syllabus publishing in production (`FEATURE_PUBLIC_SHARING_ENABLED=false`) until production retention periods are approved | First public publication (`T13` / `T09`) |
 
 ### Resolved permission scope and open-source licensing
 
 The repository has transitioned from the earlier draft custom personal-use license (`LICENSE-PERSONAL-USE.md`) to the standard, OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE`, paired with `LEGAL.md`. This cleanly separates four distinct legal domains without ambiguity:
 1. **Open-Source Software (`Apache-2.0`):** All source code, schemas, UI components, and scripts in the repository are licensed under `Apache-2.0`, with inbound contributions governed by `Apache-2.0` Section 5 ("Submission of Contributions").
 2. **Bring Your Own Key (`BYOK`) Direct Provider Terms:** When a learner configures an API key for OpenAI, Anthropic, or Google Gemini, they act directly as the API account holder under that provider's Terms of Service and direct billing.
-3. **Community Curricula (`CC BY 4.0`):** Publicly shared curriculum structures, module graphs, learning objectives, and author-written study notes in Explore are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), excluding all private learner records.
+3. **Community Syllabi (`CC BY 4.0`):** Publicly shared syllabus structures, module graphs, learning objectives, and author-written study notes in Explore are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), excluding all private learner records.
 4. **Third-Party Educational Resources (Metadata & Links Only):** Referenced books, papers, courses, and playlists remain the intellectual property of their respective authors and publishers; the platform stores only bibliographic metadata, permitted index descriptors, and canonical outbound links unless explicit permissions are recorded in `AcquisitionPermission`.
 
 ### Decision procedure
@@ -171,20 +171,20 @@ Keep the owner response, date, rationale, affected requirements, and migration i
 
 ## 4. Product requirements
 
-## Curriculum Platform — product requirements specification
+## Syllabus Platform — product requirements specification
 
 **Document version:** 0.3.0  
 **Date:** 2026-10-26  
 **Status:** reviewable specification draft; proposed defaults are explicitly identified.  
-**Audience:** product owner, Codex implementation agent, engineers, curriculum curators, and evaluators.
+**Audience:** product owner, Codex implementation agent, engineers, syllabus curators, and evaluators.
 
 ### 1. Product outcome
 
-Turn a learner's broad goal into a credible, achievable curriculum that combines explanation, practical work, assessment, and review, then helps the learner execute and revise it across web and mobile.
+Turn a learner's broad goal into a credible, achievable syllabus that combines explanation, practical work, assessment, and review, then helps the learner execute and revise it across web and mobile.
 
 Example input: “I want to learn everything about LLMs.” The useful result is an agreed scope of observable capabilities, a prerequisite map, selected credible materials, a realistic study plan, and evidence of progress. The app must not present an undefined field as exhaustively covered.
 
-The application is OSI-approved open-source software licensed under the **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE`, with separate legal boundaries documented in `LEGAL.md` for BYOK direct provider terms, `CC BY 4.0` shared community curriculum structures, and metadata/link-only third-party educational resources (`OPS-006`, `@S40`). See [licensing policy](#17-software-contribution-and-content-licensing). It supports two explicitly selected AI inference modes: users provide their own provider key (BYOK across OpenAI, Anthropic, and Google Gemini with per-provider model selection and native API web-search grounding), or use hosted AI inference. Paid courses, exams, books, cloud labs, and app inference are separate expenses.
+The application is OSI-approved open-source software licensed under the **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE`, with separate legal boundaries documented in `LEGAL.md` for BYOK direct provider terms, `CC BY 4.0` shared community syllabus structures, and metadata/link-only third-party educational resources (`OPS-006`, `@S40`). See [licensing policy](#17-software-contribution-and-content-licensing). It supports two explicitly selected AI inference modes: users provide their own provider key (BYOK across OpenAI, Anthropic, and Google Gemini with per-provider model selection and native API web-search grounding), or use hosted AI inference. Paid courses, exams, books, cloud labs, and app inference are separate expenses.
 
 #### 1.1 Confirmed requirements from the request
 
@@ -192,8 +192,8 @@ The application is OSI-approved open-source software licensed under the **Apache
 | --- | --- |
 | Web and mobile | Shared product behavior and synchronized learning state across screen sizes; responsive web and installable PWA confirmed for initial launch (D02), with native wrappers deferred |
 | BYOK and paid hosted AI | Both modes are first-class; BYOK supports OpenAI, Anthropic, and Google Gemini with per-provider model selection, Primary/Standby keys, and native API web-search grounding; source material purchases are separate |
-| Open-source software and contributions | OSI-approved `Apache-2.0` license (`LICENSE`) with `LEGAL.md` governing BYOK direct provider terms, `CC BY 4.0` shared community curricula, and metadata/link-only third-party resources |
-| Goal-based curriculum generation | 5-step intake pipeline (`Step 0`–`Step 4`) combining a seeded, reviewed catalog with polymorphic Book/YouTube indexing, `Step 1.5` fit evaluation, and native API web-search gap discovery |
+| Open-source software and contributions | OSI-approved `Apache-2.0` license (`LICENSE`) with `LEGAL.md` governing BYOK direct provider terms, `CC BY 4.0` shared community syllabi, and metadata/link-only third-party resources |
+| Goal-based syllabus generation | 5-step intake pipeline (`Step 0`–`Step 4`) combining a seeded, reviewed catalog with polymorphic Book/YouTube indexing, `Step 1.5` fit evaluation, and native API web-search gap discovery |
 | Catalog retrieval and TF-IDF cosine indexing | Sublinear TF-IDF + L2-normalized cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`) assists selection and grounding with zero external embedding API dependency; structured facts and polymorphic resource index descriptors (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) remain authoritative |
 | Paid/free preferences | Enforce eligibility and disclose costs, subscriptions, and unknowns |
 | Extremely credible materials | Verify individual works and creator expertise; platform name alone is insufficient |
@@ -202,7 +202,7 @@ The application is OSI-approved open-source software licensed under the **Apache
 | Minimal, diagram-first interface | Neo Financial–inspired visual restraint, Option H borderless tonal unit swimlanes, strict Impeccable craft floor (zero box-in-box, zero line abuse, 4-tier typographic and spatial hierarchy), KaTeX/MathML rendering, and 3-tab Learn workspace (**Today**, **Progress**, **Resources**); full details in section 9 |
 | Configurable teaching order | Theory-first, application-first, and balanced modes |
 | Scientific grounding | Evidence-based component choices, qualified claims, and evaluation of the product itself |
-| Publishing and upvotes | Opt-in shareable curriculum versions under `CC BY 4.0`, 3-tier Community discovery, My Publications open-knowledge philanthropy showcase, private adoption with `Select all`, and authenticated upvotes |
+| Publishing and upvotes | Opt-in shareable syllabus versions under `CC BY 4.0`, 3-tier Community discovery, My Publications open-knowledge philanthropy showcase, private adoption with `Select all`, and authenticated upvotes |
 | Proficiency adaptation | Topic/objective-level evidence changes prerequisite support and pacing; mathematical depth remains a separate explicit preference |
 | Reviewed assessments | The owner accepts maintaining reviewed anchor questions and rubrics for important evidence gates |
 | Study reminders initially | Best-effort reminders are confirmed; precise alarms are outside initial scope |
@@ -228,20 +228,20 @@ The proposed launch does not include a course marketplace, automatic purchases/e
 | Model provider | Return a candidate structured response; does not own learning state, eligibility, or financial decisions |
 | Learning provider | Supplies external learning material under its own terms, access requirements, and availability |
 
-Private learner data, keys, and answers are never part of the public seed catalog or public curriculum snapshots. A curator can review catalog entries without access to learner credentials. A publisher is an ordinary learner using an explicitly authorized sharing operation; a moderator may handle public reports without receiving unrestricted access to private learning evidence.
+Private learner data, keys, and answers are never part of the public seed catalog or public syllabus snapshots. A curator can review catalog entries without access to learner credentials. A publisher is an ordinary learner using an explicitly authorized sharing operation; a moderator may handle public reports without receiving unrestricted access to private learning evidence.
 
 ### 3. Core journeys
 
-#### J1 — Create a feasible curriculum (5-step intake & synthesis pipeline)
+#### J1 — Create a feasible syllabus (5-step intake & synthesis pipeline)
 
-1. **Step 0 — Structured intake & progressive disclosure:** The learner opens the `New Curriculum` dialog, which starts in a clean empty state showing the multi-line `Goal` textarea (`rows={2}`, placeholder `"What do you want to learn?"`) and compact segmented controls (`Depth`, `Flow`, `Materials`, `Pace`). Once the learner enters a goal or selects a topic (`hasIntakeIntent`), the modal progressively discloses the **3-tier cascading dependent tag tree** (`Subject` → `Topics` with automatic prerequisite selection and `prereq` / `+N` badges → `Sub-topics` with `via <Parent>` badges) and the **Suggested fit** tray. Mathematical depth (`Intuitive`, `Applied`, `Formal`) is chosen independently of current proficiency.
+1. **Step 0 — Structured intake & progressive disclosure:** The learner opens the `New Syllabus` dialog, which starts in a clean empty state showing the multi-line `Goal` textarea (`rows={2}`, placeholder `"What do you want to learn?"`) and compact segmented controls (`Depth`, `Flow`, `Materials`, `Pace`). Once the learner enters a goal or selects a topic (`hasIntakeIntent`), the modal progressively discloses the **3-tier cascading dependent tag tree** (`Subject` → `Topics` with automatic prerequisite selection and `prereq` / `+N` badges → `Sub-topics` with `via <Parent>` badges) and the **Suggested fit** tray. Mathematical depth (`Intuitive`, `Applied`, `Formal`) is chosen independently of current proficiency.
 2. **Step 1 — Existing resource & plan retrieval:** The backend queries the catalog for approved, non-quarantined, budget-eligible `resource_versions` (with polymorphic `ResourceIndexDescriptor` metadata) and matching personal or Community plans for the requested subject, topics, and depth, ranking them deterministically (`evaluate_resource_fit_and_coverage`).
 3. **Step 1.5 — Review existing fit & search-bypass decision:** Before invoking external web search or paid synthesis, the **Suggested fit** tray presents:
    - A live search-bypass badge (`No AI generation · No web search` for direct plan adoption, `No web search · AI synthesis required` when selected catalog materials cover all requested topics, or `Search N missing topics · AI synthesis required` when topic gaps remain).
-   - **Existing curricula** (`Open plan →` for personal plans or `Use plan →` for Community templates) distinct from **Materials**.
+   - **Existing syllabi** (`Open plan →` for personal plans or `Use plan →` for Community templates) distinct from **Materials**.
    - **Materials**, consolidating catalog matches and AI web-search discoveries into a single list with indented expandable polymorphic index details (`Chapters (N)` for books with summary blurb and TOC; `Videos (N)` for YouTube playlists with channel and video durations; `Units (N)` for courses/labs) and a single check button (`Include` / `Exclude`) per material.
 4. **Step 2 & Step 3 — Native API web-search gap discovery & rights/credibility gate:** Only if uncovered or partially covered topics remain (`web_search_required = true`), the designated AI provider/model (chosen in the modal footer or in `Profile & Settings -> AI providers (BYOK)`) executes native web-search grounding (`web_search_preview` on OpenAI Responses API, `web_search_20250305` on Anthropic Messages API, or `google_search` on Google Gemini) strictly for the missing topics. Discovered candidate URLs pass through `validate_outbound_egress_url`, canonical identity deduplication (`normalize_canonical_resource_identity`), and `AcquisitionPermission` verification.
-5. **Step 4 — Polymorphic resource indexing & curriculum DAG synthesis:** Accepted materials are indexed into polymorphic `ResourceIndexDescriptor` structures (`BookIndex` chapter TOCs and summaries, `YoutubePlaylistIndex` video syllabi and transcript outlines, `CourseIndex` units, `RepositoryLabIndex` exercises) so the synthesizer binds concrete chapter/video segments (`segment_id`) into an acyclic prerequisite DAG (`CurriculumRevision`) with pedagogical triad coverage (`instruction`, `practice`, `assessment`) and adjusted duration triplets.
+5. **Step 4 — Polymorphic resource indexing & syllabus DAG synthesis:** Accepted materials are indexed into polymorphic `ResourceIndexDescriptor` structures (`BookIndex` chapter TOCs and summaries, `YoutubePlaylistIndex` video syllabi and transcript outlines, `CourseIndex` units, `RepositoryLabIndex` exercises) so the synthesizer binds concrete chapter/video segments (`segment_id`) into an acyclic prerequisite DAG (`SyllabusRevision`) with pedagogical triad coverage (`instruction`, `practice`, `assessment`) and adjusted duration triplets.
 6. **Activation:** The learner activates the validated revision (or adopts a Community template as a private draft and clicks `Activate plan` in **Today**), immediately populating **Today**, **Progress**, and **Resources**.
 
 #### J2 — Study and demonstrate progress
@@ -250,7 +250,7 @@ The learner opens today's session, follows a selected resource, attempts related
 
 #### J3 — Change time, preferences, or resources
 
-The learner reduces availability, switches sequence mode, or loses access to a course. The app previews changes and tradeoffs. Accepted changes create a new curriculum or schedule revision as appropriate; earlier work remains recorded. An impossible fixed deadline produces options to reduce scope, extend time, or increase effort.
+The learner reduces availability, switches sequence mode, or loses access to a course. The app previews changes and tradeoffs. Accepted changes create a new syllabus or schedule revision as appropriate; earlier work remains recorded. An impossible fixed deadline produces options to reduce scope, extend time, or increase effort.
 
 #### J4 — Use BYOK or hosted AI
 
@@ -261,9 +261,9 @@ The learner deliberately chooses one mode. BYOK uses an approved credential conn
 A curator proposes a resource, records credibility and permissions evidence, reviews it, and approves a version. Refresh jobs discover changes. Broken, inaccurate, or rights-restricted entries are quarantined. Affected learners receive an actionable replacement option without losing historical completion.
 
 
-#### J6 — Publish, discover, and adopt a curriculum
+#### J6 — Publish, discover, and adopt a syllabus
 
-The owner chooses a validated curriculum revision, writes a public title and summary, and reviews an allowlisted public preview. They choose public discovery or an unlisted link and confirm the publication terms. The app publishes an immutable template with resource references, target outcomes, prerequisites, mathematical depth, effort assumptions, and any coverage gaps. It excludes private goals, assessment results, schedules, notes, subscriptions, credentials, and personal identifiers. Others can inspect the map, upvote that version, report a problem, or create a private adapted copy. Publication is community sharing, not automatic educational endorsement.
+The owner chooses a validated syllabus revision, writes a public title and summary, and reviews an allowlisted public preview. They choose public discovery or an unlisted link and confirm the publication terms. The app publishes an immutable template with resource references, target outcomes, prerequisites, mathematical depth, effort assumptions, and any coverage gaps. It excludes private goals, assessment results, schedules, notes, subscriptions, credentials, and personal identifiers. Others can inspect the map, upvote that version, report a problem, or create a private adapted copy. Publication is community sharing, not automatic educational endorsement.
 
 #### J7 — Assess and adapt without flattening the learner
 
@@ -289,7 +289,7 @@ An objective describes what a learner should be able to explain, implement, debu
 
 Use reviewed anchor assessments for progress gates. Model-generated variants may be offered as clearly labeled practice after source, answer, ambiguity, and coverage checks. An unreviewed AI grade is advisory; it cannot independently establish a high-confidence demonstration. No universal percentage, number of quizzes, or review interval is asserted as a scientific law.
 
-A disclosed assessment gap can coexist with a useful learning plan, but cannot fulfill a demonstration gate. If advancement requires such a gate, supply an available reviewed assessment, show the blocked gate, or offer a revised scope. Completing every scheduled activity does not erase an unresolved evidence gap. New curricula begin with unassessed objectives unless actual prior evidence is explicitly mapped.
+A disclosed assessment gap can coexist with a useful learning plan, but cannot fulfill a demonstration gate. If advancement requires such a gate, supply an available reviewed assessment, show the blocked gate, or offer a revised scope. Completing every scheduled activity does not erase an unresolved evidence gap. New syllabi begin with unassessed objectives unless actual prior evidence is explicitly mapped.
 
 When an answer key, rubric, or grader is later found incorrect, preserve the historical attempt and evaluation, append a correction or invalidation with a reason, and recompute affected evidence and prerequisite eligibility. Notify the learner of the change. Resource unavailability alone does not invalidate previously demonstrated learning; a defective assessment can invalidate the inference drawn from it.
 
@@ -343,7 +343,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | PED-002 | P0 | Practice shall default to a learner attempt before revealing a full answer, support corrective explanations, and record assistance. An explicit study-worked-solution action may reveal a solution without an attempt, but shall be recorded as solution-assisted study and excluded from independent demonstration. |
 | PED-003 | P0 | The scheduler shall allocate revisits in distinct study sessions and include review time in capacity calculations; the interval policy and its version shall be visible as a product heuristic. |
 | PED-004 | P0 | Instructional guidance shall respond to prerequisite evidence and independent performance, with worked examples or partial scaffolds available for novices and redundant instruction skippable with evidence. |
-| PED-005 | P0 | Each assessment item shall record objectives, answer/rubric provenance, version, evaluation method, and validation status. Private keys and unrevealed solutions shall be excluded from the learner curriculum payload. Corrected or invalidated evaluations shall preserve history and recompute affected evidence projections with an explanation. |
+| PED-005 | P0 | Each assessment item shall record objectives, answer/rubric provenance, version, evaluation method, and validation status. Private keys and unrevealed solutions shall be excluded from the learner syllabus payload. Corrected or invalidated evaluations shall preserve history and recompute affected evidence projections with an explanation. |
 | PED-006 | P0 | Completion, assisted practice, independent performance, delayed performance, and transfer evidence shall be separately represented. Opening a resource or checking a completion box shall never alone establish demonstrated competence. Learners may study ahead; missing prerequisite evidence shall produce a visible warning and recommended bridging work without hard-locking ordinary content, and accessing or completing dependent content shall not create prerequisite evidence. Only activities explicitly marked as `mastery_gated` may require demonstrated proficiency: when an active reviewed anchor exists, the learner shall either demonstrate the prerequisite or record an explicit override; when no reviewed anchor exists, the app shall allow continuation after explicit acknowledgement and display `"Prerequisite unverified — no reviewed anchor available"`. Formative practice shall not create `demonstrated` status, and every override or acknowledgement shall be recorded as an auditable learner decision. |
 | PED-007 | P0 | The three sequence modes shall retain required objectives, prerequisite support, practice, feedback, and review; switching modes shall not silently delete those obligations. |
 
@@ -351,7 +351,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 
 | ID | Priority | Requirement |
 | --- | --- | --- |
-| PROG-001 | P0 | An authenticated learner shall retrieve synchronized curriculum, schedule, and progress state on supported web/mobile clients; completion events shall record self-report versus independently observed evidence. |
+| PROG-001 | P0 | An authenticated learner shall retrieve synchronized syllabus, schedule, and progress state on supported web/mobile clients; completion events shall record self-report versus independently observed evidence. |
 | PROG-002 | P0 | Study time shall include media, reading, implementation, exercises, assessment, review, and setup where relevant; playback speed shall adjust only playable-media time. |
 | PROG-003 | P0 | A schedule shall fit declared availability or report infeasibility. Missed work shall trigger a replanning proposal, without silently filling future sessions beyond their capacity. |
 | PROG-004 | P0 | Progress submissions shall be idempotent and auditable. Offline queued updates shall preserve event identity, and conflicting schedule edits shall produce a visible conflict rather than silent loss. |
@@ -362,7 +362,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 
 | ID | Priority | Requirement |
 | --- | --- | --- |
-| UI-001 | P0 | The primary curriculum view shall show modules, prerequisite relationships, current position, optional branches, and review status; every arrow meaning shall be explicit. |
+| UI-001 | P0 | The primary syllabus view shall show modules, prerequisite relationships, current position, optional branches, and review status; every arrow meaning shall be explicit. |
 | UI-002 | P0 | Every graph action and essential fact shall be available through a keyboard- and screen-reader-usable outline or list. Mobile shall show a focused module/path and next action rather than shrink a desktop graph. |
 | UI-003 | P0 | A Today view shall present the next feasible session, expected time, required access/setup, and the reason it is scheduled, with start, snooze, reschedule, and skip actions as appropriate. |
 | UI-004 | P0 | An activity detail view shall show its objective, resource section when verified, task, expected effort range, practice/assessment conditions, and completion/evidence state. Unverified chapter or timestamp precision shall be omitted. |
@@ -393,7 +393,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | ID | Priority | Requirement |
 | --- | --- | --- |
 | BILL-001 | P0 | Each chargeable operation shall identify BYOK or hosted mode and its applicable budget before execution; the app shall not switch modes without the learner's explicit choice. |
-| BILL-002 | P0 | BYOK credentials shall be write-only through normal account APIs, securely stored only under disclosed custody rules, scoped to the correct tenant, removable from application custody, and excluded from prompts, logs, analytics, exports, URLs, and curriculum documents. Removing the app's copy shall be distinguished from revoking the key at its issuer. |
+| BILL-002 | P0 | BYOK credentials shall be write-only through normal account APIs, securely stored only under disclosed custody rules, scoped to the correct tenant, removable from application custody, and excluded from prompts, logs, analytics, exports, URLs, and syllabus documents. Removing the app's copy shall be distinguished from revoking the key at its issuer. |
 | BILL-003 | P0 | Hosted usage shall reserve a stated maximum before dispatch, settle confirmed usage according to the published policy, release unused reservations, and prevent duplicate ledger effects under retries or duplicate payment events. |
 | BILL-004 | P0 | Charges for app/service access, AI usage, learning materials, certification exams, and compute shall be distinguished. A free-materials preference shall not imply free model usage or free cloud compute. |
 | BILL-005 | P0 | Authentication, quota, provider, cancellation, and invalid-output failures shall return actionable status; automatic repairs/retries shall stay within the original budget and retry ceiling. The failed-generation charge/refund policy shall be disclosed. |
@@ -420,7 +420,7 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | OPS-003 | P0 | Operators shall have metrics for generation outcomes, semantic rejection reasons, retrieval coverage, cost, stale resources, failed reminders, and synchronization errors, with sensitive data minimized. |
 | OPS-004 | P0 | Users shall be able to request account export and deletion. Deletion shall cover active learner records, queued jobs, devices/tokens, provider credentials, and eligible derived data under a documented retention policy. |
 | OPS-005 | P0 | Certification recommendations shall cite a current official issuer page and distinguish course-completion certificates from assessed credentials; dates, fees, exam versions, and career-signaling claims shall be verified or marked unknown. |
-| OPS-006 | P0 | Release artifacts shall ship the OSI-approved `Apache-2.0` open-source software license in `LICENSE` together with `LEGAL.md` documenting BYOK direct provider responsibility, `CC BY 4.0` shared community curriculum structures, metadata/link-only third-party educational resource boundaries, self-host configuration, secrets setup, migrations, backups, and extension boundaries (`@S40`). They shall never redistribute unauthorized third-party materials or promote `is_synthetic_fixture = true` records into the production catalog. |
+| OPS-006 | P0 | Release artifacts shall ship the OSI-approved `Apache-2.0` open-source software license in `LICENSE` together with `LEGAL.md` documenting BYOK direct provider responsibility, `CC BY 4.0` shared community syllabus structures, metadata/link-only third-party educational resource boundaries, self-host configuration, secrets setup, migrations, backups, and extension boundaries (`@S40`). They shall never redistribute unauthorized third-party materials or promote `is_synthetic_fixture = true` records into the production catalog. |
 
 ### 15. Nonfunctional requirements and proposed targets
 
@@ -430,9 +430,9 @@ Each requirement below maps to acceptance scenarios and implementation work in `
 | NFR-002 | P0 | Render only typed components and safe text/links; reject executable payloads, unsafe URL schemes, prompt-injected tool instructions, oversized graphs, and unknown required schema versions. |
 | NFR-003 | P0 | Target WCAG 2.2 AA for web; verify keyboard navigation, visible focus, contrast, non-color status cues, reduced motion, touch target usability, and equivalent graph/list information. |
 | NFR-004 | P0 | Proposed release target: p95 ordinary reads under 1 second at the API and generation job acknowledgement under 2 seconds at the specified acceptance load, excluding external inference duration. Generation has a configured timeout and honest progress. |
-| NFR-005 | P0 | Proposed release target: all seeded hard-constraint/security/billing acceptance fixtures pass; no published curriculum contains an unresolved resource ID, dependency cycle, or known forbidden access condition. Quality review also evaluates factual and educational validity. |
+| NFR-005 | P0 | Proposed release target: all seeded hard-constraint/security/billing acceptance fixtures pass; no published syllabus contains an unresolved resource ID, dependency cycle, or known forbidden access condition. Quality review also evaluates factual and educational validity. |
 | NFR-006 | P0 | Persist data transactionally, test restore, and document recovery objectives. Proposed beta RPO is 24 hours and RTO is 8 hours; production targets require owner selection and operating budget. |
-| NFR-007 | P0 | Version curricula, resources, schema, prompt/retrieval policy, schedule, and assessments independently where their meanings differ. Migrations and rollbacks shall preserve interpretable historical learning evidence. |
+| NFR-007 | P0 | Version syllabi, resources, schema, prompt/retrieval policy, schedule, and assessments independently where their meanings differ. Migrations and rollbacks shall preserve interpretable historical learning evidence. |
 | NFR-008 | P0 | Separate product analytics from optional research participation. Measure learning outcomes independently of engagement and report uncertainty, assistance, attrition, and evaluation conditions. |
 
 The [WCAG 2.2 recommendation](https://www.w3.org/TR/WCAG22/) is the accessibility target; meeting it must be verified during implementation, not asserted from a design document. API latency acceptance load is proposed as 100 concurrent authenticated readers plus 10 queued generation requests against an approved representative dataset; change and record this load if launch expectations differ. External provider latency and outages must be measured separately.
@@ -449,7 +449,7 @@ These obligations refine GOAL-003 and the PED/PROG requirements. See [adaptation
 | ADAPT-003 | P0 | Diagnostics used for prerequisite decisions shall select from reviewed, versioned items aligned with the relevant objective and conditions, record assistance/exposure, apply a visible sampling/effort target without a hidden response deadline or speed score, and explain coverage and limitations. Unreviewed AI-generated items shall not independently waive a prerequisite. |
 | ADAPT-004 | P0 | Proficiency projections shall record objective/version, evidence references, assessment conditions, recency, policy version, and categorical evidence support. The initial product shall not present an uncalibrated mastery percentage, percentile, or probability as a measured ability. |
 | ADAPT-005 | P0 | A prerequisite waiver shall reference sufficient valid evidence for the exact capability and required conditions under a reviewed policy. Self-report, upvotes, elapsed time, or completion alone shall not grant it. Target outcomes remain present; learners may study ahead or skip activities without falsely satisfying a gate. |
-| ADAPT-006 | P0 | Adaptation shall produce an explainable preview of proposed changes and their time/access/budget impact. Acceptance shall create a curriculum or schedule revision as appropriate, preserve eligible evidence, reject stale proposals, and keep the prior active revision until commit. |
+| ADAPT-006 | P0 | Adaptation shall produce an explainable preview of proposed changes and their time/access/budget impact. Acceptance shall create a syllabus or schedule revision as appropriate, preserve eligible evidence, reject stale proposals, and keep the prior active revision until commit. |
 | ADAPT-007 | P0 | Mathematical depth shall support intuitive, applied, and formal modes with topic overrides. A formal request shall retain appropriate derivation, mathematical reasoning, and stated assumptions; knowledge gaps shall add bridging work or disclose infeasibility rather than silently reduce desired depth. |
 | ADAPT-008 | P0 | New attempts and assessment corrections shall recompute only supported proficiency inferences and invalidate affected waivers or pending proposals when necessary. A review becoming due shall not by itself declare that the learner has lost a skill. |
 | ADAPT-009 | P0 | Diagnostic selection and adaptation policies shall be inspectable and versioned. Any numeric thresholds or assessment budgets shall be identified as reviewed product policies and evaluated for the intended population before stronger scientific or certification claims are made. |
@@ -461,26 +461,26 @@ See [sharing policy](#10-publishing-and-adoption) for lifecycle, privacy, and mo
 
 | ID | Priority | Requirement |
 | --- | --- | --- |
-| SHARE-001 | P0 | Curricula shall be private by default. An owner shall be able to publish an immutable, validated template revision as public or unlisted after reviewing and explicitly confirming the exact public projection and publication terms. |
+| SHARE-001 | P0 | Syllabi shall be private by default. An owner shall be able to publish an immutable, validated template revision as public or unlisted after reviewing and explicitly confirming the exact public projection and publication terms. |
 | SHARE-002 | P0 | Publication shall use a separate allowlisted schema and public identifiers. It shall exclude private prompts, account IDs, proficiency/attempt data, progress, schedules, notes, owned-access records, budgets, credentials, solutions, and private generation provenance. Private text shall never be copied into public title/summary fields automatically. |
 | SHARE-003 | P0 | Public templates shall be discoverable through accessible search/filter/list and diagram views; unlisted templates shall be absent from discovery and indexing surfaces controlled by the app. The UI shall state that anyone with an unlisted link can access it and that unlisted is not confidential. |
-| SHARE-004 | P0 | Adopting a published template shall create a private draft with origin attribution and a new owner. The app shall recheck current resource rights/access, the adopter's knowledge/depth/time/cost constraints, and coverage before activation. It shall not inherit the author's progress, evidence, waivers, votes, or spending authorization. During deterministic adoption, if a referenced resource is unavailable, quarantined, or incompatible with the adopter's access policy, the app shall substitute an approved and semantically suitable replacement when one exists and satisfies the adopter's access policy; otherwise it shall omit the ineligible resource from the private draft, set `coverage_status` to `partial`, include explicit `coverage_limitations`, require learner review before activation, never silently include paid, quarantined, unavailable, or otherwise ineligible material, and never reject the whole adoption when a useful partial curriculum can be created. |
+| SHARE-004 | P0 | Adopting a published template shall create a private draft with origin attribution and a new owner. The app shall recheck current resource rights/access, the adopter's knowledge/depth/time/cost constraints, and coverage before activation. It shall not inherit the author's progress, evidence, waivers, votes, or spending authorization. During deterministic adoption, if a referenced resource is unavailable, quarantined, or incompatible with the adopter's access policy, the app shall substitute an approved and semantically suitable replacement when one exists and satisfies the adopter's access policy; otherwise it shall omit the ineligible resource from the private draft, set `coverage_status` to `partial`, include explicit `coverage_limitations`, require learner review before activation, never silently include paid, quarantined, unavailable, or otherwise ineligible material, and never reject the whole adoption when a useful partial syllabus can be created. |
 | SHARE-005 | P0 | An authenticated, verified account shall be able to set or remove one upvote per published revision, with idempotent effects and a unique database constraint. Self-voting shall be rejected; repeated requests, concurrent writes, and forks shall not multiply a vote or inherit counts. |
 | SHARE-006 | P0 | Upvotes shall be labeled community preference and kept separate from catalog approval, factual correctness, educational review, proficiency, and efficacy. Eligibility and active moderation/rights overlays shall apply before ranking or recommendation. |
-| SHARE-007 | P0 | Publishing an edited curriculum shall create a new public revision with its own vote count. Old revision links and votes shall retain their version association while available. Republishing identical content shall reuse the version or be rejected as a duplicate under the declared policy. |
+| SHARE-007 | P0 | Publishing an edited syllabus shall create a new public revision with its own vote count. Old revision links and votes shall retain their version association while available. Republishing identical content shall reuse the version or be rejected as a duplicate under the declared policy. |
 | SHARE-008 | P0 | Owners shall be able to unpublish their work; moderators shall be able to quarantine public content and resolve reports with attributable reasons. App-controlled reads, discovery, search indexes, and caches shall respect withdrawal. Existing private copies and externally saved copies shall follow explicit licensing, privacy, and rights policies rather than a promise of universal recall. |
 | SHARE-009 | P0 | Publication shall record accepted terms and rights to share original annotations and structure, with attribution and an explicit scope excluding third-party materials. Paid resources shall remain labeled links; paid content, private solutions, or nonredistributable metadata shall not be exposed by sharing. |
 | SHARE-010 | P0 | The public-release gate shall include report handling, spam/vote-abuse controls, safe rendering, publication authorization, and public/private cache isolation. Initial sharing excludes comments, direct messages, and social push notifications; study reminders remain the initial notification scope. |
 
-### 16. Source selection and curriculum quality
+### 16. Source selection and syllabus quality
 
-Use a layered selection process: eligibility rules → keyword and semantic retrieval → relevance ranking → objective coverage and diversity checks → curriculum generation → deterministic validation → quality evaluation. Vector similarity retrieves candidates; it cannot establish a prerequisite, credibility, legal permission, or teaching effectiveness by itself.
+Use a layered selection process: eligibility rules → keyword and semantic retrieval → relevance ranking → objective coverage and diversity checks → syllabus generation → deterministic validation → quality evaluation. Vector similarity retrieves candidates; it cannot establish a prerequisite, credibility, legal permission, or teaching effectiveness by itself.
 
 Catalog matching and assessment grounding are different needs. Permitted resource descriptions can support resource selection, but detailed quizzes and feedback need authorized subject-matter references or independently authored reviewed rubrics. The app shall not pretend that a book description gives it verified knowledge of that book's full contents; absent evidence becomes an assessment gap under GEN-005/PED-005.
 
 Approved catalog records may refer to Coursera, edX, Educative, Udemy, university lectures on YouTube, university/engineer repositories, O'Reilly books, textbooks, papers, or other materials. Approval is per work and version. Include practitioner-created materials when verifiable expertise and technical quality satisfy the same rubric. Ratings can supplement review; they cannot replace it. Do not invent a numerical scientific credibility score.
 
-The curriculum should minimize redundant full-course assignments. Prefer one core instructional backbone per objective, then complementary reading, implementation, and assessment where they add distinct value. This is an initial product policy to evaluate, not a proven universal ratio.
+The syllabus should minimize redundant full-course assignments. Prefer one core instructional backbone per objective, then complementary reading, implementation, and assessment where they add distinct value. This is an initial product policy to evaluate, not a proven universal ratio.
 
 ### 17. Workload and budget rules
 
@@ -513,7 +513,7 @@ The full specification remains authoritative across all `105` requirements (`103
 #### Tier 1 — Private Alpha gate (`T00 → T01 → T14-Core → T02 → T03 → T04`)
 
 - Proves the end-to-end architecture locally using the development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering combined with sublinear TF-IDF cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`, without requiring `pgvector` or external embedding APIs), and `DeterministicFakeProvider`.
-- Persists one validated, immutable `CurriculumRevision`, renders the `Plan` **Outline** plus a basic **Map** (`SafeActivityRenderer` failing closed on unknown major schema versions), activates the revision, and records one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
+- Persists one validated, immutable `SyllabusRevision`, renders the `Plan` **Outline** plus a basic **Map** (`SafeActivityRenderer` failing closed on unknown major schema versions), activates the revision, and records one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
 - Enforces CI drift checks (`scripts/extract_spec.py --check specs/product.md .`), JSON Schema Draft 2020-12 runtime validation, and byte-for-byte RFC 8785 JCS digest verification.
 
 #### Tier 2 — Closed Beta gate (`D11 Auth Gate → T05 → T06 → T12 → T07A → T08`)
@@ -535,7 +535,7 @@ The full specification remains authoritative across all `105` requirements (`103
 
 Software acceptance tests verify engineering behavior only and must never be treated as evidence that the product improves learning. A dedicated pedagogical evaluation workstream covers:
 1. **Catalog and retrieval relevance:** Curator-labeled retrieval benchmark comparing deterministic metadata filtering and sublinear TF-IDF cosine similarity (`tfidf-cosine-v1`) against alternative hybrid retrieval models before claiming broader retrieval value.
-2. **Expert curriculum-quality review:** Domain-expert audit of generated curricula for factual accuracy, prerequisite soundness, and objective-practice-assessment alignment (`@S42`).
+2. **Expert syllabus-quality review:** Domain-expert audit of generated syllabi for factual accuracy, prerequisite soundness, and objective-practice-assessment alignment (`@S42`).
 3. **Assessment quality:** Review of anchor item clarity, rubric inter-rater agreement, distractor quality, and answer-key correction rates (`T05`, `T12`).
 4. **Delayed learning and transfer evaluation (`T11`):** An initial pilot measures feasibility and usability; it does not establish causality. To claim improved learning, compare against a credible baseline using equivalent materials/time, predeclare outcomes, and measure delayed retention and novel transfer with independent assessments (`@S44`).
 
@@ -543,7 +543,7 @@ Software acceptance tests verify engineering behavior only and must never be tre
 
 | Risk | Product response | Owner |
 | --- | --- | --- |
-| Credible but poorly matched material | Objective mapping, reviewer evidence, learner feedback and reassessment | Curriculum lead |
+| Credible but poorly matched material | Objective mapping, reviewer evidence, learner feedback and reassessment | Syllabus lead |
 | Missing or unauthorized content | Link-only default; permission records; coverage gaps rather than invented content | Catalog lead |
 | Plausible but invalid AI plan | Strict contracts, semantic checks, bounded repair, quality fixtures | Engineering |
 | Learners feel productive without learning | Independent and delayed evidence, help tracking, transfer tasks | Pedagogy/evaluation |
@@ -554,7 +554,7 @@ Software acceptance tests verify engineering behavior only and must never be tre
 
 ### 21. Sources and related documents
 
-Pedagogy sources are cited in [research.md](#7-pedagogy-evidence-and-evaluation). Rights, security, licenses, and platform sources are cited in [security-content-operations.md](#12-security-rights-and-operations). Architectural and specification sources appear in [plan.md](#13-architecture). BYOK precedents are in [byok-policy.md](#11-byok-and-routing), adaptation evidence in [adaptation.md](#8-proficiency-and-adaptation), and software/contribution/publication license boundaries in [licensing-policy.md](#17-software-contribution-and-content-licensing). The supplied `curriculum.html` is a structural reference, not evidence that its course mappings, credentials, hours, or interface are correct.
+Pedagogy sources are cited in [research.md](#7-pedagogy-evidence-and-evaluation). Rights, security, licenses, and platform sources are cited in [security-content-operations.md](#12-security-rights-and-operations). Architectural and specification sources appear in [plan.md](#13-architecture). BYOK precedents are in [byok-policy.md](#11-byok-and-routing), adaptation evidence in [adaptation.md](#8-proficiency-and-adaptation), and software/contribution/publication license boundaries in [licensing-policy.md](#17-software-contribution-and-content-licensing). The supplied `syllabus.html` is a structural reference, not evidence that its course mappings, credentials, hours, or interface are correct.
 ---
 
 ## 5. Product constitution
@@ -573,10 +573,10 @@ Pedagogy sources are cited in [research.md](#7-pedagogy-evidence-and-evaluation)
 8. **Preserve history.** Revisions and learning evidence survive regeneration. Derived views are rebuildable; concurrency and retries do not duplicate charges or lose work.
 9. **Render from a strict contract.** Accessible web and mobile surfaces share documented behavior and known components. No model-generated executable UI.
 10. **Verify consequential behavior.** Security boundaries, billing, contract validation, source eligibility, scheduling, and learning-evidence handling require meaningful checks before release. Passing software tests does not validate pedagogy.
-11. **Separate licenses.** Application code, catalog data, third-party material, published curricula, generated practice, and trademarks have explicit distinct treatment documented in `LICENSE` and `LEGAL.md`. The application source code is licensed under the OSI-approved `Apache-2.0` license; BYOK requests run under the learner's direct provider terms; shared Community curriculum structures are licensed under `CC BY 4.0`; and third-party books, videos, papers, and courses remain governed by their original publishers with bibliographic metadata and canonical outbound links only unless explicit permissions are recorded.
+11. **Separate licenses.** Application code, catalog data, third-party material, published syllabi, generated practice, and trademarks have explicit distinct treatment documented in `LICENSE` and `LEGAL.md`. The application source code is licensed under the OSI-approved `Apache-2.0` license; BYOK requests run under the learner's direct provider terms; shared Community syllabus structures are licensed under `CC BY 4.0`; and third-party books, videos, papers, and courses remain governed by their original publishers with bibliographic metadata and canonical outbound links only unless explicit permissions are recorded.
 12. **Build reviewable slices.** Every implemented slice maps to requirements and acceptance criteria. Unapproved business choices remain visible; routine reversible implementation proceeds under the stated draft defaults.
 13. **Adapt from specific evidence.** Proficiency belongs to the supported objective and assessment conditions. Unknown evidence remains unknown. Mathematical depth and sequence are independent choices; strong foundations do not imply reduced rigor, and prerequisite waivers do not delete target outcomes. Preview consequential plan changes before committing them.
-14. **Share the template deliberately.** Private learning records and public curriculum snapshots are separate data products with separate schemas. Public adoption starts a new private draft, rechecks current constraints, and carries no author's progress, private evidence, waivers, votes, or spending authorization.
+14. **Share the template deliberately.** Private learning records and public syllabus snapshots are separate data products with separate schemas. Public adoption starts a new private draft, rechecks current constraints, and carries no author's progress, private evidence, waivers, votes, or spending authorization.
 15. **Popularity is not validation.** Upvotes express community preference for a specific public revision. Approval, rights, learning evidence, and educational claims remain independent. Publication requires privacy boundaries, report handling, withdrawal, and moderation before public beta.
 
 Supporting policies: [adaptation](#8-proficiency-and-adaptation), [BYOK](#11-byok-and-routing), [sharing](#10-publishing-and-adoption), and [licensing](#17-software-contribution-and-content-licensing).
@@ -584,7 +584,7 @@ Supporting policies: [adaptation](#8-proficiency-and-adaptation), [BYOK](#11-byo
 
 ## 6. Domain vocabulary
 
-## Curriculum and study
+## Syllabus and study
 
 This context connects a learner's intended capabilities to credible resources, purposeful activities, and observable learning evidence.
 
@@ -598,12 +598,12 @@ _Avoid_: Prompt as a synonym for the goal.
 A specific capability that can be demonstrated under stated conditions and evaluated against a success criterion.
 _Avoid_: Topic, completed lesson, permanent mastery.
 
-**Curriculum**:
+**Syllabus**:
 A structured selection of objectives, prerequisite relationships, learning activities, and resource assignments.
 _Avoid_: Schedule, course catalog.
 
-**Curriculum revision**:
-A preserved version of a learner's curriculum whose meaning does not change after it is accepted.
+**Syllabus revision**:
+A preserved version of a learner's syllabus whose meaning does not change after it is accepted.
 _Avoid_: Overwritten plan.
 
 **Module**:
@@ -628,7 +628,7 @@ _Avoid_: Module.
 
 **Schedule**:
 The assignment of study sessions and reviews to available time.
-_Avoid_: Curriculum.
+_Avoid_: Syllabus.
 
 ### Materials and access
 
@@ -702,8 +702,8 @@ An explained, version-bound proposed change to a private plan using the learner'
 _Avoid_: Automatic overwrite of an accepted plan or proof of ability.
 
 **Publication**:
-A shareable curriculum identity with an owner and access/moderation lifecycle separate from private learning records.
-_Avoid_: Public learner profile, private curriculum ID.
+A shareable syllabus identity with an owner and access/moderation lifecycle separate from private learning records.
+_Avoid_: Public learner profile, private syllabus ID.
 
 **Published revision**:
 An immutable public template whose content, attribution, terms, and version-specific votes remain identifiable.
@@ -721,11 +721,11 @@ _Avoid_: Source approval, demonstrated learning, educational efficacy.
 
 **Open-source software license (`Apache-2.0`):** the OSI-approved Apache License, Version 2.0 in `LICENSE` governing the application source code, schemas, UI components, and scripts, with inbound contributions governed by `Apache-2.0` Section 5.
 
-**Legal boundary notice (`LEGAL.md`):** the companion notice distinguishing (1) `Apache-2.0` software code, (2) direct user responsibility with AI providers under BYOK terms, (3) `CC BY 4.0` open-knowledge licensing for shared Community curriculum structures, and (4) bibliographic metadata and canonical outbound links only for third-party educational resources.
+**Legal boundary notice (`LEGAL.md`):** the companion notice distinguishing (1) `Apache-2.0` software code, (2) direct user responsibility with AI providers under BYOK terms, (3) `CC BY 4.0` open-knowledge licensing for shared Community syllabus structures, and (4) bibliographic metadata and canonical outbound links only for third-party educational resources.
 
-**Polymorphic resource index (`ResourceIndexDescriptor`):** a type-specific structural index stored per `resource_version` (`BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) used during Step 1.5 fit evaluation and Step 4 segment-level curriculum synthesis while respecting `AcquisitionPermission`.
+**Polymorphic resource index (`ResourceIndexDescriptor`):** a type-specific structural index stored per `resource_version` (`BookIndex` with authors, brief summary, and chapter TOC; `YoutubePlaylistIndex` with channel, total videos, video syllabus items, and transcript outline; `CourseIndex`; and `RepositoryLabIndex`) used during Step 1.5 fit evaluation and Step 4 segment-level syllabus synthesis while respecting `AcquisitionPermission`.
 
-**Appearance preference:** a presentation choice such as theme (toggled via the navbar sun/moon button), solid surfaces, reduced motion, or map/outline view. It cannot change proficiency, curriculum content, or spending authorization.
+**Appearance preference:** a presentation choice such as theme (toggled via the navbar sun/moon button), solid surfaces, reduced motion, or map/outline view. It cannot change proficiency, syllabus content, or spending authorization.
 
 **Public revision:** the immutable published snapshot (`CC BY 4.0`) whose identity determines attribution, content hash, and votes. Owner management metadata remains separately accessible when its public representation is unavailable.
 ---
@@ -736,13 +736,13 @@ _Avoid_: Source approval, demonstrated learning, educational efficacy.
 
 **Version:** 0.2 draft  
 **Evidence reviewed:** 2026-10-20  
-**Companion to:** Curriculum Platform specification  
+**Companion to:** Syllabus Platform specification  
 **Proposed launch population:** Adult learners studying technical AI/LLM topics  
-**Proposed learning model:** Original-provider materials, coordinated curricula, and in-app practice; a full autonomous tutor and hosted code-execution sandbox are outside the default launch scope.
+**Proposed learning model:** Original-provider materials, coordinated syllabi, and in-app practice; a full autonomous tutor and hosted code-execution sandbox are outside the default launch scope.
 
 ### 1. Scientific claim and product boundary
 
-The defensible launch description is **an evidence-informed curriculum and practice system**. Research supports several instructional techniques the system can implement. It does not establish that an LLM-generated curriculum, a particular resource ranking, or this application's complete learning experience is effective. Product efficacy requires evaluation of the actual implementation with the intended population.
+The defensible launch description is **an evidence-informed syllabus and practice system**. Research supports several instructional techniques the system can implement. It does not establish that an LLM-generated syllabus, a particular resource ranking, or this application's complete learning experience is effective. Product efficacy requires evaluation of the actual implementation with the intended population.
 
 This document distinguishes three kinds of statements:
 
@@ -892,10 +892,10 @@ Keep three independent dimensions, with supporting records and timestamps:
 
 An objective may have been demonstrated on a recorded date while a review is due. A scheduling transition must not erase that historical demonstration. Specifically:
 
-- `CurriculumRevision` remains immutable.
+- `SyllabusRevision` remains immutable.
 - Activity execution state (`ProgressProjection.activities[]`) tracks what the learner has started, completed, or skipped (`self_reported_completed` or `self_reported_skipped`). Completing an activity never sets `Proficiency.objective_evidence[].status` to `demonstrated`.
 - Objective proficiency (`Proficiency.objective_evidence[]`) changes to `demonstrated` only through validated independent assessment attempts against a reviewed anchor (`reviewed_anchor_available`), or through an explicit reviewed objective-equivalence mapping. Formative practice supports learning but never creates `demonstrated` status.
-- Review occurrences are represented in `ScheduleRevision` and `ReviewScheduleItem`. Completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical curriculum and schedule revisions remain inspectable; recalculation never rewrites past learning evidence.
+- Review occurrences are represented in `ScheduleRevision` and `ReviewScheduleItem`. Completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical syllabus and schedule revisions remain inspectable; recalculation never rewrites past learning evidence.
 
 Corrections to an assessment can change the current evidence projection while preserving the original record. If the UI uses “mastery,” the product must define its operational meaning and disclose the evidence supporting it.
 
@@ -907,7 +907,7 @@ Do not invent universal percentage thresholds. Advancement criteria must be obje
 
 Verify the system's promised behavior before measuring effectiveness:
 
-1. Curriculum validation checks objective coverage, prerequisites, source provenance, access constraints, and total workload.
+1. Syllabus validation checks objective coverage, prerequisites, source provenance, access constraints, and total workload.
 2. Assessment checks reject unsupported answer keys and preserve validation status.
 3. Progress checks prevent completion or assisted success from becoming independent evidence.
 4. Scheduling checks account for availability and review load without impossible backlog growth.
@@ -917,13 +917,13 @@ These establish implementation correctness, not learning efficacy.
 
 #### 7.2 Formative pilot
 
-The pilot should answer whether adult technical learners understand the plan, can access resources, complete the assigned practice, interpret feedback, and maintain a realistic schedule. Examine curriculum relevance, assessment errors, time-estimate error, and burden alongside preliminary learning measures.
+The pilot should answer whether adult technical learners understand the plan, can access resources, complete the assigned practice, interpret feedback, and maintain a realistic schedule. Examine syllabus relevance, assessment errors, time-estimate error, and burden alongside preliminary learning measures.
 
-Use the pilot to refine instruments and estimate variance and attrition. Avoid presenting pre/post improvement without an adequate comparator as a causal effect of the product. Volunteers who finish a curriculum are not representative of everyone who starts it.
+Use the pilot to refine instruments and estimate variance and attrition. Avoid presenting pre/post improvement without an adequate comparator as a causal effect of the product. Volunteers who finish a syllabus are not representative of everyone who starts it.
 
 #### 7.3 Efficacy study
 
-Before claiming the application improves learning, evaluate the shipped intervention against a plausible comparator, such as a curated static curriculum using comparable resources and study opportunity. Randomize where feasible. Predefine the population, exposure, follow-up timing, app/model/policy versions, and analysis plan.
+Before claiming the application improves learning, evaluate the shipped intervention against a plausible comparator, such as a curated static syllabus using comparable resources and study opportunity. Randomize where feasible. Predefine the population, exposure, follow-up timing, app/model/policy versions, and analysis plan.
 
 The primary outcome should measure **independent delayed learning**: a delayed assessment of target knowledge or capability using items not disclosed as practice answers. Specify an independent transfer measure as a key secondary outcome, or designate retention and transfer as co-primary outcomes with an explicit multiplicity plan. Select timing to match the intended learning claim; do not choose a universal delay by convention.
 
@@ -943,7 +943,7 @@ Version changes to content, models, grading, sequence policies, and scheduling. 
 
 Acceptable launch wording: “Uses retrieval practice, distributed review, guided practice, and progress monitoring informed by published research.” Pair claims with specific implementation descriptions.
 
-Do not claim “scientifically proven curriculum,” “optimal for your learning style,” “guaranteed mastery,” or “AI-verified correctness.” Do not infer hiring value from a certificate's availability or learning efficacy from a provider's prestige.
+Do not claim “scientifically proven syllabus,” “optimal for your learning style,” “guaranteed mastery,” or “AI-verified correctness.” Do not infer hiring value from a certificate's availability or learning efficacy from a provider's prestige.
 
 Open empirical questions include the appropriate review scheduler for technical work, how sequence preferences interact with prior knowledge, the reliability of generated assessments, and whether the diagram interface or reminders improve outcomes. These questions belong in the evaluation backlog, not in marketing assertions.
 
@@ -990,7 +990,7 @@ Our resulting policy is to waive redundant instructional activities only when at
 
 ## 8. Proficiency and adaptation
 
-## Proficiency Assessment and Curriculum Adaptation
+## Proficiency Assessment and Syllabus Adaptation
 
 **Version:** 0.2 draft  
 **Date:** 2026-10-20  
@@ -999,7 +999,7 @@ Our resulting policy is to waive redundant instructional activities only when at
 
 ### 1. Product decision
 
-The app assesses relevant prior knowledge by topic and objective, then proposes a curriculum that responds to that evidence. The learner independently chooses the mathematical thoroughness they want. **High proficiency and a desire for deep mathematical treatment are fully compatible.**
+The app assesses relevant prior knowledge by topic and objective, then proposes a syllabus that responds to that evidence. The learner independently chooses the mathematical thoroughness they want. **High proficiency and a desire for deep mathematical treatment are fully compatible.**
 
 Keep these dimensions separate:
 
@@ -1059,7 +1059,7 @@ The proposed initial implementation uses transparent branching over a reviewed i
 4. **Collect independent responses.** Record allowed tools and actual assistance. Let the learner answer “not sure,” stop, or switch to worked-solution study. A solution-study event is not an independent answer.
 5. **Branch using a versioned policy.** Select follow-up items to resolve relevant coverage gaps or conflicting evidence. Preserve the item-selection reason and a bounded assessment budget.
 6. **Stop honestly.** End when the reviewed decision criteria have adequate supporting evidence, the learner stops, coverage is unavailable, or the configured time/item budget is reached. Budget exhaustion does not establish proficiency.
-7. **Explain the result.** Show the assessed objectives, evidence limits, proposed curriculum changes, and options to challenge the result, request more support, or keep the original route.
+7. **Explain the result.** Show the assessed objectives, evidence limits, proposed syllabus changes, and options to challenge the result, request more support, or keep the original route.
 
 Item counts, sampling/effort targets, and stopping rules are initial design policies to pilot and refine. Do not describe a fixed-length quiz as scientifically sufficient for every topic. Initial formative diagnostics do not impose a response timer; accommodations and pause/stop controls remain available. Administration conditions must be included in the interpretation of results.
 
@@ -1114,11 +1114,11 @@ Do not hard-lock ordinary learning content merely because proficiency has not be
 - Formative practice may support learning but must not create `demonstrated` status.
 - Every override or acknowledgement is recorded as an auditable learner decision.
 
-Waiving introductory instruction does not waive a new target capability, integrated application, or later independent transfer task. If the learner has already demonstrated the same target objective under equivalent conditions, the system may credit that evidence explicitly. It must not mark the broader curriculum completed merely because a prerequisite was waived.
+Waiving introductory instruction does not waive a new target capability, integrated application, or later independent transfer task. If the learner has already demonstrated the same target objective under equivalent conditions, the system may credit that evidence explicitly. It must not mark the broader syllabus completed merely because a prerequisite was waived.
 
 ### 7. Revisions and learner control
 
-Proficiency observations can update evidence projections as new results arrive. Changes to an accepted curriculum or schedule follow the existing revision workflow: propose a diff, explain the evidence, recalculate time and cost, and apply after the learner accepts the relevant change. Evidence itself is not rewritten to obtain a preferred plan.
+Proficiency observations can update evidence projections as new results arrive. Changes to an accepted syllabus or schedule follow the existing revision workflow: propose a diff, explain the evidence, recalculate time and cost, and apply after the learner accepts the relevant change. Evidence itself is not rewritten to obtain a preferred plan.
 
 An adaptation proposal should explain what will be added, condensed, retained, or waived; why; the evidence used; any uncovered objectives; and the effect on workload and reminders. The proposal must preserve the learner's mathematical-depth and sequence choices unless the learner changes them explicitly.
 
@@ -1126,7 +1126,7 @@ The learner can reject a proposed shortcut, request additional examples, contest
 
 ### 8. Worked example: strong linear algebra and deep mathematics
 
-**Learner request:** “I know linear algebra well. I want a mathematically thorough curriculum on LLMs, and I prefer application-first.”
+**Learner request:** “I know linear algebra well. I want a mathematically thorough syllabus on LLMs, and I prefer application-first.”
 
 The first statement is a self-report until supported. Suppose reviewed anchors then demonstrate the specific abilities to reason about matrix dimensions, use linear transformations and projections, and explain an appropriate low-rank approximation. Matrix calculus and probability remain unassessed. These are illustrative capabilities, not a claim that a particular short diagnostic measures all of linear algebra.
 
@@ -1167,7 +1167,7 @@ Pilot the diagnostic's content coverage, accessibility, burden, item ambiguity, 
 
 For an efficacy comparison, hold relevant goals, resource quality, and study opportunity comparable, and compare adaptation against a credible fixed route. Measure independent delayed performance and transfer, along with time and burden. Include assessment time in efficiency calculations. Preserve self-selection and attrition information; learners who accept shortcuts are not automatically comparable to those who do not.
 
-If probabilistic proficiency modeling is introduced later, evaluate its calibration, discrimination, missing-data behavior, and subgroup performance before displaying probabilities or using them as strong gate evidence. Predicting the next item correctly is not alone proof that an adaptive curriculum improves learning. Mathematical-depth preferences should remain user choices even when predictive models change.
+If probabilistic proficiency modeling is introduced later, evaluate its calibration, discrimination, missing-data behavior, and subgroup performance before displaying probabilities or using them as strong gate evidence. Predicting the next item correctly is not alone proof that an adaptive syllabus improves learning. Mathematical-depth preferences should remain user choices even when predictive models change.
 
 ### References
 
@@ -1194,7 +1194,7 @@ The requested maximum_minutes selects a bounded sample/effort target. It is not 
 
 The supplied [Mobbin Neo Financial iOS gallery](https://mobbin.com/apps/neo-financial-ios-f87b0370-a06e-4ae5-b1c7-9fe502588fba) could not be inspected through the available retrieval service on 2026-10-20. An app image linked from [Neo's official site](https://www.neofinancial.com/) was inspected: it shows an off-white interface, dark typography, restrained controls, and a simple chart with pale colored marks. This limited public image supports the broad visual direction, not a claim to have reviewed the gallery's complete screens or flows. [Inspected official image](https://n9typqfrnexj4eg9.public.blob.vercel-storage.com/cta_mobile-WXYz1ysNSMKTf715Mt3XL3qJlN4TVo.png).
 
-The product should feel calm, precise, and useful for sustained study. Use visual hierarchy to answer: What am I learning? What should I do next? Why is this activity here? What evidence do I have? Use an original composition, product identity, iconography, and copy. Do not copy Neo's branding, illustrations, screenshots, or financial terminology into the application. The uploaded curriculum HTML remains a structural reference only.
+The product should feel calm, precise, and useful for sustained study. Use visual hierarchy to answer: What am I learning? What should I do next? Why is this activity here? What evidence do I have? Use an original composition, product identity, iconography, and copy. Do not copy Neo's branding, illustrations, screenshots, or financial terminology into the application. The uploaded syllabus HTML remains a structural reference only.
 
 The diagram explains the plan. Today enables action. An equivalent outline gives full access to the plan's information and actions. Minimalism, diagrams, translucency, and soft shadows are design preferences; the learning evidence in section 7 does not establish that those aesthetics improve retention or transfer.
 
@@ -1255,25 +1255,25 @@ Provide **Solid surfaces** and **Reduce motion** appearance settings. System pre
 
 #### Impeccable UI craft floor and anti-pattern gate (`AGENTS.md` & `scripts/impeccable-gate.mjs`)
 
-Every rendered screen (`Today`, `Progress`, `Resources`, `Explore`, `Settings`, and all modal dialogs) must pass the automated rendered-HTML + Box-in-Box gate (`pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs`) with zero anti-patterns, zero advisories, and zero `[box-in-box]` violations:
+Every rendered screen (`Today`, `Progress`, `Resources`, `Explore`, `Settings`, and all modal dialogs) must pass the automated rendered-HTML + Box-in-Box gate (`pnpm --filter @syllabus/web exec tsx ../../scripts/impeccable-gate.mjs`) with zero anti-patterns, zero advisories, and zero `[box-in-box]` violations:
 
 - **Strict ban on Box-in-Box (`[box-in-box]`):** Never place bordered or tinted-background boxes inside an outer bordered or surface-filled container box:
-  - Page sections and workspaces (`.surface-panel`, `#progress-capability-portfolio`, `.today-unified-header`, `.flow-board`, `.resources-table-wrapper`, `.marketplace-filters`, `.today-curriculum-overview`) never use 4-sided borders (`border: var(--hairline)`) or card surface fills (`background: var(--color-surface)`).
+  - Page sections and workspaces (`.surface-panel`, `#progress-capability-portfolio`, `.today-unified-header`, `.flow-board`, `.resources-table-wrapper`, `.marketplace-filters`, `.today-syllabus-overview`) never use 4-sided borders (`border: var(--hairline)`) or card surface fills (`background: var(--color-surface)`).
   - **Option H borderless tonal unit swimlanes:** Unit swimlanes (`.matrix-table tbody tr.study-card > *`, `.progress-unit-row`) use a single borderless tonal swimlane fill (`var(--color-swimlane)` / `var(--color-swimlane-selected)`) against the unboxed `#FFFFFF` canvas, never 4-sided borders, and child capability rows (`.progress-capability-row`) inside `.progress-unit-row` remain completely unboxed.
   - Inline row links, actions, and metadata (`.progress-act-chip`, `.progress-check-btn`, `.resource-usage-chip`, `.unit-badge`, `.progress-unit-gate`, `.progress-status-pill`, `.learn-tag-primary`, `.learn-topic-chip`, `.domain-pill`, `.track-badge`) are never rendered as bordered/tinted pill boxes inside rows or cards, and buttons/chips never contain nested `.badge` or checkbox boxes.
 - **Strict ban on horizontal line abuse (`[line-abuse]`):** Never replace boxes with horizontal divider spam (`border-top`, `border-bottom`, `border-block`, `<hr>`, or decorative horizontal progress bars `.progress-overview-bar`). Separate page sections, units, capabilities, and headers through spatial proximity, generous vertical whitespace (`gap: 32px–48px`), and structural indentation. Only true data-table column headers (`.flow-colhead`, `.resources-data-table thead th`, `.providers-data-table thead th` bottom baseline) and the top sticky navbar use a single baseline rule.
 - **Unmistakable 4-tier typographic and spatial hierarchy (`[hierarchy-blur]`):**
-  - **Titles:** Page `h1.page-title` (`36px`, `700`, `#17191C`), selected curriculum title `.today-selected-title` (`24px`, `700`, `#17191C`), section `h2` (`20px–22px`, `700`), unit title `.progress-unit-title` (`19px`, `700`, `#17191C`), item title `.capability-title` / `.resource-row-title` (`16px`, `600`, `#17191C`).
-  - **Descriptions & prose:** `.page-description`, `.plan-goal`, `.today-curriculum-brief .plan-goal`, `.today-curriculum-brief .plan-scope-list`, `.progress-cap-description`, `.resource-row-rationale` use regular weight (`font-weight: 400`, never `500` or `600`) and muted secondary ink (`color: var(--color-text-secondary)`, never `#17191C`), with `line-height: 1.55–1.6`.
+  - **Titles:** Page `h1.page-title` (`36px`, `700`, `#17191C`), selected syllabus title `.today-selected-title` (`24px`, `700`, `#17191C`), section `h2` (`20px–22px`, `700`), unit title `.progress-unit-title` (`19px`, `700`, `#17191C`), item title `.capability-title` / `.resource-row-title` (`16px`, `600`, `#17191C`).
+  - **Descriptions & prose:** `.page-description`, `.plan-goal`, `.today-syllabus-brief .plan-goal`, `.today-syllabus-brief .plan-scope-list`, `.progress-cap-description`, `.resource-row-rationale` use regular weight (`font-weight: 400`, never `500` or `600`) and muted secondary ink (`color: var(--color-text-secondary)`, never `#17191C`), with `line-height: 1.55–1.6`.
   - **Structurally indented contents:** Child items are structurally indented under their parent heading (`.progress-unit-capabilities` indented `padding-inline-start: 30px` under the unit header; `.progress-cap-description` and `.progress-cap-activities` indented `padding-inline-start: 28px` under the capability title row; `.intake-resource-index-details` indented under material titles).
 - **Strict ban on thick side-tab accent borders (`[side-tab]`), KPI stat-card banners, and eyebrow kickers:** Never use `border-left` or `border-right` above `1px` on cards or alerts; never build 3- or 4-column boxed KPI stat banners (use the quiet borderless `.progress-overview-strip`); never place tracked-uppercase kicker labels above `<h1>` headings; and ensure every interactive control meets the `44px` minimum touch target (`var(--layout-touch-target-min)`).
 
 ### 9.3 Navigation and responsive layout
 
 Use three top-level destinations in the header bar: **Learn**, **Explore**, and **Settings**:
-- Inside **Learn**, the left sidebar presents 3 focused sub-navigation tabs—**Today**, **Progress**, and **Resources**—followed by the **Your curricula** switcher (`.sidebar-curricula-list`, displaying each active or draft curriculum's title, subject, and session progress) and a `+ New curriculum` trigger button (`data-dialog-id="dialog-new-curriculum"`). Plan actions (`Activate plan`, `Share with Community`), macro curriculum `Goal` / `Covers` context, and unit-gate progression are unified directly inside **Today**, while synchronized `Plan` (`Map` / `Outline`) state remains accessible for deep-link and architectural inspection.
+- Inside **Learn**, the left sidebar presents 3 focused sub-navigation tabs—**Today**, **Progress**, and **Resources**—followed by the **Your syllabi** switcher (`.sidebar-syllabi-list`, displaying each active or draft syllabus's title, subject, and session progress) and a `+ New syllabus` trigger button (`data-dialog-id="dialog-new-syllabus"`). Plan actions (`Activate plan`, `Share with Community`), macro syllabus `Goal` / `Covers` context, and unit-gate progression are unified directly inside **Today**, while synchronized `Plan` (`Map` / `Outline`) state remains accessible for deep-link and architectural inspection.
 - The top header bar (`HeaderBar.tsx`) includes a dedicated **sun/moon theme toggle button** (`.navbar-theme-toggle`, `data-action="set-theme"`) and simplified authentication controls: when `guest`, it shows `Log in` and `Sign in` buttons that open the authentication modal (`#dialog-auth`) and routes the signed-out view to **Explore** with a sidebar guest prompt (`Sign in to get started`); when `authenticated`, it renders a standard user avatar dropdown (`.navbar-user-menu`) with user identity, `Profile & Settings`, and `Sign out` (without redundant account-switcher menus).
-- Publishing controls belong to a curriculum (`Share with Community`) and **Your contributions** / **My Publications**; they do not create a social-feed destination. Curator and moderator tools appear only for authorized roles in a separate administration context.
+- Publishing controls belong to a syllabus (`Share with Community`) and **Your contributions** / **My Publications**; they do not create a social-feed destination. Curator and moderator tools appear only for authorized roles in a separate administration context.
 
 | Layout | Range in CSS pixels | Navigation and content |
 | --- | --- | --- |
@@ -1285,7 +1285,7 @@ Breakpoints are starting implementation rules. Container width and text scaling 
 
 Use a 64 px header as a base height, allowing content to grow with text size. Compact navigation uses a 64 px base plus the device's safe-area inset; content padding reserves that space. Bottom action bars, virtual keyboards, and browser chrome must not cover a field, error, or primary action. A sticky action may become an ordinary in-flow action when viewport height is too small. No orientation lock.
 
-Default entry for a returning learner is Today for the last explicitly selected curriculum. Preserve a directly requested deep link or active study context. Public URLs open the requested publication revision; signing in must preserve that revision and intended action without automatically voting, publishing, or spending. Browser Back returns to the previous selection, filters, and scroll position when safe.
+Default entry for a returning learner is Today for the last explicitly selected syllabus. Preserve a directly requested deep link or active study context. Public URLs open the requested publication revision; signing in must preserve that revision and intended action without automatically voting, publishing, or spending. Browser Back returns to the previous selection, filters, and scroll position when safe.
 
 Do not put private goal text, keys, diagnostic answers, or unlisted-link secrets in analytics events or URL query strings. Public exploration filters may be URL state; private form drafts are not.
 
@@ -1296,8 +1296,8 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | Surface | Content in priority order | Primary action and important states |
 | --- | --- | --- |
 | Entry and sign-in | Product purpose; public exploration (`Explore`); guest sidebar card (`Sign in to get started`) | `Log in` or `Sign in` via `#dialog-auth`; session expired banner, preserved return destination |
-| Today | Unified curriculum header (`Goal`, `Covers`, `CurriculumTagStrip`, `Activate plan`, `Share with Community`); above-the-fold Study Flow board with Option H borderless tonal unit swimlanes, uniform component boxes, next-up emphasis, and interactive unit summary drawer | Click activity or unit row to open `InspectorDrawer` (`Activity` or `Unit` mode, including curriculum-aware Concept Check and LaTeX math rendering); flow order switches (`Theory`, `Code first`, `Balanced`, `Deep Dive`, `Review`) |
-| New curriculum (`#dialog-new-curriculum`) | Progressive disclosure: starts in empty state with multi-line `Goal` textarea (`rows={2}`) and segmented `Depth`, `Flow`, `Materials`, `Pace` controls; once query/topic is entered, discloses 3-tier cascading dependent tag tree (`Subject` → `Topics` → `Sub-topics`) and `Suggested fit` (`Step 1.5`) tray (`Existing curricula` vs. `Materials` with polymorphic TOC/video details and single check toggle) + footer AI model picker | `Create curriculum`, `Open plan →`, or `Use plan →`; search-bypass status badge (`No AI generation · No web search`, `No web search · AI synthesis required`, or `Search N missing topics · AI synthesis required`) |
+| Today | Unified syllabus header (`Goal`, `Covers`, `SyllabusTagStrip`, `Activate plan`, `Share with Community`); above-the-fold Study Flow board with Option H borderless tonal unit swimlanes, uniform component boxes, next-up emphasis, and interactive unit summary drawer | Click activity or unit row to open `InspectorDrawer` (`Activity` or `Unit` mode, including syllabus-aware Concept Check and LaTeX math rendering); flow order switches (`Theory`, `Code first`, `Balanced`, `Deep Dive`, `Review`) |
+| New syllabus (`#dialog-new-syllabus`) | Progressive disclosure: starts in empty state with multi-line `Goal` textarea (`rows={2}`) and segmented `Depth`, `Flow`, `Materials`, `Pace` controls; once query/topic is entered, discloses 3-tier cascading dependent tag tree (`Subject` → `Topics` → `Sub-topics`) and `Suggested fit` (`Step 1.5`) tray (`Existing syllabi` vs. `Materials` with polymorphic TOC/video details and single check toggle) + footer AI model picker | `Create syllabus`, `Open plan →`, or `Use plan →`; search-bypass status badge (`No AI generation · No web search`, `No web search · AI synthesis required`, or `Search N missing topics · AI synthesis required`) |
 | Planning constraints | Time/capacity/deadline; access; language; separate spend categories | Review choices; impossible deadline, unavailable subscription, unknown cost |
 | Background and preferences | Topic claims/evidence; math depth; order; known-material treatment | Continue or check prerequisites; unknown, partial evidence, explicit override |
 | Diagnostic introduction | Sampled objectives; effort target; conditions; optional nature | Start or Skip for now; missing reviewed coverage |
@@ -1306,36 +1306,36 @@ Screens below are user-facing surfaces, not a requirement for one route per row.
 | AI authorization | Mode/provider/model; operation; applicable cost basis/ceiling; terms | Authorize generation; expired quote, missing key, insufficient credit |
 | Generation status | Authoritative job state; retained request; available recovery | Open draft or Cancel; queued, running, validating, failed, cancellation requested |
 | Draft review | Today workspace in draft state with draft notice and `Activate plan` action; bounded outcomes and evidence paths; prerequisites; pacing; access and costs | Activate plan after review; partial coverage, infeasible schedule, stale draft |
-| Plan (deep-link & architectural view) | Outcomes and prerequisites (`Map` / `Outline` synchronized views); relationship legend; curriculum lifecycle controls | Inspect evidence, switch `Map`/`Outline`, or Resume Study |
-| Activity & Unit Inspector (`InspectorDrawer`) | Slide-over drawer with `Activity` mode (3-state status selector `Not started` \| `In progress` \| `Done`, deliverables, study material source card, rubric, and curriculum-aware Concept Check with LaTeX math) and `Unit` mode (unit summary, gate status, and unit activity list) | Open material, submit Concept Check, or `Go to next step →`; saved draft, completed/skipped |
+| Plan (deep-link & architectural view) | Outcomes and prerequisites (`Map` / `Outline` synchronized views); relationship legend; syllabus lifecycle controls | Inspect evidence, switch `Map`/`Outline`, or Resume Study |
+| Activity & Unit Inspector (`InspectorDrawer`) | Slide-over drawer with `Activity` mode (3-state status selector `Not started` \| `In progress` \| `Done`, deliverables, study material source card, rubric, and syllabus-aware Concept Check with LaTeX math) and `Unit` mode (unit summary, gate status, and unit activity list) | Open material, submit Concept Check, or `Go to next step →`; saved draft, completed/skipped |
 | Practice and feedback | Task/response; help (`Hint`, `Worked solution`); attributable feedback and next step | Submit or Continue; evaluation pending, advisory result, correction |
 | Progress and evidence | Borderless 3-column `.progress-overview-strip` (`Verified mastery`, `Study effort`, `Understanding check` with `Continue ~5m check`, `Pause`, `Stop`); `.progress-unit-row` tonal swimlanes with unboxed, structurally indented `.progress-capability-row` items | `Check understanding →` or `Open Study Flow →`; unassessed, self-reported, assisted, demonstrated |
 | Schedule and reminders | Google Calendar–style `Reminders` bar in `Profile & Settings` (`Time zone` IANA dropdown, `Weekdays (Mon–Fri)`, `Weekends (Sat–Sun)`, `Notify me` lead-time selector, and `Enable reminders` switch) | Toggle reminders or adjust timezone/times; DST handling, denied permission |
 | Adaptation review (`#dialog-adaptation-diff`) | Grouped before/after diff; time impact; preserved math depth; skipped lessons backed by checkpoint evidence; added bridge lessons; technical revision metadata | `Accept revision` or `Keep current plan`; stale proposal retains current plan |
-| Resources (`ResourcesView`) | Multi-curriculum scope toggle (`This curriculum` vs. `All curricula`); category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`); filterable `.resources-data-table` with category badges, rationale, linked units, and provenance | Filter by scope/category or open canonical external resource |
-| Explore (Community marketplace) | **My Publications** open-knowledge philanthropy showcase (`OpenKnowledgeArt` SVG emblem, hero focal card, icon badges, `CC BY 4.0` license seal); **Community** 3-tier filter bar (`Category` → `Subject` → `Topic`) + `Difficulty` (`Formal`, `Applied`, `Intuitive`) and `Format` (`Quiz`, `Code Lab`, `Problem Set`, `Rubric`) facets + sort (`Top`, `Most adopted`, `Newest`) | `Details` / `Use curriculum`, upvote revision, or `+ Share curriculum` |
-| Adopt / Curriculum Details (`#dialog-partial-adoption`) | Full curriculum Details modal showing every unit (`U1`, `U2`, ...) with its activities, durations, and resource provenance; `Select all` toggle + per-unit checkboxes with transitive prerequisite closure | `Use selected units` or `Use full curriculum` (creates private draft at zero AI cost) |
-| Publish preview (`#dialog-publication-preview`) | Exact allowlisted public content; publisher handle; `CC BY 4.0` terms; list of private fields removed; visibility (`Public` vs. `Unlisted`) | `Publish curriculum`; missing rights, changed/expired preview |
-| Profile & Settings (`#panel-settings`) | Left master-detail **Profile** form with clickable circular avatar badge and **Cropper.js** modal (`#dialog-avatar-cropper`); **Your contributions** impact statement with learner avatar stack, typographic underlines, shared curriculum status rows, and learner comments; unshaded **AI providers (BYOK)** data table (OpenAI, Anthropic, Google Gemini with brand logos, per-provider **Model** selector, inline API key slot + apply button, Primary star vs. Standby status, and native API web-search grounding labels); Google Calendar–style **Reminders** bar; and **Privacy & account** export/deletion (`#dialog-account-deletion`) with `Apache-2.0` and `CC BY 4.0` disclosures | Save profile, crop photo, manage BYOK keys/models, configure reminders, or export/delete account |
+| Resources (`ResourcesView`) | Multi-syllabus scope toggle (`This syllabus` vs. `All syllabi`); category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`); filterable `.resources-data-table` with category badges, rationale, linked units, and provenance | Filter by scope/category or open canonical external resource |
+| Explore (Community marketplace) | **My Publications** open-knowledge philanthropy showcase (`OpenKnowledgeArt` SVG emblem, hero focal card, icon badges, `CC BY 4.0` license seal); **Community** 3-tier filter bar (`Category` → `Subject` → `Topic`) + `Difficulty` (`Formal`, `Applied`, `Intuitive`) and `Format` (`Quiz`, `Code Lab`, `Problem Set`, `Rubric`) facets + sort (`Top`, `Most adopted`, `Newest`) | `Details` / `Use syllabus`, upvote revision, or `+ Share syllabus` |
+| Adopt / Syllabus Details (`#dialog-partial-adoption`) | Full syllabus Details modal showing every unit (`U1`, `U2`, ...) with its activities, durations, and resource provenance; `Select all` toggle + per-unit checkboxes with transitive prerequisite closure | `Use selected units` or `Use full syllabus` (creates private draft at zero AI cost) |
+| Publish preview (`#dialog-publication-preview`) | Exact allowlisted public content; publisher handle; `CC BY 4.0` terms; list of private fields removed; visibility (`Public` vs. `Unlisted`) | `Publish syllabus`; missing rights, changed/expired preview |
+| Profile & Settings (`#panel-settings`) | Left master-detail **Profile** form with clickable circular avatar badge and **Cropper.js** modal (`#dialog-avatar-cropper`); **Your contributions** impact statement with learner avatar stack, typographic underlines, shared syllabus status rows, and learner comments; unshaded **AI providers (BYOK)** data table (OpenAI, Anthropic, Google Gemini with brand logos, per-provider **Model** selector, inline API key slot + apply button, Primary star vs. Standby status, and native API web-search grounding labels); Google Calendar–style **Reminders** bar; and **Privacy & account** export/deletion (`#dialog-account-deletion`) with `Apache-2.0` and `CC BY 4.0` disclosures | Save profile, crop photo, manage BYOK keys/models, configure reminders, or export/delete account |
 | Curation and moderation | Review queue; public/source evidence; role-scoped decisions | Approve, reject, or quarantine; missing rights, stale version, unauthorized role |
 
-### 9.5 Intake, proficiency, and rigor (`New Curriculum` 5-step pipeline)
+### 9.5 Intake, proficiency, and rigor (`New Syllabus` 5-step pipeline)
 
-The `New Curriculum` dialog (`NewCurriculumDialog.tsx`, `#dialog-new-curriculum`) implements progressive disclosure backed by the 5-step curriculum intake and synthesis pipeline (`Step 0`–`Step 4`):
+The `New Syllabus` dialog (`NewSyllabusDialog.tsx`, `#dialog-new-syllabus`) implements progressive disclosure backed by the 5-step syllabus intake and synthesis pipeline (`Step 0`–`Step 4`):
 
 1. **Focused initial empty state (`Step 0`):** When opened before a goal or topic is entered (`hasIntakeIntent === false`), the dialog displays only the multi-line **Goal** `<textarea id="intake-goal" rows="2" placeholder="What do you want to learn?">` and the 4-cell `.intake-controls-grid` (`Depth`: `Intuitive` / `Applied` / `Formal`; `Flow`: `Theory` / `Code first` / `Balanced`; `Materials`: `Free only` / `Paid allowed`; `Pace`: `90m/wk` / `120m/wk` / `180m/wk` / `240m/wk`), plus the footer AI model selector (`#intake-ai-model`) and actions.
 2. **3-tier cascading dependent tag tree:** As soon as the learner types a goal or selects a topic (`hasIntakeIntent === true`), the dialog progressively discloses `.intake-taxonomy-tree`:
    - **Tier 1 (`Subject`):** Icon-tagged buttons for `Engineering`, `Systems`, `Math` (`Mathematics`), `Physics`, and `Literature`.
    - **Tier 2 (`Topics`):** Core topics for the active subject (`SUBJECT_TOPIC_TAXONOMY[subject].coreTopics`). Toggling a topic runs `resolveDependentTopicToggle`, which automatically selects required prerequisite topics (marking them with a `prereq` badge) and displays `+N` badges on parent topics that unlock sub-topics, alongside a `Reset` button (`data-action="clear-intake-topics"`). Active topic pills also carry `data-topic-coverage` state (`covered`, `partial`, `not_verified`).
    - **Tier 3 (`Sub-topics`):** Progressively disclosed when a parent topic is selected, displaying child sub-topics with a `via <Parent>` dependency badge; deselecting all parent topics automatically removes orphaned sub-topics.
-3. **Suggested fit (`Step 1.5` resource & plan fit evaluation):** Below the controls grid, `#intake-suggested-fit-tray` (`evaluate_resource_fit_and_coverage` in `crates/domain` and `evaluateIntakeResourceFit` in `NewCurriculumDialog.tsx`) displays:
+3. **Suggested fit (`Step 1.5` resource & plan fit evaluation):** Below the controls grid, `#intake-suggested-fit-tray` (`evaluate_resource_fit_and_coverage` in `crates/domain` and `evaluateIntakeResourceFit` in `NewSyllabusDialog.tsx`) displays:
    - A live search-bypass status badge (`data-search-bypass-status`): `No AI generation · No web search` when adopting an existing plan directly, `No web search · AI synthesis required` when selected catalog materials cover all requested topics (`webSearchRequired = false`), or `Search N missing topics · AI synthesis required` when topic gaps remain (`webSearchRequired = true`).
-   - **Existing curricula (`.intake-existing-plans-block`):** Distinct from materials, listing matching personal plans (`Your plan` with `Open plan →`) and Community templates (`Community` with `Use plan →`) along with matched topic counts.
+   - **Existing syllabi (`.intake-existing-plans-block`):** Distinct from materials, listing matching personal plans (`Your plan` with `Open plan →`) and Community templates (`Community` with `Use plan →`) along with matched topic counts.
    - **Materials (`.intake-materials-block`):** A single consolidated list combining approved catalog matches (`source: "indexed"`) and native AI web-search discoveries (`source: "web_search"`), without a manual "Fill gaps / Use selected only" mode toggle. Each row shows a category badge (`Book`, `Video`, `Course`, `Code`, `Paper`), title, publisher, covered topics, a single circular check button (`.intake-material-check`, `data-action="toggle-intake-resource"`), and an indented expandable `<details class="intake-resource-index-details">` disclosure rendering polymorphic `ResourceIndexDescriptor` metadata:
      - **Book index (`BookIndex`):** `Chapters (N) · Author` summary, italicized book summary blurb, and chapter-by-chapter Table of Contents (`Ch. 1: ... (pp. ...)`).
      - **YouTube playlist index (`YoutubePlaylistIndex`):** `Videos (N) · Channel` summary, playlist transcript outline, and numbered video syllabus items with durations (`1. Title (18m)`).
      - **Course / Lab index (`CourseIndex` / `RepositoryLabIndex`):** `Units (N)` summary and unit/exercise list.
-4. **Designated AI model & native web-search grounding (`Step 2`–`Step 4`):** The dialog footer includes `#intake-ai-model` (`DESIGNATED_AI_MODELS` grouped across OpenAI, Anthropic, and Google Gemini, defaulting to the learner's Primary BYOK provider and selected model from `Profile & Settings`) and `Create curriculum`, which executes the 5-step pipeline and records an `IntakePipelineExecutionReceipt`.
+4. **Designated AI model & native web-search grounding (`Step 2`–`Step 4`):** The dialog footer includes `#intake-ai-model` (`DESIGNATED_AI_MODELS` grouped across OpenAI, Anthropic, and Google Gemini, defaulting to the learner's Primary BYOK provider and selected model from `Profile & Settings`) and `Create syllabus`, which executes the 5-step pipeline and records an `IntakePipelineExecutionReceipt`.
 
 Present four independent preference dimensions that never silently overwrite one another (`UI-011`, `ADAPT-001`, `ADAPT-007`):
 
@@ -1364,18 +1364,18 @@ Coding activities initially use a local or external environment, with setup requ
 
 ### 9.7 Today, plan diagrams, and progress
 
-**Today composition and unified study flow:** Today (`#panel-learn-today`) is the primary above-the-fold study workspace for the active curriculum selected in the left sidebar (`Your curricula` / `Switch curriculum`):
+**Today composition and unified study flow:** Today (`#panel-learn-today`) is the primary above-the-fold study workspace for the active syllabus selected in the left sidebar (`Your syllabi` / `Switch syllabus`):
 
-- **Unified curriculum header (`.today-unified-header`):** Displays the selected curriculum's `h1.page-title.today-selected-title`, completion progress (`X/Y completed · Zm left`), the `CurriculumTagStrip` (`Category › Subject` plus topic tags), and curriculum lifecycle actions (`Activate plan` when viewing an adopted private draft, and `Share with Community` to open `#dialog-publication-preview`), alongside the macro curriculum brief (`Goal` summary and `Covers` scope list) in regular-weight muted secondary ink (`#5B636E`). A TomSelect-backed curriculum command picker (`#selected-plan-control`) remains bound for programmatic selection.
-- **Study Flow board (`StudyFlowBoard.tsx`, `.flow-board`):** Sits immediately below the unified header above the fold. Each curriculum module renders as an **Option H borderless tonal unit swimlane** (`tr.study-card > *` using `var(--color-swimlane)` / `var(--color-swimlane-selected)` without 4-sided card borders or horizontal divider spam). The unit header column (`th.unit-col`) displays the unit code (`U1`, `U2`, ...), unit title, effort summary, and unit gate status, and is interactive (`data-action="select-unit-row"`) to open the unit summary in `InspectorDrawer`.
+- **Unified syllabus header (`.today-unified-header`):** Displays the selected syllabus's `h1.page-title.today-selected-title`, completion progress (`X/Y completed · Zm left`), the `SyllabusTagStrip` (`Category › Subject` plus topic tags), and syllabus lifecycle actions (`Activate plan` when viewing an adopted private draft, and `Share with Community` to open `#dialog-publication-preview`), alongside the macro syllabus brief (`Goal` summary and `Covers` scope list) in regular-weight muted secondary ink (`#5B636E`). A TomSelect-backed syllabus command picker (`#selected-plan-control`) remains bound for programmatic selection.
+- **Study Flow board (`StudyFlowBoard.tsx`, `.flow-board`):** Sits immediately below the unified header above the fold. Each syllabus module renders as an **Option H borderless tonal unit swimlane** (`tr.study-card > *` using `var(--color-swimlane)` / `var(--color-swimlane-selected)` without 4-sided card borders or horizontal divider spam). The unit header column (`th.unit-col`) displays the unit code (`U1`, `U2`, ...), unit title, effort summary, and unit gate status, and is interactive (`data-action="select-unit-row"`) to open the unit summary in `InspectorDrawer`.
 - **Uniform-size component boxes & next-up emphasis:** Across the pedagogical tracks (`Theory`, `Coding` / `Practice`, `Gate & Review`), activity node cards (`.flow-node`) share uniform dimensions without repeating column headers inside the cards, render inline LaTeX mathematical notation via `MathText.tsx` and `SafeActivityRenderer` (including uppercase Greek symbols such as `\Lambda`), and highlight the next-up open activity (`is-next-up`). Flow configuration switches use concise 1–2 word labels (`Theory`, `Code first`, `Balanced`, plus compact `Deep Dive` and `Review` toggles) with zero layout shift between modes. Treat Review and Deep Dive display controls as presentation choices unless they enter an explicit adaptation workflow; hiding work must not remove its obligation.
-- **Slide-over Inspector Drawer (`InspectorDrawer.tsx`):** Clicking a unit row opens `Unit` mode (unit summary, gate status, and unit activities); clicking any activity node opens `Activity` mode with a 3-state status selector (`Not started` | `In progress` | `Done`), `Go to next step →` button, Study Material / Source card with verified section/timestamp metadata, deliverables, and task-specific assessment/practice views including a curriculum-aware **Concept Check** (with explicit `Submit`, `Hint`, and `Worked solution` controls) or a **Synthesis & Self-Check Rubric** for humanities/niche topics where no objective quiz bank exists (`PED-006`). No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation. Respect reduced-motion preferences.
+- **Slide-over Inspector Drawer (`InspectorDrawer.tsx`):** Clicking a unit row opens `Unit` mode (unit summary, gate status, and unit activities); clicking any activity node opens `Activity` mode with a 3-state status selector (`Not started` | `In progress` | `Done`), `Go to next step →` button, Study Material / Source card with verified section/timestamp metadata, deliverables, and task-specific assessment/practice views including a syllabus-aware **Concept Check** (with explicit `Submit`, `Hint`, and `Worked solution` controls) or a **Synthesis & Self-Check Rubric** for humanities/niche topics where no objective quiz bank exists (`PED-006`). No punitive streak-loss treatment, ranking, social feed, or mandatory celebratory animation. Respect reduced-motion preferences.
 
-**Plan composition:** While everyday curriculum actions (`Activate plan`, `Share with Community`) and macro `Goal`/`Covers` context are unified into **Today**, the `#panel-learn-plan` deep-link surface preserves the synchronized `Map` / `Outline` architectural view (`#plan-outcomes-prerequisites`), relationship legend (`#plan-relationship-legend`), and curriculum-switcher state across four logical responsibilities. Use plain learner-facing labels:
+**Plan composition:** While everyday syllabus actions (`Activate plan`, `Share with Community`) and macro `Goal`/`Covers` context are unified into **Today**, the `#panel-learn-plan` deep-link surface preserves the synchronized `Map` / `Outline` architectural view (`#plan-outcomes-prerequisites`), relationship legend (`#plan-relationship-legend`), and syllabus-switcher state across four logical responsibilities. Use plain learner-facing labels:
 
 **1. Outcomes & prerequisites**
 
-Present the curriculum's bounded terminal outcomes first. Where a capstone exists, show its task, success criteria, and assessment conditions.
+Present the syllabus's bounded terminal outcomes first. Where a capstone exists, show its task, success criteria, and assessment conditions.
 
 For each outcome, expose:
 
@@ -1429,7 +1429,7 @@ Progress may link to this adaptation review. It does not own a second adaptation
 
 **4. Plan status & sharing**
 
-Show the selected curriculum revision and whether it is a draft or active plan.
+Show the selected syllabus revision and whether it is a draft or active plan.
 
 Expose **Activate plan** only when activation is applicable. Draft activation remains explicit and subject to existing validation.
 
@@ -1439,7 +1439,7 @@ Provide access to **My publications** for lifecycle management. Do not mix publi
 
 This section supports governance and reproducibility. It is not the educational justification for Plan.
 
-**Architecture views:** Keep the active curriculum switcher, plan title and bounded outcome, progress summary, and `Resume →` action in the Plan header. On wide screens, Outcomes & prerequisites contains a Map/Outline control, focused module graph, and selected-module detail. Show level of mathematical treatment and resource/access warnings in readable text. The graph uses modules as top-level nodes; books, chapters, and quizzes remain activities within modules unless a real dependency warrants more detail. Group large plans into navigable regions with counts and disclosed filters. Never silently hide required work.
+**Architecture views:** Keep the active syllabus switcher, plan title and bounded outcome, progress summary, and `Resume →` action in the Plan header. On wide screens, Outcomes & prerequisites contains a Map/Outline control, focused module graph, and selected-module detail. Show level of mathematical treatment and resource/access warnings in readable text. The graph uses modules as top-level nodes; books, chapters, and quizzes remain activities within modules unless a real dependency warrants more detail. Group large plans into navigable regions with counts and disclosed filters. Never silently hide required work.
 
 Map/Outline equivalence applies to Outcomes & prerequisites. Its outline must contain the same essential facts and actions as its map. The Today execution matrix is not that outline.
 
@@ -1460,15 +1460,15 @@ On compact screens, the Plan view begins with a focused module neighborhood and 
 
 Map and outline share selected module and filter state. Switching views preserves context. All essential facts and actions exist in the outline using semantic headings, lists, links, and disclosure buttons. A DAG can have several prerequisites; do not label the entire graph as an ARIA tree unless the actual interaction satisfies the tree pattern. [W3C complex-image alternatives](https://www.w3.org/WAI/tutorials/images/complex/); [APG tree guidance](https://www.w3.org/WAI/ARIA/apg/patterns/treeview/examples/treeview-navigation/).
 
-**Progress composition and ownership:** Progress is the learner's competency and evidence portfolio. It answers “What can I do independently, what have I retained, and what evidence supports that?” Today owns daily execution, completion counts, the Review queue, and Completed work. Plan owns curriculum architecture, pacing, and adaptation decisions. Progress must not repeat those surfaces, a Unit strip, a Study Flow matrix, or an adaptation editor. Shared objective facts and contextual links do not create separate editors or state.
+**Progress composition and ownership:** Progress is the learner's competency and evidence portfolio. It answers “What can I do independently, what have I retained, and what evidence supports that?” Today owns daily execution, completion counts, the Review queue, and Completed work. Plan owns syllabus architecture, pacing, and adaptation decisions. Progress must not repeat those surfaces, a Unit strip, a Study Flow matrix, or an adaptation editor. Shared objective facts and contextual links do not create separate editors or state.
 
-Keep the navigation label **Progress** and use **Your learning evidence** as the page title. The selected curriculum and revision define the portfolio scope. Preserve that scope and the selected objective when entering from Today or Plan. Explain the distinction in one sentence: “See what you have demonstrated and what still needs checking.”
+Keep the navigation label **Progress** and use **Your learning evidence** as the page title. The selected syllabus and revision define the portfolio scope. Preserve that scope and the selected objective when entering from Today or Plan. Explain the distinction in one sentence: “See what you have demonstrated and what still needs checking.”
 
 Use one competency list grouped by topic as the primary surface. Show an objective's human-readable capability statement, current evidence conclusion, latest relevant observation with its conditions, and **View evidence** or **Check understanding**. Do not expose raw objective IDs, evidence references, session IDs, or a canonical-state legend as primary content. Keep technical references inspectable in evidence details. A missing display title is a visible metadata limitation, not permission to invent a capability from an ID.
 
 **Competency evidence:** Map authoritative objective evidence to plain labels: unknown as **Not assessed**, self-reported as **Self-reported**, needs-practice as **Needs practice**, and demonstrated as **Demonstrated under stated conditions**. These labels do not introduce new contract states. Activity execution, assistance, pending evaluation, review timing, and evidence corrections remain separate facts. An in-progress activity or due review must not become a proficiency conclusion. Formative success, completion, and self-evaluation cannot independently establish demonstrated competence.
 
-Group objectives using the selected curriculum's existing topic relationships. Keep required and optional scope explicit. A coverage count, when shown, names the objective denominator and selected revision. It is not a mastery percentage. Do not infer a whole topic or its prerequisites from one demonstrated objective. Evidence from another revision counts only through explicit compatible objective-equivalence mappings. Preserve unmapped historical evidence outside current coverage counts. Optional activities and certificates stay separate.
+Group objectives using the selected syllabus's existing topic relationships. Keep required and optional scope explicit. A coverage count, when shown, names the objective denominator and selected revision. It is not a mastery percentage. Do not infer a whole topic or its prerequisites from one demonstrated objective. Evidence from another revision counts only through explicit compatible objective-equivalence mappings. Preserve unmapped historical evidence outside current coverage counts. Optional activities and certificates stay separate.
 
 **Calibration:** Explain the difference between claimed familiarity, supported performance, and independent evidence within the relevant objective row or detail. For example, where actual records support it: “You marked this familiar. It has not been checked independently.” A missing assessment means unknown, not low ability. Do not label a learner overconfident from missing evidence or compute a calibration score without paired predictions and comparable outcomes. The initial portfolio uses existing claims and attempts, without adding a confidence survey or treating self-report as evidence.
 
@@ -1486,8 +1486,8 @@ Results distinguish assessed from unassessed objectives and show assistance, pen
 
 **Layout, Progress swimlanes, and Resources tab (`#panel-learn-progress` & `#panel-learn-resources`):**
 - In **Progress** (`#panel-learn-progress`), the top summary uses a quiet borderless 3-column `.progress-overview-strip` (`Verified mastery`, `Study effort`, and `Understanding check` with `Continue ~5m check`, `Pause`, and `Stop` controls—never boxed KPI stat cards or decorative horizontal progress bars). Below it, `Capabilities by unit` renders `.progress-unit-row` tonal swimlanes (`U1`, `U2`, ...) with unit gate status (`✓ Gate passed` / `◇ Gate open`) and structurally indented, completely unboxed `.progress-capability-row` items (`padding-inline-start: 30px`). Each capability row displays its status glyph, `.capability-title` (`16px`, `600`, `#17191C`), regular-weight muted calibration/retention prose (`.progress-cap-description`, `#5B636E`, indented `padding-inline-start: 28px`), inline topic/status/activity links (`Study flow:` `.progress-act-chip`), and a borderless inline `Check understanding →` action (`.progress-check-btn`).
-- In **Resources** (`ResourcesView.tsx`, `#panel-learn-resources`), learners inspect all approved catalog materials across a multi-curriculum scope toggle (`This curriculum` vs. `All curricula`) and category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`) inside a clean data table (`.resources-data-table`) showing each resource's category badge, title, creator/publisher, selection rationale, linked units/curricula, and access/freshness provenance.
-- Evidence-driven next actions remain contextual (`Check understanding →`, `Open Study Flow →`), and no Progress or Resources action silently mutates the curriculum, schedule, or publication. The portfolio is private and is not a public credential or certification claim.
+- In **Resources** (`ResourcesView.tsx`, `#panel-learn-resources`), learners inspect all approved catalog materials across a multi-syllabus scope toggle (`This syllabus` vs. `All syllabi`) and category filter pills (`All`, `Book`, `Video`, `Course`, `Code`, `Paper`) inside a clean data table (`.resources-data-table`) showing each resource's category badge, title, creator/publisher, selection rationale, linked units/syllabi, and access/freshness provenance.
+- Evidence-driven next actions remain contextual (`Check understanding →`, `Open Study Flow →`), and no Progress or Resources action silently mutates the syllabus, schedule, or publication. The portfolio is private and is not a public credential or certification claim.
 
 ### 9.8 Generation, adaptation, and financial choices
 
@@ -1499,23 +1499,23 @@ Generation uses the actual server states queued, running, validating, succeeded,
 
 Draft review shows scope and exclusions, source coverage/gaps, plan map/outline, effort range, resource and compute cost, mathematical depth, and assumptions. Generating a draft never activates it. Activate plan is explicit; concrete reminder times are separately scheduled. Partial plans are visibly partial, with the affected objectives and corrective options.
 
-Adaptation review uses a grouped before/after diff: retained outcomes, condensed/removed instruction, new bridges, proposed waivers, changed resources, effort/access/cost, and unchanged or affected schedule context. Each waiver links to the exact qualifying evidence. Explain the proposed change in ordinary language; “recommended” is a product recommendation, not a scientific certainty badge. Offer Accept revision and Keep current plan. Stale curriculum, evidence, schedule, rights, or proposal state produces a preserved-current-plan conflict and a refreshed preview. Do not autoaccept the new proposal. New dates use the separate schedule review; a curriculum diff cannot conceal a reschedule.
+Adaptation review uses a grouped before/after diff: retained outcomes, condensed/removed instruction, new bridges, proposed waivers, changed resources, effort/access/cost, and unchanged or affected schedule context. Each waiver links to the exact qualifying evidence. Explain the proposed change in ordinary language; “recommended” is a product recommendation, not a scientific certainty badge. Offer Accept revision and Keep current plan. Stale syllabus, evidence, schedule, rights, or proposal state produces a preserved-current-plan conflict and a refreshed preview. Do not autoaccept the new proposal. New dates use the separate schedule review; a syllabus diff cannot conceal a reschedule.
 
 ### 9.9 Public discovery, publishing, and adoption (`Explore` & `My Publications`)
 
-**Explore** (`ExploreMarketplace.tsx`, `#panel-explore`) presents the **Community** curriculum showcase (replacing "Marketplace" user-facing wording with **Community**) and, for authenticated learners, the **My Publications** open-knowledge philanthropy showcase:
+**Explore** (`ExploreMarketplace.tsx`, `#panel-explore`) presents the **Community** syllabus showcase (replacing "Marketplace" user-facing wording with **Community**) and, for authenticated learners, the **My Publications** open-knowledge philanthropy showcase:
 
 1. **My Publications — Open-Knowledge Philanthropy Showcase (`.my-publications-showcase`):**
-   - Renders a custom `OpenKnowledgeArt` SVG emblem, an `Open-Knowledge Philanthropy` header, a `CC BY 4.0 · Free to adopt` license seal, and a `.my-pub-hero-card` focal card highlighting how the author's shared curricula help self-learners worldwide (`learners reached`, `study hours gifted`, `upvotes`, and `+ Share curriculum` action).
-   - Lists each published curriculum revision owned by the learner with live adoption, upvote, and study-hour impact pills, `Open plan`, and withdrawal/management controls.
+   - Renders a custom `OpenKnowledgeArt` SVG emblem, an `Open-Knowledge Philanthropy` header, a `CC BY 4.0 · Free to adopt` license seal, and a `.my-pub-hero-card` focal card highlighting how the author's shared syllabi help self-learners worldwide (`learners reached`, `study hours gifted`, `upvotes`, and `+ Share syllabus` action).
+   - Lists each published syllabus revision owned by the learner with live adoption, upvote, and study-hour impact pills, `Open plan`, and withdrawal/management controls.
 2. **Community 3-Tier Filter Hierarchy & Facets (`.marketplace-filters`):**
    - **Tier 1 (`Category`):** `All`, `Computer Science` (`Engineering`, `Systems`), `Math & Sciences` (`Mathematics`, `Physics`), and `Humanities` (`Literature`).
    - **Tier 2 (`Subject`):** `All`, `Engineering`, `Systems`, `Math` (`Mathematics`), `Physics`, `Literature` (filtered by active Category).
    - **Tier 3 (`Topic`):** Dynamic topic tags derived from matching Community listings, showing the top `TOPIC_PREVIEW` (`6`) topics with a `+N more` / `Show fewer` expansion toggle.
    - **Cross-cutting facets (`Difficulty` & `Format`):** `Difficulty` (`All`, `Formal`, `Applied`, `Intuitive`—replacing "Rigor" label) and `Format` (`All`, `Quiz`, `Code Lab`, `Problem Set`, `Rubric`), paired with search query input and sort controls (`Top`, `Most adopted`, `Newest`).
-3. **Community Cards & Full Curriculum Details Modal (`#dialog-partial-adoption`):**
-   - Each Community listing card displays its subject icon, `Category › Subject` and topic tags, `Difficulty` and `Format` metadata, title, summary, unit count, estimated study hours, author handle (`@handle`), upvote button (`aria-pressed`), and `Details` / `Use curriculum` actions.
-   - Clicking `Details` or `Use curriculum` opens `AdoptCurriculumDialog` (`#dialog-partial-adoption`), which displays the complete curriculum breakdown—every unit (`U1`, `U2`, ...) with its activities, durations, and catalog resource provenance—alongside a **`Select all`** toggle (`data-action="toggle-adopt-all-modules"`) and per-unit checkboxes that automatically compute transitive prerequisite closure (`resolveTransitiveAdoptionScope`). Adopting creates a private draft in the learner's workspace at zero AI cost (`No AI cost · Free under CC BY 4.0`).
+3. **Community Cards & Full Syllabus Details Modal (`#dialog-partial-adoption`):**
+   - Each Community listing card displays its subject icon, `Category › Subject` and topic tags, `Difficulty` and `Format` metadata, title, summary, unit count, estimated study hours, author handle (`@handle`), upvote button (`aria-pressed`), and `Details` / `Use syllabus` actions.
+   - Clicking `Details` or `Use syllabus` opens `AdoptSyllabusDialog` (`#dialog-partial-adoption`), which displays the complete syllabus breakdown—every unit (`U1`, `U2`, ...) with its activities, durations, and catalog resource provenance—alongside a **`Select all`** toggle (`data-action="toggle-adopt-all-modules"`) and per-unit checkboxes that automatically compute transitive prerequisite closure (`resolveTransitiveAdoptionScope`). Adopting creates a private draft in the learner's workspace at zero AI cost (`No AI cost · Free under CC BY 4.0`).
 4. **Publishing & `CC BY 4.0` Preview (`#dialog-publication-preview`):**
    - Publishing starts from an eligible private revision via `Share with Community`. The preview dialog shows the exact allowlisted public projection, author attribution (`@handle`), `CC BY 4.0` open-knowledge license terms (`structure_and_author_prompts_only`, `third_party_materials_excluded: true`), an explicit checklist of private fields removed (`PRIVATE_FIELDS_REMOVED`: progress/completion, proficiency/evidence, notes/drafts, BYOK keys, billing/wallet, session dates/reminders), and visibility choices (**Public** vs. **Unlisted**).
    - Unpublishing withdraws all public revisions from app-controlled routes without erasing permitted private copies or historical revision-specific vote associations.
@@ -1529,7 +1529,7 @@ Adaptation review uses a grouped before/after diff: retained outcomes, condensed
    - On the left, a clickable circular avatar button (`.profile-avatar-trigger`, `user-avatar-xl`) with an edit pencil badge opens the interactive **Cropper.js** profile photo modal (`#dialog-avatar-cropper`, supporting file upload, aspect-ratio-1 circular crop preview, zoom/reset, and `Save photo`).
    - On the right, `.profile-edit-form` aligns `Display name` and `Username` (`@handle`) in a 2-column `.profile-fields-grid`, followed by `Email address` + `Update email` and `Save changes`.
 2. **Your contributions (`#settings-community`):**
-   - Celebrates open-knowledge teaching with a `.community-impact-banner` featuring a learner avatar stack (`.impact-avatar-stack`), an impact statement with typographic underlines (`<strong>N learners</strong>`, `<strong>M study hours</strong>`, `<strong>K people</strong> upvoted your work` under `CC BY 4.0`), shared curriculum status rows (`.contribution-row` with `Public · Revision 1 · CC BY 4.0`, adoption/upvote/study-hour metrics, `Open plan`, and `View in Explore`), and a **Comments from learners** section (`.learner-comments`) displaying community notes from adopters.
+   - Celebrates open-knowledge teaching with a `.community-impact-banner` featuring a learner avatar stack (`.impact-avatar-stack`), an impact statement with typographic underlines (`<strong>N learners</strong>`, `<strong>M study hours</strong>`, `<strong>K people</strong> upvoted your work` under `CC BY 4.0`), shared syllabus status rows (`.contribution-row` with `Public · Revision 1 · CC BY 4.0`, adoption/upvote/study-hour metrics, `Open plan`, and `View in Explore`), and a **Comments from learners** section (`.learner-comments`) displaying community notes from adopters.
 3. **AI providers (BYOK) (`#settings-ai`):**
    - Renders an unshaded, borderless-row data table (`.providers-data-table`) with columns `Provider`, `Model`, `API key`, `Status`, and `Actions` across the three supported providers:
      - **OpenAI** (brand logo tile, capability subtitle `Responses API · Web search` using `web_search_preview`, models `GPT-6-Astra`, `GPT-6.1-Sol`, `GPT-6.1-Terra`, `GPT-6-Luna`, `GPT-5.4`).
@@ -1544,7 +1544,7 @@ Adaptation review uses a grouped before/after diff: retained outcomes, condensed
      - **Weekends (Sat–Sun) (`#reminder-weekend-time`):** Time input (`10:00`).
      - **Notify me (`#reminder-lead-time`):** Lead-time select (`At start time`, `10 minutes before`, `15 minutes before`, `30 minutes before`, `1 hour before`).
 5. **Privacy & account (`#settings-privacy`):**
-   - Provides `Export & deletion` (`#dialog-account-deletion`) and an expandable `Export scope, retention & license terms` disclosure stating export inclusions/exclusions, BYOK deletion vs. issuer revocation, public publications impact, financial audit retention, and the `Apache-2.0` open-source software license + `CC BY 4.0` shared curriculum license boundaries.
+   - Provides `Export & deletion` (`#dialog-account-deletion`) and an expandable `Export scope, retention & license terms` disclosure stating export inclusions/exclusions, BYOK deletion vs. issuer revocation, public publications impact, financial audit retention, and the `Apache-2.0` open-source software license + `CC BY 4.0` shared syllabus license boundaries.
 
 ### 9.11 Shared components, states, and accessibility
 
@@ -1582,9 +1582,9 @@ Private offline data follows the security/retention policy and is opt-in where p
 
 ### 9.12 Rendering ownership, scope, and implementation evidence
 
-The AI returns typed curriculum content, never a visual layout specification. The backend validates and enriches the payload. Frontend code maps a finite set of activity kinds into reviewed components. Component hierarchy, styles, layout, graph coordinates, icons, focus order, and accessibility behavior belong to application code. Unknown required schema versions produce a readable update/unsupported-state screen without executing or silently discarding fields.
+The AI returns typed syllabus content, never a visual layout specification. The backend validates and enriches the payload. Frontend code maps a finite set of activity kinds into reviewed components. Component hierarchy, styles, layout, graph coordinates, icons, focus order, and accessibility behavior belong to application code. Unknown required schema versions produce a readable update/unsupported-state screen without executing or silently discarding fields.
 
-Appearance settings are presentation-only preferences: system/light/dark theme, Solid surfaces, Reduce motion, and remembered map/outline choice. They do not change proficiency, curriculum content, learning evidence, or billable requests. An initial local-device appearance preference is acceptable; cross-device preference synchronization requires its own owned settings contract. Do not invent a profile write endpoint to edit the server's proficiency projection.
+Appearance settings are presentation-only preferences: system/light/dark theme, Solid surfaces, Reduce motion, and remembered map/outline choice. They do not change proficiency, syllabus content, learning evidence, or billable requests. An initial local-device appearance preference is acceptable; cross-device preference synchronization requires its own owned settings contract. Do not invent a profile write endpoint to edit the server's proficiency projection.
 
 The supplied core OpenAPI gains owner publication list and revision-history reads for My publications. Filter controls are limited to the discovery parameters already modeled. Authentication/provider selection, general profile/export/deletion operations, device registration, complete curator/moderator queues, and production payment flows remain explicitly scoped integration contracts to define before implementing those live surfaces. Each such UI must either use a documented implementation contract or show a deliberate unavailable/development state; never invent a successful response. A screen inventory is not evidence that its endpoint already exists.
 
@@ -1599,16 +1599,16 @@ Evaluate usability with representative learners, including keyboard and screen-r
 
 ## 10. Publishing and adoption
 
-## Publishing and adopting curricula
+## Publishing and adopting syllabi
 
 **Version:** 0.3.0 · **Status:** proposed implementation policy for confirmed sharing/upvote requirements.  
-**Authority:** elaborates SHARE-001–SHARE-010; contracts define wire fields. Community curriculum structures and original annotations are licensed under `CC BY 4.0` as documented in `LEGAL.md` (Section 3).
+**Authority:** elaborates SHARE-001–SHARE-010; contracts define wire fields. Community syllabus structures and original annotations are licensed under `CC BY 4.0` as documented in `LEGAL.md` (Section 3).
 
 ### 1. What is shared
 
-A published curriculum is a reusable template: desired capabilities, prerequisite expectations, a module/activity graph, resource assignments, assessment expectations, effort estimates, sequence, and mathematical depth. It is a separate object from the author's private plan and learning history.
+A published syllabus is a reusable template: desired capabilities, prerequisite expectations, a module/activity graph, resource assignments, assessment expectations, effort estimates, sequence, and mathematical depth. It is a separate object from the author's private plan and learning history.
 
-Publishers do not need to finish a curriculum before sharing it. Every snapshot must pass structural, semantic, rights, and source-reference validation. Passing those checks makes it a valid community publication, not an educationally reviewed curriculum. Display a community label by default. A curriculum-review badge, if later supported, requires a separate attributable review for that exact revision; resource approval alone cannot award it.
+Publishers do not need to finish a syllabus before sharing it. Every snapshot must pass structural, semantic, rights, and source-reference validation. Passing those checks makes it a valid community publication, not an educationally reviewed syllabus. Display a community label by default. A syllabus-review badge, if later supported, requires a separate attributable review for that exact revision; resource approval alone cannot award it.
 
 | Data | Public snapshot policy |
 | --- | --- |
@@ -1626,7 +1626,7 @@ Public snapshots have a dedicated strict schema. Allocate new public module/acti
 
 ### 2. Publication workflow
 
-1. The owner selects a validated private curriculum revision and creates public title, summary, and audience text.
+1. The owner selects a validated private syllabus revision and creates public title, summary, and audience text.
 2. The server builds a sanitized public projection, rechecks public-display permissions and all referenced objects, and issues an expiring preview containing content, publisher identity, attribution/license terms, origin, visibility, hashes, and policy version. Missing rights or forbidden private data blocks publication; coverage gaps that are pedagogically permissible remain visible.
 3. The owner reviews the exact snapshot, publication visibility, attribution, content terms, and the consequences of sharing. No provider call or model spending is necessary to publish a valid existing template.
 4. Confirmation binds the preview ID, complete public-envelope hash, source revision, selected visibility, terms version, and authenticated owner. If any of them changed, regenerate the preview. No stale or substituted payload can be published under the old confirmation.
@@ -1640,7 +1640,7 @@ Editing a private plan does not update its publication automatically. Publicatio
 
 ### 3. Adoption and personal adaptation
 
-The action should read **Use this curriculum**, with a visible indication that it creates a private draft. It is more than copying the author's calendar.
+The action should read **Use this syllabus**, with a visible indication that it creates a private draft. It is more than copying the author's calendar.
 
 The adopter supplies or confirms their own goal, time, region, resource access, sequence, mathematical depth, and AI mode/budget if generation is needed. The app resolves their own proficiency evidence. It revalidates the template's resources and current availability, identifies prerequisite gaps, and shows the resulting effort/cost differences. A free-only adopter is never automatically charged for an author's paid resource choice.
 
@@ -1649,11 +1649,11 @@ A deterministic adoption preserves the template structure without an AI request 
 - Use an approved and semantically suitable replacement from the catalog when one exists and satisfies the adopter's access policy.
 - Otherwise omit the ineligible resource from the private draft, set `coverage_status` to `partial`, include explicit `coverage_limitations`, and require learner review before activation.
 - Never silently include paid, quarantined, unavailable, or otherwise ineligible material.
-- Never reject the whole adoption when a useful partial curriculum can be created.
+- Never reject the whole adoption when a useful partial syllabus can be created.
 
 If significant rewriting or new resource generation requires a model, show the operation, quote/ceiling, and chosen inference mode through the normal generation authorization flow. Clicking a public link, voting, or viewing a template never authorizes inference spending.
 
-The new draft has its own owner, private curriculum ID, revisions, and schedule. It retains a public origin reference and applicable attribution/license notice. It inherits no votes, completion, attempts, proficiency, waiver, credential, calendar, spending authorization, or private author text. Previously obtained evidence belonging to the adopter may be mapped using the same objective-equivalence rules as any other plan.
+The new draft has its own owner, private syllabus ID, revisions, and schedule. It retains a public origin reference and applicable attribution/license notice. It inherits no votes, completion, attempts, proficiency, waiver, credential, calendar, spending authorization, or private author text. Previously obtained evidence belonging to the adopter may be mapped using the same objective-equivalence rules as any other plan.
 
 Changing a formal mathematical template to applied or intuitive depth is an explicit adopter choice and may change objectives, assessments, and duration. That produces a distinct draft with an explained difference. The template is not an excuse to silently lower the depth that the adopter requested.
 
@@ -1663,7 +1663,7 @@ Origin withdrawal does not automatically erase an adopter's private evidence or 
 
 An upvote expresses that an eligible user values a particular public revision. It is not a grade, evidence of having completed it, or proof of retained learning. Anyone with an active verified account may vote on an accessible revision; the system does not require course completion before voting and therefore must not label voters as successful learners.
 
-Use idempotent set/remove operations, not a toggle. The database enforces one vote per account and published revision. Reject votes on the user's own publication, including an edited revision of it. Retrying a request or racing two clients cannot increment the count twice. A new publication revision or fork starts with zero votes. A public page shows the count for the displayed revision, with version information visible; historical counts do not get silently moved to a revised curriculum.
+Use idempotent set/remove operations, not a toggle. The database enforces one vote per account and published revision. Reject votes on the user's own publication, including an edited revision of it. Retrying a request or racing two clients cannot increment the count twice. A new publication revision or fork starts with zero votes. A public page shows the count for the displayed revision, with version information visible; historical counts do not get silently moved to a revised syllabus.
 
 Store the authenticated voter's relationship privately. Public counts and optional current-user state use separate response/cache paths so that a cached response cannot reveal another account's vote. Voter identities are not public by default. Administrative removal of abusive votes is attributable and recomputes the displayed total. The system cannot guarantee one account equals one human; do not describe basic verification as proof of that identity claim.
 
@@ -1675,13 +1675,13 @@ Map and outline views use the same typed rendering principles as private plans. 
 
 Public release requires a small operational moderation path. Users can report inaccurate descriptions, inaccessible resources, leaked personal data, rights problems, spam, misleading credentials, or unsafe links. A report captures the published revision and reason. Report text and reporter identity remain private; acknowledgements contain no private moderation notes.
 
-A moderator can quarantine a publication/revision, add an attributable reason, and resolve or dismiss a report. Quarantine removes public serving/discovery and prevents new adoption or votes until resolved. Report count alone does not automatically erase content, award a quality label, or declare a curriculum false. Rate-limit reports and votes with account-based controls and proportionate abuse signals; do not retain unnecessary precise identifiers for an unsupported anti-abuse claim.
+A moderator can quarantine a publication/revision, add an attributable reason, and resolve or dismiss a report. Quarantine removes public serving/discovery and prevents new adoption or votes until resolved. Report count alone does not automatically erase content, award a quality label, or declare a syllabus false. Rate-limit reports and votes with account-based controls and proportionate abuse signals; do not retain unnecessary precise identifiers for an unsupported anti-abuse claim.
 
 Mutable lifecycle and resource-rights overlays have priority over immutable snapshots. Within the application's own serving layer, authorization/overlay changes take effect after the authoritative transaction commits; caches must consult that state before delivery. Search indexes are updated asynchronously but filtered at query and read time so stale indexes cannot expose withdrawn content. Use bounded caching and a purge path; already loaded pages and external copies cannot be recalled with this design.
 
 For account deletion, unpublish the owner's publications by default, revoke future authoring, delete/private-minimize account relationships as specified, remove the deleted account's votes from counted totals, and invalidate queues. Preserve only lawful minimal moderation/financial records under the chosen retention policy. Existing adopted copies follow their own rights and privacy boundaries. Attribution may become an agreed neutral/tombstoned label where allowed; never reveal the former email/account ID to preserve provenance.
 
-No comments, follows, direct messages, social push notifications, or paid curriculum marketplace are included initially. Public curriculum discovery, voting, and reporting are enough to deliver the requested sharing loop; initial notifications stay study reminders.
+No comments, follows, direct messages, social push notifications, or paid syllabus marketplace are included initially. Public syllabus discovery, voting, and reporting are enough to deliver the requested sharing loop; initial notifications stay study reminders.
 
 ### 6. Consequential implementation checks
 
@@ -1728,7 +1728,7 @@ OpenRouter's credential API describes encrypted-at-rest key rotation without ret
 1. The learner chooses **Use my API key** or **Use hosted AI credits**. Existing subscriptions to learning providers do not select either mode.
 2. In BYOK mode, the learner configures one or more of the three supported providers (**OpenAI**, **Anthropic**, **Google Gemini**) in the unshaded `AI providers (BYOK)` data table under `Profile & Settings` and sees the custody/billing disclosure before submitting a credential. The default connection is saved for future authorized use; the UI clearly states that it will be stored encrypted (`AES-256-GCM` envelope encryption via `SecretVault` / `AesGcmEnvelopeVault`).
 3. The backend validates the credential structure and performs a bounded connection check. Prefer a non-generating validation operation where supported; if a billable test request is necessary, disclose that fact before running it. A successful check does not promise access to every model or unlimited future quota.
-4. Each provider row exposes an explicit per-provider **Model** selector (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-luna`, `gpt-5.4` for OpenAI; `claude-opus-5-5`, `claude-fable-5-1`, `claude-sonnet-5-5`, `claude-haiku-5-5` for Anthropic; `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash` for Google Gemini) and native API web-search grounding capability (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`) used during `Step 2` intake resource discovery when catalog gaps exist. The learner designates one connected provider as **Primary** (star toggle) while additional connected keys remain in **Standby** status, and can also pick the active provider/model directly in the `NewCurriculumDialog` footer (`#intake-ai-model`).
+4. Each provider row exposes an explicit per-provider **Model** selector (`gpt-6-astra`, `gpt-6.1-sol`, `gpt-6.1-terra`, `gpt-6-luna`, `gpt-5.4` for OpenAI; `claude-opus-5-5`, `claude-fable-5-1`, `claude-sonnet-5-5`, `claude-haiku-5-5` for Anthropic; `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash` for Google Gemini) and native API web-search grounding capability (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`) used during `Step 2` intake resource discovery when catalog gaps exist. The learner designates one connected provider as **Primary** (star toggle) while additional connected keys remain in **Standby** status, and can also pick the active provider/model directly in the `NewSyllabusDialog` footer (`#intake-ai-model`).
 5. The account page provides per-provider model selection, Primary/Standby star toggle, inline API key replacement/rotation, and revocation actions. After creation it displays only provider logo/name, selected model, masked suffix or status (`Primary`, `Standby`, or `Not connected`), timestamps, and applicable restrictions.
 
 The product disclosure SHALL explain: the service receives and can use the key; the selected provider receives the minimum learning context required for the task; the provider bills BYOK inference directly under the learner's agreement (`LEGAL.md` Section 2); any app service charge is separate; and errors will not trigger paid hosted fallback (`allow_hosted_fallback = false`). Do not claim that encryption makes the service incapable of accessing a key.
@@ -1737,7 +1737,7 @@ The product disclosure SHALL explain: the service receives and can use the key; 
 
 The server SHALL store credentials in a managed secrets service or an equivalent reviewed envelope-encryption design. Encryption keys and ciphertext must have separate access controls. Normal application APIs, support tools, and curator interfaces SHALL NOT return raw credential material. Only the narrowly authorized execution path may obtain it, after verifying the authenticated learner, selected connection, and job state.
 
-Browsers SHALL NOT persist provider credentials in local storage, session storage, service-worker caches, analytics, or curriculum documents. Credentials SHALL NOT appear in prompts, URLs, logs, request traces, crash reports, public curriculum snapshots, exports, or queue payloads. Queue jobs carry an opaque connection ID and a credential-version reference. The worker resolves the secret just before dispatch and discards runtime references afterward; garbage-collected runtimes must not promise guaranteed memory zeroization.
+Browsers SHALL NOT persist provider credentials in local storage, session storage, service-worker caches, analytics, or syllabus documents. Credentials SHALL NOT appear in prompts, URLs, logs, request traces, crash reports, public syllabus snapshots, exports, or queue payloads. Queue jobs carry an opaque connection ID and a credential-version reference. The worker resolves the secret just before dispatch and discards runtime references afterward; garbage-collected runtimes must not promise guaranteed memory zeroization.
 
 Credential rotation creates a new version and disables future resolution of the old version. A queued job whose pinned version has changed SHALL stop with a recoverable connection-changed state or require a new authorized submission; it must not silently switch accounts. Deletion SHALL block new dispatch after the deletion commits and cancel queued work. Already dispatched requests may complete and incur provider charges. Removing the application's copy is distinct from revoking the credential at the issuer.
 
@@ -1801,7 +1801,7 @@ All numeric budgets, retry ceilings, timeouts, and retention periods are operati
 ## Security, Content Rights, and Operations
 
 **Status:** v0.2 draft for product-owner review  
-**Scope:** Companion requirements for the curriculum platform; not a legal clearance or an implementation design freeze.  
+**Scope:** Companion requirements for the syllabus platform; not a legal clearance or an implementation design freeze.  
 **Research checked:** 2026-10-20  
 **Control IDs:** `CTRL-*` elaborate the requirements in [the main specification](#4-product-requirements); trace these companion controls to the relevant main requirement IDs, implementation tasks, and acceptance tests. These controls do not override the main specification.
 
@@ -1813,7 +1813,7 @@ The service organizes learning from approved resources. A resource can be recomm
 
 `CTRL-001` The release configuration SHALL identify supported countries, account eligibility, client platforms, inference providers, billing arrangements, and data retention policies. Unresolved items SHALL remain visible in the decision log rather than becoming implicit implementation choices.
 
-`CTRL-002` A durable database SHALL own accounts, resource approvals, curriculum versions, progress events, notification preferences, and billing records. Vector indexes SHALL be rebuildable derived indexes. A separate vector database is optional; transactional data and authorization cannot be delegated to vector similarity.
+`CTRL-002` A durable database SHALL own accounts, resource approvals, syllabus versions, progress events, notification preferences, and billing records. Vector indexes SHALL be rebuildable derived indexes. A separate vector database is optional; transactional data and authorization cannot be delegated to vector similarity.
 
 ### 2. Permissions-aware catalog and ingestion
 
@@ -1848,7 +1848,7 @@ These examples motivate operational gates, not definitive judgments about every 
 
 `CTRL-013` Every chunk SHALL retain its resource/version ID, permitted-use scope, source locator, retrieval date, and attribution. Filters SHALL exclude expired, withdrawn, quarantined, unauthorized, and tenant-inaccessible content before retrieval. An operation cannot broaden its permissions merely by embedding or summarizing the content.
 
-`CTRL-014` A rights change SHALL disable affected retrieval and generation promptly, remove prohibited cached/derived copies according to the applicable obligation, and flag affected curricula. Preserve only audit information permitted by the retention and rights policy. Previously saved plans may retain permissible bibliographic references; they SHALL NOT keep withdrawn full content solely to preserve reproducibility.
+`CTRL-014` A rights change SHALL disable affected retrieval and generation promptly, remove prohibited cached/derived copies according to the applicable obligation, and flag affected syllabi. Preserve only audit information permitted by the retention and rights policy. Previously saved plans may retain permissible bibliographic references; they SHALL NOT keep withdrawn full content solely to preserve reproducibility.
 
 ### 3. Curation, credibility, and freshness
 
@@ -1869,7 +1869,7 @@ Institutional prestige, platform membership, view counts, or star ratings SHALL 
 
 `CTRL-023` Refresh cadence SHALL follow provider obligations and field volatility. Proposed starting policies are daily checks of permitted availability signals, weekly checks of approved price feeds, and curator reassessment after substantive content changes. These frequencies are product policies, not scientifically established thresholds, and may need source-specific adjustment. Stable foundational material need not be rejected because it is old.
 
-`CTRL-024` Curriculum versions SHALL reference resource versions and record the generation policy/model/index version. Updating the catalog SHALL NOT silently rewrite completed work. Replacement proposals explain the change and preserve progress identity. Index rollback SHALL restore a compatible approved snapshot without re-enabling revoked permissions; rights and quarantine state take precedence over historical availability.
+`CTRL-024` Syllabus versions SHALL reference resource versions and record the generation policy/model/index version. Updating the catalog SHALL NOT silently rewrite completed work. Replacement proposals explain the change and preserve progress identity. Index rollback SHALL restore a compatible approved snapshot without re-enabling revoked permissions; rights and quarantine state take precedence over historical availability.
 
 ### 4. Tenant boundaries and untrusted data
 
@@ -1893,7 +1893,7 @@ The adopted hosted BYOK design is a server-mediated provider adapter, under the 
 
 `CTRL-040` Before key submission, the UI SHALL explain which system receives the key, whether it is saved, which provider receives learning data, and who bills inference usage. Consent to BYOK SHALL NOT imply consent to paid hosted fallback or unrelated data use.
 
-`CTRL-041` Saved keys SHALL be encrypted using an appropriate secrets-management system with separately controlled encryption keys and least-privilege access. Account APIs SHALL return only masked metadata after creation. Keys SHALL NOT enter logs, analytics, error reports, prompt traces, source control, client bundles, URLs, curriculum JSON, or exports. OWASP recommends keeping encryption keys separate from the secrets they protect and provides lifecycle guidance.[S8]
+`CTRL-041` Saved keys SHALL be encrypted using an appropriate secrets-management system with separately controlled encryption keys and least-privilege access. Account APIs SHALL return only masked metadata after creation. Keys SHALL NOT enter logs, analytics, error reports, prompt traces, source control, client bundles, URLs, syllabus JSON, or exports. OWASP recommends keeping encryption keys separate from the secrets they protect and provides lifecycle guidance.[S8]
 
 `CTRL-042` Workers SHALL fetch keys just in time through a credential reference; queue messages SHALL NOT contain raw keys. Runtime access SHALL be bounded to the operation. Avoid dumps and diagnostic captures containing secrets, discard references when finished, and do not promise guaranteed memory zeroization in a garbage-collected runtime.
 
@@ -1910,7 +1910,7 @@ The adopted hosted BYOK design is a server-mediated provider adapter, under the 
 | Learning material | Course purchase, textbook, provider subscription, exam | External provider; shown as an estimate |
 | Practical computing | GPU rental, cloud notebook, API calls in a project | Learner's chosen execution environment |
 
-A “free-only” curriculum SHALL NOT hide required paid labs or examinations. Already-owned subscriptions and shared subscriptions across recommended courses SHALL be represented without double-counting. Unknown external prices remain unknown, with timestamps and verification links. Resource selection does not authorize purchases.
+A “free-only” syllabus SHALL NOT hide required paid labs or examinations. Already-owned subscriptions and shared subscriptions across recommended courses SHALL be represented without double-counting. Unknown external prices remain unknown, with timestamps and verification links. Resource selection does not authorize purchases.
 
 `CTRL-045` Every generation request SHALL record its authorized inference mode, provider/model, usage ceiling, retry policy, and cost estimate. Insufficient BYOK quota SHALL produce a recoverable error, not a silent switch to paid inference. Hosted limits SHALL be enforced before requests and across concurrent jobs using reservations or an equivalent transactional mechanism.
 
@@ -1932,9 +1932,9 @@ Native alarms are outside the confirmed initial study-reminder scope. Android ex
 
 ### 7. Licensing and release gates
 
-`CTRL-060` The repository adopts the OSI-approved `Apache-2.0` open-source software license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0` in `Cargo.toml` and `package.json`) and documents its 4-part legal boundary in `LEGAL.md`: (1) software source code and contributions under `Apache-2.0` (with inbound contributor grants governed by Section 5 of `Apache-2.0`), (2) BYOK AI provider responsibility where users supply their own OpenAI, Anthropic, or Google Gemini credentials under each provider's direct billing and data-processing terms, (3) published community curriculum structures and original annotations licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), and (4) third-party educational resources referenced strictly via bibliographic metadata and canonical links without redistributing copyrighted full text.[S12][S16] See section 17.
+`CTRL-060` The repository adopts the OSI-approved `Apache-2.0` open-source software license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0` in `Cargo.toml` and `package.json`) and documents its 4-part legal boundary in `LEGAL.md`: (1) software source code and contributions under `Apache-2.0` (with inbound contributor grants governed by Section 5 of `Apache-2.0`), (2) BYOK AI provider responsibility where users supply their own OpenAI, Anthropic, or Google Gemini credentials under each provider's direct billing and data-processing terms, (3) published community syllabus structures and original annotations licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), and (4) third-party educational resources referenced strictly via bibliographic metadata and canonical links without redistributing copyrighted full text.[S12][S16] See section 17.
 
-`CTRL-061` Code (`Apache-2.0`), published community curriculum structures and original annotations (`CC BY 4.0`), third-party educational content (provider terms; metadata and canonical links only), original exercises, documentation, and trademarks SHALL have separately identified licensing treatment as specified in `LEGAL.md`. The `Apache-2.0` software license and `CC BY 4.0` community curriculum license SHALL NOT be represented as relicensing external books, courses, videos, repositories, or provider content. Redistributable seed catalogs must exclude fields/content whose permissions do not cover redistribution.
+`CTRL-061` Code (`Apache-2.0`), published community syllabus structures and original annotations (`CC BY 4.0`), third-party educational content (provider terms; metadata and canonical links only), original exercises, documentation, and trademarks SHALL have separately identified licensing treatment as specified in `LEGAL.md`. The `Apache-2.0` software license and `CC BY 4.0` community syllabus license SHALL NOT be represented as relicensing external books, courses, videos, repositories, or provider content. Redistributable seed catalogs must exclude fields/content whose permissions do not cover redistribution.
 
 `CTRL-062` Native releases SHALL review current storefront-specific payment rules, purchase restoration, entitlement reconciliation, account deletion, and BYOK presentation. Do not assume that a web payment link is uniformly permitted. Apple's rules currently distinguish storefronts; Google Play has requirements and exceptions for in-app digital services.[S14][S15]
 
@@ -1992,13 +1992,13 @@ These are required properties to verify with representative failure cases. Numer
 
 ### 1. Recommended starting architecture
 
-Build a modular monolith with one shared API, a web client, durable storage, and asynchronous workers. Use separate modules for catalog/curation, curriculum generation, learning evidence/diagnostics/adaptation, scheduling, publications/moderation, identity/credentials, and usage/billing. This preserves meaningful ownership without immediately operating many distributed services.
+Build a modular monolith with one shared API, a web client, durable storage, and asynchronous workers. Use separate modules for catalog/curation, syllabus generation, learning evidence/diagnostics/adaptation, scheduling, publications/moderation, identity/credentials, and usage/billing. This preserves meaningful ownership without immediately operating many distributed services.
 
 Approved implementation stack: a polyglot Rust + TypeScript monorepo using a Cargo workspace for the Rust backend, a `pnpm` workspace for the TypeScript frontend, and Python solely for the specification-validation and extraction scripts:
 
 - **Repository layout:**
   - `apps/web/` — Preact + `@preact/signals`, TypeScript strict mode (`.tsx`), responsive web + installable PWA, CSS variables generated from `design/ui-tokens.json`, KaTeX with accessible MathML output, Playwright + `axe-core`.
-  - `services/api/` — Rust Axum HTTP API binary (`tokio`, `tower`, `tower-http`, `serde`, OpenTelemetry structured tracing without secrets or private curriculum contents).
+  - `services/api/` — Rust Axum HTTP API binary (`tokio`, `tower`, `tower-http`, `serde`, OpenTelemetry structured tracing without secrets or private syllabus contents).
   - `services/worker/` — Rust Tokio background-worker binary consuming jobs from the PostgreSQL transactional outbox/job table (`SELECT ... FOR UPDATE SKIP LOCKED` with retry, lease/visibility timeout, dead-letter, and idempotency behavior).
   - `crates/domain/` — Framework-independent domain rules, pure workload math, DAG acyclicity checks, proficiency/waiver state machines, and schedule recalculation.
   - `crates/application/` — Use cases and transaction orchestration.
@@ -2059,7 +2059,7 @@ flowchart TB
   V -->|"Gap or exhausted budget"| F["Explain failure or partial scope"]
 ```
 
-Each generation run executes the 5-step intake and synthesis pipeline (`Step 0: Empty State` → `Step 1: Goal Parsing` → `Step 1.5: Resource Fit & Coverage Evaluation` → `Step 2: Web Search Resource Discovery` → `Step 3: Curriculum Synthesis` → `Step 4: Verification & Grounding`) and binds a frozen request and an eligible catalog snapshot. In `Step 1.5`, `evaluate_resource_fit_and_coverage` (`ResourceFitEvaluation`, `ResourceFitDecisionMode`) compares parsed goal topics against the reviewed catalog's `Existing curricula` and `Materials` (including polymorphic `ResourceIndexDescriptor` chapter/video/module/lab indexes) and determines whether existing curricula/materials satisfy the request (`AdoptAsIs`, `AdaptExisting`, or `SynthesizeNew`) or whether uncovered topic gaps require `Step 2` native API web-search grounding (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`). Retrieval returns source IDs, sections only when verified, and allowed evidence. The LLM cannot invent its own verified source facts. Hydration draws canonical links, current availability overlays, cost facts, and attribution from catalog services.
+Each generation run executes the 5-step intake and synthesis pipeline (`Step 0: Empty State` → `Step 1: Goal Parsing` → `Step 1.5: Resource Fit & Coverage Evaluation` → `Step 2: Web Search Resource Discovery` → `Step 3: Syllabus Synthesis` → `Step 4: Verification & Grounding`) and binds a frozen request and an eligible catalog snapshot. In `Step 1.5`, `evaluate_resource_fit_and_coverage` (`ResourceFitEvaluation`, `ResourceFitDecisionMode`) compares parsed goal topics against the reviewed catalog's `Existing syllabi` and `Materials` (including polymorphic `ResourceIndexDescriptor` chapter/video/module/lab indexes) and determines whether existing syllabi/materials satisfy the request (`AdoptAsIs`, `AdaptExisting`, or `SynthesizeNew`) or whether uncovered topic gaps require `Step 2` native API web-search grounding (`OpenAI web_search_preview`, `Anthropic web_search_20250305`, `Gemini google_search`). Retrieval returns source IDs, sections only when verified, and allowed evidence. The LLM cannot invent its own verified source facts. Hydration draws canonical links, current availability overlays, cost facts, and attribution from catalog services.
 
 Validate both before and after hydration: the candidate must contain no forbidden fields, and authoritative facts may reveal a price/access mismatch. The final committed plan is the canonical contract. Revalidate immediately before activation if resources or permissions changed since generation.
 
@@ -2090,13 +2090,13 @@ Keep topic taxonomy and prerequisite relationships explicit. Their provenance ca
 
 Distinguish two retrieval uses. **Catalog retrieval** can select resources using permitted descriptions, outcomes, and prerequisites. **Assessment grounding** needs authorized subject-matter evidence or independently authored reviewed answers/rubrics. Bibliographic metadata alone cannot justify a detailed quiz answer about an inaccessible book. If the second evidence base is unavailable, recommend the book while using an independently reviewed assessment or explicitly disclosing the assessment gap.
 
-Maintain separate freshness policies for price, availability, exam versions, software tutorials, and stable conceptual resources. Updating an index does not rewrite an accepted curriculum. Quarantine/rights revocation overrides a historical snapshot at serving time.
+Maintain separate freshness policies for price, availability, exam versions, software tutorials, and stable conceptual resources. Updating an index does not rewrite an accepted syllabus. Quarantine/rights revocation overrides a historical snapshot at serving time.
 
 ### 4. Learning and scheduling
 
 Learning evidence is append-oriented and source-attributed. Correcting an erroneous attempt, answer key, rubric, evaluator judgment, or completion creates a correction/invalidation record; affected demonstrations and prerequisite eligibility are recomputed with an explanation. The original observation remains historical evidence, not an eternally valid conclusion. The product need not adopt full event sourcing for every entity. Rebuildable projections support the Today view, completion bars, and review queue.
 
-The scheduler consumes an accepted curriculum revision, available study windows, activity estimates, prerequisites, review policy, actual progress, and timezone. It outputs a separate schedule revision. It never reduces a required coding task merely because playback speed rises.
+The scheduler consumes an accepted syllabus revision, available study windows, activity estimates, prerequisites, review policy, actual progress, and timezone. It outputs a separate schedule revision. It never reduces a required coding task merely because playback speed rises.
 
 If the learner misses a session, preserve the old event and propose new times. If due reviews cannot fit, expose a workload conflict and prioritize under the stated policy. Do not create infinite backlog or claim a scientifically optimal schedule. Avoid reusing identical questions as the sole evidence of delayed transfer.
 
@@ -2112,9 +2112,9 @@ A learner can have demonstrated an objective and still have a review due. These 
 
 ### 5. Client architecture and interaction
 
-Render canonical documents with an allowlisted component registry (`SafeActivityRenderer`). Unknown major curriculum schema versions must **fail closed**: `SafeActivityRenderer` may show an explicit unsupported-version compatibility state and a safe text outline, but must never infer or render unknown component structures. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
+Render canonical documents with an allowlisted component registry (`SafeActivityRenderer`). Unknown major syllabus schema versions must **fail closed**: `SafeActivityRenderer` may show an explicit unsupported-version compatibility state and a safe text outline, but must never infer or render unknown component structures. The same API supports a desktop map, accessible outline, mobile focused path, Today list, activity detail, resource catalog, progress view, and settings.
 
-The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Profile & Settings** (via the top-right user avatar dropdown), and **Learn** contains **Today** (with the integrated 4-column `StudyFlowBoard` and `Your curricula` sidebar switcher), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a unit or activity cell in the `Today` flow board to open details in `InspectorDrawer` without losing location. On mobile, stack the flow board and inspector cleanly. Graph pan/zoom is optional; it cannot be the only navigation method.
+The navigation hierarchy follows Section 9.3: top-level destinations are **Learn**, **Explore**, and **Profile & Settings** (via the top-right user avatar dropdown), and **Learn** contains **Today** (with the integrated 4-column `StudyFlowBoard` and `Your syllabi` sidebar switcher), **Progress**, and **Resources**. Keep the navigation adaptable on narrow screens without hiding required actions. A curator console is separately authorized. On desktop, select a unit or activity cell in the `Today` flow board to open details in `InspectorDrawer` without losing location. On mobile, stack the flow board and inspector cleanly. Graph pan/zoom is optional; it cannot be the only navigation method.
 
 Persist offline only the minimum allowed plan/evidence data. Never cache provider credentials, unrevealed assessment solutions, or unauthorized external materials in a service worker. Show offline and pending-sync status. Use stable event IDs for offline progress and revision preconditions for mutable schedules. A stale page cannot overwrite a newer plan without a conflict response.
 
@@ -2134,7 +2134,7 @@ Recommended generation states: queued → retrieving → generating → validati
 
 Enforce an explicit HTTP concurrency and idempotency policy:
 - `Idempotency-Key` is required **only** for retriable effect-producing commands (e.g., reservation, generation start, adaptation acceptance, publication confirmation, adoption creation, checkout session creation). It specifies deterministic response replay on matching request fingerprint, `409 Conflict` on payload mismatch, `409 Conflict` (or safe coalescing) on in-flight duplicates, bounded retention with background pruning, and retry-safe failure handling on transient `5xx` errors before commit.
-- `If-Match` is required **only** for mutations of existing versioned mutable resources (e.g., curriculum activation, schedule patch, credential rotation/deletion, publication withdrawal), returning `428 Precondition Required` when missing and `412 Precondition Failed` when stale.
+- `If-Match` is required **only** for mutations of existing versioned mutable resources (e.g., syllabus activation, schedule patch, credential rotation/deletion, publication withdrawal), returning `428 Precondition Required` when missing and `412 Precondition Failed` when stale.
 - `GET` operations require neither `Idempotency-Key` nor `If-Match`.
 - Creation and append-only event APIs follow operation-specific deduplication rules (e.g., `ProgressEventRequest` deduplicates by `(account_id, event_id)`; assessment attempts deduplicate by `(account_id, attempt_id)`; vote `PUT`/`DELETE` routes are naturally idempotent state assertions).
 
@@ -2146,7 +2146,7 @@ Return structured errors with a stable code, safe explanation, correlation ID, r
 
 Provide local development configuration, a reproducible dependency lock, database migrations, a minimal redistributable catalog fixture, and a documented worker startup. Deployment secrets come from environment/secrets management, never checked-in files. Production key encryption and payment keys are separate concerns.
 
-Self-hosting and open-source distribution under the repository's `Apache-2.0` license (`LICENSE`) use the same contract and support user-supplied BYOK providers (`LEGAL.md` Sections 1–2). A self-hosted instance or fork does not inherit permissions to redistribute third-party educational materials (`LEGAL.md` Section 4), nor does it grant trademark rights in the official service branding. Separate open-source software distribution (`Apache-2.0`) and community curriculum structure sharing (`CC BY 4.0`) from third-party copyrighted educational works. Data backups must preserve referential integrity; test restoration with expired credentials disabled.
+Self-hosting and open-source distribution under the repository's `Apache-2.0` license (`LICENSE`) use the same contract and support user-supplied BYOK providers (`LEGAL.md` Sections 1–2). A self-hosted instance or fork does not inherit permissions to redistribute third-party educational materials (`LEGAL.md` Section 4), nor does it grant trademark rights in the official service branding. Separate open-source software distribution (`Apache-2.0`) and community syllabus structure sharing (`CC BY 4.0`) from third-party copyrighted educational works. Data backups must preserve referential integrity; test restoration with expired credentials disabled.
 
 Exact cloud, authentication vendor, notification provider, payment provider, and framework version are proposed implementation choices for T00. Do not make a broad provider shopping exercise a prerequisite to implementing the domain and fixture-backed vertical slice.
 
@@ -2156,9 +2156,9 @@ The learner's profile supplies self-reports and references to private server-own
 
 Begin with reviewed diagnostic selection rules and categorical evidence support. Do not introduce an uncalibrated psychometric score to make the interface appear precise. The reviewed policy determines what evidence is sufficient for a particular instructional decision; the UI exposes uncovered capabilities. A good linear-algebra result does not populate probability or matrix-calculus proficiency.
 
-An adaptation proposal pins the active curriculum, current schedule (including its absence), proficiency snapshot, candidate revision, and policy. It lists changes, exact qualifying waivers, uncertainty, and workload/access consequences. Creation can compare an already generated draft or make supported deterministic changes without inference. If a new model call is needed, use the normal request-bound quote/authorization flow first. Acceptance rechecks all pinned inputs and current rights before atomically updating the active plan and invalidating obsolete reminders. It never changes underlying assessment facts to fit a preferred plan.
+An adaptation proposal pins the active syllabus, current schedule (including its absence), proficiency snapshot, candidate revision, and policy. It lists changes, exact qualifying waivers, uncertainty, and workload/access consequences. Creation can compare an already generated draft or make supported deterministic changes without inference. If a new model call is needed, use the normal request-bound quote/authorization flow first. Acceptance rechecks all pinned inputs and current rights before atomically updating the active plan and invalidating obsolete reminders. It never changes underlying assessment facts to fit a preferred plan.
 
-The curriculum-adaptation contract excludes schedule-only changes. Those use the separate schedule workflow and concurrency checks. A changed curriculum may require a new schedule preview; it does not authorize the app to commit unseen replacement dates. See [adaptation.md](#8-proficiency-and-adaptation).
+The syllabus-adaptation contract excludes schedule-only changes. Those use the separate schedule workflow and concurrency checks. A changed syllabus may require a new schedule preview; it does not authorize the app to commit unseen replacement dates. See [adaptation.md](#8-proficiency-and-adaptation).
 
 ### 10. Public templates and private adoption
 
@@ -2189,7 +2189,7 @@ These choices should be revisited when concrete load, device, organizational, or
 
 ## Domain records, ownership, and invariants
 
-**Status:** v0.2 persistence model, including per-objective adaptation, public curriculum revisions, and server-mediated BYOK. JSON field shapes live in `contracts/`; this document describes meaning and ownership and does not introduce competing wire enums.
+**Status:** v0.2 persistence model, including per-objective adaptation, public syllabus revisions, and server-mediated BYOK. JSON field shapes live in `contracts/`; this document describes meaning and ownership and does not introduce competing wire enums.
 
 ### Record boundaries
 
@@ -2198,13 +2198,13 @@ These choices should be revisited when concrete load, device, organizational, or
 | Account | Identity and account status | Server-owned account ID; tenant ownership never taken from generated content |
 | Learner profile | Prior-knowledge claims, diagnostic evidence references, preferences, accessibility and language settings | Private; changes timestamped; generation stores a request snapshot |
 | Topic preference | Mathematical depth, sequence, desired outcome, and format preferences | Intuitive/applied/formal depth with explicit topic overrides; preferences are not proficiency evidence |
-| Goal | Intended capability, scope, exclusions, success context | Editable draft; accepted interpretation retained with each curriculum |
+| Goal | Intended capability, scope, exclusions, success context | Editable draft; accepted interpretation retained with each syllabus |
 | Objective | Measurable capability and success criteria | Stable conceptual identity plus version; semantic changes require explicit mapping |
 | Resource | Canonical creator/work identity | Distinguish identity from edition, metadata, and availability |
 | Resource version | Reviewed metadata, outcomes, prerequisites, permitted source locators, and optional polymorphic `index_descriptor` (`BookIndex`, `YoutubePlaylistIndex`, `CourseIndex`, `RepositoryLabIndex`) | Immutable reviewed record; current withdrawal/rights overlays can disallow serving |
 | Permission record | Specific uses, basis, scope, expiry, restrictions, reviewer | Revocation has precedence over prior snapshots |
 | Catalog snapshot | Approved resource versions available for a generation run | Rebuildable snapshot identity; does not grant perpetual use rights |
-| Curriculum revision | Goal, objectives, modules, prerequisites, assigned activities | Immutable accepted revision; active pointer is separately mutable |
+| Syllabus revision | Goal, objectives, modules, prerequisites, assigned activities | Immutable accepted revision; active pointer is separately mutable |
 | Activity | Instruction, worked example, practice, coding, project, quiz, review, or reflection | Aligned objectives and versioned resource assignments |
 | Assessment item | Prompt, private answer/rubric, objective mapping, provenance, validation status | Item version pinned per attempt; public prompt and private solution are separate projections |
 | Assessment attempt | Response, evidence, timestamp, assistance, evaluation, grader version | Append-oriented; corrections preserve provenance |
@@ -2214,15 +2214,15 @@ These choices should be revisited when concrete load, device, organizational, or
 | Adaptation proposal | Proposed objective/activity/schedule changes, reasons, evidence mappings, access/effort/cost impacts | Pins base plan/schedule/profile/evidence/catalog-policy revisions; acceptance is transactional |
 | Progress event | Started/completed/skipped/reported-time/evidence-linked event | Stable client event ID scoped to account; server sequence provides ordering |
 | Progress projection | Current execution/evidence summaries | Derived from authorized events and criteria, never authored by a model |
-| Schedule revision | Study sessions, review schedule items (`ReviewScheduleItem`), timezone policy, capacity | Independent of immutable `CurriculumRevision`; completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical revisions remain inspectable and past learning evidence is never rewritten |
+| Schedule revision | Study sessions, review schedule items (`ReviewScheduleItem`), timezone policy, capacity | Independent of immutable `SyllabusRevision`; completing or failing a review recalculates future schedule entries in a new `ScheduleRevision` while historical revisions remain inspectable and past learning evidence is never rewritten |
 | Reminder occurrence | Session/version/channel/due instant and dispatch state | Stable dedupe key; invalidated by session/preference changes |
-| Credential connection | Owner, provider metadata, masked label, status, secret reference and credential version | Server-mediated encrypted vault; raw secret outside curriculum, public snapshots, queues, and ordinary query responses |
+| Credential connection | Owner, provider metadata, masked label, status, secret reference and credential version | Server-mediated encrypted vault; raw secret outside syllabus, public snapshots, queues, and ordinary query responses |
 | Generation job | Request snapshot, state, provider/model/key-version/cost authorization, provenance, outcome | Idempotency key and request fingerprint; same key/different request conflicts; no implicit mode/provider/account change |
 | Usage ledger | Reservations, provider usage, settlements, adjustments | Append-only financial entries with transactionally enforced uniqueness |
 | Provider attempt | Job/attempt identity, route, credential mode/version, provider request ID, usage/cost basis, result | Nonsecret attribution; unknown provider outcomes stay unresolved until reconciled or handled under policy |
 | Certification reference | External issuer, exam/certificate kind, official reference, verified facts | Versioned; never represented as an app-issued credential |
-| Publication | Public identity, private owner association, public/unlisted visibility, lifecycle and latest available revision | Separate from the private curriculum; mutable access state does not mutate snapshot content |
-| Published curriculum revision | Allowlisted template structure, intentional public title/summary, audience/prerequisites, resource links, attribution and content digest | Immutable validated snapshot with its own public revision ID; no automatic copying of private text or state |
+| Publication | Public identity, private owner association, public/unlisted visibility, lifecycle and latest available revision | Separate from the private syllabus; mutable access state does not mutate snapshot content |
+| Published syllabus revision | Allowlisted template structure, intentional public title/summary, audience/prerequisites, resource links, attribution and content digest | Immutable validated snapshot with its own public revision ID; no automatic copying of private text or state |
 | Publication terms acceptance | Publisher, terms version, accepted `CC BY 4.0` rights scope (`LEGAL.md` Section 3), timestamp and target revision | Retained under the applicable policy; excludes any purported relicensing of third-party material |
 | Publication access/moderation overlay | Availability, quarantine/withdrawal, reason, effective time, authorized actor | Current overlay governs reads, discovery, caches and voting despite historical snapshot state |
 | Upvote | Verified voter account and published revision | Unique pair; idempotent set/remove; author's own account is ineligible |
@@ -2236,7 +2236,7 @@ These choices should be revisited when concrete load, device, organizational, or
 ```mermaid
 flowchart TB
   A["Learner"] --> G["Goal and preferences"]
-  G --> C["Curriculum revision"]
+  G --> C["Syllabus revision"]
   C --> O["Objectives and prerequisites"]
   C --> X["Learning activities"]
   X --> R["Resource versions"]
@@ -2248,7 +2248,7 @@ flowchart TB
   P --> S
 ```
 
-The loop from evidence through progress to a future schedule is not a prerequisite cycle. The prerequisite graph itself must remain acyclic. Proficiency projections and waivers are private derived records between assessment evidence and adaptation; publication uses a separate explicit projection of curriculum structure.
+The loop from evidence through progress to a future schedule is not a prerequisite cycle. The prerequisite graph itself must remain acyclic. Proficiency projections and waivers are private derived records between assessment evidence and adaptation; publication uses a separate explicit projection of syllabus structure.
 
 ### Proficiency, preferences, and adaptation
 
@@ -2260,7 +2260,7 @@ Depth preferences support intuitive, applied, and formal values with topic overr
 
 Diagnostic selection pins reviewed item versions, objective alignment, selection policy, visible effort target, prior exposure, and assistance conditions. A session can finish without assessing every objective. Unattempted, skipped, uncovered, or invalidated evidence remains unknown for the affected inference. An unknown projection is not a zero score. An item may be quarantined without erasing the original attempt; corrected evaluation produces an attributable change and recomputes affected projections and waivers.
 
-An adaptation proposal pins the revisions it relied on and describes the exact changes, evidence justification, preserved outcomes, proposed waivers, prerequisite bridges, and effort/access/cost deltas. A new relevant attempt, changed preference, corrected assessment, changed rights overlay, or changed active plan can make it stale. Accepting a stale proposal returns a conflict and a refreshed preview; it does not overwrite newer work. Automatic recomputation of evidence is distinct from automatically activating a different curriculum.
+An adaptation proposal pins the revisions it relied on and describes the exact changes, evidence justification, preserved outcomes, proposed waivers, prerequisite bridges, and effort/access/cost deltas. A new relevant attempt, changed preference, corrected assessment, changed rights overlay, or changed active plan can make it stale. Accepting a stale proposal returns a conflict and a refreshed preview; it does not overwrite newer work. Automatic recomputation of evidence is distinct from automatically activating a different syllabus.
 
 | Conceptual lifecycle | State rules |
 | --- | --- |
@@ -2273,9 +2273,9 @@ These labels describe lifecycle meaning. The contracts define exact serialized s
 
 ### Public snapshots and private adoption
 
-A publication is not a flag that grants strangers access to the underlying private curriculum record. Publishing constructs a new allowlisted snapshot, validates it, shows exactly that projection to its owner, records terms acceptance, and creates a public revision. Public identifiers cannot authorize private APIs or expose internal owner/account identifiers.
+A publication is not a flag that grants strangers access to the underlying private syllabus record. Publishing constructs a new allowlisted snapshot, validates it, shows exactly that projection to its owner, records terms acceptance, and creates a public revision. Public identifiers cannot authorize private APIs or expose internal owner/account identifiers.
 
-Include only intentionally supplied public text, curriculum structure, stated generic audience/prerequisites, requested treatment/depth where publishable, permitted source links/metadata, attribution, and publication metadata. Exclude private goal prompts, proficiency and diagnostics, attempts, progress, dates/schedules, notes, budgets, owned subscriptions/access, keys, answer solutions, and private generation provenance. A generated personal goal cannot automatically become a public title or summary. The creator may intentionally describe a generic audience, such as learners comfortable with introductory linear algebra, without publishing their diagnostic record.
+Include only intentionally supplied public text, syllabus structure, stated generic audience/prerequisites, requested treatment/depth where publishable, permitted source links/metadata, attribution, and publication metadata. Exclude private goal prompts, proficiency and diagnostics, attempts, progress, dates/schedules, notes, budgets, owned subscriptions/access, keys, answer solutions, and private generation provenance. A generated personal goal cannot automatically become a public title or summary. The creator may intentionally describe a generic audience, such as learners comfortable with introductory linear algebra, without publishing their diagnostic record.
 
 The immutable snapshot and its mutable access/moderation overlay are separate. Public revisions are eligible for app discovery when available; unlisted revisions are excluded from discovery and app-controlled indexing but readable by anyone with the link. Neither unlisted URLs nor difficult-to-guess identifiers make the content confidential. Current rights, withdrawal, and moderation overlays govern every served projection, including cached/indexed views.
 
@@ -2285,7 +2285,7 @@ Adopting a template creates a new private draft owned by the adopter and preserv
 
 | Record/action | Identity and authorization invariant |
 | --- | --- |
-| Public or unlisted publication | Explicit owner action and preview; same private curriculum can yield separately identified public revisions |
+| Public or unlisted publication | Explicit owner action and preview; same private syllabus can yield separately identified public revisions |
 | Publishing changed content | New immutable public revision; zero starting votes; no vote transfer from older versions |
 | Upvote | One active vote per verified account and published revision; reject self-votes using the private owner association |
 | Remove upvote | Idempotent desired-state removal; no retry-unsafe toggle or client-supplied aggregate count |
@@ -2294,9 +2294,9 @@ Adopting a template creates a new private draft owned by the adopter and preserv
 
 Vote counts are community preference, not evidence of resource approval, pedagogical efficacy, correctness, or anyone's proficiency. Eligibility and active moderation/rights overlays apply before discovery ranking. Voter and reporter identities are not part of the public projection. Publication and vote activity creates no social push notification in the initial product.
 
-### Canonical curriculum fields
+### Canonical syllabus fields
 
-The canonical document uses `schema_version`, server-owned curriculum/revision identifiers and timestamps, `goal`, `sequence_preference_applied`, `objectives`, `prerequisite_edges`, `modules`, `activities`, `certification_options`, derived time totals, and `provenance`. Exact names and required fields are in `curriculum.schema.json`.
+The canonical document uses `schema_version`, server-owned syllabus/revision identifiers and timestamps, `goal`, `sequence_preference_applied`, `objectives`, `prerequisite_edges`, `modules`, `activities`, `certification_options`, derived time totals, and `provenance`. Exact names and required fields are in `syllabus.schema.json`.
 
 Each activity links objective IDs, prerequisite activity IDs, resource-version assignments, duration estimates, and typed content. References to assessments identify a separate item; they do not disclose a private answer key. Resource sections require verified source locators. A candidate's free text cannot override resource metadata.
 
@@ -2304,11 +2304,11 @@ The model candidate is a distinct schema definition excluding server identity, p
 
 ### Persistence invariants
 
-1. Account-scoped records cannot be referenced across tenants. Curricula are private by default; the authorized sharing feature exposes a separate allowlisted public snapshot, never the underlying private record.
-2. Every module/activity/edge reference resolves within the relevant curriculum revision or to an explicitly allowed canonical objective/resource record.
+1. Account-scoped records cannot be referenced across tenants. Syllabi are private by default; the authorized sharing feature exposes a separate allowlisted public snapshot, never the underlying private record.
+2. Every module/activity/edge reference resolves within the relevant syllabus revision or to an explicitly allowed canonical objective/resource record.
 3. Prerequisite edges are acyclic; optional enrichment does not silently become a mandatory prerequisite.
-4. The active curriculum pointer refers to an accepted valid revision. Generation creates a draft first.
-5. Schema version, curriculum revision, catalog snapshot, scheduler policy, schedule revision, and item version mean different things and are not combined into one number.
+4. The active syllabus pointer refers to an accepted valid revision. Generation creates a draft first.
+5. Schema version, syllabus revision, catalog snapshot, scheduler policy, schedule revision, and item version mean different things and are not combined into one number.
 6. Evidence transfer between revisions requires a mapping with an explanation of objective equivalence and retained assessment conditions. Similar titles or embeddings are insufficient.
 7. A completed activity remains historical evidence even if a resource later becomes unavailable. This does not justify retaining revoked full text or prohibited derivative content.
 8. A skipped prerequisite remains skipped/uncertain unless independent evidence supports it. A learner may override suggested ordering, but the app records the override and cannot claim the prerequisite demonstrated.
@@ -2342,7 +2342,7 @@ The model candidate is a distinct schema definition excluding server identity, p
 
 **Strong linear algebra, formal LLM study:** preserve formal depth; assess or reuse evidence for specific relevant prerequisites; remove only justified redundant prerequisite work and keep derivations, mathematical objectives, and unknown areas visible. Recompute the schedule without assuming competence in adjacent topics.
 
-**Adopt a popular curriculum:** create a private draft from the selected public revision, show origin attribution, and readapt to the adopter's evidence and constraints. None of the author's proficiency or votes crosses into the adopter's account.
+**Adopt a popular syllabus:** create a private draft from the selected public revision, show origin attribution, and readapt to the adopter's evidence and constraints. None of the author's proficiency or votes crosses into the adopter's account.
 
 **Publish an improved version while someone votes:** the vote targets the immutable revision displayed to the voter. Publishing revision 2 creates a separate zero-vote target; a concurrent vote for revision 1 remains associated with revision 1.
 
@@ -2363,15 +2363,15 @@ These are specification artifacts, not an implemented API. They describe the cor
 
 | Artifact | Contract |
 | --- | --- |
-| generation-request.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/generation-request.schema.json`) | Learner intent, prior-knowledge evidence, constraints, distinct budgets and explicit AI mode |
-| resource.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/resource.schema.json`) | Versioned curator-controlled catalog facts, access, credibility evidence, freshness and ingestion permissions |
-| curriculum.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/curriculum.schema.json`) | Immutable learner-facing curriculum revision |
-| curriculum.schema.json#/$defs/modelCandidate | A narrower, untrusted plan the model may propose |
-| proficiency.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/proficiency.schema.json`) | Private server-owned objective evidence and partial topic coverage |
-| adaptation-proposal.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/adaptation-proposal.schema.json`) | Version-bound curriculum changes, qualifying waivers, and impact preview |
-| public-curriculum.schema.json (embedded asset: `specs/001-curriculum-platform/contracts/public-curriculum.schema.json`) | Separate immutable public content with attribution and no learner history |
-| openapi.yaml (embedded asset: `specs/001-curriculum-platform/contracts/openapi.yaml`) | Core HTTP operations including diagnostics, adaptation, publication, adoption, votes, reports and owner management |
-| app-companion.openapi.yaml (embedded asset: `specs/001-curriculum-platform/contracts/app-companion.openapi.yaml`) | Companion HTTP operations for session auth, account export/deletion, curriculum list/goal-interpretation, resource version catalog/alerts, assessment assistance/reports/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and external completion import |
+| generation-request.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/generation-request.schema.json`) | Learner intent, prior-knowledge evidence, constraints, distinct budgets and explicit AI mode |
+| resource.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/resource.schema.json`) | Versioned curator-controlled catalog facts, access, credibility evidence, freshness and ingestion permissions |
+| syllabus.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/syllabus.schema.json`) | Immutable learner-facing syllabus revision |
+| syllabus.schema.json#/$defs/modelCandidate | A narrower, untrusted plan the model may propose |
+| proficiency.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/proficiency.schema.json`) | Private server-owned objective evidence and partial topic coverage |
+| adaptation-proposal.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/adaptation-proposal.schema.json`) | Version-bound syllabus changes, qualifying waivers, and impact preview |
+| public-syllabus.schema.json (embedded asset: `specs/001-syllabus-platform/contracts/public-syllabus.schema.json`) | Separate immutable public content with attribution and no learner history |
+| openapi.yaml (embedded asset: `specs/001-syllabus-platform/contracts/openapi.yaml`) | Core HTTP operations including diagnostics, adaptation, publication, adoption, votes, reports and owner management |
+| app-companion.openapi.yaml (embedded asset: `specs/001-syllabus-platform/contracts/app-companion.openapi.yaml`) | Companion HTTP operations for session auth, account export/deletion, syllabus list/goal-interpretation, resource version catalog/alerts, assessment assistance/reports/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and external completion import |
 
 JSON Schemas pin Draft 2020-12. The HTTP description intentionally pins OpenAPI 3.1.2 for a chosen toolchain compatibility baseline; it is not a statement that 3.1.2 is the latest OpenAPI release. The schema namespace uses example.invalid until the owner chooses a real project namespace. These schema identifiers are resolution identifiers, not live endpoints.
 
@@ -2381,7 +2381,7 @@ The canonical application contract is provider-independent. A model provider may
 
 The model may propose the goal scope, language, teaching order, requested instructional depth, objectives, prerequisite edges, modules, activities, optional certification references and explicit coverage limitations. Requested depth and sequence must still match the learner's authorization; a model cannot lower depth to conceal a knowledge gap. It may select only resource and assessment identifiers that the backend has made eligible for the request.
 
-The backend owns account identity, curriculum/revision identifiers, revision numbers, timestamps, activation, duration-policy parameters, aggregate duration calculations, coverage status, generation provenance, resource facts, prices, URLs, source approval, credential custody, assessment keys, scheduling, evidence and billing.
+The backend owns account identity, syllabus/revision identifiers, revision numbers, timestamps, activation, duration-policy parameters, aggregate duration calculations, coverage status, generation provenance, resource facts, prices, URLs, source approval, credential custody, assessment keys, scheduling, evidence and billing.
 
 A canonical revision is created only after structural and semantic validation. Server-only properties are excluded from the modelCandidate definition. Their readOnly annotations in the canonical document are documentation annotations; the narrower candidate schema and application authorization enforce the actual boundary.
 
@@ -2394,7 +2394,7 @@ JSON Schema does not establish these rules. Implement and verify them separately
 1. Every objective, module, activity and edge identifier is unique within its revision. Every reference resolves. Objective and activity prerequisite graphs are acyclic. Every module member exists, and module/assessment mappings are consistent with the objective they claim to support.
 2. Referenced resource versions belong to the pinned catalog snapshot and pass approval, current eligibility, region/language, rights, access and source-freshness policies. Synthetic fixtures are never eligible in a production catalog. A real university or provider name alone does not establish approval.
 3. Resource segment identifiers are real catalog identifiers. Missing chapter or timestamp metadata must not be invented. Backend hydration supplies authoritative titles, URLs and access facts.
-4. An objective has relevant instruction or verified prerequisite evidence, practice and a future assessment path with a reviewed answer or rubric. A new curriculum does not require the learner to have already supplied assessment evidence. Any missing obligation is recorded in coverage_limitations. A partial plan is visibly partial; a gap does not count as demonstrated competence. With no useful eligible coverage, generation fails with a coverage explanation.
+4. An objective has relevant instruction or verified prerequisite evidence, practice and a future assessment path with a reviewed answer or rubric. A new syllabus does not require the learner to have already supplied assessment evidence. Any missing obligation is recorded in coverage_limitations. A partial plan is visibly partial; a gap does not count as demonstrated competence. With no useful eligible coverage, generation fails with a coverage explanation.
 5. Every assessment reference belongs to an authorized private assessment version whose objective alignment, provenance, scoring method and validation status are known. An assessment gap cannot satisfy a demonstration gate. Model-generated practice and unvalidated grades do not independently establish high-confidence demonstration.
 6. Source permissions are checked for the actual operation: metadata embedding, full-text embedding, model-provider processing, exercise derivation and redistribution are distinct uses. Approval for recommendation does not grant any of them.
 7. Source_resource_version_ids in provenance matches the union of referenced activity/certification resource versions. Provenance pins the generation job, request snapshot, retrieval policy, catalog snapshot, prompt, model and validation/pedagogy policies. The candidate hash identifies the exact archived UTF-8 candidate bytes.
@@ -2410,9 +2410,9 @@ JSON Schema does not establish these rules. Implement and verify them separately
 
 Diagnostics select reviewed item versions under an owned session. The client submits answers/assistance, never a score or proficiency verdict. Reviewed items and criteria can use valid deterministic grading without a human reviewing every attempt. The initial 1–30 minute request range is a configurable sampling/effort target, not an enforced response deadline, ability score, or established effective test length. Reaching it does not fail unanswered objectives; pause/stop and preserved submitted evidence follow sections 8–9. Target, assessed, and unassessed objective-version sets must form a consistent partition; early stop leaves unsupported objectives unknown.
 
-Prerequisite waivers are produced only by server evidence policy. Model-proposed prior-evidence references must resolve to the authenticated learner's supplied context and cannot grant a waiver. A curriculum adaptation pins base curriculum, current schedule, proficiency snapshot, candidate and policy, with exact evidence/criterion references for waivers. Acceptance checks the proposal digest, active versions, evidence validity, source rights, and feasibility. `reschedule` is not an allowed curriculum-change kind: date-only changes use the separate schedule path. New dates require their own preview/acceptance; obsolete reminders are invalidated when their plan becomes inapplicable.
+Prerequisite waivers are produced only by server evidence policy. Model-proposed prior-evidence references must resolve to the authenticated learner's supplied context and cannot grant a waiver. A syllabus adaptation pins base syllabus, current schedule, proficiency snapshot, candidate and policy, with exact evidence/criterion references for waivers. Acceptance checks the proposal digest, active versions, evidence validity, source rights, and feasibility. `reschedule` is not an allowed syllabus-change kind: date-only changes use the separate schedule path. New dates require their own preview/acceptance; obsolete reminders are invalidated when their plan becomes inapplicable.
 
-Publication uses a separate schema, public identifiers, reusable content, and no private learning-state inheritance. Public module/activity IDs are remapped; globally public catalog/objective identifiers may remain stable. `PublicCurriculum.content_sha256` hashes its `content`. `PublicationPreview.preview_sha256` hashes the exact object `{content: public_content, publisher, publication_terms, origin, visibility}`. The preview record also binds its owner, source revision, target/base publication, terms version, and expiry; those private bindings must be checked at confirmation. Final system-generated publication IDs and commit timestamps are excluded from the user-authored envelope. They never introduce new private identity data.
+Publication uses a separate schema, public identifiers, reusable content, and no private learning-state inheritance. Public module/activity IDs are remapped; globally public catalog/objective identifiers may remain stable. `PublicSyllabus.content_sha256` hashes its `content`. `PublicationPreview.preview_sha256` hashes the exact object `{content: public_content, publisher, publication_terms, origin, visibility}`. The preview record also binds its owner, source revision, target/base publication, terms version, and expiry; those private bindings must be checked at confirmation. Final system-generated publication IDs and commit timestamps are excluded from the user-authored envelope. They never introduce new private identity data.
 
 Use SHA-256 over UTF-8 [RFC 8785 JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785) output for these content/preview hashes and for an adaptation proposal excluding its own `proposal_sha256` field. No extra Unicode normalization is applied. The fixture validator uses a simpler stable serialization only for its restricted fixture values; production must use a tested JCS implementation, including its numeric and Unicode rules. In contrast, the archived model candidate's `candidate_sha256` intentionally hashes the exact archived bytes, not JCS.
 
@@ -2442,8 +2442,8 @@ Use If-Match for mutable activation, schedule and preference state. A stale vers
 | free_or_owned | Verified free portions or access already held by this learner |
 | owned_only | Access already held by this learner |
 | allow_paid | Free, owned or paid materials subject to the explicit new-spend budget |
-| budgets.materials | New learning-material and required exam spend for the whole curriculum; existing paid access is a separate entitlement |
-| budgets.compute | Additional compute/lab spend for the whole curriculum |
+| budgets.materials | New learning-material and required exam spend for the whole syllabus; existing paid access is a separate entitlement |
+| budgets.compute | Additional compute/lab spend for the whole syllabus |
 | budgets.inference | Per-generation AI authorization ceiling, including bounded repair attempts |
 
 Unknown incremental cost does not become zero. An owned entitlement may establish zero additional spend even when the current retail price is unknown. A verified free course segment may be eligible while its paid certificate is not. Unknown required compute or setup cost prevents a confident claim that a zero-compute budget is satisfied.
@@ -2458,7 +2458,7 @@ Cancellation stops new calls and requests cancellation of in-flight work where s
 
 ### State, evidence and retry behavior
 
-Curriculum revision documents and submitted attempts/events are immutable. Current activation and derived progress are projections. Schedule patches create schedule revisions. Catalog changes create resource versions; an administrative review updates future eligibility without overwriting past versions.
+Syllabus revision documents and submitted attempts/events are immutable. Current activation and derived progress are projections. Schedule patches create schedule revisions. Catalog changes create resource versions; an administrative review updates future eligibility without overwriting past versions.
 
 Progress events identify self-report, skipping and time reporting. Assessment purpose distinguishes diagnostics, practice, independent probes, delayed probes and transfer probes. Assistance declarations are separate from assistance observed in the app. Even observed in-app independence cannot prove that no external help was used. Studying a worked solution is a legitimate solution-assisted activity and must not require a dummy attempt. Record solution viewing separately from an independent attempt. If a key, rubric or grader is later found defective, append an invalidation or correction evaluation, preserve the historical attempt, and recompute dependent demonstration projections.
 
@@ -2471,7 +2471,7 @@ The API key creation field is write-only. It must be absent from all responses, 
 | Area | Core coverage |
 | --- | --- |
 | Generation | Quote, reserve, start, status and cancel |
-| Curriculum | Read revision pointers, fetch immutable revision, activate, regenerate |
+| Syllabus | Read revision pointers, fetch immutable revision, activate, regenerate |
 | Learning | Append progress events, read projection, fetch assessment delivery, submit/read attempts |
 | Schedule | Fetch current revision and typed optimistic-concurrency patch |
 | Credentials | Write-only create/rotate, metadata list/detail with ETag, and revoke/delete |
@@ -2490,7 +2490,7 @@ Bearer authentication is a contract boundary; it does not select an identity pro
 
 The canonical OpenAPI files (`openapi.yaml` and `app-companion.openapi.yaml`) and JSON Schemas embedded in Appendix C are authoritative over both Rust and TypeScript code:
 
-- **Companion operations (`app-companion.openapi.yaml`):** Rather than maintaining an unembedded companion file that could drift, the 21 application-companion operations (session auth, account export/deletion, `/me/curricula`, `/curricula/goal-interpretations`, `/resources/versions`, `/curricula/{curriculum_id}/resource-alerts`, `/assessments/{assessment_id}/assistance-events`, `/assessments/{assessment_id}/reports`, `/admin/assessments/{assessment_id}/key-corrections`, admin catalog/moderation queues, `/me/billing/wallet`, `/me/billing/checkout-sessions`, `/webhooks/billing`, push subscriptions, reminder snooze, and external completion import) are canonically specified in Appendix C.8 and extracted to `specs/001-curriculum-platform/contracts/app-companion.openapi.yaml`.
+- **Companion operations (`app-companion.openapi.yaml`):** Rather than maintaining an unembedded companion file that could drift, the 21 application-companion operations (session auth, account export/deletion, `/me/syllabi`, `/syllabi/goal-interpretations`, `/resources/versions`, `/syllabi/{syllabus_id}/resource-alerts`, `/assessments/{assessment_id}/assistance-events`, `/assessments/{assessment_id}/reports`, `/admin/assessments/{assessment_id}/key-corrections`, admin catalog/moderation queues, `/me/billing/wallet`, `/me/billing/checkout-sessions`, `/webhooks/billing`, push subscriptions, reminder snooze, and external completion import) are canonically specified in Appendix C.8 and extracted to `specs/001-syllabus-platform/contracts/app-companion.openapi.yaml`.
 - **TypeScript boundary:** Generate frontend API types from the canonical OpenAPI specifications into `packages/api-client` and use a thin typed fetch client. Never duplicate request or response interfaces manually.
 - **Rust boundary:** Generate schema-derived data types where practical, implement Axum route handlers against the canonical contracts, validate untrusted payloads at runtime with the `jsonschema` crate (Draft 2020-12), and run OpenAPI contract tests against the live API. Never make Rust annotations or a code-first OpenAPI generator the source of truth, and do not depend on a beta Rust Axum server generator.
 - **Vendor-specific production gates:** Vendor-specific webhook envelopes, production identity-provider callbacks, and commercial tariff tables remain gated by deferred decisions `D07`, `D11`, `D15`, and `D16`.
@@ -2516,7 +2516,7 @@ GET /me/publications lists owned lifecycle metadata across active, quarantined, 
 
 The existing GET /me/publications/{publication_id} remains the source of a strong management ETag for authoring/withdrawal. Neither list response supplies a lifecycle mutation token. Stable owner-bound cursors and authorization are runtime rules. The public_readable field is current metadata, rechecked on actual read. These two additive reads close the My publications navigation gap without weakening public quarantine.
 
-General account/profile/export/deletion, session authentication, curriculum listing, goal interpretation, resource alerts, assessment assistance/reporting/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and completion import are modeled in `app-companion.openapi.yaml` (Appendix C.8). Vendor-specific production auth/payment callbacks remain gated on D07 and D11. Initial Explore controls use only the existing supported filter parameters.
+General account/profile/export/deletion, session authentication, syllabus listing, goal interpretation, resource alerts, assessment assistance/reporting/key-corrections, admin queues, billing wallet/checkout/webhooks, push subscriptions, reminder snooze, and completion import are modeled in `app-companion.openapi.yaml` (Appendix C.8). Vendor-specific production auth/payment callbacks remain gated on D07 and D11. Initial Explore controls use only the existing supported filter parameters.
 ---
 
 ## 16. Synthetic examples
@@ -2533,15 +2533,15 @@ The URLs use example.invalid. No real service should be contacted when these exa
 | generation-request.byok.synthetic.json | generation-request.schema.json |
 | resource.synthetic.json | resource.schema.json |
 | resource-unknown-price.synthetic.json | resource.schema.json |
-| curriculum-candidate.synthetic.json | curriculum.schema.json#/$defs/modelCandidate |
-| curriculum.synthetic.json | curriculum.schema.json |
+| syllabus-candidate.synthetic.json | syllabus.schema.json#/$defs/modelCandidate |
+| syllabus.synthetic.json | syllabus.schema.json |
 | schedule.synthetic.json | openapi.yaml#/components/schemas/Schedule |
 | progress-event.synthetic.json | openapi.yaml#/components/schemas/ProgressEventRequest |
 | generation-request.formal-math.synthetic.json | generation-request.schema.json; formal depth with application-first order |
 | proficiency.synthetic.json | proficiency.schema.json; exact matrix-shape evidence and unassessed matrix calculus |
 | diagnostic-session.synthetic.json | openapi.yaml#/components/schemas/DiagnosticSession; partial session stopped by learner |
 | adaptation-proposal.synthetic.json | adaptation-proposal.schema.json; narrow prerequisite waiver plus bridging work |
-| public-curriculum.synthetic.json | public-curriculum.schema.json; sanitized content and new public module/activity IDs |
+| public-syllabus.synthetic.json | public-syllabus.schema.json; sanitized content and new public module/activity IDs |
 | publication-preview.synthetic.json | openapi.yaml#/components/schemas/PublicationPreview; content, identity, terms and origin preview |
 | adoption-request.synthetic.json | openapi.yaml#/components/schemas/AdoptionRequest; deterministic planning without AI credentials |
 | adoption-request.hosted.synthetic.json | Same adoption schema; request-bound hosted quote/reservation |
@@ -2549,11 +2549,11 @@ The URLs use example.invalid. No real service should be contacted when these exa
 
 The approved-state resource is intentionally fictional. Its evidence and permissions exercise typed fields and do not prove anything about an actual source. The unknown-price resource demonstrates pending review and explicit unknown cost; unknown must not be interpreted as free.
 
-The candidate contains only fields the model may propose. The canonical curriculum adds server identity, duration totals, coverage status and provenance. The candidate_sha256 value hashes the exact UTF-8 bytes of the candidate fixture file.
+The candidate contains only fields the model may propose. The canonical syllabus adds server identity, duration totals, coverage status and provenance. The candidate_sha256 value hashes the exact UTF-8 bytes of the candidate fixture file.
 
 This example has one objective, six activities and no certification. It estimates 48 minutes at 1x playback, with a declared planning range of 38–76 minutes. Those numbers are synthetic examples of contract arithmetic, not pedagogical findings. Setup is included in practice time. The schedule separates the first attempt and later review into different sessions; it is not a scientifically validated spacing schedule.
 
-Private assessment identifiers point to imaginary seeded records. Answer keys and hidden rubrics are deliberately absent. Curriculum-schema validity alone does not establish that a private assessment exists, has a correct answer or validly measures learning; those are separate application and content checks.
+Private assessment identifiers point to imaginary seeded records. Answer keys and hidden rubrics are deliberately absent. Syllabus-schema validity alone does not establish that a private assessment exists, has a correct answer or validly measures learning; those are separate application and content checks.
 
 The progress example is self_reported_completed. It must never be interpreted as demonstrated mastery. No model provider keys, payment tokens or live learner information are included.
 
@@ -2584,9 +2584,9 @@ owned-publications.synthetic.json targets OwnedPublicationPage and includes acti
 The project adopts the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)** in `LICENSE` (`SPDX-License-Identifier: Apache-2.0` across `Cargo.toml` and `package.json`) for all project-owned software source code, schemas, migrations, and build scripts, and documents its 4-part legal boundary in `LEGAL.md` [OSI Open Source Definition](https://opensource.org/osd):
 
 1. **Software License (`Apache-2.0` — `LEGAL.md` Section 1):** All software source code in this repository is licensed under `Apache-2.0`. Unless explicitly stated otherwise, any contribution intentionally submitted for inclusion in the repository is licensed under the same `Apache-2.0` terms (`Apache-2.0` Section 5).
-2. **BYOK (Bring Your Own Key) & AI Provider Responsibility (`LEGAL.md` Section 2):** When users supply their own API keys for third-party AI inference providers (**OpenAI**, **Anthropic**, **Google Gemini**), API requests are sent directly on the user's behalf under the user's own account and billing relationship with that provider (`allow_hosted_fallback = false`). Users are responsible for complying with the Acceptable Use Policy, Terms of Service, and data-processing agreements of their selected AI provider. Credentials are encrypted at rest (`AES-256-GCM`) and never logged, exported, or embedded in public curriculum snapshots.
-3. **Community Curriculum Content (`CC BY 4.0` — `LEGAL.md` Section 3):** Curriculum structures, learning objectives, prerequisite graphs, study schedules, and original instructional annotations voluntarily published by users to the Community Marketplace are licensed under **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** unless otherwise noted. Publishing a curriculum strips all private learner progress, diagnostic results, personal notes, and credentials.
-4. **Third-Party Educational Resources (`LEGAL.md` Section 4):** Curricula reference external textbooks, courses, videos, documentation, and repositories strictly via bibliographic metadata (titles, authors, section/chapter locators) and canonical URLs. The platform does not claim ownership of, host, or redistribute copyrighted third-party educational content; all referenced works remain the property of their respective authors and publishers under their own terms.
+2. **BYOK (Bring Your Own Key) & AI Provider Responsibility (`LEGAL.md` Section 2):** When users supply their own API keys for third-party AI inference providers (**OpenAI**, **Anthropic**, **Google Gemini**), API requests are sent directly on the user's behalf under the user's own account and billing relationship with that provider (`allow_hosted_fallback = false`). Users are responsible for complying with the Acceptable Use Policy, Terms of Service, and data-processing agreements of their selected AI provider. Credentials are encrypted at rest (`AES-256-GCM`) and never logged, exported, or embedded in public syllabus snapshots.
+3. **Community Syllabus Content (`CC BY 4.0` — `LEGAL.md` Section 3):** Syllabus structures, learning objectives, prerequisite graphs, study schedules, and original instructional annotations voluntarily published by users to the Community Marketplace are licensed under **Creative Commons Attribution 4.0 International (`CC BY 4.0`)** unless otherwise noted. Publishing a syllabus strips all private learner progress, diagnostic results, personal notes, and credentials.
+4. **Third-Party Educational Resources (`LEGAL.md` Section 4):** Syllabi reference external textbooks, courses, videos, documentation, and repositories strictly via bibliographic metadata (titles, authors, section/chapter locators) and canonical URLs. The platform does not claim ownership of, host, or redistribute copyrighted third-party educational content; all referenced works remain the property of their respective authors and publishers under their own terms.
 
 ### 2. Permission summary across actors and uses
 
@@ -2595,8 +2595,8 @@ The project adopts the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)
 | An individual or organization inspects, clones, self-hosts, modifies, or distributes the software source code | Permitted under the terms of `Apache-2.0` (`LICENSE`), subject to preserving copyright, license, and attribution notices and trademark boundaries (`Apache-2.0` Section 6) |
 | A contributor develops, tests, and submits improvements to the repository | Inbound contributions are governed by `Apache-2.0` Section 5 ("Submission of Contributions") under the same `Apache-2.0` license |
 | A learner connects their own OpenAI, Anthropic, or Google Gemini API key (BYOK) | Encrypted at rest (`AES-256-GCM`); inference requests execute strictly under the learner's direct provider account and terms with `allow_hosted_fallback = false` (`LEGAL.md` Section 2) |
-| A learner publishes a sanitized curriculum template to the Community Marketplace | Licensed under `CC BY 4.0` (`LEGAL.md` Section 3) for original structure and annotations after explicit preview and confirmation; private learner state is never included |
-| A curriculum references external textbooks, courses, videos, or repositories | Referenced via bibliographic metadata, polymorphic index descriptors, and canonical links only; third-party copyrighted full text is never redistributed (`LEGAL.md` Section 4) |
+| A learner publishes a sanitized syllabus template to the Community Marketplace | Licensed under `CC BY 4.0` (`LEGAL.md` Section 3) for original structure and annotations after explicit preview and confirmation; private learner state is never included |
+| A syllabus references external textbooks, courses, videos, or repositories | Referenced via bibliographic metadata, polymorphic index descriptors, and canonical links only; third-party copyrighted full text is never redistributed (`LEGAL.md` Section 4) |
 
 ### 3. Separate policies for code, content, and data
 
@@ -2604,14 +2604,14 @@ The project adopts the OSI-approved **Apache License, Version 2.0 (`Apache-2.0`)
 | --- | --- | --- |
 | Project-owned application code, tests, build scripts, schemas, and generated SDK code | `Apache-2.0` (`LICENSE`) with `SPDX-License-Identifier: Apache-2.0`. | Do not imply ownership of dependency code or grant trademark rights (`Apache-2.0` Section 6). |
 | Third-party packages and bundled code | Their existing licenses and notices remain applicable; review compatibility before distribution or hosted integration. | A repository-wide `LICENSE` does not replace a dependency's terms. |
-| Original project documentation, illustrations, and explanatory curriculum templates | Project documentation and published community curriculum templates use `CC BY 4.0` where applicable (`LEGAL.md` Section 3). | Distinguish software code (`Apache-2.0`) from community curriculum structures (`CC BY 4.0`). |
+| Original project documentation, illustrations, and explanatory syllabus templates | Project documentation and published community syllabus templates use `CC BY 4.0` where applicable (`LEGAL.md` Section 3). | Distinguish software code (`Apache-2.0`) from community syllabus structures (`CC BY 4.0`). |
 | Catalog annotations and curated collections created by the project | License only the original protectable annotations and any applicable collection/database rights that the project controls. | Preserve source attribution and per-item rights; do not claim exclusive ownership of public facts, titles, or URLs. |
 | Courses, books, videos, transcripts, papers, exercises, images, or other external learning materials | Retain each provider's terms and the recorded ingestion/processing/display permissions (`LEGAL.md` Section 4). | A link, subscription, purchase, or catalog entry does not itself grant redistribution or full-text ingestion rights. |
-| Private curricula, learner notes, submissions, schedules, credentials, and progress evidence | Private by default; governed by user-facing service and privacy terms. | The open-source software license does not publish user data or grant the public rights in it. |
-| A curriculum deliberately published by its creator | `CC BY 4.0` (`LEGAL.md` Section 3) with a clear record of consent and attribution, applying only to original structure and annotations the publisher is entitled to license. | Exclude private data, protected assessment material, and third-party source content that cannot be republished. |
+| Private syllabi, learner notes, submissions, schedules, credentials, and progress evidence | Private by default; governed by user-facing service and privacy terms. | The open-source software license does not publish user data or grant the public rights in it. |
+| A syllabus deliberately published by its creator | `CC BY 4.0` (`LEGAL.md` Section 3) with a clear record of consent and attribution, applying only to original structure and annotations the publisher is entitled to license. | Exclude private data, protected assessment material, and third-party source content that cannot be republished. |
 | Product name, logo, and other branding | Separate trademark/brand policy (`Apache-2.0` Section 6); no implication that a fork is the official service. | Public code access does not itself confer official status or endorsement. |
 
-Creative Commons recommends software-specific licenses for software (`Apache-2.0`) and CC licenses (`CC BY 4.0`) for eligible curriculum templates and documentation. [Creative Commons FAQ: software](https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software)
+Creative Commons recommends software-specific licenses for software (`Apache-2.0`) and CC licenses (`CC BY 4.0`) for eligible syllabus templates and documentation. [Creative Commons FAQ: software](https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software)
 
 The resource rights workflow in the main specification continues to apply independently of these public licenses. Ingestion, embedding, model-provider processing, assessment derivation, learner display, and redistribution each require the appropriate recorded authority. Neither `Apache-2.0` nor `CC BY 4.0` clears third-party educational source rights.
 
@@ -2621,19 +2621,19 @@ Under Section 5 of `Apache-2.0` (`LICENSE`), unless a contributor explicitly sta
 
 Maintain a separate inventory and provenance record for third-party dependencies and licensed learning content. Repository ownership or `Apache-2.0` code licensing is not evidence that the operator owns third-party educational works referenced in the catalog.
 
-### 5. Public curriculum sharing (`CC BY 4.0`)
+### 5. Public syllabus sharing (`CC BY 4.0`)
 
-Publishing a curriculum is a distinct action from creating one or marking study progress. The sharing workflow offers a preview of exactly what becomes public (`PublishPreviewDialog.tsx`) and records the `CC BY 4.0` content-license version, attribution, excluded material, curriculum revision, and consent time. Public snapshots must not include secrets, private learner evidence, assessment answers, or private reviewer rubrics.
+Publishing a syllabus is a distinct action from creating one or marking study progress. The sharing workflow offers a preview of exactly what becomes public (`PublishPreviewDialog.tsx`) and records the `CC BY 4.0` content-license version, attribution, excluded material, syllabus revision, and consent time. Public snapshots must not include secrets, private learner evidence, assessment answers, or private reviewer rubrics.
 
-**Adopted community curriculum license (`CC BY 4.0` — `LEGAL.md` Section 3):** Voluntary community curriculum publications are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), which permits sharing and adaptation for any purpose subject to attribution and indication of changes, and is visibly badged in the `My Publications` showcase (`OpenKnowledgeArt` + `CC BY 4.0` license seal) and `Profile & Settings` disclosures. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode.en)
+**Adopted community syllabus license (`CC BY 4.0` — `LEGAL.md` Section 3):** Voluntary community syllabus publications are licensed under Creative Commons Attribution 4.0 International (`CC BY 4.0`), which permits sharing and adaptation for any purpose subject to attribution and indication of changes, and is visibly badged in the `My Publications` showcase (`OpenKnowledgeArt` + `CC BY 4.0` license seal) and `Profile & Settings` disclosures. [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode.en)
 
-License only rights that exist and that the publisher controls. Do not promise exclusive ownership of every model-produced sentence or third-party fragment. A public curriculum may link to an O'Reilly book, university course, YouTube playlist, or GitHub repository without offering that external material under `CC BY 4.0`. Mark excluded third-party material (`third_party_materials_excluded: true`) and retain provider links and notices. [Creative Commons FAQ: rights and third-party material](https://creativecommons.org/faq/#may-i-apply-a-creative-commons-license-to-my-work-if-it-incorporates-material-used-under-fair-use-or-another-exception-or-limitation-to-copyright)
+License only rights that exist and that the publisher controls. Do not promise exclusive ownership of every model-produced sentence or third-party fragment. A public syllabus may link to an O'Reilly book, university course, YouTube playlist, or GitHub repository without offering that external material under `CC BY 4.0`. Mark excluded third-party material (`third_party_materials_excluded: true`) and retain provider links and notices. [Creative Commons FAQ: rights and third-party material](https://creativecommons.org/faq/#may-i-apply-a-creative-commons-license-to-my-work-if-it-incorporates-material-used-under-fair-use-or-another-exception-or-limitation-to-copyright)
 
 Unpublishing removes a snapshot from app-controlled serving and discovery on this service, but cannot revoke `CC BY 4.0` permissions already granted to compliant recipients who previously adopted or exported a copy. Explain this before the publication action.
 
 ### 6. What this protects
 
-Copyright and open-source licenses govern protected software expression (`Apache-2.0`), community curriculum structures (`CC BY 4.0`), and third-party educational works (provider terms). The U.S. Copyright Office distinguishes protected expression from ideas, systems, and methods. Trademarks and service branding remain excluded under `Apache-2.0` Section 6. [U.S. Copyright Office: what copyright protects](https://www.copyright.gov/help/faq/faq-protect.html)
+Copyright and open-source licenses govern protected software expression (`Apache-2.0`), community syllabus structures (`CC BY 4.0`), and third-party educational works (provider terms). The U.S. Copyright Office distinguishes protected expression from ideas, systems, and methods. Trademarks and service branding remain excluded under `Apache-2.0` Section 6. [U.S. Copyright Office: what copyright protects](https://www.copyright.gov/help/faq/faq-protect.html)
 
 ### 7. Release checks for the adopted policy
 
@@ -2662,7 +2662,7 @@ Verify before each public release that:
 
 ### T01 — Identity, ownership, revisions, and durable state
 
-- [ ] Implement account ownership, learner profile, curriculum/resource revisions, progress events, and schedule revision preconditions behind a provider-neutral `AuthVerifier` boundary; mark the local fixed identity adapter (`DevFixedIdentityAuthVerifier`) as development-only and gate any internet-facing beta, BYOK storage, hosted billing, or public publishing on the production authentication decision (`D11`).
+- [ ] Implement account ownership, learner profile, syllabus/resource revisions, progress events, and schedule revision preconditions behind a provider-neutral `AuthVerifier` boundary; mark the local fixed identity adapter (`DevFixedIdentityAuthVerifier`) as development-only and gate any internet-facing beta, BYOK storage, hosted billing, or public publishing on the production authentication decision (`D11`).
 - [ ] Implement role boundaries for learner, curator, operator, and public-content moderator; moderation must not grant unrestricted private-evidence access.
 - [ ] Establish separate identifiers and storage projections for private learner revisions and future public template revisions.
 - [ ] Implement HTTP concurrency rules (`Idempotency-Key` only for retriable effect-producing commands with response replay, payload mismatch `409`, in-flight duplicate handling, retention, and failure handling; `If-Match` only for mutations of existing versioned mutable resources; neither on `GET`; operation-specific deduplication on append-only events) and transactional outbox queue operations (retention/pruning, metrics, lease reaping, worker-crash recovery, autovacuum/bloat monitoring, and multi-worker load tests).
@@ -2687,7 +2687,7 @@ Verify before each public release that:
 
 **Exit:** valid fixtures generate a usable draft; invented sources, cycles, script fields, unmet constraints, and catalog gaps fail safely. Provider invocation cannot outrun authorized budgets.
 
-### T04 — Responsive curriculum and activation
+### T04 — Responsive syllabus and activation
 
 - [ ] Implement Today, diagram, accessible outline, activity detail, resource rationale, and required/optional distinctions.
 - [ ] Implement draft preview, activation, diffs, and clear error/empty/offline states.
@@ -2736,7 +2736,7 @@ Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, 
 
 - [ ] Complete T12, T13, and T14, including learning/privacy, sharing/abuse, and UI/accessibility failure cases, before this public-beta gate.
 - [ ] Complete export/deletion, log minimization, safe support tools, migration/restore checks, and service targets.
-- [ ] Verify the adopted `Apache-2.0` software license (`LICENSE`), `SPDX-License-Identifier: Apache-2.0` package metadata, and the 4-part legal boundary in `LEGAL.md` (`Apache-2.0` software and Section 5 inbound contributions, BYOK direct provider terms, `CC BY 4.0` published community curricula, and metadata/canonical links only for third-party resources); never apply a blanket license to third-party educational materials.
+- [ ] Verify the adopted `Apache-2.0` software license (`LICENSE`), `SPDX-License-Identifier: Apache-2.0` package metadata, and the 4-part legal boundary in `LEGAL.md` (`Apache-2.0` software and Section 5 inbound contributions, BYOK direct provider terms, `CC BY 4.0` published community syllabi, and metadata/canonical links only for third-party resources); never apply a blanket license to third-party educational materials.
 - [ ] Prepare redistributable fixtures and self-host instructions; record `CC BY 4.0` publication consent, attribution, withdrawal behavior, and moderation procedures.
 - [ ] Review catalog/assessment coverage, access costs, certification facts, accessibility, and all P0 acceptance bindings.
 - [ ] Run the formative pilot and record usability/feasibility findings without claiming proven efficacy.
@@ -2753,13 +2753,13 @@ Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, 
 
 ### T11 — Evaluate efficacy and expand scope
 
-- [ ] Execute the four-part Pedagogical Evaluation Workstream (distinct from software acceptance tests, which never establish learning efficacy): (1) catalog and retrieval relevance benchmark, (2) expert curriculum-quality review, (3) anchor assessment quality review, and (4) independently assessed delayed learning and transfer study with an appropriate comparator, power analysis, and attrition handling.
-- [ ] Evaluate retrieval and curriculum quality on broader goals before adding subjects or resource providers.
+- [ ] Execute the four-part Pedagogical Evaluation Workstream (distinct from software acceptance tests, which never establish learning efficacy): (1) catalog and retrieval relevance benchmark, (2) expert syllabus-quality review, (3) anchor assessment quality review, and (4) independently assessed delayed learning and transfer study with an appropriate comparator, power analysis, and attrition handling.
+- [ ] Evaluate retrieval and syllabus quality on broader goals before adding subjects or resource providers.
 - [ ] Expand providers, languages, integrations, automatic code evaluation, and recommendation sophistication only with corresponding contracts and evidence.
 
 **Exit:** new claims match actual evaluation results; expansion does not weaken credibility, rights, security, or learning-evidence rules.
 
-### T12 — Objective diagnostics and curriculum adaptation
+### T12 — Objective diagnostics and syllabus adaptation
 
 **Priority:** P0, before T09. **Requirements:** ADAPT-001–ADAPT-010 and the related GOAL/PED/PROG obligations. **Policy:** [adaptation.md](#8-proficiency-and-adaptation).
 
@@ -2770,7 +2770,7 @@ Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, 
 - [ ] Apply reviewed waiver policies to exact capabilities and compatible conditions. Preserve prerequisite/target objectives, record unsupported skips as skips, and transfer evidence only through explicit equivalence mappings.
 - [ ] Keep intuitive/applied/formal mathematical-depth choices and topic overrides separate from proficiency and `theory_first`/`application_first`/`balanced` order; retain required derivations and bridge gaps or disclose infeasibility.
 - [ ] Preview additions, condensation, waivers, retained outcomes, and time/access/budget effects; commit accepted adaptations as revisions under optimistic concurrency while retaining the current active plan until commit.
-- [ ] Recompute affected inferences and waivers after new evidence or assessment corrections, preserving historical attempts and invalidating stale pending proposals without silently rewriting the active curriculum.
+- [ ] Recompute affected inferences and waivers after new evidence or assessment corrections, preserving historical attempts and invalidating stale pending proposals without silently rewriting the active syllabus.
 
 **Exit:** partial or declined diagnostics leave untested objectives unknown; solution-assisted responses cannot satisfy independent gates; strong basic linear algebra does not establish matrix calculus or reduce requested formal depth. Accepted adaptations preserve eligible evidence and target outcomes, and rejected/stale proposals do not change the active revision.
 
@@ -2794,7 +2794,7 @@ Decomposed into four independently testable sub-slices (`T07A`, `T07B`, `T07C`, 
 
 Split into `T14-Core` (Private Alpha shell) and `T14-Full` (Public Beta UI/accessibility completion, separate from `T09`):
 
-- [ ] **T14-Core (Private Alpha):** Implement section 9's semantic tokens, typography, spacing, themes, opaque study surfaces, restrained navigation glass with solid fallbacks, `Learn/Explore/Settings` navigation shell, and `SafeActivityRenderer` (failing closed on unknown major curriculum schema versions with an unsupported-version state and safe text outline).
+- [ ] **T14-Core (Private Alpha):** Implement section 9's semantic tokens, typography, spacing, themes, opaque study surfaces, restrained navigation glass with solid fallbacks, `Learn/Explore/Settings` navigation shell, and `SafeActivityRenderer` (failing closed on unknown major syllabus schema versions with an unsupported-version state and safe text outline).
 - [ ] **T14-Full (Public Beta, separate from T09):** Complete the screen inventory across `T03–T08`/`T12`/`T13`, independent proficiency/depth/order/recap controls, adaptation diff, publication preview, owner list/history, and non-dragging pointer + keyboard Map/Outline parity.
 - [ ] **T14-Full Accessibility Evidence:** Combine automated accessibility regression checks with manual WCAG 2.2 AA evaluation evidence across the 8-part manual test matrix: (1) keyboard operation, (2) focus visibility, (3) screen readers, (4) accessible math (KaTeX MathML), (5) zoom/reflow at `320 CSS px` and `200%` text scaling, (6) reduced motion, (7) forced colors, and (8) Map/Outline equivalence; bind `S69–S88` to observable application checks.
 
@@ -2804,10 +2804,10 @@ Split into `T14-Core` (Private Alpha shell) and `T14-Full` (Public Beta UI/acces
 
 The canonical implementation and release-tier dependency ordering is:
 
-- **Tier 1 — Private Alpha (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Proves the end-to-end architecture with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering + sublinear TF-IDF cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`), `DeterministicFakeProvider`, one persisted `CurriculumRevision`, `Plan` Outline plus basic Map, explicit activation, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
+- **Tier 1 — Private Alpha (`T00 → T01 → T14-Core → T02 → T03 → T04`):** Proves the end-to-end architecture with a development-only fixed identity adapter (`DevFixedIdentityAuthVerifier`), a small PostgreSQL-backed reviewed catalog, deterministic metadata filtering + sublinear TF-IDF cosine similarity (`tfidf-cosine-v1` / `TfIdfCorpusIndex`), `DeterministicFakeProvider`, one persisted `SyllabusRevision`, `Plan` Outline plus basic Map, explicit activation, and one idempotent `self_reported_completed` progress event while `Proficiency` remains `unassessed`.
 - **Tier 2 — Closed Beta (`D11 Auth Gate → T05 → T06 → T12 → T07A → T08`):** Requires production authentication (`D11`) before any internet-facing beta or BYOK storage; delivers reviewed anchor assessments and `mastery_gated` rules (`T05`), `ScheduleRevision` + `ReviewScheduleItem` recalculation (`T06`), objective diagnostics/waivers/adaptation (`T12`), BYOK custody + OpenAI live adapter via `reqwest` (`T07A`), and opt-in PWA study reminders (`T08`).
 - **Tier 3 — Public Beta (`T07B → T07C → T07D → T13 → T14-Full → T09`):** Delivers the hosted inference ledger (`T07B`), Anthropic and Google Gemini adapters (`T07C`), payment checkout and webhook reconciliation (`T07D`), public sharing/discovery/partial adoption/votes/moderation (`T13`), complete UI states + automated accessibility regression checks and manual WCAG 2.2 AA evaluation evidence (`T14-Full`), and separately executed release operations, export/deletion, backup restoration, and public-beta gates (`T09`).
-- **Ongoing & Post-Launch (`T10`, `T11`, Pedagogical Evaluation Workstream):** Evaluates catalog/retrieval relevance, expert curriculum quality, anchor assessment quality, and delayed learning/transfer (`T11`), plus optional native clients/alarms (`T10`).
+- **Ongoing & Post-Launch (`T10`, `T11`, Pedagogical Evaluation Workstream):** Evaluates catalog/retrieval relevance, expert syllabus quality, anchor assessment quality, and delayed learning/transfer (`T11`), plus optional native clients/alarms (`T10`).
 
 Write meaningful checks for consequential behavior, especially contracts, authorization, billing, evidence, scheduling, rights, public/private isolation, and vote/withdrawal concurrency. Use deterministic model/provider fakes for fault cases. Do not call a Gherkin file a test run or substitute mocks for live provider smoke checks before production. Avoid tests that merely repeat trivial implementation details. Operative legal drafting and remaining publication-term choices do not block local synthetic implementation, and an implemented first slice does not waive the remaining P0 release criteria.
 ---
@@ -2837,7 +2837,7 @@ Honor accepted decisions: reviewed anchors; study reminders; server-mediated
 BYOK with no automatic hosted fallback; P0 adaptation/public sharing/upvotes;
 Apache-2.0 open-source software licensing (LICENSE) and the 4-part legal
 boundary in LEGAL.md (Apache-2.0 code, BYOK direct provider terms, CC BY 4.0
-community curricula, metadata/links only for third-party resources); one
+community syllabi, metadata/links only for third-party resources); one
 maintained Markdown. Do not invent real prices. Remaining proposed defaults
 support reversible local work.
 
@@ -2868,7 +2868,7 @@ T05–T06 establish assessment evidence and schedule/revision behavior. T07 impl
 
 Use the strict public projection for publication. Preserve exact preview consent, separate owner management tokens, private voter state, safe adoption, and source rights. Define authentication, provider-specific payment/webhook, device registration, account-data, and full admin contracts explicitly before their live integration; the core API is intentionally scoped and cannot be assumed to cover them.
 
-Preserve the adopted `Apache-2.0` software license (`LICENSE`), Section 5 contributor licensing, and the 4-part `LEGAL.md` boundary separating software (`Apache-2.0`), BYOK provider responsibility, published community curriculum structures (`CC BY 4.0`), and third-party educational works (metadata and canonical links only). A working local slice is not a security, accessibility, or educational-efficacy certification.
+Preserve the adopted `Apache-2.0` software license (`LICENSE`), Section 5 contributor licensing, and the 4-part `LEGAL.md` boundary separating software (`Apache-2.0`), BYOK provider responsibility, published community syllabus structures (`CC BY 4.0`), and third-party educational works (metadata and canonical links only). A working local slice is not a security, accessibility, or educational-efficacy certification.
 ---
 
 ## 20. Implementation agent instructions
@@ -2884,7 +2884,7 @@ Preserve the adopted `Apache-2.0` software license (`LICENSE`), Section 5 contri
 - Make costs, inference mode, key custody, cancel/retry effects, publication visibility, public identity/terms, and adaptation changes reviewable before the relevant commitment. Never use UI ambiguity as spending or publication authorization.
 - Public templates use a strict allowlist with public identifiers and no private prompts, account data, evidence, answers, schedules, notes, subscriptions, budgets, or secrets. Adoption uses only the new learner's evidence and authority. Votes remain revision-specific and private by voter.
 - Owner metadata access survives public quarantine/withdrawal. Moderation roles do not grant private learner or credential access. Lists, caches, search, exports, and logs preserve these boundaries.
-- Preserve the repository's `Apache-2.0` open-source software license (`LICENSE`) and the 4-part `LEGAL.md` policy (`Apache-2.0` software and Section 5 contributions, BYOK direct provider terms, `CC BY 4.0` community curriculum structures, and bibliographic metadata + canonical links only for third-party educational resources).
+- Preserve the repository's `Apache-2.0` open-source software license (`LICENSE`) and the 4-part `LEGAL.md` policy (`Apache-2.0` software and Section 5 contributions, BYOK direct provider terms, `CC BY 4.0` community syllabus structures, and bibliographic metadata + canonical links only for third-party educational resources).
 - Do not ingest/index/redistribute provider content without operation-specific recorded rights. Catalog links, learner purchases, and reputable institution names are not permission to process full text.
 - Start with synthetic fixtures and deterministic providers. Treat all included example catalog records, money, dates, evidence, and legal identifiers as synthetic.
 - Bind relevant acceptance scenarios to meaningful runtime assertions. Verify consequential authorization, contracts, payments, evidence, schedules, accessibility, content rights, and public/private isolation. Passing artifact checks does not establish app correctness or efficacy.
@@ -2896,7 +2896,7 @@ Preserve the adopted `Apache-2.0` software license (`LICENSE`), Section 5 contri
 
 ## What the supplied HTML contributes
 
-**Input:** `curriculum.html`, supplied with this task. This is a source inspection, not a verified review of every external course, book, exam, or estimate named in it.
+**Input:** `syllabus.html`, supplied with this task. This is a source inspection, not a verified review of every external course, book, exam, or estimate named in it.
 
 ### Useful structure
 
@@ -2966,7 +2966,7 @@ python3 scripts/extract_spec.py --check specs/product.md .
 python3 scripts/check_current_spec.py specs/product.md
 python3 scripts/generate_contracts.py --check
 python3 scripts/check_contracts.py
-pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs
+pnpm --filter @syllabus/web exec tsx ../../scripts/impeccable-gate.mjs
 cargo test --workspace
 pnpm -r typecheck
 pnpm -r test
@@ -2978,7 +2978,7 @@ The first validator checks the canonical document, exact embedded-asset hashes, 
 
 While the local Rust + TypeScript workspace implements `T00`–`T14` against synthetic and deterministic fixtures, production vendor integrations gated on deferred launch decisions (`D07` payment processor tariffs/live webhooks, `D11` production OIDC/passkey identity provider, `D15` live push/email delivery vendors, `D16` production cloud secrets KMS) and the longitudinal Pedagogical Evaluation Workstream (`T11` delayed learning and transfer study) require live operational evaluation outside synthetic test runs.
 
-The static specification retains evidence references and distinguishes supported pedagogical components from unvalidated product hypotheses. The Neo reference is limited to the inspected public imagery, with the Mobbin access limitation recorded in section 9. Repository licensing is governed by `LICENSE` (`Apache-2.0`) and `LEGAL.md` (`CC BY 4.0` for published community curricula; direct provider terms for BYOK; metadata/canonical links only for third-party resources).
+The static specification retains evidence references and distinguishes supported pedagogical components from unvalidated product hypotheses. The Neo reference is limited to the inspected public imagery, with the Mobbin access limitation recorded in section 9. Repository licensing is governed by `LICENSE` (`Apache-2.0`) and `LEGAL.md` (`CC BY 4.0` for published community syllabi; direct provider terms for BYOK; metadata/canonical links only for third-party resources).
 
 ---
 
@@ -2986,10 +2986,10 @@ The static specification retains evidence references and distinguishes supported
 
 These are complete behavior specifications. Application bindings remain implementation work.
 
-<!-- embedded-asset: specs/001-curriculum-platform/acceptance.feature sha256=a0f612f950b47bcbe0a3bda87a46f534c14d6b43fa0fe450581b0ac8ab23ca1e -->
+<!-- embedded-asset: specs/001-syllabus-platform/acceptance.feature sha256=f6f23b1ed1de79161dcf186b1b152a793fc8543556768a5c32e05210ca35aef1 -->
 ````gherkin
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
-Feature: Credible, feasible, evidence-informed curricula across web and mobile
+Feature: Credible, feasible, evidence-informed syllabi across web and mobile
   These are acceptance specifications. Step bindings and application assertions
   must be implemented before any scenario is described as an executed test.
   Synthetic sources are fixtures, never production catalog approvals.
@@ -3070,7 +3070,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     When the backend commits a draft revision
     Then it stamps the request, catalog, provider/model, retrieval, prompt, and pedagogy versions
     And server-owned provenance is not copied from a model claim
-    And changing the schedule alone does not change the meaning of the curriculum revision
+    And changing the schedule alone does not change the meaning of the syllabus revision
 
   @S10 @GEN-003
   Scenario: The model invents a resource
@@ -3090,7 +3090,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And unknown required schema versions produce a compatibility state
 
   @S12 @GEN-004
-  Scenario: Cyclic prerequisites cannot become a published curriculum
+  Scenario: Cyclic prerequisites cannot become a published syllabus
     Given objective A requires B and objective B requires A
     When semantic validation traverses the prerequisite graph
     Then the candidate fails with the conflicting dependencies identified
@@ -3150,7 +3150,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S17 @PED-003 @PROG-002
   Scenario: Reviews consume real study capacity
-    Given a curriculum contains due review activities
+    Given a syllabus contains due review activities
     When the scheduler assigns the next week's study sessions
     Then reviews occupy declared available time in distinct sessions
     And their interval policy and version are recorded as a configurable heuristic
@@ -3166,7 +3166,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S19 @PED-007 @GOAL-005
   Scenario: Switching sequence preference retains educational obligations
-    Given a valid theory-first curriculum
+    Given a valid theory-first syllabus
     When the learner requests application-first or balanced ordering
     Then required objectives and genuine prerequisites remain intact
     And meaningful practice, feedback, consolidation, and review remain present
@@ -3197,7 +3197,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S23 @PROG-005 @OPS-004
   Scenario: The learner controls progress and exports
-    Given an authenticated learner owns a curriculum and attempts
+    Given an authenticated learner owns a syllabus and attempts
     When the learner marks an activity skipped, reports study time, and requests export
     Then those actions retain their intended evidence meaning
     And the export includes the plan and permitted learning history
@@ -3212,7 +3212,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S25 @UI-001 @UI-002 @NFR-003
   Scenario: Diagram navigation has an accessible equivalent
-    Given a curriculum has prerequisites, optional branches, and a due review
+    Given a syllabus has prerequisites, optional branches, and a due review
     When a learner uses keyboard navigation, a screen reader, or a narrow mobile viewport
     Then essential facts and actions are available in a usable outline or focused path
     And prerequisite edges and states have text meanings rather than color alone
@@ -3231,7 +3231,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     Given the app enters the <state> state
     When the relevant screen is displayed
     Then its message is accessible and explains a useful recovery or alternative
-    And no invalid curriculum or invented progress is displayed as a success
+    And no invalid syllabus or invented progress is displayed as a success
     Examples:
       | state |
       | generation failed |
@@ -3279,7 +3279,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
   Scenario: Notifications remain optional
     Given a learner denies push permission
     When the learner studies or changes reminder settings
-    Then curriculum, practice, and progress remain usable
+    Then syllabus, practice, and progress remain usable
     And no notification channel is enabled without opt-in
     And quiet hours, pause, and snooze choices are respected
 
@@ -3345,8 +3345,8 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     Then public release includes the adopted Apache-2.0 software license in LICENSE and the 4-part legal boundary in LEGAL.md
     And software source code and inbound contributions follow Apache-2.0 including Section 5 contributor licensing
     And BYOK inference requests execute strictly under the learner's direct AI provider terms without hosted fallback
-    And published community curriculum structures and original annotations are licensed under CC BY 4.0 without private learner state
-    And dependency, catalog, public-curriculum, and third-party content terms retain their separate scope
+    And published community syllabus structures and original annotations are licensed under CC BY 4.0 without private learner state
+    And dependency, catalog, public-syllabus, and third-party content terms retain their separate scope
     And third-party educational resources are referenced via bibliographic metadata and canonical links only without redistributing copyrighted full text
     And self-host setup, migrations, secrets, backups, and extension boundaries are documented
 
@@ -3360,7 +3360,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S42 @NFR-005
   Scenario: Release checks include hard constraints and educational quality
-    Given seeded normal, adversarial, and infeasible curriculum fixtures
+    Given seeded normal, adversarial, and infeasible syllabus fixtures
     When the release gate runs
     Then all required hard-constraint, security, and billing assertions pass
     And independent review checks factual accuracy and objective/practice/assessment alignment
@@ -3388,7 +3388,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And matrix calculus, probability, and optimization have not been assessed
     And the learner selects formal mathematical depth, an intuitive override for serving, and application_first sequencing
     And a legacy global profile label says beginner
-    When the app proposes an LLM curriculum
+    When the app proposes an LLM syllabus
     Then proposed condensation is limited to demonstrated introductory work with an available recap
     And attention retains formal derivations, mathematical reasoning, assumptions, and aligned exercises
     And serving resolves to the explicit intuitive override without changing other topics' depth
@@ -3448,13 +3448,13 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And it does not create a verified waiver or mark the skipped activity completed
     And accessing or completing the dependent activity does not create prerequisite evidence
     And the prerequisite objective remains in the graph with its demonstration gate unsatisfied
-    And neither the dependent objective nor the broader curriculum becomes demonstrated
+    And neither the dependent objective nor the broader syllabus becomes demonstrated
     Examples:
       | nonqualifying_support |
       | a high self-rating |
       | completion of an external course |
       | elapsed study time |
-      | upvotes on a published curriculum |
+      | upvotes on a published syllabus |
       | an assisted answer or advisory AI grade |
       | an assessment gap with no valid assessment path |
 
@@ -3472,7 +3472,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S53 @ADAPT-001 @ADAPT-006 @ADAPT-007 @PROG-003
   Scenario: A mathematical-depth change produces a learner-controlled revision
-    Given an active applied-depth curriculum with valid evidence and limited weekly availability
+    Given an active applied-depth syllabus with valid evidence and limited weekly availability
     When the learner requests formal depth and a full prerequisite recap
     Then the proposal shows changed objectives, retained evidence, resources, workload, access, and budget impact
     And the existing proficiency evidence and sequencing choice remain unchanged
@@ -3480,9 +3480,9 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And a time conflict does not silently reduce formal depth or remove required mathematical outcomes
     And the requested recap remains available despite prior evidence that could support a shortcut
     When the learner rejects the proposed revision or leaves the preview
-    Then the prior curriculum and schedule remain active
+    Then the prior syllabus and schedule remain active
     When the learner accepts a feasible current proposal
-    Then a new curriculum revision commits with eligible evidence preserved and any necessary schedule revision
+    Then a new syllabus revision commits with eligible evidence preserved and any necessary schedule revision
     And reminder changes follow the committed schedule rather than an unaccepted preview
 
   @S54 @ADAPT-006 @ADAPT-008 @GEN-008
@@ -3491,11 +3491,11 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And <change> occurs before acceptance
     When the learner accepts the old preview
     Then the server rejects the stale proposal with an actionable conflict
-    And the prior active curriculum remains active without partial revision or schedule changes
+    And the prior active syllabus remains active without partial revision or schedule changes
     And a refreshed proposal recomputes affected waivers, eligibility, and time or cost effects
     Examples:
       | change |
-      | another device commits a different curriculum revision |
+      | another device commits a different syllabus revision |
       | supporting assessment evidence is invalidated |
       | a selected resource loses required display or reuse permission |
 
@@ -3514,12 +3514,12 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
   @S56 @SHARE-001 @SHARE-002 @SHARE-009 @SHARE-010
   Scenario: Publication requires owner authorization and consent to an exact public projection
-    Given a newly created curriculum is private and has no public snapshot
+    Given a newly created syllabus is private and has no public snapshot
     When another account attempts to publish it or references its private identifier
-    Then the server rejects the operation without exposing the private curriculum
+    Then the server rejects the operation without exposing the private syllabus
     When its owner prepares an intentional public title and summary and a validated template preview
     Then the preview shows exactly the proposed public or unlisted projection and its applicable publication terms
-    And neither preview creation nor ordinary curriculum acceptance publishes it
+    And neither preview creation nor ordinary syllabus acceptance publishes it
     When the owner confirms that exact current preview and terms
     Then the app creates a separately identified immutable public revision in the chosen visibility mode
     And it records the terms version, consent, attribution, and rights scope for original structure and annotations
@@ -3537,7 +3537,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And public responses, search documents, and caches exclude all private fields and protected answers
     And paid material remains a labeled permitted link with third-party content excluded from the publication license
     And a public cache hit after the owner visits cannot expose owner-only fields to another viewer
-    And public identifiers do not authorize access to private curricula, attempts, or account APIs
+    And public identifiers do not authorize access to private syllabi, attempts, or account APIs
 
   @S58 @SHARE-003 @NFR-003
   Scenario: Unlisted access is distinct from public discovery and confidentiality
@@ -3561,7 +3561,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And current rights, access, depth, prerequisite coverage, time, and cost constraints are checked before activation
     And an approved semantically suitable replacement satisfying the adopter's access policy is used when available
     And when no eligible replacement exists the ineligible resource is omitted with coverage_status set to partial, explicit coverage_limitations, and required learner review before activation
-    And paid, quarantined, unavailable, or ineligible material is never silently included and a useful partial curriculum is not rejected outright
+    And paid, quarantined, unavailable, or ineligible material is never silently included and a useful partial syllabus is not rejected outright
     And popularity cannot activate the draft or supply missing gate evidence
 
   @S60 @SHARE-005 @SHARE-010
@@ -3626,7 +3626,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     When the release gate checks report handling, publication authorization, safe rendering, cache isolation, and configured spam or vote-abuse controls
     Then each required control must pass before public sharing is released
     And repeated abusive publication or voting requests are constrained by the declared policy without multiplying votes
-    When a curriculum is published, forked, reported, or upvoted
+    When a syllabus is published, forked, reported, or upvoted
     Then no social push notification is queued
     And initial sharing exposes no comments or direct-message feature
     And separately opted-in study reminders continue to follow the learner's study schedule and quiet-hour settings
@@ -3653,7 +3653,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     And recoverable failures offer an explicit new choice without creating an unauthorized hosted charge
     Examples:
       | operation |
-      | curriculum generation |
+      | syllabus generation |
       | invalid-output repair |
       | adaptation proposal generation |
       | AI-assisted practice feedback |
@@ -3745,11 +3745,11 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
     Given completed activities, demonstrated objectives, and due reviews
     When the learner inspects progress and rejects or encounters a stale adaptation proposal
     Then those progress dimensions remain separately labeled
-    And the active curriculum is unchanged and a refreshed proposal requires new review
+    And the active syllabus is unchanged and a refreshed proposal requires new review
 
   @S79 @UI-017
   Scenario: Publication confirms the exact public presentation
-    Given a private curriculum and an intentionally authored publication preview
+    Given a private syllabus and an intentionally authored publication preview
     When identity, content, attribution, terms, origin, or visibility changes
     Then the prior preview confirmation is invalidated
     And the user reviews the refreshed public snapshot before it is published
@@ -3767,7 +3767,7 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
   @S81 @UI-017
   Scenario: Adoption and votes retain their revision and spending boundaries
     Given a displayed public revision and a deterministic compatible adoption
-    When the learner chooses Use this curriculum or a vote request fails
+    When the learner chooses Use this syllabus or a vote request fails
     Then deterministic adoption creates a private draft without an AI key or inference budget
     And a failed vote reconciles to the authoritative state for that same revision
     And generated adaptation requires a separate authorized inference flow
@@ -3834,17 +3834,17 @@ Feature: Credible, feasible, evidence-informed curricula across web and mobile
 
 ---
 
-## Reviewed catalog and validated curriculum candidates
+## Reviewed catalog and validated syllabus candidates
 
-The product promises credible, constrained curricula, so resource eligibility and authoritative source facts belong to a reviewed catalog; the model proposes references and instructional structure. This trades unrestricted generation for traceability and honest coverage failures, while allowing a simple typed UI renderer.
+The product promises credible, constrained syllabi, so resource eligibility and authoritative source facts belong to a reviewed catalog; the model proposes references and instructional structure. This trades unrestricted generation for traceability and honest coverage failures, while allowing a simple typed UI renderer.
 
 **Consequences:** source ingestion, objective mappings, permissions, and assessment curation become core operational work. Vector retrieval cannot substitute for those records. A canonical server document must remain distinct from the model's candidate.
 
 ---
 
-## Keep curriculum, schedule, and learning evidence independent
+## Keep syllabus, schedule, and learning evidence independent
 
-Curriculum revisions describe intended learning; schedule revisions place work in time; attempts and progress events record what actually happened. Separate ownership preserves meaningful history during replanning and avoids treating a changed date or generated plan as a change to demonstrated capability.
+Syllabus revisions describe intended learning; schedule revisions place work in time; attempts and progress events record what actually happened. Separate ownership preserves meaningful history during replanning and avoids treating a changed date or generated plan as a change to demonstrated capability.
 
 **Consequences:** revision mapping and derived projections require explicit implementation. The alternative of keeping one mutable JSON document is simpler initially but risks lost evidence and conflicting multi-device updates.
 
@@ -3860,7 +3860,7 @@ Build a modular polyglot system with a Rust backend (`services/api` using Axum a
 
 ## Separate public templates from private learning
 
-Publish an explicit allowlisted snapshot with public identities and an independently controlled lifecycle; adoption creates a new private curriculum using the adopter's own constraints and evidence. Votes target the exact public revision, so edits cannot inherit endorsements and public sharing cannot expose a learner record.
+Publish an explicit allowlisted snapshot with public identities and an independently controlled lifecycle; adoption creates a new private syllabus using the adopter's own constraints and evidence. Votes target the exact public revision, so edits cannot inherit endorsements and public sharing cannot expose a learner record.
 
 ---
 
@@ -3878,7 +3878,7 @@ Use a tenant-bound credential vault and approved provider adapters with pinned k
 
 ### Use Apache-2.0 open-source licensing with a 4-part legal boundary
 
-The repository adopts the OSI-approved `Apache-2.0` license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0`) for software source code and inbound contributions (`Apache-2.0` Section 5), and documents its 4-part legal boundary in `LEGAL.md`: (1) `Apache-2.0` for software code, (2) direct AI provider terms and billing responsibility for BYOK credentials (`OpenAI`, `Anthropic`, `Google Gemini`), (3) `CC BY 4.0` for voluntarily published community curriculum structures and original annotations, and (4) bibliographic metadata and canonical URLs only for third-party educational resources without redistributing copyrighted full text.
+The repository adopts the OSI-approved `Apache-2.0` license in `LICENSE` (`SPDX-License-Identifier: Apache-2.0`) for software source code and inbound contributions (`Apache-2.0` Section 5), and documents its 4-part legal boundary in `LEGAL.md`: (1) `Apache-2.0` for software code, (2) direct AI provider terms and billing responsibility for BYOK credentials (`OpenAI`, `Anthropic`, `Google Gemini`), (3) `CC BY 4.0` for voluntarily published community syllabus structures and original annotations, and (4) bibliographic metadata and canonical URLs only for third-party educational resources without redistributing copyrighted full text.
 
 ### Original minimalist UI with accessible content surfaces
 
@@ -3901,12 +3901,12 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.1. adaptation-proposal.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/adaptation-proposal.schema.json sha256=2ddee5c8eba3465e31494a5b30f48204385a3832102543d4887f45df6cd929db -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/adaptation-proposal.schema.json sha256=e66ee1724632c150e386b770d14d28af56b089bdb7c6d66090160e4e8ff5f106 -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/adaptation-proposal.schema.json",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/adaptation-proposal.schema.json",
   "title": "Private adaptation proposal — v0.2",
   "type": "object",
   "properties": {
@@ -3919,7 +3919,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
     },
-    "curriculum_id": {
+    "syllabus_id": {
       "type": "string",
       "minLength": 3,
       "maxLength": 128,
@@ -4185,7 +4185,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
   "required": [
     "schema_version",
     "proposal_id",
-    "curriculum_id",
+    "syllabus_id",
     "base_revision_id",
     "candidate_revision_id",
     "proficiency_snapshot_ref",
@@ -4202,20 +4202,20 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
   ],
   "additionalProperties": false,
   "readOnly": true,
-  "description": "Server-built preview from immutable draft/evidence versions. Accept only when base revision, evidence, resources, rights and proposal hash remain current. A model cannot author qualifying waivers. Infeasible proposals cannot activate. This contract changes curriculum content only. Pin the current schedule revision to detect intervening edits; schedule-only changes use the separate schedule workflow. Acceptance invalidates obsolete sessions/reminders but does not silently commit replacement dates."
+  "description": "Server-built preview from immutable draft/evidence versions. Accept only when base revision, evidence, resources, rights and proposal hash remain current. A model cannot author qualifying waivers. Infeasible proposals cannot activate. This contract changes syllabus content only. Pin the current schedule revision to detect intervening edits; schedule-only changes use the separate schedule workflow. Acceptance invalidates obsolete sessions/reminders but does not silently commit replacement dates."
 }
 ````
 <!-- /embedded-asset -->
 
-### C.2. curriculum.schema.json
+### C.2. syllabus.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/curriculum.schema.json sha256=108d5aafbdcabf6f92b2d51b6c4211a4004c94215a5af5328eb0b248ebcceed9 -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/syllabus.schema.json sha256=8387851252ca2e9cad3db093db62d447a405f5c95bec706c8b293abe98c100d0 -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/curriculum.schema.json",
-  "title": "Curriculum revision — draft contract v0.2",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/syllabus.schema.json",
+  "title": "Syllabus revision — draft contract v0.2",
   "description": "An immutable, server-validated learner-facing plan. Schedule dates, current activation, learning evidence, mastery state, secrets, prices and provider URLs are deliberately stored elsewhere.",
   "type": "object",
   "properties": {
@@ -4223,7 +4223,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
       "const": "0.2.0",
       "readOnly": true
     },
-    "curriculum_id": {
+    "syllabus_id": {
       "type": "string",
       "minLength": 3,
       "maxLength": 128,
@@ -4595,7 +4595,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
   },
   "required": [
     "schema_version",
-    "curriculum_id",
+    "syllabus_id",
     "revision_id",
     "revision_number",
     "predecessor_revision_id",
@@ -5908,8 +5908,8 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
         "instruction_preferences_applied"
       ],
       "additionalProperties": false,
-      "title": "Untrusted curriculum candidate",
-      "description": "The only curriculum-plan fields the model may propose. Provider-specific structured-output schemas may be stricter adapters. Backend validation and server stamping are mandatory before a canonical curriculum revision exists."
+      "title": "Untrusted syllabus candidate",
+      "description": "The only syllabus-plan fields the model may propose. Provider-specific structured-output schemas may be stricter adapters. Backend validation and server stamping are mandatory before a canonical syllabus revision exists."
     }
   }
 }
@@ -5918,13 +5918,13 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.3. generation-request.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/generation-request.schema.json sha256=48d94f4d1638a5ae6098b485297ab1436b297d1d8dc9145baf568a5fb1e0f37b -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/generation-request.schema.json sha256=e61fa33583149d7f8a71f9343e41984ea05fcc664767809115327d3d82ab7eee -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/generation-request.schema.json",
-  "title": "Curriculum generation request — draft contract v0.2",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/generation-request.schema.json",
+  "title": "Syllabus generation request — draft contract v0.2",
   "description": "User intent and constraints. Account identity comes from authentication. Only opaque credential handles are accepted; arbitrary provider endpoints, raw API keys, caller-supplied resource facts and internal retrieval plans are not accepted.",
   "type": "object",
   "properties": {
@@ -6370,7 +6370,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
         "inference"
       ],
       "additionalProperties": false,
-      "description": "Materials and compute are whole-curriculum planning caps; inference is the per-generation authorization ceiling. Hosted inference caps platform charges; BYOK caps calls initiated by this app using estimated provider rates and cannot cap unrelated provider-account usage. Unknown mandatory costs do not satisfy a hard cap."
+      "description": "Materials and compute are whole-syllabus planning caps; inference is the per-generation authorization ceiling. Hosted inference caps platform charges; BYOK caps calls initiated by this app using estimated provider rates and cannot cap unrelated provider-account usage. Unknown mandatory costs do not satisfy a hard cap."
     },
     "inference": {
       "oneOf": [
@@ -7085,7 +7085,7 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
             "compute"
           ],
           "additionalProperties": false,
-          "description": "Materials and compute are whole-curriculum planning caps; inference is the per-generation authorization ceiling. Hosted inference caps platform charges; BYOK caps calls initiated by this app using estimated provider rates and cannot cap unrelated provider-account usage. Unknown mandatory costs do not satisfy a hard cap."
+          "description": "Materials and compute are whole-syllabus planning caps; inference is the per-generation authorization ceiling. Hosted inference caps platform charges; BYOK caps calls initiated by this app using estimated provider rates and cannot cap unrelated provider-account usage. Unknown mandatory costs do not satisfy a hard cap."
         },
         "generation_options": {
           "type": "object",
@@ -7260,13 +7260,13 @@ The complete strict payload schemas and scoped API are embedded here. Preserve t
 
 ### C.4. openapi.yaml
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/openapi.yaml sha256=94b4a4dbe2792b2a8589c35f4859f6703712fc7d83af5f8c8023acca9de385a4 -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/openapi.yaml sha256=d13e3e79c6d73b2a3c9ebef4c0fb174e4193cdbc510b83bf27464ce566c3af7c -->
 ````yaml
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 openapi: 3.1.2
 jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
 info:
-  title: Curriculum Platform — Core API Draft
+  title: Syllabus Platform — Core API Draft
   version: 0.3.0
   description: Core launch contracts for review, not a complete production API or
     implemented service. OpenAPI 3.1.2 is intentionally pinned as a tooling choice.
@@ -7278,7 +7278,7 @@ security:
 - bearerAuth: []
 tags:
 - name: Generation
-- name: Curricula
+- name: Syllabi
 - name: Progress
 - name: Assessments
 - name: Schedule
@@ -7324,7 +7324,7 @@ paths:
               $ref: '#/components/schemas/GenerationRequest'
       parameters:
       - $ref: '#/components/parameters/IdempotencyKey'
-      description: No curriculum is generated by this operation. Quote creation must
+      description: No syllabus is generated by this operation. Quote creation must
         not incur a paid model request. Quotes expire and bind the normalized generation
         request, model policy, provider rate snapshot and authorization ceiling. For
         a non-null template_origin, validate current public access and include its
@@ -7373,7 +7373,7 @@ paths:
   /generations:
     post:
       operationId: startGeneration
-      summary: Start asynchronous curriculum generation
+      summary: Start asynchronous syllabus generation
       tags:
       - Generation
       responses:
@@ -7493,19 +7493,19 @@ paths:
         Stop new calls, preserve completed history, and settle actual authorized usage
         or release remaining reservations. A retry must not repeat cancellation side
         effects.
-  /curricula/{curriculum_id}:
+  /syllabi/{syllabus_id}:
     get:
-      operationId: getCurriculumOverview
+      operationId: getSyllabusOverview
       summary: Read current revision pointers
       tags:
-      - Curricula
+      - Syllabi
       responses:
         '200':
           description: Success.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CurriculumOverview'
+                $ref: '#/components/schemas/SyllabusOverview'
           headers:
             ETag:
               description: Opaque current representation version for optimistic concurrency.
@@ -7524,7 +7524,7 @@ paths:
         '503':
           $ref: '#/components/responses/503'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7532,19 +7532,19 @@ paths:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-  /curricula/{curriculum_id}/revisions/{revision_id}:
+  /syllabi/{syllabus_id}/revisions/{revision_id}:
     get:
-      operationId: getCurriculumRevision
-      summary: Read an immutable curriculum revision
+      operationId: getSyllabusRevision
+      summary: Read an immutable syllabus revision
       tags:
-      - Curricula
+      - Syllabi
       responses:
         '200':
           description: Success.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Curriculum'
+                $ref: '#/components/schemas/Syllabus'
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -7558,7 +7558,7 @@ paths:
         '503':
           $ref: '#/components/responses/503'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7574,19 +7574,19 @@ paths:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-  /curricula/{curriculum_id}/active-revision:
+  /syllabi/{syllabus_id}/active-revision:
     put:
-      operationId: activateCurriculumRevision
+      operationId: activateSyllabusRevision
       summary: Activate an existing revision
       tags:
-      - Curricula
+      - Syllabi
       responses:
         '200':
           description: Success.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CurriculumOverview'
+                $ref: '#/components/schemas/SyllabusOverview'
           headers:
             ETag:
               description: Opaque current representation version for optimistic concurrency.
@@ -7619,7 +7619,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ActivationRequest'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7632,12 +7632,12 @@ paths:
       description: Activation changes a mutable pointer, not the revision document.
         It does not erase progress. A schedule migration is explicit and versioned;
         unmapped learning evidence remains available.
-  /curricula/{curriculum_id}/regenerations:
+  /syllabi/{syllabus_id}/regenerations:
     post:
-      operationId: regenerateCurriculum
-      summary: Generate a successor curriculum revision
+      operationId: regenerateSyllabus
+      summary: Generate a successor syllabus revision
       tags:
-      - Curricula
+      - Syllabi
       responses:
         '202':
           description: Success.
@@ -7670,7 +7670,7 @@ paths:
             schema:
               $ref: '#/components/schemas/RegenerationRequest'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7679,10 +7679,10 @@ paths:
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
       - $ref: '#/components/parameters/IdempotencyKey'
-      description: The backend verifies the base revision belongs to this curriculum.
+      description: The backend verifies the base revision belongs to this syllabus.
         Existing learning evidence is preserved. Generation does not activate the
         successor automatically or infer that renamed objectives are equivalent.
-  /curricula/{curriculum_id}/progress-events:
+  /syllabi/{syllabus_id}/progress-events:
     post:
       operationId: appendProgressEvent
       summary: Append learner-authored progress evidence
@@ -7718,7 +7718,7 @@ paths:
             schema:
               $ref: '#/components/schemas/ProgressEventRequest'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7727,7 +7727,7 @@ paths:
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
       - $ref: '#/components/parameters/IdempotencyKey'
-  /curricula/{curriculum_id}/progress:
+  /syllabi/{syllabus_id}/progress:
     get:
       operationId: getProgress
       summary: Read derived completion and evidence state
@@ -7753,7 +7753,7 @@ paths:
         '503':
           $ref: '#/components/responses/503'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7878,7 +7878,7 @@ paths:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-  /curricula/{curriculum_id}/schedule:
+  /syllabi/{syllabus_id}/schedule:
     get:
       operationId: getSchedule
       summary: Read the current schedule revision
@@ -7909,7 +7909,7 @@ paths:
         '503':
           $ref: '#/components/responses/503'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -7961,7 +7961,7 @@ paths:
             schema:
               $ref: '#/components/schemas/SchedulePatch'
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -8586,10 +8586,10 @@ paths:
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
       - $ref: '#/components/parameters/IdempotencyKey'
-  /curricula/{curriculum_id}/adaptation-proposals:
+  /syllabi/{syllabus_id}/adaptation-proposals:
     post:
       operationId: previewAdaptation
-      summary: Preview evidence-based curriculum changes
+      summary: Preview evidence-based syllabus changes
       tags:
       - Adaptation
       responses:
@@ -8625,7 +8625,7 @@ paths:
         candidate if supported or compares a separately generated owned draft. Never
         authorizes inference spending.
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -8641,7 +8641,7 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdaptationPreviewRequest'
-  /curricula/{curriculum_id}/adaptation-proposals/{proposal_id}:
+  /syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}:
     get:
       operationId: getAdaptationProposal
       summary: Read a private adaptation proposal
@@ -8677,7 +8677,7 @@ paths:
       description: Owner only. Return a stale/evidence_changed error if the proposal
         can no longer be accepted; history remains attributable.
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -8693,7 +8693,7 @@ paths:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-  /curricula/{curriculum_id}/adaptation-proposals/{proposal_id}/accept:
+  /syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}/accept:
     post:
       operationId: acceptAdaptation
       summary: Activate an accepted adaptation
@@ -8705,7 +8705,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CurriculumOverview'
+                $ref: '#/components/schemas/SyllabusOverview'
         '400':
           $ref: '#/components/responses/400'
         '401':
@@ -8734,7 +8734,7 @@ paths:
         absence versus presence. This endpoint never accepts a schedule-only change
         or commits unseen new dates. Use the separate schedule workflow for date changes.
       parameters:
-      - name: curriculum_id
+      - name: syllabus_id
         in: path
         required: true
         schema:
@@ -8804,8 +8804,8 @@ paths:
               $ref: '#/components/schemas/PublicationPreviewRequest'
   /publications:
     post:
-      operationId: publishCurriculum
-      summary: Publish a new curriculum template
+      operationId: publishSyllabus
+      summary: Publish a new syllabus template
       tags:
       - Publications
       responses:
@@ -8844,7 +8844,7 @@ paths:
       description: Requires owned unexpired new-publication preview. Confirm exact
         hash and current terms; commit immutable public content plus mutable access
         record. Idempotency prevents duplicate publication. Confirm the complete preview
-        envelope, not only curriculum text. Changed publisher, attribution, origin,
+        envelope, not only syllabus text. Changed publisher, attribution, origin,
         visibility, terms, source, base revision or owner binding invalidates the
         preview.
       parameters:
@@ -8856,8 +8856,8 @@ paths:
             schema:
               $ref: '#/components/schemas/PublicationConfirmRequest'
     get:
-      operationId: discoverCurricula
-      summary: Discover public curriculum versions
+      operationId: discoverSyllabi
+      summary: Discover public syllabus versions
       tags:
       - Publications
       responses:
@@ -9175,7 +9175,7 @@ paths:
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
   /publications/{publication_id}/revisions/{publication_revision_id}/adoptions:
     post:
-      operationId: adoptCurriculum
+      operationId: adoptSyllabus
       summary: Create a private adapted draft
       tags:
       - Publications
@@ -9269,7 +9269,7 @@ paths:
         '503':
           $ref: '#/components/responses/503'
       description: Authenticated reporter. Store report privately with version; rate-limit
-        abuse. Report does not automatically prove inaccuracy or remove a curriculum.
+        abuse. Report does not automatically prove inaccuracy or remove a syllabus.
       parameters:
       - name: publication_id
         in: path
@@ -9375,7 +9375,7 @@ paths:
         '404':
           $ref: '#/components/responses/404'
     delete:
-      operationId: unpublishCurriculum
+      operationId: unpublishSyllabus
       summary: Withdraw every revision from app-controlled public access
       tags:
       - Publications
@@ -9464,7 +9464,7 @@ paths:
       description: Owner only. Preview must target this publication and its current
         base revision. New content gets new immutable ID and zero votes; unchanged
         content is duplicate/replay. Confirm the complete preview envelope, not only
-        curriculum text. Changed publisher, attribution, origin, visibility, terms,
+        syllabus text. Changed publisher, attribution, origin, visibility, terms,
         source, base revision or owner binding invalidates the preview. Obtain If-Match
         from the owner management GET; its state token is separate from public content
         hashes and vote counts.
@@ -9656,8 +9656,8 @@ components:
       description: Currency uses an ISO 4217 code; integer amounts use that currency’s
         minor unit. Currency validation and supported minor-unit precision are application
         rules.
-    Curriculum:
-      $ref: ./curriculum.schema.json
+    Syllabus:
+      $ref: ./syllabus.schema.json
     Resource:
       $ref: ./resource.schema.json
     GenerationRequest:
@@ -9789,14 +9789,14 @@ components:
             maxLength: 40
             format: date-time
           - type: 'null'
-        curriculum_id:
+        syllabus_id:
           anyOf:
           - type: string
             minLength: 3
             maxLength: 128
             pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
           - type: 'null'
-        curriculum_revision_id:
+        syllabus_revision_id:
           anyOf:
           - type: string
             minLength: 3
@@ -9836,8 +9836,8 @@ components:
       - created_at
       - started_at
       - finished_at
-      - curriculum_id
-      - curriculum_revision_id
+      - syllabus_id
+      - syllabus_revision_id
       - failure
       - usage_reconciliation_state
       additionalProperties: false
@@ -10090,10 +10090,10 @@ components:
           not:
             required:
             - reservation_id
-    CurriculumOverview:
+    SyllabusOverview:
       type: object
       properties:
-        curriculum_id:
+        syllabus_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -10119,7 +10119,7 @@ components:
           - complete
           - partial
       required:
-      - curriculum_id
+      - syllabus_id
       - active_revision_id
       - latest_revision_id
       - activation_version
@@ -10143,7 +10143,7 @@ components:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-        curriculum_revision_id:
+        syllabus_revision_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -10190,7 +10190,7 @@ components:
           - type: 'null'
       required:
       - event_id
-      - curriculum_revision_id
+      - syllabus_revision_id
       - activity_id
       - type
       - occurred_at
@@ -10229,12 +10229,12 @@ components:
     ProgressProjection:
       type: object
       properties:
-        curriculum_id:
+        syllabus_id:
           type: string
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-        curriculum_revision_id:
+        syllabus_revision_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -10283,8 +10283,8 @@ components:
           minItems: 0
           maxItems: 600
       required:
-      - curriculum_id
-      - curriculum_revision_id
+      - syllabus_id
+      - syllabus_revision_id
       - as_of_sequence
       - activities
       additionalProperties: false
@@ -10566,7 +10566,7 @@ components:
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-        curriculum_revision_id:
+        syllabus_revision_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -10601,7 +10601,7 @@ components:
       required:
       - attempt_id
       - assessment_version_id
-      - curriculum_revision_id
+      - syllabus_revision_id
       - activity_id
       - answers
       - declared_assistance
@@ -10746,7 +10746,7 @@ components:
         version:
           type: integer
           minimum: 1
-        curriculum_revision_id:
+        syllabus_revision_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -10816,7 +10816,7 @@ components:
       - schedule_id
       - schedule_revision_id
       - version
-      - curriculum_revision_id
+      - syllabus_revision_id
       - timezone
       - weekly_minutes
       - sessions
@@ -11253,7 +11253,7 @@ components:
       - evidence
       additionalProperties: false
       description: Curator identity comes from authorization. A decision creates a
-        new resource version and changes future eligibility; existing curriculum history
+        new resource version and changes future eligibility; existing syllabus history
         is preserved. Approving eligibility does not automatically grant content ingestion
         rights.
     UsageRecord:
@@ -11439,8 +11439,8 @@ components:
       additionalProperties: false
     Proficiency:
       $ref: ./proficiency.schema.json
-    PublicCurriculum:
-      $ref: ./public-curriculum.schema.json
+    PublicSyllabus:
+      $ref: ./public-syllabus.schema.json
     AdaptationProposal:
       $ref: ./adaptation-proposal.schema.json
     CredentialRotate:
@@ -11731,12 +11731,12 @@ components:
     PublicationPreviewRequest:
       type: object
       properties:
-        curriculum_id:
+        syllabus_id:
           type: string
           minLength: 3
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
-        curriculum_revision_id:
+        syllabus_revision_id:
           type: string
           minLength: 3
           maxLength: 128
@@ -11778,8 +11778,8 @@ components:
           maxLength: 128
           pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$
       required:
-      - curriculum_id
-      - curriculum_revision_id
+      - syllabus_id
+      - syllabus_revision_id
       - publication_id
       - base_publication_revision_id
       - title
@@ -11830,7 +11830,7 @@ components:
           - public
           - unlisted
         public_content:
-          $ref: ./public-curriculum.schema.json#/$defs/publicContent
+          $ref: ./public-syllabus.schema.json#/$defs/publicContent
         publication_terms_policy_id:
           type: string
           minLength: 3
@@ -11965,7 +11965,7 @@ components:
       type: object
       properties:
         snapshot:
-          $ref: '#/components/schemas/PublicCurriculum'
+          $ref: '#/components/schemas/PublicSyllabus'
         visibility:
           type: string
           enum:
@@ -12540,12 +12540,12 @@ components:
 
 ### C.5. proficiency.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/proficiency.schema.json sha256=11ba02fdc1b03ae86240d9c0403e1670c198709ea0683dd864b09260c89e2789 -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/proficiency.schema.json sha256=655bd35bfb023028f421393642af2a258374b143c576c8d5dbe58e898ff97cd4 -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/proficiency.schema.json",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/proficiency.schema.json",
   "title": "Private proficiency projection — v0.2",
   "type": "object",
   "properties": {
@@ -12826,15 +12826,15 @@ components:
 ````
 <!-- /embedded-asset -->
 
-### C.6. public-curriculum.schema.json
+### C.6. public-syllabus.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/public-curriculum.schema.json sha256=595864dec9cf61de6e76d35c856d1f977e533aaa7cbee6110acc6761fa737223 -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/public-syllabus.schema.json sha256=28d608d824f3d35e76946101cca2d527ede1d3c7cbda2dacb4a2784224887860 -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/public-curriculum.schema.json",
-  "title": "Public curriculum snapshot — v0.2",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/public-syllabus.schema.json",
+  "title": "Public syllabus snapshot — v0.2",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -13118,13 +13118,13 @@ components:
         "resource_assignments": {
           "type": "array",
           "items": {
-            "$ref": "./curriculum.schema.json#/$defs/resourceAssignment"
+            "$ref": "./syllabus.schema.json#/$defs/resourceAssignment"
           },
           "minItems": 0,
           "maxItems": 20
         },
         "duration_estimate": {
-          "$ref": "./curriculum.schema.json#/$defs/durationEstimate"
+          "$ref": "./syllabus.schema.json#/$defs/durationEstimate"
         },
         "public_instructions": {
           "type": "string",
@@ -13290,7 +13290,7 @@ components:
         "prerequisite_edges": {
           "type": "array",
           "items": {
-            "$ref": "./curriculum.schema.json#/$defs/prerequisiteEdge"
+            "$ref": "./syllabus.schema.json#/$defs/prerequisiteEdge"
           },
           "minItems": 0,
           "maxItems": 800
@@ -13298,7 +13298,7 @@ components:
         "modules": {
           "type": "array",
           "items": {
-            "$ref": "./curriculum.schema.json#/$defs/module"
+            "$ref": "./syllabus.schema.json#/$defs/module"
           },
           "minItems": 1,
           "maxItems": 60
@@ -13314,7 +13314,7 @@ components:
         "certification_options": {
           "type": "array",
           "items": {
-            "$ref": "./curriculum.schema.json#/$defs/certificationOption"
+            "$ref": "./syllabus.schema.json#/$defs/certificationOption"
           },
           "minItems": 0,
           "maxItems": 10
@@ -13447,12 +13447,12 @@ components:
 
 ### C.7. resource.schema.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/resource.schema.json sha256=ad23d539104cf2dff6ba92c8dcdd1036cf0e97dd952412f7ad491dc7bd6b53ba -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/resource.schema.json sha256=79eedfb461dbb240346868b02a4f901077000d773e09bd05cc7d4789556b768c -->
 ````json
 {
   "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://curriculum.example.invalid/schemas/v0.2/resource.schema.json",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/resource.schema.json",
   "title": "Catalog resource version — draft contract v0.2",
   "description": "A curator-controlled resource snapshot. Catalog access price, identity/credibility review and ingestion permissions are independent dimensions.",
   "type": "object",
@@ -14459,19 +14459,19 @@ components:
 
 ### C.8. app-companion.openapi.yaml
 
-<!-- embedded-asset: specs/001-curriculum-platform/contracts/app-companion.openapi.yaml sha256=12b39051743f0923d44682ffb918e44befef4a6dc12d3cf42fe0667807c88c3d -->
+<!-- embedded-asset: specs/001-syllabus-platform/contracts/app-companion.openapi.yaml sha256=8a02f37242bda4ca66ba5908b53d1373e8002411619f571e3687f912b7a60ab3 -->
 ````yaml
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 openapi: 3.1.2
 info:
-  title: Curriculum Platform Companion Operations API
+  title: Syllabus Platform Companion Operations API
   version: 0.3.0
   summary: Canonical companion contract for authentication, account data, catalog/admin queues, assessment assistance/corrections, billing checkout/webhooks, and reminder/completion integrations.
   description: >
     Extracted from specs/product.md Appendix C.8. Complements openapi.yaml so
     that all application endpoints share a single canonical specification source.
 servers:
-  - url: https://api.curriculum.example.invalid/v1
+  - url: https://api.syllabus.example.invalid/v1
     description: Abstract specification server
 security:
   - bearerAuth: []
@@ -14514,7 +14514,7 @@ paths:
   /me/exports:
     post:
       operationId: createAccountExportJob
-      summary: Request an export of private curricula, schedules, and learning evidence without secrets or restricted content (PROG-005, OPS-004)
+      summary: Request an export of private syllabi, schedules, and learning evidence without secrets or restricted content (PROG-005, OPS-004)
       responses:
         '202':
           description: Export job queued
@@ -14539,18 +14539,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountJobStatus'
-  /me/curricula:
+  /me/syllabi:
     get:
-      operationId: listMyCurricula
-      summary: List private curricula owned by the authenticated learner
+      operationId: listMySyllabi
+      summary: List private syllabi owned by the authenticated learner
       responses:
         '200':
-          description: Owned private curricula list
+          description: Owned private syllabi list
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CurriculumListResponse'
-  /curricula/goal-interpretations:
+                $ref: '#/components/schemas/SyllabusListResponse'
+  /syllabi/goal-interpretations:
     post:
       operationId: createGoalInterpretation
       summary: Propose editable target capabilities, prerequisites, depth, and exclusions before generation (GOAL-001, GOAL-004)
@@ -14589,12 +14589,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResourceVersionListResponse'
-  /curricula/{curriculum_id}/resource-alerts:
+  /syllabi/{syllabus_id}/resource-alerts:
     get:
-      operationId: listCurriculumResourceAlerts
-      summary: List stale, quarantined, or revoked resource alerts and replacement paths for a curriculum (CAT-007)
+      operationId: listSyllabusResourceAlerts
+      summary: List stale, quarantined, or revoked resource alerts and replacement paths for a syllabus (CAT-007)
       parameters:
-        - $ref: '#/components/parameters/CurriculumId'
+        - $ref: '#/components/parameters/SyllabusId'
       responses:
         '200':
           description: Affected activities and replacement candidates
@@ -14792,8 +14792,8 @@ components:
       type: http
       scheme: bearer
   parameters:
-    CurriculumId:
-      name: curriculum_id
+    SyllabusId:
+      name: syllabus_id
       in: path
       required: true
       schema:
@@ -14866,7 +14866,7 @@ components:
         - status
         - requested_at
       additionalProperties: false
-    CurriculumListResponse:
+    SyllabusListResponse:
       type: object
       properties:
         items:
@@ -14874,7 +14874,7 @@ components:
           items:
             type: object
             properties:
-              curriculum_id:
+              syllabus_id:
                 type: string
               title:
                 type: string
@@ -14886,7 +14886,7 @@ components:
                 type: string
                 enum: [complete, partial]
             required:
-              - curriculum_id
+              - syllabus_id
               - title
               - active_revision_id
               - coverage_status
@@ -15245,19 +15245,19 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.1. adaptation-proposal.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/adaptation-proposal.synthetic.json sha256=77aaa80506ba400095455344541339ef674dba977228ccd5af6757fd57a01044 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/adaptation-proposal.synthetic.json sha256=69e6c9590c415715d32659cc2d0b2e9b3e5cd7752ce872cc4d0faa35cedb6537 -->
 ````json
 {
   "schema_version": "0.2.0",
   "proposal_id": "adaptation-synthetic-001",
-  "curriculum_id": "curriculum-formal-synthetic",
+  "syllabus_id": "syllabus-formal-synthetic",
   "base_revision_id": "formal-plan-before",
   "candidate_revision_id": "formal-plan-after",
   "proficiency_snapshot_ref": "proficiency-snapshot-001",
   "policy_version": "adaptation-policy-001",
   "created_at": "2026-10-20T16:00:00Z",
   "expires_at": "2026-10-20T17:00:00Z",
-  "proposal_sha256": "938896be1292fd64cd5bf7f71c45068b10758ef3d3253833bd17b79a4e0d6dae",
+  "proposal_sha256": "e3de58105ed9020b861fa9ed9fda685296a6a2f6d278f65e8bd7485e4c99a20d",
   "instruction_preferences_applied": {
     "math_depth": "formal",
     "topic_math_depth_overrides": [],
@@ -15321,7 +15321,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.2. adoption-request.byok.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/adoption-request.byok.synthetic.json sha256=89e123d28e73eeddf764821f3fa7a7ad5f904e84a902eaa17370f334d3efd90c -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/adoption-request.byok.synthetic.json sha256=89e123d28e73eeddf764821f3fa7a7ad5f904e84a902eaa17370f334d3efd90c -->
 ````json
 {
   "expected_content_sha256": "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
@@ -15416,7 +15416,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.3. adoption-request.hosted.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/adoption-request.hosted.synthetic.json sha256=fe5223ae356f0a7f4d32423a1c00a94523b3572e2a12627619f6357111fb27fd -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/adoption-request.hosted.synthetic.json sha256=fe5223ae356f0a7f4d32423a1c00a94523b3572e2a12627619f6357111fb27fd -->
 ````json
 {
   "expected_content_sha256": "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
@@ -15509,7 +15509,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.4. adoption-request.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/adoption-request.synthetic.json sha256=1ad690c030f217d291f6a5acd8eaceac0fe94959d054e1357eed6746da9a54af -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/adoption-request.synthetic.json sha256=1ad690c030f217d291f6a5acd8eaceac0fe94959d054e1357eed6746da9a54af -->
 ````json
 {
   "expected_content_sha256": "a9427ddd7bc9f2c22c910939c5e890588eda136e359ed463897d71f79ad06fe8",
@@ -15590,14 +15590,14 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 ````
 <!-- /embedded-asset -->
 
-### D.5. curriculum-candidate.synthetic.json
+### D.5. syllabus-candidate.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json sha256=3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/syllabus-candidate.synthetic.json sha256=435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505 -->
 ````json
 {
   "candidate_schema_version": "0.2.0",
   "goal": {
-    "title": "Synthetic tokenization mini-curriculum",
+    "title": "Synthetic tokenization mini-syllabus",
     "summary": "Contract fixture demonstrating a focused learning plan.",
     "included_topics": [
       "tokenization tradeoffs"
@@ -15937,13 +15937,13 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 ````
 <!-- /embedded-asset -->
 
-### D.6. curriculum.synthetic.json
+### D.6. syllabus.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/curriculum.synthetic.json sha256=9532937dc8828d2da586d73997c2cdb2d77d3baea3e02cc8ca05f7ca2569652b -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/syllabus.synthetic.json sha256=79b6aaa0be1f98a658b553b40c6ec9689115707c0758cdc8987f9a693c6a5ab1 -->
 ````json
 {
   "schema_version": "0.2.0",
-  "curriculum_id": "synthetic-curriculum-1",
+  "syllabus_id": "synthetic-syllabus-1",
   "revision_id": "synthetic-revision-1",
   "revision_number": 1,
   "predecessor_revision_id": null,
@@ -15951,7 +15951,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
   "created_at": "2026-10-20T16:00:00Z",
   "revision_reason": "initial_generation",
   "goal": {
-    "title": "Synthetic tokenization mini-curriculum",
+    "title": "Synthetic tokenization mini-syllabus",
     "summary": "Contract fixture demonstrating a focused learning plan.",
     "included_topics": [
       "tokenization tradeoffs"
@@ -16306,7 +16306,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
     "prompt_template_version": "synthetic-prompt-template",
     "provider_id": "synthetic-provider",
     "model_id": "synthetic-model",
-    "candidate_sha256": "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de",
+    "candidate_sha256": "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505",
     "validation_policy_version": "synthetic-validation-policy"
   },
   "instruction_preferences_applied": {
@@ -16326,7 +16326,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.7. diagnostic-session.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/diagnostic-session.synthetic.json sha256=482761a830a6ec30ffca39ae92236c98e72822b2604179ebb8e72adefc42af5e -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/diagnostic-session.synthetic.json sha256=482761a830a6ec30ffca39ae92236c98e72822b2604179ebb8e72adefc42af5e -->
 ````json
 {
   "diagnostic_session_id": "diagnostic-synthetic-001",
@@ -16353,7 +16353,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.8. generation-request.byok.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/generation-request.byok.synthetic.json sha256=a6e409eb5ec7ce0819238e54181ad0cc1fa866f70af0c04e32add8d5feacba1c -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/generation-request.byok.synthetic.json sha256=a6e409eb5ec7ce0819238e54181ad0cc1fa866f70af0c04e32add8d5feacba1c -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -16440,7 +16440,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.9. generation-request.formal-math.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/generation-request.formal-math.synthetic.json sha256=165261f854acedc1c197f672a62b92e6fc85bdae2561f809526f69e4e5d82aec -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/generation-request.formal-math.synthetic.json sha256=165261f854acedc1c197f672a62b92e6fc85bdae2561f809526f69e4e5d82aec -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -16529,7 +16529,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.10. generation-request.hosted.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/generation-request.hosted.synthetic.json sha256=cd18fb6ab483c5a5d318b099ddb2ceb20f6ed369aee6aae033d32d12c8fbcb5a -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/generation-request.hosted.synthetic.json sha256=cd18fb6ab483c5a5d318b099ddb2ceb20f6ed369aee6aae033d32d12c8fbcb5a -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -16612,7 +16612,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.11. owned-publication-revisions.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/owned-publication-revisions.synthetic.json sha256=d7913cf1ee62dbded411a4ab509d8126cd67168fed67d6f8431df9ca6d34221a -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/owned-publication-revisions.synthetic.json sha256=d7913cf1ee62dbded411a4ab509d8126cd67168fed67d6f8431df9ca6d34221a -->
 ````json
 {
   "items": [
@@ -16632,7 +16632,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.12. owned-publications.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/owned-publications.synthetic.json sha256=248ed01d65cdc89d95f6197660ae34762fe8ccc947ba716a61e34b2cce1b1cdd -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/owned-publications.synthetic.json sha256=cbf99c7222a49553238105cd8d3bbcd606e39eb38160a9005e00943a8efdf951 -->
 ````json
 {
   "items": [
@@ -16643,7 +16643,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
       "current_publication_revision_id": "public-revision-001",
       "management_version_id": "management-001",
       "updated_at": "2026-10-20T12:00:00Z",
-      "display_title": "Synthetic tokenization curriculum",
+      "display_title": "Synthetic tokenization syllabus",
       "current_revision_upvote_count": 0
     },
     {
@@ -16664,7 +16664,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.13. proficiency.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/proficiency.synthetic.json sha256=5b3f6af292bfce824745daba640883c435d65634ef2ec177eddcade5376f26e1 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/proficiency.synthetic.json sha256=5b3f6af292bfce824745daba640883c435d65634ef2ec177eddcade5376f26e1 -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -16732,11 +16732,11 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.14. progress-event.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/progress-event.synthetic.json sha256=4e947ea0b23649bcfc7e1a886504ae010a433b5c958f5a9cbbffd657203ca430 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/progress-event.synthetic.json sha256=87c73a8132331973a0a4eeba8272be7f5edfa25ce5cbeb0932441537ede89c98 -->
 ````json
 {
   "event_id": "synthetic-event-1",
-  "curriculum_revision_id": "synthetic-revision-1",
+  "syllabus_revision_id": "synthetic-revision-1",
   "activity_id": "activity-theory",
   "type": "self_reported_completed",
   "occurred_at": "2026-10-26T18:10:00-04:00",
@@ -16747,9 +16747,9 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 ````
 <!-- /embedded-asset -->
 
-### D.15. public-curriculum.synthetic.json
+### D.15. public-syllabus.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/public-curriculum.synthetic.json sha256=656adb23eb826a234430b9a768695faa47ada0d02db69ab17047e61a1e2b9c4d -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/public-syllabus.synthetic.json sha256=656adb23eb826a234430b9a768695faa47ada0d02db69ab17047e61a1e2b9c4d -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -17121,7 +17121,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.16. publication-preview.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/publication-preview.synthetic.json sha256=879313d1aba4bfed9fe59d357e78e9087a51d7e7c8982a56819f61852ef26f53 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/publication-preview.synthetic.json sha256=879313d1aba4bfed9fe59d357e78e9087a51d7e7c8982a56819f61852ef26f53 -->
 ````json
 {
   "preview_id": "preview-synthetic-001",
@@ -17495,7 +17495,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.17. resource-unknown-price.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/resource-unknown-price.synthetic.json sha256=234153ce7e4358ce8a52e0888339fe25e051450594fcda3eda12efd714d0d045 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/resource-unknown-price.synthetic.json sha256=234153ce7e4358ce8a52e0888339fe25e051450594fcda3eda12efd714d0d045 -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -17597,7 +17597,7 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.18. resource.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/resource.synthetic.json sha256=850a120cd5b4494523377d29690a64e3fcd4d657238dfea498018dc8593e439d -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/resource.synthetic.json sha256=850a120cd5b4494523377d29690a64e3fcd4d657238dfea498018dc8593e439d -->
 ````json
 {
   "schema_version": "0.2.0",
@@ -17713,13 +17713,13 @@ All examples are synthetic. Exact bytes of the baseline fixtures are preserved f
 
 ### D.19. schedule.synthetic.json
 
-<!-- embedded-asset: specs/001-curriculum-platform/examples/schedule.synthetic.json sha256=21f785db588c5d2d492b85449af5651e8d6505f8f58bf53f60fc3f7cd8342a88 -->
+<!-- embedded-asset: specs/001-syllabus-platform/examples/schedule.synthetic.json sha256=d4e076f93e6ea53eee4045baef29c0f8485aa1bcf2d377744270cd22c48ca44f -->
 ````json
 {
   "schedule_id": "synthetic-schedule-1",
   "schedule_revision_id": "synthetic-schedule-revision-1",
   "version": 1,
-  "curriculum_revision_id": "synthetic-revision-1",
+  "syllabus_revision_id": "synthetic-revision-1",
   "timezone": "America/New_York",
   "weekly_minutes": 120,
   "sessions": [
@@ -17768,7 +17768,7 @@ Every requirement has exact scenario tags and implementation tasks. Supporting c
 
 ### E.1. traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/traceability.csv sha256=ad1a67be20912bb146903d57cd06d2e96636dda176a572c3edee2daa4125f420 -->
+<!-- embedded-asset: specs/001-syllabus-platform/traceability.csv sha256=7cbe564236f31773db7046e2451449e12f4acea57c2ca60f5a011d4704d0b20a -->
 ````csv
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 requirement_id,priority,acceptance_scenarios,implementation_tasks,contract_or_component,verification_method,status
@@ -17785,14 +17785,14 @@ CAT-005,P0,S06,T02,resource.schema.json; catalog and retrieval,catalog integrati
 CAT-006,P0,S07 S62,T02 T13,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 CAT-007,P0,S07 S59 S63,T02 T13,resource.schema.json; app-companion.openapi.yaml; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
 CAT-008,P0,S04,T02,resource.schema.json; catalog and retrieval,catalog integration and rights fixtures,specified; implementation pending
-GEN-001,P0,S08,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-002,P0,S09,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-003,P0,S10,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-004,P0,S11 S12,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-005,P0,S13,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-006,P0,S13,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-007,P0,S11,T03 T04 T06,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
-GEN-008,P0,S03 S52 S54,T03 T04 T06 T12,curriculum.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-001,P0,S08,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-002,P0,S09,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-003,P0,S10,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-004,P0,S11 S12,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-005,P0,S13,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-006,P0,S13,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-007,P0,S11,T03 T04 T06,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
+GEN-008,P0,S03 S52 S54,T03 T04 T06 T12,syllabus.schema.json; generation and revision services,schema and semantic integration checks,specified; implementation pending
 PED-001,P0,S13,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-002,P0,S14 S45,T05 T06,app-companion.openapi.yaml; assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
 PED-003,P0,S17,T05 T06,assessment service; evidence projection; scheduler,assessment quality review and evidence assertions,specified; implementation pending
@@ -17830,7 +17830,7 @@ OPS-002,P0,S07,T02 T09,administration; operational lifecycle,"role, lifecycle, r
 OPS-003,P0,S37,T02 T09,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-004,P0,S23 S38,T02 T09,app-companion.openapi.yaml; administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
 OPS-005,P0,S39,T02 T04,administration; operational lifecycle,"role, lifecycle, restore, distribution checks",specified; implementation pending
-OPS-006,P0,S40,T00 T02 T09 T13,Apache-2.0 software license (LICENSE); LEGAL.md 4-part boundary; CC BY 4.0 publication terms; release operations,"Verify Apache-2.0 software license, Section 5 contributor terms, CC BY 4.0 community curriculum terms, and separate third-party resource rights",specified; implementation pending
+OPS-006,P0,S40,T00 T02 T09 T13,Apache-2.0 software license (LICENSE); LEGAL.md 4-part boundary; CC BY 4.0 publication terms; release operations,"Verify Apache-2.0 software license, Section 5 contributor terms, CC BY 4.0 community syllabus terms, and separate third-party resource rights",specified; implementation pending
 NFR-001,P0,S29 S36 S57 S64 S66 S87,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-002,P0,S11 S31 S57 S64 S88,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
 NFR-003,P0,S25 S58 S69 S85 S86,T01 T03 T04 T07 T08 T09 T13,cross-cutting architecture,"targeted security, performance, accessibility, recovery checks",specified; implementation pending
@@ -17849,15 +17849,15 @@ ADAPT-007,P0,S47 S53,T03 T04 T12,generation-request.schema.json; adaptation-prop
 ADAPT-008,P0,S50 S54 S55,T05 T06 T12,proficiency.schema.json; adaptation-proposal.schema.json; correction projection,supported-inference recomputation; dependent waiver invalidation; review-due distinction,specified; implementation pending
 ADAPT-009,P0,S49 S50,T05 T09 T12,openapi.yaml; diagnostic selection and evidence-policy registry,policy-version provenance; reviewed thresholds and limits on scientific claims,specified; implementation pending
 ADAPT-010,P0,S47 S51 S52,T05 T06 T12,proficiency.schema.json; objective-equivalence registry,exact capability and compatible-condition mappings; partial topic coverage,specified; implementation pending
-SHARE-001,P0,S56,T01 T04 T13,public-curriculum.schema.json; openapi.yaml; publication preview and confirmation,owner authorization; exact-preview consent; immutable public and unlisted revisions,specified; implementation pending
-SHARE-002,P0,S56 S57,T01 T04 T13,public-curriculum.schema.json; public projection; isolated public caches,private-marker exclusion; schema rejection; cross-viewer cache and identifier isolation,specified; implementation pending
+SHARE-001,P0,S56,T01 T04 T13,public-syllabus.schema.json; openapi.yaml; publication preview and confirmation,owner authorization; exact-preview consent; immutable public and unlisted revisions,specified; implementation pending
+SHARE-002,P0,S56 S57,T01 T04 T13,public-syllabus.schema.json; public projection; isolated public caches,private-marker exclusion; schema rejection; cross-viewer cache and identifier isolation,specified; implementation pending
 SHARE-003,P0,S58,T04 T13,openapi.yaml; public discovery and unlisted reads,discovery exclusion; bearer-link disclosure; keyboard and list accessibility,specified; implementation pending
-SHARE-004,P0,S59,T02 T03 T06 T12 T13,public-curriculum.schema.json; adaptation-proposal.schema.json; openapi.yaml adoption,private origin attribution; rights and learner-constraint revalidation; no inherited evidence,specified; implementation pending
+SHARE-004,P0,S59,T02 T03 T06 T12 T13,public-syllabus.schema.json; adaptation-proposal.schema.json; openapi.yaml adoption,private origin attribution; rights and learner-constraint revalidation; no inherited evidence,specified; implementation pending
 SHARE-005,P0,S60 S61,T01 T13,openapi.yaml; VoteState; unique account and publication-revision vote,verified-account eligibility; self-vote rejection; idempotent concurrent set and removal,specified; implementation pending
 SHARE-006,P0,S62,T02 T13,resource.schema.json; current eligibility overlay; discovery ranking,eligibility before popularity; vote labels cannot establish approval or proficiency,specified; implementation pending
-SHARE-007,P0,S61,T01 T13,public-curriculum.schema.json; immutable revision store and duplicate policy,new-revision and fork zero counts; concurrent old-version vote association; duplicate rejection,specified; implementation pending
+SHARE-007,P0,S61,T01 T13,public-syllabus.schema.json; immutable revision store and duplicate policy,new-revision and fork zero counts; concurrent old-version vote association; duplicate rejection,specified; implementation pending
 SHARE-008,P0,S63 S64 S80,T02 T09 T13,openapi.yaml; withdrawal and moderation overlays; public caches and indexes,owner and moderator authorization; withdrawal propagation; retained-copy rights policy,specified; implementation pending
-SHARE-009,P0,S56 S57 S63,T02 T09 T13,public-curriculum.schema.json; publication terms and attribution,terms-version consent; original-content rights scope; paid-link and redistribution checks,specified; implementation pending
+SHARE-009,P0,S56 S57 S63,T02 T09 T13,public-syllabus.schema.json; publication terms and attribution,terms-version consent; original-content rights scope; paid-link and redistribution checks,specified; implementation pending
 SHARE-010,P0,S56 S57 S60 S64 S65,T04 T08 T09 T13,openapi.yaml; reports and abuse controls; typed renderer; notification dispatcher,public-release controls; moderation and cache isolation; no social-notification enqueue,specified; implementation pending
 UI-007,P0,S69,T04 T14,Section 9 UI components and explicit supported contracts,"Observable flow checks, accessibility review, and risk-focused component/integration verification",specified_not_implemented
 UI-008,P0,S70,T04 T14,Section 9 UI components and explicit supported contracts,"Observable flow checks, accessibility review, and risk-focused component/integration verification",specified_not_implemented
@@ -17882,7 +17882,7 @@ UI-024,P0,S88,T04 T09 T13 T14,Section 9 UI components and explicit supported con
 
 ### E.2. control-traceability.csv
 
-<!-- embedded-asset: specs/001-curriculum-platform/control-traceability.csv sha256=e44817b35bf8f96ceff0e6a1aa6eedb6e925895b7bdf11451841e412747ee2e9 -->
+<!-- embedded-asset: specs/001-syllabus-platform/control-traceability.csv sha256=bc8dc502fa76d6c738fe8a57b4e1638a35e1b3e1d3dec48389f9f685bd7951b3 -->
 ````csv
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 control_id,parent_requirement_ids,implementation_tasks,notes
@@ -17915,7 +17915,7 @@ CTRL-051,GOAL-002 NOT-001 NOT-005,T06 T08 T10,Deterministic DST and timezone pol
 CTRL-052,NOT-002 NOT-003 OPS-003,T06 T08 T09,Occurrence identity and obsolete-reminder suppression; no exactly-once device-delivery promise.
 CTRL-053,NOT-001 NOT-003 NOT-004 PROG-004 UI-006,T04 T06 T08,Permission/offline degradation and expired-backlog suppression preserve progress event identity.
 CTRL-054,NOT-004 NOT-005 UI-006,T04 T08 T10,Capability guidance distinguishes PWA reminders from optional native alarms.
-CTRL-060,OPS-006 SHARE-009,T00 T09 T13,Adopted Apache-2.0 software license (LICENSE) and 4-part LEGAL.md boundary (Apache-2.0 code and Section 5 contributions; BYOK direct provider terms; CC BY 4.0 community curricula; metadata/links only for third-party resources)
+CTRL-060,OPS-006 SHARE-009,T00 T09 T13,Adopted Apache-2.0 software license (LICENSE) and 4-part LEGAL.md boundary (Apache-2.0 code and Section 5 contributions; BYOK direct provider terms; CC BY 4.0 community syllabi; metadata/links only for third-party resources)
 CTRL-061,CAT-003 OPS-006 SHARE-009,T02 T09 T13,"Separate software, original catalog annotations, exercises, publication terms, third-party content, and trademarks; distribute only permitted seed fields."
 CTRL-062,BILL-001 BILL-003 BILL-004 OPS-004 OPS-006,T07 T09 T10,"Conditional native-release gate for storefront payments, entitlements, deletion, and BYOK presentation."
 CTRL-070,SHARE-001 SHARE-002 SHARE-009 SHARE-010 NFR-001 NFR-002,T01 T04 T13,"Server-built public allowlist and exact-preview consent; separate public identifiers, caches, indexes, and analytics from private learner state."
@@ -18050,7 +18050,7 @@ The palette is the machine-readable counterpart of section 9. Scripts validate t
 
 ### F.2. extract_spec.py
 
-<!-- embedded-asset: scripts/extract_spec.py sha256=52c99f4c02089b748090edfbd82b6a93e8cfc3051675361ed71ad1424ad07d06 -->
+<!-- embedded-asset: scripts/extract_spec.py sha256=23555602301742882d360a36a014556a8297e09c7f2e3cdb6571824e640493f0 -->
 ````python
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
@@ -18066,7 +18066,7 @@ import re
 import sys
 
 GENERATED_MARKER = 'GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md'
-EXAMPLES_NOTICE_REL = 'specs/001-curriculum-platform/examples/.generated-notice'
+EXAMPLES_NOTICE_REL = 'specs/001-syllabus-platform/examples/.generated-notice'
 examples_notice_text = (
     '# ' + GENERATED_MARKER + '\n'
     '# Synthetic JSON fixtures in this directory are extracted byte-for-byte from specs/product.md\n'
@@ -18084,7 +18084,7 @@ SLICE_METADATA = {
     'T01': ('Slice 1 — Identity, Tenant Isolation, HTTP Concurrency & Transactional Outbox', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T02': ('Slice 3 — Small Reviewed Catalog & Deterministic Metadata Filtering', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T03': ('Slice 4 — Goal Intake, Async Generation & Deterministic Semantic Validator', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
-    'T04': ('Slice 5 — Responsive Curriculum (Outline + Basic Map), Today View & Activation', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T04': ('Slice 5 — Responsive Syllabus (Outline + Basic Map), Today View & Activation', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T05': ('Slice 6 — Practice, Reviewed Anchor Assessments, Mastery Gates & Honest Progress', 'Tier 2: Closed Beta'),
     'T06': ('Slice 7 — Workload Math, ScheduleRevision, ReviewScheduleItem & Offline Sync', 'Tier 2: Closed Beta'),
     'T07': ('Slices 9A–9D — BYOK Custody, Live Providers, Hosted Ledger & Checkout (Parent Task)', 'Tier 2: Closed Beta (T07A) / Tier 3: Public Beta (T07B–T07D)'),
@@ -18096,7 +18096,7 @@ SLICE_METADATA = {
     'T09': ('Slice 13 — Release Operations, Export/Deletion, Backup Restore & Public-Beta Gate', 'Tier 3: Public Beta'),
     'T10': ('Slice 14 — Native Clients & Precise OS Alarms (If Selected)', 'Post-Public-Beta Extension'),
     'T11': ('Slice 15 — Pedagogical Evaluation Workstream, Delayed Learning/Transfer Study & Scope Expansion', 'Continuous Evaluation & Post-Public-Beta'),
-    'T12': ('Slice 8 — Objective Diagnostics, Prerequisite Waivers & Curriculum Adaptation', 'Tier 2: Closed Beta'),
+    'T12': ('Slice 8 — Objective Diagnostics, Prerequisite Waivers & Syllabus Adaptation', 'Tier 2: Closed Beta'),
     'T13': ('Slice 11 — Public Templates, Discovery, Partial Adoption, Upvotes & Moderation', 'Tier 3: Public Beta (Requires D11 & D16 Gates)'),
     'T14': ('Slices 2 & 12 — Responsive UI Shell (T14-Core) & Complete UI/Accessibility Evidence (T14-Full)', 'Tier 1: Private Alpha (T14-Core) / Tier 3: Public Beta (T14-Full)'),
     'T14-Core': ('Slice 2 — Design Tokens, Fail-Closed SafeActivityRenderer & Learn/Explore/Settings Shell', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
@@ -18126,7 +18126,7 @@ def read_assets(text):
         body = match['body']
         if hashlib.sha256(body.encode('utf-8')).hexdigest() != match['digest']:
             raise ValueError('Embedded asset integrity mismatch: ' + name)
-        if not name.startswith('specs/001-curriculum-platform/examples/'):
+        if not name.startswith('specs/001-syllabus-platform/examples/'):
             if GENERATED_MARKER not in body:
                 raise ValueError('Missing generated-file notice in embedded asset: ' + name)
         assets[name] = body
@@ -18170,9 +18170,9 @@ def build_slice_contexts(spec_text, assets):
     slice_sections = {}
     for m in re.finditer(r'^### (T\d{2}) — ([^\n]+)\n(?P<body>.*?)(?=^### |^---)', spec_text, re.M | re.S):
         slice_sections[m.group(1)] = (m.group(2).strip(), m.group('body').strip())
-    trace_rows = _parse_csv(assets['specs/001-curriculum-platform/traceability.csv'])
-    ctrl_rows = _parse_csv(assets['specs/001-curriculum-platform/control-traceability.csv'])
-    scenarios = _parse_scenarios(assets['specs/001-curriculum-platform/acceptance.feature'])
+    trace_rows = _parse_csv(assets['specs/001-syllabus-platform/traceability.csv'])
+    ctrl_rows = _parse_csv(assets['specs/001-syllabus-platform/control-traceability.csv'])
+    scenarios = _parse_scenarios(assets['specs/001-syllabus-platform/acceptance.feature'])
 
     contexts = {}
     for slice_id, (title, tier) in sorted(SLICE_METADATA.items()):
@@ -18251,7 +18251,7 @@ def build_slice_contexts(spec_text, assets):
             '````',
             '',
         ])
-        rel_path = f'specs/001-curriculum-platform/slices/{slice_id}.context.md'
+        rel_path = f'specs/001-syllabus-platform/slices/{slice_id}.context.md'
         contexts[rel_path] = '\n'.join(out)
     return contexts
 
@@ -18304,7 +18304,7 @@ if __name__ == '__main__':
 
 ### F.3. check_current_spec.py
 
-<!-- embedded-asset: scripts/check_current_spec.py sha256=6b73e11f530ad8a331ebac771fcdd4e5d6f12682f5d3e4f3a3ed8372d0fd56f8 -->
+<!-- embedded-asset: scripts/check_current_spec.py sha256=56fe17bfefec328575cd2d621e12f906d20b079fc6cb75266841649284d767bb -->
 ````python
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
@@ -18314,7 +18314,7 @@ from pathlib import Path
 import csv, io, json, re, sys
 from extract_spec import read_assets
 
-BASE = 'specs/001-curriculum-platform/'
+BASE = 'specs/001-syllabus-platform/'
 REQ = re.compile(r'(?:GOAL|CAT|GEN|PED|PROG|UI|BILL|NOT|OPS|NFR|ADAPT|SHARE)-\d{3}')
 
 def require(condition, message):
@@ -18455,7 +18455,7 @@ if __name__=='__main__':
 
 ### F.4. check_contracts.py
 
-<!-- embedded-asset: scripts/check_contracts.py sha256=719b28a79eaef50fd594c50dc6cb9d2aedae9817aba21bfb5c64b95341c0c1cc -->
+<!-- embedded-asset: scripts/check_contracts.py sha256=845195fab34be33927bd72defc9feeb657bdd1c4571bab21599fc73689b8c78b -->
 ````python
 # GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
 #!/usr/bin/env python3
@@ -18474,7 +18474,7 @@ from referencing.jsonschema import DRAFT202012
 from openapi_spec_validator import OpenAPIV31SpecValidator
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE=ROOT/'specs/001-curriculum-platform'
+BASE=ROOT/'specs/001-syllabus-platform'
 CON=BASE/'contracts'
 EX=BASE/'examples'
 report={'json_schema_meta_checks':0,'openapi_schema_checks':0,'positive_fixtures':0,
@@ -18522,13 +18522,13 @@ positive_targets={
 'generation-request.byok.synthetic.json':uri('generation-request.schema.json'),
 'resource.synthetic.json':uri('resource.schema.json'),
 'resource-unknown-price.synthetic.json':uri('resource.schema.json'),
-'curriculum-candidate.synthetic.json':uri('curriculum.schema.json','#/$defs/modelCandidate'),
-'curriculum.synthetic.json':uri('curriculum.schema.json'),
+'syllabus-candidate.synthetic.json':uri('syllabus.schema.json','#/$defs/modelCandidate'),
+'syllabus.synthetic.json':uri('syllabus.schema.json'),
 'schedule.synthetic.json':oas_uri('Schedule'),
 'progress-event.synthetic.json':oas_uri('ProgressEventRequest'),
 'generation-request.formal-math.synthetic.json':uri('generation-request.schema.json'),
 'proficiency.synthetic.json':uri('proficiency.schema.json'),
-'public-curriculum.synthetic.json':uri('public-curriculum.schema.json'),
+'public-syllabus.synthetic.json':uri('public-syllabus.schema.json'),
 'publication-preview.synthetic.json':oas_uri('PublicationPreview'),
 'adaptation-proposal.synthetic.json':uri('adaptation-proposal.schema.json'),
 'diagnostic-session.synthetic.json':oas_uri('DiagnosticSession'),
@@ -18546,19 +18546,19 @@ for filename,target in positive_targets.items():
     else:
         report['positive_fixtures']+=1
 
-candidate=fixtures['curriculum-candidate.synthetic.json']
-canonical=fixtures['curriculum.synthetic.json']
+candidate=fixtures['syllabus-candidate.synthetic.json']
+canonical=fixtures['syllabus.synthetic.json']
 gen=fixtures['generation-request.hosted.synthetic.json']
 byok=fixtures['generation-request.byok.synthetic.json']
 resource=fixtures['resource.synthetic.json']
 schedule=fixtures['schedule.synthetic.json']
 negative=[]
 x=deepcopy(candidate);x['html']='<script>alert(1)</script>'
-negative.append(('candidate executable field',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('candidate executable field',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(candidate);x['activities'][3]['content']['answer_key']=['secret']
-negative.append(('assessment key leakage',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('assessment key leakage',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(canonical);x['mastered']=True
-negative.append(('model mastery field',x,positive_targets['curriculum.synthetic.json']))
+negative.append(('model mastery field',x,positive_targets['syllabus.synthetic.json']))
 x=deepcopy(gen);x['api_key']='not-a-real-key'
 negative.append(('raw key in generation',x,positive_targets['generation-request.hosted.synthetic.json']))
 x=deepcopy(byok);x['inference']['base_url']='https://example.invalid'
@@ -18577,27 +18577,27 @@ x=deepcopy(fixtures['owned-publications.synthetic.json']);x['items'][0]['account
 negative.append(('owner list rejects extra private identity',x,oas_uri('OwnedPublicationPage')))
 x=deepcopy(fixtures['owned-publication-revisions.synthetic.json']);x['items'][0]['reporter_identity']='private-marker'
 negative.append(('owner history rejects reporter identity',x,oas_uri('OwnedPublicationRevisionPage')))
-public=fixtures['public-curriculum.synthetic.json']
+public=fixtures['public-syllabus.synthetic.json']
 prof=fixtures['proficiency.synthetic.json']
 adapt=fixtures['adaptation-proposal.synthetic.json']
 formal=fixtures['generation-request.formal-math.synthetic.json']
 adoption=fixtures['adoption-request.synthetic.json']
 x=deepcopy(public);x['account_id']='private-account-marker'
-negative.append(('private account in public snapshot',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private account in public snapshot',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['objectives'][0]['prior_evidence_refs']=['private-attempt-marker']
-negative.append(('private prior evidence in public objective',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private prior evidence in public objective',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['activities'][0]['assessment_expectation']={'objective_ids':x['content']['activities'][0]['objective_ids'],'assurance':'reviewed_anchor_available','description':'Synthetic','answer_key':'private-solution-marker'}
-negative.append(('public assessment solution leakage',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('public assessment solution leakage',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['schedule']={'timezone':'private-timezone-marker'}
-negative.append(('private schedule in public content',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private schedule in public content',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['owned_subscription_ids']=['private-subscription-marker']
-negative.append(('private owned access in publication',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private owned access in publication',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(prof);x['objective_evidence'][0]['mastery_probability']=0.99
 negative.append(('uncalibrated ability probability',x,positive_targets['proficiency.synthetic.json']))
 x=deepcopy(prof);x['objective_evidence'][1]['status']='demonstrated'
 negative.append(('demonstrated without evidence',x,positive_targets['proficiency.synthetic.json']))
 x=deepcopy(candidate);x['adaptation_context']=deepcopy(canonical['adaptation_context'])
-negative.append(('model assigns server adaptation context',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('model assigns server adaptation context',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(adapt);x['proposed_waivers'][0]['qualifying_evidence_refs']=[]
 negative.append(('waiver without qualifying references',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(formal);x['instruction_preferences']['math_depth']='expert'
@@ -18617,7 +18617,7 @@ negative.append(('generated BYOK adoption carries hosted reservation',x,oas_uri(
 x=deepcopy(adoption);x['planning']['inference']=deepcopy(byok['inference'])
 negative.append(('deterministic adoption contains credentials',x,oas_uri('AdoptionRequest')))
 x=deepcopy(adapt);x['changes'][0]['kind']='reschedule'
-negative.append(('curriculum proposal used for schedule-only change',x,positive_targets['adaptation-proposal.synthetic.json']))
+negative.append(('syllabus proposal used for schedule-only change',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(adapt);del x['base_schedule_revision_id']
 negative.append(('adaptation lacks schedule concurrency binding',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(fixtures['publication-preview.synthetic.json']);del x['publisher']
@@ -18625,7 +18625,7 @@ negative.append(('publication preview omits public identity',x,oas_uri('Publicat
 x=deepcopy(adoption);x['planning']['template_origin']=None
 negative.append(('adoption without bound public origin',x,oas_uri('AdoptionRequest')))
 x=deepcopy(canonical);x['activities'][0]['mastery_gated']='yes'
-negative.append(('non-boolean mastery_gated rejected',x,positive_targets['curriculum.synthetic.json']))
+negative.append(('non-boolean mastery_gated rejected',x,positive_targets['syllabus.synthetic.json']))
 x=deepcopy(schedule);x['review_schedule_items']=[{'review_item_id':'rev-1','objective_id':'obj-1','activity_id':'act-1','status':'invalid_state','due_at':None,'interval_policy_version':'policy-v1'}]
 negative.append(('invalid ReviewScheduleItem status rejected',x,positive_targets['schedule.synthetic.json']))
 for name,data,target in negative:
@@ -18681,7 +18681,7 @@ sem('duration upper total',sum(effort(v['duration_estimate']['upper_bounds']) fo
 refs={r['resource_version_id'] for v in a.values() for r in v['resource_assignments']} | {c['resource_version_id'] for c in canonical['certification_options']}
 sem('catalog provenance reference equality',refs==set(canonical['provenance']['source_resource_version_ids'])=={resource['resource_version_id']})
 sem('candidate and canonical plan agree',all(canonical[k]==v for k,v in candidate.items() if k!='candidate_schema_version'))
-sem('archived candidate hash matches',hashlib.sha256((EX/'curriculum-candidate.synthetic.json').read_bytes()).hexdigest()==canonical['provenance']['candidate_sha256'])
+sem('archived candidate hash matches',hashlib.sha256((EX/'syllabus-candidate.synthetic.json').read_bytes()).hexdigest()==canonical['provenance']['candidate_sha256'])
 sem('schedule references resolve',all(set(s['activity_ids'])<=set(a) for s in schedule['sessions']))
 sem('schedule point totals agree',sum(s['duration_minutes'] for s in schedule['sessions'])==canonical['total_estimated_minutes'])
 sessions={aid:s['session_id'] for s in schedule['sessions'] for aid in s['activity_ids']}
@@ -18722,7 +18722,7 @@ def keys_recursive(value):
     if isinstance(value,list):return set().union(*(keys_recursive(v) for v in value))
     return set()
 sem('public fixture excludes private keys at every level',not (keys_recursive(public)&forbidden))
-sem('private canonical object rejected by public schema',bool(validate_ref(canonical,positive_targets['public-curriculum.synthetic.json'])))
+sem('private canonical object rejected by public schema',bool(validate_ref(canonical,positive_targets['public-syllabus.synthetic.json'])))
 sem('public collection operations explicitly unauthenticated',oas['paths']['/publications']['get'].get('security')==[] and oas['paths']['/publications/{publication_id}']['get'].get('security')==[])
 sem('private proficiency cannot be overwritten through a modeled endpoint',set(oas['paths']['/me/proficiency'])=={'get'} and oas['paths']['/me/proficiency']['get'].get('security')!=[])
 sem('vote mutations use idempotent set and remove',set(oas['paths']['/publications/{publication_id}/revisions/{publication_revision_id}/my-vote'])=={'get','put','delete'})
@@ -18751,7 +18751,7 @@ def walk_refs(value,root,source_path):
                 p=(source_path.parent/path).resolve()
                 doc=json.loads(p.read_text()) if p.suffix=='.json' else yaml.safe_load(p.read_text())
                 pointer(doc,fragment)
-            elif path.startswith('https://curriculum.example.invalid/'):
+            elif path.startswith('https://syllabus.example.invalid/'):
                 matches=[s for s in schemas.values() if s.get('$id')==path]
                 if len(matches)!=1:raise ValueError('Unresolved schema ID '+path)
                 pointer(matches[0],fragment)

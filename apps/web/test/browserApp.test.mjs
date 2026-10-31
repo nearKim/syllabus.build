@@ -5,12 +5,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  createCurriculumSignalStore,
-  createCurriculumWebAppController,
-  curriculumTagsOf,
+  createSyllabusSignalStore,
+  createSyllabusWebAppController,
+  syllabusTagsOf,
   getDialogLightDismissFallbackScript,
-  mountCurriculumWebApp,
-  renderCurriculumWebAppHtml,
+  mountSyllabusWebApp,
+  renderSyllabusWebAppHtml,
 } from "../src/index.ts";
 import { createWebAppServer } from "../src/server.mjs";
 
@@ -54,7 +54,7 @@ function mountWithClicks(initialState) {
     addEventListener: (type, listener) => { listeners[type] = listener; },
     querySelector: (selector) => fields[selector] ?? null,
   };
-  const app = mountCurriculumWebApp(root, initialState);
+  const app = mountSyllabusWebApp(root, initialState);
   const click = (dataset, values = {}) => {
     Object.assign(fields, values);
     listeners.click({ target: { closest: () => ({ dataset }) } });
@@ -68,8 +68,8 @@ function mountWithClicks(initialState) {
   return { app, root, click, change, submit };
 }
 
-test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG DAG Map + Outline, MathML, opaque surfaces, and <dialog closedby='any'> modals", () => {
-  const html = renderCurriculumWebAppHtml();
+test("renderSyllabusWebAppHtml renders Section 9.3 navigation hierarchy, SVG DAG Map + Outline, MathML, opaque surfaces, and <dialog closedby='any'> modals", () => {
+  const html = renderSyllabusWebAppHtml();
 
   // 1. Section 9.3 Top-Level Destinations & Learn Sub-Destinations
   for (const topDest of ["Learn", "Explore", "Settings"]) {
@@ -96,7 +96,7 @@ test("renderCurriculumWebAppHtml renders Section 9.3 navigation hierarchy, SVG D
   assert.ok(html.includes('data-opaque-surface="true"'));
 
   // 3. Accessible MathML formula rendered on opaque surface, in the worked example's concept check
-  const example = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-example", studyDetailOpen: true }));
+  const example = drawerOf(renderSyllabusWebAppHtml({ selectedActivityId: "activity-example", studyDetailOpen: true }));
   assert.ok(example.includes("<math"));
   assert.ok(example.includes('aria-label="Mathematical expression:'));
 
@@ -201,9 +201,9 @@ test("apps/web/public/styles.css enforces dialog:modal and dialog::backdrop scro
   assert.ok(css.includes("@media (forced-colors: active)"));
 });
 
-test("mountCurriculumWebApp and createCurriculumWebAppController deterministically update tabs, Plan Map/Outline selection, and idempotent Today progress", () => {
+test("mountSyllabusWebApp and createSyllabusWebAppController deterministically update tabs, Plan Map/Outline selection, and idempotent Today progress", () => {
   const root = { innerHTML: "" };
-  const app = mountCurriculumWebApp(root);
+  const app = mountSyllabusWebApp(root);
 
   assert.ok(root.innerHTML.includes('data-current-top-level="Learn"'));
   assert.ok(root.innerHTML.includes('data-current-learn-sub="Today"'));
@@ -265,7 +265,7 @@ test("mountCurriculumWebApp and createCurriculumWebAppController deterministical
 });
 
 test("Study flow matrix follows the chosen flow order: theory_first vs application_first", () => {
-  const theoryFirst = renderCurriculumWebAppHtml();
+  const theoryFirst = renderSyllabusWebAppHtml();
   assert.deepEqual(columnTitles(theoryFirst), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
   assert.ok(todayBoard(theoryFirst).includes('data-action="set-flow-order" data-flow-order="theory_first" aria-pressed="true"'));
 
@@ -292,16 +292,16 @@ test("Study flow matrix follows the chosen flow order: theory_first vs applicati
   assert.ok(unitTwo.includes('data-seg="in" data-style="dashed"'));
   assert.ok(unitTwo.includes('class="arrow-head"'));
 
-  const codeFirst = renderCurriculumWebAppHtml({ flowOrder: "application_first" });
+  const codeFirst = renderSyllabusWebAppHtml({ flowOrder: "application_first" });
   assert.deepEqual(columnTitles(codeFirst), ["Unit", "Code", "Lecture", "Deep Dive", "Review", "Gate"]);
   const codeRow = unitRow(codeFirst, "module-foundations");
   assert.ok(codeRow.indexOf('data-activity-id="activity-coding"') < codeRow.indexOf('data-activity-id="activity-theory"'));
 
-  assert.deepEqual(columnTitles(renderCurriculumWebAppHtml({ flowOrder: "balanced" })), ["Unit", "Lecture", "Code", "Deep Dive", "Review", "Gate"]);
+  assert.deepEqual(columnTitles(renderSyllabusWebAppHtml({ flowOrder: "balanced" })), ["Unit", "Lecture", "Code", "Deep Dive", "Review", "Gate"]);
 });
 
 test("Deep Dive and Review switches collapse columns without hiding required work", () => {
-  const skipped = renderCurriculumWebAppHtml({ deepDive: "skipped" });
+  const skipped = renderSyllabusWebAppHtml({ deepDive: "skipped" });
   assert.deepEqual(columnTitles(skipped), ["Unit", "Lecture", "Code", "Review", "Gate"]);
   const board = todayBoard(skipped);
   assert.equal(board.includes('data-activity-id="activity-reflection"'), false, "optional enrichment should be hidden");
@@ -312,7 +312,7 @@ test("Deep Dive and Review switches collapse columns without hiding required wor
   // An off switch offers the value that turns it back on.
   assert.ok(board.includes('role="switch" aria-checked="false" data-action="set-deep-dive" data-deep-dive="included">Deep Dive'));
 
-  const compact = renderCurriculumWebAppHtml({ spacedReview: "compact" });
+  const compact = renderSyllabusWebAppHtml({ spacedReview: "compact" });
   assert.deepEqual(columnTitles(compact), ["Unit", "Lecture", "Deep Dive", "Code", "Gate"]);
   assert.ok(todayBoard(compact).includes('role="switch" aria-checked="false" data-action="set-spaced-review" data-spaced-review="included">Review'));
   const gateCell = unitRow(compact, "module-attention").match(/<td class="flow-cell" data-track="gate".*?<\/td>/s)?.[0] ?? "";
@@ -320,7 +320,7 @@ test("Deep Dive and Review switches collapse columns without hiding required wor
 
   // The same switches drive the mounted app, and unknown values are rejected at the boundary.
   const root = { innerHTML: "" };
-  const app = mountCurriculumWebApp(root);
+  const app = mountSyllabusWebApp(root);
   assert.equal(app.applyUiAction("set-flow-order", { flowOrder: "application_first" }).handled, true);
   assert.equal(app.applyUiAction("set-deep-dive", { deepDive: "skipped" }).handled, true);
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Code", "Lecture", "Review", "Gate"]);
@@ -331,30 +331,30 @@ test("Deep Dive and Review switches collapse columns without hiding required wor
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Code", "Review", "Gate"]);
 });
 
-test("Today opens with the active curricula queue, then the focused curriculum header attached directly to its Study flow", () => {
-  const html = renderCurriculumWebAppHtml();
+test("Today opens with the active syllabi queue, then the focused syllabus header attached directly to its Study flow", () => {
+  const html = renderSyllabusWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
-  for (const removed of ["Next session", "In this session", "Why this is next", 'class="macro-stage"', 'class="status-banner"', 'class="today-next"', '<details class="today-curriculum-overview">']) {
+  for (const removed of ["Next session", "In this session", "Why this is next", 'class="macro-stage"', 'class="status-banner"', 'class="today-next"', '<details class="today-syllabus-overview">']) {
     assert.equal(today.includes(removed), false, `Today still renders ${removed}`);
   }
   assert.equal(plan.includes('class="macro-stage"'), false, "Plan still renders the unit strip");
 
-  // Today opens directly with the focused curriculum Study flow workspace above the fold (no redundant Today heading in the body), with New curriculum in the sidebar and Share with Community in the curriculum header.
+  // Today opens directly with the focused syllabus Study flow workspace above the fold (no redundant Today heading in the body), with New syllabus in the sidebar and Share with Community in the syllabus header.
   assert.match(
     today,
-    /^id="panel-learn-today"[^>]*>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-curricula-grid" aria-label="Active curricula"[^>]*>/,
+    /^id="panel-learn-today"[^>]*>\s*<div class="today-active-workspace">[\s\S]*?<section class="today-syllabi-grid" aria-label="Active syllabi"[^>]*>/,
   );
   assert.equal(today.includes('<h1 class="page-title">Today</h1>'), false, "Today body should not repeat the redundant Today heading");
-  assert.match(html, /class="sidebar-new-curriculum-btn"[^>]*data-dialog-id="dialog-new-curriculum"/);
+  assert.match(html, /class="sidebar-new-syllabus-btn"[^>]*data-dialog-id="dialog-new-syllabus"/);
   const card = today.match(/<header class="today-unified-header" data-opaque-surface="true">([\s\S]*?)<\/header>\s*<section class="flow-board"/)?.[1];
-  assert.ok(card, "the focused curriculum header must sit directly above its Study flow board");
+  assert.ok(card, "the focused syllabus header must sit directly above its Study flow board");
   for (const part of [
     '<h1 class="page-title today-selected-title">Build and Evaluate RAG Systems in Python</h1>',
     '<span class="today-selected-progress">0/5 completed · 83m left</span>',
     'class="btn-ghost-share" data-action="open-dialog" data-dialog-id="dialog-publication-preview"',
-    '<select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">',
-    '<option value="__new_curriculum__" data-action-option="new-curriculum"',
+    '<select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-syllabus" data-tom-select="plan">',
+    '<option value="__new_syllabus__" data-action-option="new-syllabus"',
   ]) {
     assert.ok(card.includes(part), `the header card is missing ${part}`);
   }
@@ -365,7 +365,7 @@ test("Today opens with the active curricula queue, then the focused curriculum h
 
   // With every scheduled activity closed, no node is marked next-up and progress shows 5/5 completed.
   const allDone = Object.fromEntries(["activity-theory", "activity-example", "activity-coding", "activity-quiz", "activity-review", "activity-reflection"].map((id) => [id, "completed"]));
-  const finished = renderCurriculumWebAppHtml({ activityStates: allDone });
+  const finished = renderSyllabusWebAppHtml({ activityStates: allDone });
   const finishedStart = finished.indexOf('<header class="today-unified-header"');
   const finishedCard = finished.slice(finishedStart, finished.indexOf("</header>", finishedStart));
   assert.ok(finishedCard.includes('<span class="today-selected-progress">5/5 completed</span>'));
@@ -373,7 +373,7 @@ test("Today opens with the active curricula queue, then the focused curriculum h
 });
 
 test("flowchart cards keep one shape in every order: title, duration, optional mark, and check only", () => {
-  const orders = ["theory_first", "application_first", "balanced"].map((flowOrder) => renderCurriculumWebAppHtml({ flowOrder }));
+  const orders = ["theory_first", "application_first", "balanced"].map((flowOrder) => renderSyllabusWebAppHtml({ flowOrder }));
   const cardOf = (html, id) => todayBoard(html).match(new RegExp(`<article class="node-card" data-activity-id="${id}"[\\s\\S]*?</article>`))?.[0];
   for (const id of ["activity-theory", "activity-example", "activity-coding", "activity-review", "activity-reflection"]) {
     const [theory, codeFirst, balanced] = orders.map((html) => cardOf(html, id));
@@ -401,7 +401,7 @@ test("flowchart cards keep one shape in every order: title, duration, optional m
 
 test("the drawer leads with the material and plain guidance, without jargon or a list of neighbors", () => {
   const drawerFor = (activityId, moduleId, extra = {}) =>
-    drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: activityId, selectedModuleId: moduleId, studyDetailOpen: true, ...extra }));
+    drawerOf(renderSyllabusWebAppHtml({ selectedActivityId: activityId, selectedModuleId: moduleId, studyDetailOpen: true, ...extra }));
   const visible = (html) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   const theory = drawerFor("activity-theory", "module-foundations");
   const coding = drawerFor("activity-coding", "module-foundations");
@@ -453,14 +453,14 @@ test("the drawer leads with the material and plain guidance, without jargon or a
 });
 
 test("Today has no detached Study block, and the drawer ends worked examples, quizzes, and reviews with the plan's concept check", () => {
-  const html = renderCurriculumWebAppHtml();
+  const html = renderSyllabusWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const progress = html.slice(html.indexOf('id="panel-learn-progress"'), html.indexOf('id="panel-learn-resources"'));
   assert.equal(/id="study-workspace"|<h2>Study<\/h2>|Two-Layer|data-action="submit-practice"/.test(today), false, "Today still renders the detached Study block");
-  const audit = progress.match(/<details class="today-curriculum-overview evidence-technical-details">[\s\S]*?<\/details>/)?.[0] ?? "";
+  const audit = progress.match(/<details class="today-syllabus-overview evidence-technical-details">[\s\S]*?<\/details>/)?.[0] ?? "";
   assert.ok(audit.includes("<h3>Honest Two-Layer Status Summary</h3>"), "the status summary sits in the Progress audit disclosure");
 
-  const drawerFor = (selectedActivityId, extra = {}) => drawerOf(renderCurriculumWebAppHtml({ selectedActivityId, studyDetailOpen: true, ...extra }));
+  const drawerFor = (selectedActivityId, extra = {}) => drawerOf(renderSyllabusWebAppHtml({ selectedActivityId, studyDetailOpen: true, ...extra }));
   const checkOf = (drawer) => drawer.match(/<section id="study-workspace" class="study-workspace" aria-label="Concept check"[\s\S]*?<\/section>/)?.[0] ?? "";
   const legendOf = (check) => check.match(/<legend>([^<]+)<\/legend>/)?.[1];
   const countOf = (drawer) => drawer.match(/<span class="subtasks-count">([^<]+)<\/span>/)?.[1];
@@ -478,14 +478,14 @@ test("Today has no detached Study block, and the drawer ends worked examples, qu
   for (const id of ["activity-theory", "activity-coding"]) assert.equal(checkOf(drawerFor(id)), "", `${id} has a concept check`);
 
   // Each plan asks its own question. A plan checked by a rubric has no formula and no concept check.
-  const linear = checkOf(drawerFor("la-example-projection", { selectedCurriculumId: "curriculum-linear-algebra-002" }));
+  const linear = checkOf(drawerFor("la-example-projection", { selectedSyllabusId: "syllabus-linear-algebra-002" }));
   assert.equal(legendOf(linear), "Why does a real symmetric matrix A admit an orthogonal eigenbasis Q?");
   assert.ok(linear.includes("<mi>Λ</mi>"), "the spectral theorem formula renders its Lambda");
   for (const id of ["tl-close-austerlitz", "tl-gate-war-and-peace", "tl-review-war-and-peace"]) {
-    assert.equal(checkOf(drawerFor(id, { selectedCurriculumId: "curriculum-tolstoy-lit-003" })), "", `${id} has a concept check`);
+    assert.equal(checkOf(drawerFor(id, { selectedSyllabusId: "syllabus-tolstoy-lit-003" })), "", `${id} has a concept check`);
   }
   const adopted = (publicationId, moduleId, activityId) => checkOf(drawerFor(activityId, {
-    adoptions: [{ accountId: "learner-default", publicationId, moduleIds: [moduleId], active: true }], selectedCurriculumId: `adopted-${publicationId}`,
+    adoptions: [{ accountId: "learner-default", publicationId, moduleIds: [moduleId], active: true }], selectedSyllabusId: `adopted-${publicationId}`,
   }));
   assert.equal(legendOf(adopted("publication-statmech-001", "sm-module-ensembles", "sm-example-two-level")), "What does the partition function Z do in the Boltzmann distribution?");
   assert.equal(legendOf(adopted("publication-rust-async-001", "rs-module-futures", "rs-example-waker")), "What must a future do before its poll returns Poll::Pending?");
@@ -524,7 +524,7 @@ test("Today has no detached Study block, and the drawer ends worked examples, qu
   assert.deepEqual(practiceOf(app.getState()), fresh);
   assert.equal(/practice-note|practice-feedback| checked/.test(live()), false);
   click({ action: "request-hint" }, chosen);
-  change("curriculum-linear-algebra-002");
+  change("syllabus-linear-algebra-002");
   assert.deepEqual(practiceOf(app.getState()), fresh);
 });
 
@@ -633,7 +633,7 @@ test("the status control sets three states, celebrates Done, and then offers the
 });
 
 test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then the lab specification", () => {
-  const lab = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-coding", studyDetailOpen: true }));
+  const lab = drawerOf(renderSyllabusWebAppHtml({ selectedActivityId: "activity-coding", studyDetailOpen: true }));
   const section = (id) => lab.match(new RegExp(`<section class="inspector-section[^"]*" aria-labelledby="learn-detail-inspector-${id}">([\\s\\S]*?)</section>`))?.[1] ?? "";
   assert.match(section("brief"), /Deliverable brief[\s\S]*Run the external test suite to verify lossless UTF-8 round-trip encoding\.[\s\S]*<li>A reversible tokenizer and a tensor shape validator/);
   assert.deepEqual([...section("specs").matchAll(/<span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), ["25 min (19–38 min)", "Formal", "Required", "Local or external IDE"]);
@@ -652,25 +652,25 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   assert.equal(lab.includes('<table class="meta-table">'), false, "the lab sheet shows its specs as chips");
 
   // A reading activity keeps the plain details table and has no lab sections.
-  const reading = drawerOf(renderCurriculumWebAppHtml({ selectedActivityId: "activity-theory", studyDetailOpen: true }));
+  const reading = drawerOf(renderSyllabusWebAppHtml({ selectedActivityId: "activity-theory", studyDetailOpen: true }));
   assert.equal(/Deliverable brief|:verify:|Open lab specification/.test(reading), false);
   assert.ok(reading.includes('<table class="meta-table">'));
 
   // Rigor is the plan's math depth, and a topic override wins over it.
-  const example = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../specs/001-curriculum-platform/examples/curriculum.synthetic.json"), "utf8"));
-  const rigor = (curriculum) => drawerOf(renderCurriculumWebAppHtml({ curriculum })).match(/Rigor<\/span><\/th><td>([^<]+)<\/td>/)?.[1];
+  const example = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../specs/001-syllabus-platform/examples/syllabus.synthetic.json"), "utf8"));
+  const rigor = (syllabus) => drawerOf(renderSyllabusWebAppHtml({ syllabus })).match(/Rigor<\/span><\/th><td>([^<]+)<\/td>/)?.[1];
   assert.equal(rigor(example), "Applied");
   const overridden = { ...example, instruction_preferences_applied: { ...example.instruction_preferences_applied, topic_math_depth_overrides: [{ topic_id: "topic-tokenization", math_depth: "formal" }] } };
   assert.equal(rigor(overridden), "Formal");
 });
 
-test("Study flow is a flat unboxed workspace while curriculumswitcher cards use clean surface cards", () => {
+test("Study flow is a flat unboxed workspace while syllabusswitcher cards use clean surface cards", () => {
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   // Every declaration block whose selector list ends with this selector.
   const rule = (selector) => [...css.matchAll(new RegExp(`\\n${selector.replace(/\./g, "\\.")} \\{([^}]*)\\}`, "g"))].map((match) => match[1]).join("");
   assert.ok(rule(".flow-board").includes("border: 0;"), ".flow-board must not have an outer border box");
   assert.ok(rule(".flow-board").includes("background: transparent;"), ".flow-board must have a transparent background");
-  for (const selector of [".today-bottom-grid", ".curriculum-card"]) {
+  for (const selector of [".today-bottom-grid", ".syllabus-card"]) {
     for (const declaration of ["padding: var(--space-5);", "border: var(--hairline);", "border-radius: var(--radius-surface);", "background: var(--color-surface);"]) {
       assert.ok(rule(selector).includes(declaration), `${selector} is missing ${declaration}`);
     }
@@ -682,43 +682,43 @@ test("Study flow is a flat unboxed workspace while curriculumswitcher cards use 
   }
 
   // Both lists share one card. Each heading carries a count, and an empty list shows a quiet box with an icon.
-  const html = renderCurriculumWebAppHtml();
-  const bottom = html.match(/<section class="today-bottom-grid"[^>]*>([\s\S]*?)<\/section>\s*<section class="today-curricula-grid"/)?.[1] ?? "";
+  const html = renderSyllabusWebAppHtml();
+  const bottom = html.match(/<section class="today-bottom-grid"[^>]*>([\s\S]*?)<\/section>\s*<section class="today-syllabi-grid"/)?.[1] ?? "";
   assert.ok(bottom.includes('<h2 id="review-queue-title">Review queue <span class="count-badge">1</span></h2>'));
   assert.ok(bottom.includes('<h2 id="completed-history-title">Completed work <span class="count-badge">0</span></h2>'));
   assert.ok(bottom.includes('<li class="today-activity-item step-row" data-activity-id="activity-review"'));
   assert.match(bottom, /<p class="empty-state"><svg class="sf-icon"[\s\S]*?<\/svg><span>No self-reported completions yet\.<\/span><\/p>/);
-  const done = renderCurriculumWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
+  const done = renderSyllabusWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
   assert.ok(done.includes('Completed work <span class="count-badge">1</span>'));
   assert.equal(done.includes("No self-reported completions yet."), false);
 });
 
 test("Today queues every active plan, and the select, Resume, and Open Plan switch to one", () => {
-  const ids = ["curriculum-rag-python-001", "curriculum-linear-algebra-002", "curriculum-tolstoy-lit-003"];
-  const html = renderCurriculumWebAppHtml();
+  const ids = ["syllabus-rag-python-001", "syllabus-linear-algebra-002", "syllabus-tolstoy-lit-003"];
+  const html = renderSyllabusWebAppHtml();
   const select = html.match(/<select id="selected-plan-control"[^>]*>([\s\S]*?)<\/select>/)?.[1] ?? "";
-  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), [...ids, "__new_curriculum__"]);
-  assert.match(select, /<option value="curriculum-rag-python-001"[^>]*selected>Build and Evaluate RAG Systems in Python<\/option>/);
+  assert.deepEqual([...select.matchAll(/<option value="([^"]+)"/g)].map((match) => match[1]), [...ids, "__new_syllabus__"]);
+  assert.match(select, /<option value="syllabus-rag-python-001"[^>]*selected>Build and Evaluate RAG Systems in Python<\/option>/);
 
-  const cardsOf = (page) => [...(page.match(/<section class="today-curricula-grid"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "").matchAll(/<article class="curriculum-card" data-curriculum-id="([^"]+)"[\s\S]*?<\/article>/g)];
+  const cardsOf = (page) => [...(page.match(/<section class="today-syllabi-grid"[^>]*>([\s\S]*?)<\/section>/)?.[1] ?? "").matchAll(/<article class="syllabus-card" data-syllabus-id="([^"]+)"[\s\S]*?<\/article>/g)];
   const text = (card) => card.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const cards = cardsOf(html);
   assert.deepEqual(cards.map((match) => match[1]), ids);
   assert.deepEqual(cards.map(([card]) => card.match(/<p class="domain-pill">([^<]+)<\/p>/)?.[1]), ["Engineering · Reviewed Quiz", "Mathematics · Public Quiz Bank", "Literature · Self-Check Rubric"]);
   assert.equal(text(cards[0][0]), "Engineering · Reviewed Quiz Build and Evaluate RAG Systems in Python Upcoming session: 0/3 completed · 65m left Read Subword Tokenization &amp; Sequence Packing Notes 15m Lecture Resume →");
   assert.ok(cards[0][0].includes('aria-current="true"') && !cards[1][0].includes("aria-current"), "only the selected plan's card is marked");
-  assert.equal(cards[0][0].includes('class="macro-bar"'), false, "curriculum cards omit the redundant progress bar rule");
+  assert.equal(cards[0][0].includes('class="macro-bar"'), false, "syllabus cards omit the redundant progress bar rule");
 
   // Each plan counts only its own progress.
   const { app, root, click, change } = mountWithClicks();
-  assert.equal(app.getState().selectedCurriculumId, "curriculum-rag-python-001");
+  assert.equal(app.getState().selectedSyllabusId, "syllabus-rag-python-001");
   click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
   assert.match(text(cardsOf(root.innerHTML)[0][0]), /1\/3 completed · 50m left Worked Example/);
   assert.match(text(cardsOf(root.innerHTML)[1][0]), /0\/3 completed · 65m left/);
 
   // The select switches Today's header and Study flow to that plan, and the other plan keeps its progress.
-  change("curriculum-linear-algebra-002");
-  assert.match(root.innerHTML, /<option value="curriculum-linear-algebra-002"[^>]*selected>Linear Algebra &amp; Spectral Methods<\/option>/);
+  change("syllabus-linear-algebra-002");
+  assert.match(root.innerHTML, /<option value="syllabus-linear-algebra-002"[^>]*selected>Linear Algebra &amp; Spectral Methods<\/option>/);
   assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Eigenvalues &amp; Orthogonal Projections</span>'));
   assert.match(text(cardsOf(root.innerHTML)[0][0]), /1\/3 completed · 50m left/);
   assert.ok(root.innerHTML.includes('data-study-minutes="15"'));
@@ -729,24 +729,24 @@ test("Today queues every active plan, and the select, Resume, and Open Plan swit
   app.navigateLearnSubDestination("Today");
 
   // Resume on a card selects that plan and opens its next activity in the drawer.
-  const resume = cardsOf(root.innerHTML)[2][0].match(/data-action="(resume-curriculum)" data-curriculum-id="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
-  click({ action: resume[1], curriculumId: resume[2], activityId: resume[3], moduleId: resume[4] });
-  assert.equal(app.getState().selectedCurriculumId, "curriculum-tolstoy-lit-003");
+  const resume = cardsOf(root.innerHTML)[2][0].match(/data-action="(resume-syllabus)" data-syllabus-id="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"/);
+  click({ action: resume[1], syllabusId: resume[2], activityId: resume[3], moduleId: resume[4] });
+  assert.equal(app.getState().selectedSyllabusId, "syllabus-tolstoy-lit-003");
   assert.ok(drawerOf(root.innerHTML).includes(">Read War and Peace: Book Three and the Opening of Book Nine</h2>"));
   assert.ok(drawerOf(root.innerHTML).includes('data-open="true"'));
 
   // Open Plan selects that plan and shows its Plan page. An unknown plan id is rejected.
-  click({ action: "open-curriculum-plan", curriculumId: "curriculum-linear-algebra-002" });
+  click({ action: "open-syllabus-plan", syllabusId: "syllabus-linear-algebra-002" });
   assert.ok(root.innerHTML.includes('data-current-learn-sub="Plan"') && root.innerHTML.includes('data-selected-module-id="la-module-spectral"'));
-  assert.match(root.innerHTML, /class="plan-switch" data-action="select-curriculum" data-curriculum-id="curriculum-linear-algebra-002" aria-current="true"/);
+  assert.match(root.innerHTML, /class="plan-switch" data-action="select-syllabus" data-syllabus-id="syllabus-linear-algebra-002" aria-current="true"/);
   assert.ok(root.innerHTML.includes('<h1 class="page-title plan-title">Linear Algebra &amp; Spectral Methods</h1>'));
-  click({ action: "select-curriculum", curriculumId: "curriculum-unknown" });
-  assert.equal(app.getState().selectedCurriculumId, "curriculum-linear-algebra-002");
+  click({ action: "select-syllabus", syllabusId: "syllabus-unknown" });
+  assert.equal(app.getState().selectedSyllabusId, "syllabus-linear-algebra-002");
 });
 
 test("a plan with no public quiz bank gates on a self-check rubric in the drawer", () => {
   const { root, click, change } = mountWithClicks();
-  change("curriculum-tolstoy-lit-003");
+  change("syllabus-tolstoy-lit-003");
   assert.deepEqual(columnTitles(root.innerHTML), ["Unit", "Lecture", "Deep Dive", "Review", "Gate"], "a reading plan has no empty Code column");
   const gate = todayBoard(root.innerHTML).match(/class="gate-diamond" data-action="(select-outline-activity)" data-activity-id="(tl-gate-war-and-peace)" data-module-id="([^"]+)"/);
   assert.ok(gate, "the War and Peace gate is on the Study flow");
@@ -761,13 +761,13 @@ test("a plan with no public quiz bank gates on a self-check rubric in the drawer
   assert.ok(drawerOf(root.innerHTML).includes('<span class="proficiency-pill" data-proficiency-status="unassessed">'));
 
   // The review revisits the same rubric. A gate backed by a quiz bank shows none.
-  const drawerFor = (selectedCurriculumId, selectedActivityId) => drawerOf(renderCurriculumWebAppHtml({ selectedCurriculumId, selectedActivityId, studyDetailOpen: true }));
-  assert.ok(rubricOf(drawerFor("curriculum-tolstoy-lit-003", "tl-review-war-and-peace")).includes("Book Nine"));
-  assert.ok(rubricOf(drawerFor("curriculum-tolstoy-lit-003", "tl-gate-anna-karenina")).includes("Part Seven"));
-  assert.equal(rubricOf(drawerFor("curriculum-linear-algebra-002", "la-gate-spectral")), "");
-  assert.equal(rubricOf(drawerFor("curriculum-rag-python-001", "activity-quiz")), "");
+  const drawerFor = (selectedSyllabusId, selectedActivityId) => drawerOf(renderSyllabusWebAppHtml({ selectedSyllabusId, selectedActivityId, studyDetailOpen: true }));
+  assert.ok(rubricOf(drawerFor("syllabus-tolstoy-lit-003", "tl-review-war-and-peace")).includes("Book Nine"));
+  assert.ok(rubricOf(drawerFor("syllabus-tolstoy-lit-003", "tl-gate-anna-karenina")).includes("Part Seven"));
+  assert.equal(rubricOf(drawerFor("syllabus-linear-algebra-002", "la-gate-spectral")), "");
+  assert.equal(rubricOf(drawerFor("syllabus-rag-python-001", "activity-quiz")), "");
   // An activity in a later unit opens without its module being named.
-  assert.ok(drawerFor("curriculum-rag-python-001", "activity-quiz").includes(">Formative Checkpoint: Tokenization &amp; Attention Shapes</h2>"));
+  assert.ok(drawerFor("syllabus-rag-python-001", "activity-quiz").includes(">Formative Checkpoint: Tokenization &amp; Attention Shapes</h2>"));
 });
 
 // Explore helpers. A listing card by publication id, the card titles in order, and the buttons in a part of the page
@@ -801,7 +801,7 @@ function trailOf(html) {
 
 test("Explore lists the community Marketplace with concise tags, tag filters, sorting, and per-account votes", () => {
   const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  const html = renderCurriculumWebAppHtml({ topLevel: "Explore" });
+  const html = renderSyllabusWebAppHtml({ topLevel: "Explore" });
   assert.deepEqual(titlesOf(html), [
     "Rust Async Runtime Internals", "Linear Algebra &amp; Spectral Methods", "Statistical Mechanics &amp; Thermodynamics",
     "Tolstoy's Major Novels: War &amp; Peace and Anna Karenina", "Build and Evaluate RAG Systems in Python",
@@ -829,18 +829,18 @@ test("Explore lists the community Marketplace with concise tags, tag filters, so
     assert.equal(html.slice(html.indexOf('<div class="marketplace-grid">'), html.indexOf("load-more-row")).includes(clutter), false, `a card still shows ${clutter}`);
   }
   // The learner's own listing and the plans they already have offer Open instead of Details.
-  assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">Open<\/button>/);
-  assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span><button type="button" class="btn-secondary" data-action="open-curriculum-plan"/);
+  assert.match(cardOf(html, "publication-synthetic-001"), /<span class="owned-badge">Yours<\/span><button type="button" class="btn-secondary" data-action="open-syllabus-plan" data-syllabus-id="syllabus-rag-python-001">Open<\/button>/);
+  assert.match(cardOf(html, "publication-linear-algebra-001"), /<span class="owned-badge">In your plans<\/span><button type="button" class="btn-secondary" data-action="open-syllabus-plan"/);
 
   // The panel and the cards share one tag vocabulary. The active tag is pressed in both places and clears its filter.
-  const physics = renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { category: "Math & Sciences", subject: "Physics" } });
+  const physics = renderSyllabusWebAppHtml({ topLevel: "Explore", marketplaceFilters: { category: "Math & Sciences", subject: "Physics" } });
   assert.deepEqual(titlesOf(physics), ["Statistical Mechanics &amp; Thermodynamics"]);
   assert.match(facetRowOf(physics, "subject"), /data-facet="subject" data-value="All" data-subject="Physics" aria-pressed="true"><svg class="sf-icon"[\s\S]*?<\/svg>Physics<svg class="sf-icon"/);
   assert.ok(cardOf(physics, "publication-statmech-001").includes('data-facet="subject" data-value="All" aria-pressed="true" aria-label="Filter by Physics">Physics</button>'));
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { category: "Humanities", subject: "Literature" } })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceFilters: { difficulty: "Applied" } })), ["Rust Async Runtime Internals"]);
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
-  assert.deepEqual(titlesOf(renderCurriculumWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
+  assert.deepEqual(titlesOf(renderSyllabusWebAppHtml({ topLevel: "Explore", marketplaceFilters: { category: "Humanities", subject: "Literature" } })), ["Tolstoy's Major Novels: War &amp; Peace and Anna Karenina"]);
+  assert.deepEqual(titlesOf(renderSyllabusWebAppHtml({ topLevel: "Explore", marketplaceFilters: { difficulty: "Applied" } })), ["Rust Async Runtime Internals"]);
+  assert.deepEqual(titlesOf(renderSyllabusWebAppHtml({ topLevel: "Explore", marketplaceSort: "most_adopted" }))[0], "Build and Evaluate RAG Systems in Python");
+  assert.deepEqual(titlesOf(renderSyllabusWebAppHtml({ topLevel: "Explore", marketplaceSort: "newest" }))[0], "Build and Evaluate RAG Systems in Python");
 
   // The controls drive the mounted app. Search runs on submit, and unknown filter values are rejected.
   const { app, root, click, submit } = mountWithClicks({ topLevel: "Explore" });
@@ -864,7 +864,7 @@ test("Explore lists the community Marketplace with concise tags, tag filters, so
 
 test("Explore filters drill from Category to Subject to Topic, cross the tiers with Difficulty and Format, and reset from the trail", () => {
   // With no filter, the panel shows every tier in taxonomy order with live counts, and there is no trail.
-  const html = renderCurriculumWebAppHtml({ topLevel: "Explore" });
+  const html = renderSyllabusWebAppHtml({ topLevel: "Explore" });
   assert.deepEqual([...html.matchAll(/<div class="facet-row"(?: data-tier="(\d)")? role="group" aria-labelledby="facet-([a-z]+)-label"><span class="facet-label" id="facet-\2-label">([^<]+)</g)].map((match) => `${match[3]}:${match[1] ?? "-"}`),
     ["Category:1", "Subject:2", "Topic:3", "Difficulty:-", "Format:-"]);
   assert.deepEqual(optionsOf(html, "category"), ["[All 5]", "Computer Science 2", "Math & Sciences 2", "Humanities 1"]);
@@ -878,7 +878,7 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   ]);
   assert.deepEqual(optionsOf(html, "difficulty"), ["Formal 3", "Applied 1", "Intuitive 1"]);
   assert.deepEqual(optionsOf(html, "format"), ["Quiz 2", "Code Lab 1", "Problem Set 1", "Rubric 1"]);
-  assert.ok(html.includes('<p class="marketplace-count" role="status">5 curricula</p>'));
+  assert.ok(html.includes('<p class="marketplace-count" role="status">5 syllabi</p>'));
   assert.equal(trailOf(html), "");
   assert.equal(html.includes('data-action="clear-marketplace-filters"'), false, "Clear filters appears only while a filter is active");
 
@@ -900,7 +900,7 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
   assert.deepEqual(optionsOf(root.innerHTML, "subject"), ["Engineering 1", "Systems 1"]);
   assert.deepEqual(optionsOf(root.innerHTML, "topic"), ["Async 1", "Attention 1", "Concurrency 1", "Linear Algebra 1", "Python 1", "RAG 1", "Rust 1"]);
   assert.equal(trailOf(root.innerHTML), "Computer Science");
-  assert.ok(root.innerHTML.includes('<p class="marketplace-count" role="status">2 of 5 curricula</p>'));
+  assert.ok(root.innerHTML.includes('<p class="marketplace-count" role="status">2 of 5 syllabi</p>'));
 
   // Tier 2 narrows inside the category, and tier 3 follows it.
   pressInRow("subject", "Systems");
@@ -988,7 +988,7 @@ test("Explore filters drill from Category to Subject to Topic, cross the tiers w
 
   // With no match, the empty state offers the same reset.
   const none = mountWithClicks({ topLevel: "Explore", marketplaceFilters: { category: "Computer Science", subject: "Systems", difficulty: "Formal" } });
-  assert.ok(none.root.innerHTML.includes("<span>No curricula match these filters.</span>") && titlesOf(none.root.innerHTML).length === 0);
+  assert.ok(none.root.innerHTML.includes("<span>No syllabi match these filters.</span>") && titlesOf(none.root.innerHTML).length === 0);
   assert.match(none.root.innerHTML, /<div class="empty-state marketplace-empty">[\s\S]*?<button type="button" class="clear-filters" data-action="clear-marketplace-filters">Clear filters<\/button><\/div>/);
   press(none.root.innerHTML.match(/<div class="empty-state marketplace-empty">[\s\S]*?<\/div>/)[0], "Clear filters");
   assert.equal(titlesOf(none.root.innerHTML).length, 0, "the first mount is unchanged");
@@ -1039,7 +1039,7 @@ test("Explore keeps a long topic list short: six topics by count, a toggle for t
   assert.equal(optionsOf(root.innerHTML, "topic").length, 7);
 });
 
-test("Details shows the whole curriculum with every unit selected, closes prerequisites, then adds a private draft that activates on the Plan page", () => {
+test("Details shows the whole syllabus with every unit selected, closes prerequisites, then adds a private draft that activates on the Plan page", () => {
   const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-partial-adoption"')));
   const allUnits = ["rs-module-futures", "rs-module-scheduling"];
@@ -1062,12 +1062,12 @@ test("Details shows the whole curriculum with every unit selected, closes prereq
   assert.match(dialog(), /<span class="adopt-step">1\.3<\/span><div class="adopt-activity-body"><p class="adopt-activity-title">Gate Lab: Build a Single-Threaded Executor<\/p><p class="adopt-activity-meta">Code lab · <span class="adopt-requirement" data-requirement="gate">Mastery gate<\/span><\/p><ul class="adopt-resources" aria-label="Study resources"><li><svg[\s\S]*?<\/svg><span><a href="https:\/\/example\.invalid\/catalog\/executor-lab" target="_blank" rel="noopener noreferrer">Executor Lab: Test Harness and Reference Solutions<span class="st-sr"> \(opens in a new tab\)<\/span><\/a><span class="adopt-publisher">Open Systems Press \(Curator Verified\) <span class="badge">Free access<\/span><\/span><\/span><\/li><\/ul><\/div><span class="adopt-minutes">45 min<\/span>/);
   assert.ok(dialog().includes('Worked Example: Work-Stealing Task Queues</p><p class="adopt-activity-meta">Worked example · <span class="adopt-requirement" data-requirement="optional">Optional</span>'));
   // The footer holds the selection total, then the adopt action.
-  assert.match(dialog(), /<footer class="dialog-footer"><p class="adopt-total">2 of 2 units · 205 min \(161–303 min\)<\/p><button type="button" class="btn-primary" data-action="confirm-adopt-curriculum" data-publication-id="publication-rust-async-001">Adopt into My Plans/);
+  assert.match(dialog(), /<footer class="dialog-footer"><p class="adopt-total">2 of 2 units · 205 min \(161–303 min\)<\/p><button type="button" class="btn-primary" data-action="confirm-adopt-syllabus" data-publication-id="publication-rust-async-001">Adopt into My Plans/);
 
   // Unchecking unit 1 also drops unit 2, which needs it. With nothing left, adopting waits for a unit.
   click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
   assert.deepEqual(app.getState().adoptModuleIds, []);
-  assert.ok(dialog().includes("Select at least one unit.") && /data-action="confirm-adopt-curriculum"[^>]*disabled/.test(dialog()));
+  assert.ok(dialog().includes("Select at least one unit.") && /data-action="confirm-adopt-syllabus"[^>]*disabled/.test(dialog()));
   click({ action: "select-all-adopt-modules" });
   assert.deepEqual(app.getState().adoptModuleIds, allUnits);
   click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
@@ -1078,7 +1078,7 @@ test("Details shows the whole curriculum with every unit selected, closes prereq
   click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
   click({ action: "toggle-adopt-module", moduleId: "rs-module-scheduling" });
   assert.match(dialog(), /role="checkbox" aria-checked="true" data-action="toggle-adopt-module" data-module-id="rs-module-futures">[\s\S]*?<span class="auto-badge">Auto-included prerequisite<\/span>/);
-  assert.ok(dialog().includes('data-action="select-all-adopt-modules" disabled>'), "the prerequisite completes the curriculum");
+  assert.ok(dialog().includes('data-action="select-all-adopt-modules" disabled>'), "the prerequisite completes the syllabus");
   // Unchecking the automatic prerequisite drops unit 2 with it. Checking unit 2 again brings both back.
   click({ action: "toggle-adopt-module", moduleId: "rs-module-futures" });
   assert.deepEqual(app.getState().adoptModuleIds, []);
@@ -1086,28 +1086,28 @@ test("Details shows the whole curriculum with every unit selected, closes prereq
   click({ action: "toggle-adopt-module", moduleId: "rs-module-unknown" });
   assert.deepEqual(app.getState().adoptModuleIds, ["rs-module-scheduling"]);
   // The selection belongs to the open listing, so a confirm for another listing adopts nothing.
-  click({ action: "confirm-adopt-curriculum", publicationId: "publication-statmech-001" });
+  click({ action: "confirm-adopt-syllabus", publicationId: "publication-statmech-001" });
   assert.equal(app.getState().adoptions.length, 0);
 
-  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  click({ action: "confirm-adopt-syllabus", publicationId: "publication-rust-async-001" });
   const state = app.getState();
-  assert.equal(state.selectedCurriculumId, "adopted-publication-rust-async-001");
+  assert.equal(state.selectedSyllabusId, "adopted-publication-rust-async-001");
   assert.deepEqual([state.topLevel, state.learnSubDestination, state.openDialogId], ["Learn", "Today", null]);
   assert.deepEqual(state.adoptions, [{ accountId: "learner-default", publicationId: "publication-rust-async-001", moduleIds: ["rs-module-futures", "rs-module-scheduling"], active: false }]);
   assert.ok(root.innerHTML.includes("This plan is your private draft of @ferris_ops's template."));
   assert.ok(root.innerHTML.includes('<option value="adopted-publication-rust-async-001" selected>Rust Async Runtime Internals · Draft</option>'));
   assert.ok(todayBoard(root.innerHTML).includes('<span class="unit-title">Futures, Wakers, and the Poll Model</span>'));
   const queue = () => {
-    const start = root.innerHTML.indexOf('<section class="today-curricula-grid"');
+    const start = root.innerHTML.indexOf('<section class="today-syllabi-grid"');
     return root.innerHTML.slice(start, root.innerHTML.indexOf("</section>", start));
   };
   assert.equal(queue().includes("adopted-publication-rust-async-001"), false, "a draft stays out of Today's queue");
 
   // Activation is the separate, explicit step. Then the plan joins Today, and the listing counts the adoption.
   click({ action: "activate-revision" });
-  assert.ok(queue().includes('data-curriculum-id="adopted-publication-rust-async-001"'));
+  assert.ok(queue().includes('data-syllabus-id="adopted-publication-rust-async-001"'));
   assert.equal(root.innerHTML.includes("This plan is your private draft"), false);
-  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  click({ action: "confirm-adopt-syllabus", publicationId: "publication-rust-async-001" });
   assert.equal(app.getState().adoptions.length, 1, "a listing is adopted once per account");
   app.navigateTopLevel("Explore");
   assert.match(root.innerHTML, /data-publication-id="publication-rust-async-001"[\s\S]*?· 65 adopted[\s\S]*?<span class="owned-badge">In your plans<\/span>/);
@@ -1129,7 +1129,7 @@ test("Dialogs pin an icon close button and a right-aligned footer, and a re-rend
     addEventListener: (type, listener) => { listeners[type] = listener; },
     querySelector: (selector) => (selector === "dialog[open]" ? shown : selector === 'dialog[data-open="true"]' ? next : null),
   };
-  mountCurriculumWebApp(root, { topLevel: "Explore", openDialogId: "dialog-partial-adoption", adoptPublicationId: "publication-rust-async-001" });
+  mountSyllabusWebApp(root, { topLevel: "Explore", openDialogId: "dialog-partial-adoption", adoptPublicationId: "publication-rust-async-001" });
   shown = { id: "dialog-partial-adoption", scrollTop: 480 };
   next.open = false;
   listeners.click({ target: { closest: () => ({ dataset: { action: "toggle-adopt-module", moduleId: "rs-module-scheduling" } }) } });
@@ -1148,9 +1148,9 @@ test("Share with Community previews the public projection, then publishes it to 
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-publication-preview"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-publication-preview"')));
   // The default plan is already the learner's listing, so it cannot be published twice.
   app.openDialog("dialog-publication-preview");
-  assert.ok(dialog().includes("This plan is already shared with the Community as revision 1.") && !dialog().includes("confirm-publish-curriculum"));
+  assert.ok(dialog().includes("This plan is already shared with the Community as revision 1.") && !dialog().includes("confirm-publish-syllabus"));
 
-  click({ action: "select-curriculum", curriculumId: "curriculum-tolstoy-lit-003" });
+  click({ action: "select-syllabus", syllabusId: "syllabus-tolstoy-lit-003" });
   app.openDialog("dialog-publication-preview");
   assert.ok(dialog().includes("<h3 id=\"publish-preview-title\">Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</h3>"));
   assert.deepEqual([...dialog().matchAll(/<li><svg[\s\S]*?<\/svg><span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), [
@@ -1159,20 +1159,20 @@ test("Share with Community previews the public projection, then publishes it to 
   ]);
   assert.ok(dialog().includes("Based on @tolstoy_seminar's template."));
 
-  click({ action: "confirm-publish-curriculum" });
+  click({ action: "confirm-publish-syllabus" });
   const published = app.getState().publishedListings;
   assert.equal(published.length, 1);
   assert.deepEqual([published[0].handle, published[0].basedOn, published[0].ownerAccountId], ["@alex", "@tolstoy_seminar", "learner-default"]);
   assert.deepEqual(published[0].topicTags, ["Tolstoy", "Realism", "Narrative"], "a listing keeps the topic tags of the template it is based on");
   assert.equal(JSON.stringify(published[0].schedule).includes("start_at"), false, "session dates stay private");
-  assert.equal(JSON.stringify(published[0].curriculum).includes("learner-default"), false, "the account id stays private");
+  assert.equal(JSON.stringify(published[0].syllabus).includes("learner-default"), false, "the account id stays private");
   assert.equal(app.getState().topLevel, "Explore");
-  const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
+  const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-syllabus-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
   assert.match(card, /@alex<\/span> · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?aria-label="Upvote \(0\)"[\s\S]*?<span class="owned-badge">Yours<\/span>/);
   const mine = root.innerHTML.slice(root.innerHTML.indexOf('<section class="surface-panel my-publications"'));
-  assert.ok(mine.includes("<li data-publication-id=\"publication-curriculum-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
+  assert.ok(mine.includes("<li data-publication-id=\"publication-syllabus-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
   // A new publication has no adoptions yet, so its row welcomes the first learner instead of listing zeros.
-  const fresh = mine.match(/<li data-publication-id="publication-curriculum-tolstoy-lit-003-learner-default">[\s\S]*?<\/li>/)?.[0] ?? "";
+  const fresh = mine.match(/<li data-publication-id="publication-syllabus-tolstoy-lit-003-learner-default">[\s\S]*?<\/li>/)?.[0] ?? "";
   assert.ok(fresh.includes('</strong><span class="publication-revision">Public · Revision 1</span>'));
   assert.match(fresh, /<p class="publication-impact"><span class="impact-pill"><svg[\s\S]*?<\/svg><span>Live in Explore and ready for its first learner<\/span><\/span><\/p>/);
   app.openDialog("dialog-publication-preview");
@@ -1191,9 +1191,9 @@ test("My Publications thanks the author, states its totals in one sentence, and 
   // The header thanks the author, names the license, and offers the next share. The totals are one plain sentence,
   // the same one Settings uses, with no metric cards and no decorative art.
   // Study hours are 98 estimated minutes × 142 adoptions ≈ 232 hours.
-  const mine = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore" }));
+  const mine = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore" }));
   assert.ok(mine.includes("Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free under CC BY 4.0."));
-  assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another curriculum</button>'));
+  assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another syllabus</button>'));
   assert.equal(impactOf(mine), "Your shared plan reached 142 learners , who planned about 232 study hours with it. 14 people upvoted your work.");
   for (const removed of ["philanthropy", "impact-hero", "impact-icon-badge", "<dl"]) {
     assert.equal(mine.includes(removed), false, `My Publications still renders ${removed}`);
@@ -1205,7 +1205,7 @@ test("My Publications thanks the author, states its totals in one sentence, and 
   assert.equal(text(row), "Build and Evaluate RAG Systems in Python Public · Revision 1 Python RAG Attention Linear Algebra 142 learners 232 study hours 14 upvotes Open Unpublish");
   assert.equal(row.match(/<span class="impact-pill"><svg class="sf-icon"/g)?.length, 3);
   assert.ok(row.includes('<span class="marketplace-card-icon" data-subject="Engineering" aria-hidden="true"><svg class="sf-icon"'));
-  assert.ok(row.includes('data-action="open-curriculum-plan" data-curriculum-id="curriculum-rag-python-001">Open</button>'));
+  assert.ok(row.includes('data-action="open-syllabus-plan" data-syllabus-id="syllabus-rag-python-001">Open</button>'));
   assert.ok(row.includes('<button type="button" class="unpublish-btn" data-action="open-dialog" data-dialog-id="dialog-unpublish" aria-label="Unpublish Build and Evaluate RAG Systems in Python">Unpublish</button>'));
   for (const removed of ["btn-danger", "warning-copy", "never cached"]) {
     assert.equal(mine.includes(removed), false, `My Publications still shows ${removed}`);
@@ -1221,26 +1221,28 @@ test("My Publications thanks the author, states its totals in one sentence, and 
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
   // A learner with no publication sees an invitation instead of an empty summary.
-  const newcomer = sectionOf(renderCurriculumWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@curriculum.io", role: "Learner" } }));
-  assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another curriculum") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
+  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@syllabus.io", role: "Learner" } }));
+  assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another syllabus") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
   assert.ok(newcomer.includes('<div class="publish-invite"><div><h3>'));
-  assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first curriculum$/);
-  assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button>'));
+  assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first syllabus$/);
+  assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 
 test("the header shows the navbar avatar menu, signing out purges private state, and guests sign in to return where they were", () => {
   const { app, root, click, submit } = mountWithClicks();
   const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));
-  assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AR<\/span><span class="navbar-user-name">Alex Rivera<\/span>/);
+  assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AL<\/span><svg class="navbar-user-chevron"/);
+  assert.equal(header().includes('class="navbar-user-name"'), false);
   assert.ok(
     header().includes('class="navbar-theme-toggle"') &&
-      header().includes('<span class="account-email">alex@curriculum.io</span>') &&
+      header().includes('<span class="navbar-dropdown-name">@alex</span>') &&
+      header().includes('<span class="account-email">alex@syllabus.io</span>') &&
       header().includes('data-destination="Settings"') &&
       header().includes('data-action="sign-out"') &&
       !header().includes("Switch account"),
   );
 
-  // Profile form in Profile & Settings updates display name and email live, and Profile & Settings renders Your contributions (upvotes, shared curricula status, learner comments) and BYOK AI providers with custody disclosure before #byok-key
+  // Profile form in Profile & Settings updates display name and email live, and Profile & Settings renders Your contributions (upvotes, shared syllabi status, learner comments) and BYOK AI providers with custody disclosure before #byok-key
   const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
   assert.equal(settingsPanel.includes('id="settings-appearance"'), false);
   assert.equal(settingsPanel.includes('id="settings-usage"'), false);
@@ -1290,10 +1292,11 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.equal(root.innerHTML.includes("organizational deployment is not permitted"), false);
 
   submit("update-profile", {
-    "#profile-name-input": { value: "Alex R. Chen" },
-    "#profile-email-input": { value: "alex@curriculum.io" },
+    "#profile-handle-input": { value: "alex.chen" },
+    "#profile-email-input": { value: "alex@syllabus.io" },
   });
-  assert.ok(header().includes('<span class="navbar-user-name">Alex R. Chen</span>'));
+  assert.ok(header().includes('<span class="navbar-dropdown-name">@alex.chen</span>'));
+  assert.equal(header().includes('class="navbar-user-name"'), false);
 
   click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"'));
@@ -1302,10 +1305,10 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.deepEqual([guest.authStatus, guest.topLevel, guest.recordedProgressEvents.length], ["guest", "Explore", 0]);
   assert.match(
     header(),
-    /<div class="navbar-guest-actions" data-auth-status="guest">[\s\S]*?data-dialog-id="dialog-auth">Log in<\/button>[\s\S]*?data-dialog-id="dialog-auth">Sign in<\/button>/,
+    /<div class="navbar-guest-actions" data-auth-status="guest">[\s\S]*?data-dialog-id="dialog-auth"[^>]*>Log in<\/button>[\s\S]*?data-dialog-id="dialog-auth"[^>]*>Sign up<\/button>/,
   );
   // No private content reaches a guest's page, not even hidden.
-  for (const hidden of ['id="panel-learn"', 'id="panel-settings"', 'id="learn-detail-inspector"', 'id="dialog-new-curriculum"', "data-self-reported-count", "My Publications"]) {
+  for (const hidden of ['id="panel-learn"', 'id="panel-settings"', 'id="learn-detail-inspector"', 'id="dialog-new-syllabus"', "data-self-reported-count", "My Publications"]) {
     assert.equal(root.innerHTML.includes(hidden), false, `a guest page still contains ${hidden}`);
   }
 
@@ -1320,7 +1323,7 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.equal(app.getState().authStatus, "guest");
 
   // Signing in restores the place and its dialog, never the action.
-  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Curriculum.io" } });
+  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Syllabus.io" } });
   const back = app.getState();
   assert.deepEqual([back.authStatus, back.topLevel, back.openDialogId, back.adoptPublicationId, back.adoptions.length, back.votes.length],
     ["authenticated", "Explore", "dialog-partial-adoption", "publication-statmech-001", 0, 0]);
@@ -1351,13 +1354,14 @@ test("an expired session keeps the view for the same account and starts clean fo
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
   click({ action: "simulate-session-expired" });
   click({ action: "switch-persona", persona: "curator" });
-  assert.ok(root.innerHTML.includes('<span class="account-email">ada@curriculum.io</span>'));
-  assert.ok(root.innerHTML.includes('<span class="navbar-user-name">Ada Lovelace</span>'));
+  assert.ok(root.innerHTML.includes('<span class="account-email">ada@syllabus.io</span>'));
+  assert.ok(root.innerHTML.includes('<span class="navbar-dropdown-name">@ada</span>'));
+  assert.equal(root.innerHTML.includes('class="navbar-user-name"'), false);
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'));
 });
 
 test("the activity inspector is one modal drawer that never takes width from the matrix", () => {
-  const html = renderCurriculumWebAppHtml();
+  const html = renderSyllabusWebAppHtml();
   assert.equal(html.split('id="learn-detail-inspector"').length - 1, 1);
   assert.ok(html.includes('<dialog id="learn-detail-inspector" class="inspector" closedby="any" aria-labelledby="learn-detail-inspector-title" data-open="false"'));
   assert.equal(/class="st-layout"|class="plan-split"/.test(html), false);
@@ -1365,7 +1369,7 @@ test("the activity inspector is one modal drawer that never takes width from the
   // Only visible text counts: synthetic hrefs may point at example.invalid, labels never do.
   assert.equal(html.replace(/<[^>]+>/g, " ").includes("example.invalid"), false);
 
-  const app = mountCurriculumWebApp({ innerHTML: "" });
+  const app = mountSyllabusWebApp({ innerHTML: "" });
   app.selectPlanActivity("activity-coding");
   const opened = app.renderHtml();
   assert.ok(opened.includes('aria-labelledby="learn-detail-inspector-title" data-open="true"'));
@@ -1383,7 +1387,7 @@ test("the activity inspector is one modal drawer that never takes width from the
   assert.match(css, /\.node-card\s*\{[^}]*min-height:/s);
   assert.equal(/\.node-card\s*\{[^}]*[^-]height:\s*84px/s.test(css), false, "node cards must not use a fixed height");
   assert.match(css, /\.node-title\s*\{[^}]*overflow-wrap:\s*break-word;\s*word-break:\s*normal;/s);
-  assert.equal(/\.curriculum-app-shell\s*\{[^}]*overflow-wrap:\s*anywhere/s.test(css), false, "the shell must not let words split mid-letter");
+  assert.equal(/\.syllabus-app-shell\s*\{[^}]*overflow-wrap:\s*anywhere/s.test(css), false, "the shell must not let words split mid-letter");
 });
 
 test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synthetic API fallback", async () => {
@@ -1467,17 +1471,17 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const planRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json", cookie },
-      body: JSON.stringify({ action: "open-curriculum-plan", curriculumId: "curriculum-tolstoy-lit-003" }),
+      body: JSON.stringify({ action: "open-syllabus-plan", syllabusId: "syllabus-tolstoy-lit-003" }),
     });
     const planJson = await planRes.json();
-    assert.equal(planJson.state.selectedCurriculumId, "curriculum-tolstoy-lit-003");
+    assert.equal(planJson.state.selectedSyllabusId, "syllabus-tolstoy-lit-003");
     assert.equal(planJson.state.learnSubDestination, "Plan");
     // A click inside a form only focuses a field. Before the fix, a click in the search box sent an empty query.
     assert.ok(clientJs.includes(`if (!target || target.localName === "select" || target.localName === "form") return;`));
     // The topic finder sends a pick from its list at once, and refuses text that names no topic.
     assert.ok(clientJs.includes(`if (!event.inputType || event.inputType === "insertReplacementText") event.target.form.requestSubmit();`));
     assert.ok(clientJs.includes(`if (!finder.reportValidity()) return;`));
-    assert.ok(clientJs.includes(`closest('select[data-action="select-curriculum"]')`));
+    assert.ok(clientJs.includes(`closest('select[data-action="select-syllabus"]')`));
 
     // Signing out goes through the same route. A guest's request for Learn opens sign-in instead.
     const post = async (body) => (await fetch(`${baseUrl}/api/ui-state`, {
@@ -1488,9 +1492,9 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(signedOut.html.includes('id="panel-learn"'), false);
     const learn = await post({ action: "navigate-top", destination: "Learn" });
     assert.deepEqual([learn.state.openDialogId, learn.state.returnTo.label], ["dialog-auth", "Learn › Plan"]);
-    const signedIn = await post({ action: "submit-sign-in", email: "alex@curriculum.io" });
+    const signedIn = await post({ action: "submit-sign-in", email: "alex@syllabus.io" });
     assert.deepEqual([signedIn.state.authStatus, signedIn.state.topLevel], ["authenticated", "Learn"]);
-    assert.ok(clientJs.includes('root.querySelector(\'.curriculum-app-shell[data-auth-status="authenticated"]\')'));
+    assert.ok(clientJs.includes('root.querySelector(\'.syllabus-app-shell[data-auth-status="authenticated"]\')'));
     assert.ok(clientJs.includes("new FormData(form).forEach"));
   } finally {
     await new Promise((resolve) => server.close(resolve));
@@ -1499,14 +1503,14 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
 
 test("the navbar shows Learn and Explore, and Admin opens only at its protected URL", async () => {
   // Settings opens from the account menu. No control anywhere in the app opens Admin.
-  const html = renderCurriculumWebAppHtml();
+  const html = renderSyllabusWebAppHtml();
   const destinations = (nav) => [...(html.match(new RegExp(`<nav class="${nav}[\\s\\S]*?</nav>`))?.[0] ?? "").matchAll(/data-destination="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(destinations("top-level-nav"), ["Learn", "Explore"]);
   assert.deepEqual(destinations("compact-bottom-nav"), ["Learn", "Explore"]);
   assert.ok(html.match(/<header class="app-header[\s\S]*?<\/header>/)?.[0].includes('data-action="navigate-top" data-destination="Settings"'), "the account menu opens Settings");
   assert.equal(html.includes('data-action="open-admin-resources"'), false, "Admin has no visible entry");
   assert.equal(html.includes('id="panel-admin-resources"'), false, "an admin's page carries no hidden console until it opens");
-  assert.match(renderCurriculumWebAppHtml({ topLevel: "Settings" }), /<h1 class="page-title">Profile &amp; settings<\/h1>/);
+  assert.match(renderSyllabusWebAppHtml({ topLevel: "Settings" }), /<h1 class="page-title">Profile &amp; settings<\/h1>/);
 
   // Learn, Explore, Settings, and Admin share one content width.
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
@@ -1523,13 +1527,13 @@ test("the navbar shows Learn and Explore, and Admin opens only at its protected 
       await new Promise((resolve) => server.close(resolve));
     }
   };
-  const curator = { account: { accountId: "curator-ada", email: "ada@curriculum.io", displayName: "Ada Lovelace", role: "Curator" } };
+  const curator = { account: { accountId: "curator-ada", email: "ada@syllabus.io", displayName: "Ada Lovelace", role: "Curator" } };
   const admin = await fetchWith(curator, "/admin");
   assert.equal(admin.status, 200);
   assert.ok(admin.html.includes('data-admin-authorized="true"'));
   assert.equal((await fetchWith(curator, "/?topLevel=Admin")).status, 200);
   assert.equal((await fetchWith({}, "/admin")).status, 403, "the default learner is not an admin");
-  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@curriculum.io", role: "Learner" } };
+  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@syllabus.io", role: "Learner" } };
   const denied = await fetchWith(learner, "/admin");
   assert.equal(denied.status, 403);
   assert.ok(denied.html.includes("403 Unauthorized Role"));
@@ -1538,8 +1542,8 @@ test("the navbar shows Learn and Explore, and Admin opens only at its protected 
   assert.equal((await fetchWith(learner, "/")).status, 200);
 });
 
-test("createCurriculumSignalStore provides fine-grained @preact/signals reactivity and computed views", () => {
-  const store = createCurriculumSignalStore({ topLevel: "Learn", learnSubDestination: "Today" });
+test("createSyllabusSignalStore provides fine-grained @preact/signals reactivity and computed views", () => {
+  const store = createSyllabusSignalStore({ topLevel: "Learn", learnSubDestination: "Today" });
   assert.equal(store.topLevel.value, "Learn");
   assert.equal(store.learnSubDestination.value, "Today");
   assert.equal(store.authStatus.value, "authenticated");
@@ -1559,26 +1563,26 @@ test("createCurriculumSignalStore provides fine-grained @preact/signals reactivi
   assert.equal(store.selfReportedCompletedCount.value, 0);
 });
 
-test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to a scroll-snap carousel for >3 curricula", () => {
+test("Syllabus and marketplace cards align CTAs via CSS subgrid and switch to a scroll-snap carousel for >3 syllabi", () => {
   const stylesPath = path.join(PUBLIC_DIR, "styles.css");
   const css = fs.readFileSync(stylesPath, "utf8");
 
   // 1. Subgrid CTA alignment across sibling cards regardless of title/meta wrap height
-  assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-template-rows:\s*repeat\(5,\s*auto\);/s);
-  assert.match(css, /\.curriculum-card\s*\{[^}]*grid-row:\s*span 5;[^}]*grid-template-rows:\s*auto auto auto 1fr auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
+  assert.match(css, /\.today-syllabi-grid\s*\{[^}]*grid-template-rows:\s*repeat\(5,\s*auto\);/s);
+  assert.match(css, /\.syllabus-card\s*\{[^}]*grid-row:\s*span 5;[^}]*grid-template-rows:\s*auto auto auto 1fr auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
   assert.match(css, /\.marketplace-card\s*\{[^}]*grid-row:\s*span 5;[^}]*grid-template-rows:\s*auto 1fr auto auto auto;[^}]*grid-template-rows:\s*subgrid;[^}]*align-items:\s*start;/s);
 
-  // 2. Scroll-snap carousel for >3 curricula
-  assert.match(css, /\.today-curricula-grid\s*\{[^}]*grid-auto-flow:\s*column;[^}]*overflow-x:\s*auto;[^}]*overscroll-behavior-x:\s*contain;[^}]*scroll-snap-type:\s*x mandatory;/s);
-  assert.match(css, /\.today-curricula-grid:has\(>\s*\.curriculum-card:nth-child\(4\)\)\s*\{[^}]*grid-auto-columns:\s*max\(16rem,\s*calc\(\(100% - 3 \* var\(--space-4\)\) \/ 3\.25\)\);/s);
-  assert.match(css, /\.curriculum-card\s*\{[^}]*scroll-snap-align:\s*start;/s);
+  // 2. Scroll-snap carousel for >3 syllabi
+  assert.match(css, /\.today-syllabi-grid\s*\{[^}]*grid-auto-flow:\s*column;[^}]*overflow-x:\s*auto;[^}]*overscroll-behavior-x:\s*contain;[^}]*scroll-snap-type:\s*x mandatory;/s);
+  assert.match(css, /\.today-syllabi-grid:has\(>\s*\.syllabus-card:nth-child\(4\)\)\s*\{[^}]*grid-auto-columns:\s*max\(16rem,\s*calc\(\(100% - 3 \* var\(--space-4\)\) \/ 3\.25\)\);/s);
+  assert.match(css, /\.syllabus-card\s*\{[^}]*scroll-snap-align:\s*start;/s);
 
-  // 3. Adopting a 4th curriculum renders 4 cards in Today and preserves rail scrollLeft across DOM updates
+  // 3. Adopting a 4th syllabus renders 4 cards in Today and preserves rail scrollLeft across DOM updates
   const rail = { scrollLeft: 0 };
   const fakeRoot = {
     innerHTML: "",
     querySelector(selector) {
-      if (selector === ".today-curricula-grid") return rail;
+      if (selector === ".today-syllabi-grid") return rail;
       return null;
     },
     querySelectorAll() {
@@ -1587,30 +1591,30 @@ test("Curriculum and marketplace cards align CTAs via CSS subgrid and switch to 
     addEventListener() {},
   };
 
-  const mounted = mountCurriculumWebApp(fakeRoot);
+  const mounted = mountSyllabusWebApp(fakeRoot);
   mounted.applyUiAction("open-adopt-dialog", { publicationId: "publication-rust-async-001" });
-  mounted.applyUiAction("confirm-adopt-curriculum", {
+  mounted.applyUiAction("confirm-adopt-syllabus", {
     publicationId: "publication-rust-async-001",
   });
   mounted.applyUiAction("activate-revision");
   mounted.navigateTopLevel("Learn");
   mounted.navigateLearnSubDestination("Today");
-  assert.equal(fakeRoot.innerHTML.match(/class="curriculum-card"/g)?.length, 4);
+  assert.equal(fakeRoot.innerHTML.match(/class="syllabus-card"/g)?.length, 4);
 
   rail.scrollLeft = 240;
-  mounted.applyUiAction("resume-curriculum", { curriculumId: "curriculum-tolstoy-lit-003" });
+  mounted.applyUiAction("resume-syllabus", { syllabusId: "syllabus-tolstoy-lit-003" });
   assert.equal(rail.scrollLeft, 240);
 });
 
-test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accumulation Summary when clicking a Unit cell, while Plan renders curriculum title H1, switcher cards, emphasized Goal, plain text bullets, and 4 editorial sections", () => {
-  const html = renderCurriculumWebAppHtml();
+test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accumulation Summary when clicking a Unit cell, while Plan renders syllabus title H1, switcher cards, emphasized Goal, plain text bullets, and 4 editorial sections", () => {
+  const html = renderSyllabusWebAppHtml();
   const today = html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const plan = html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
 
-  // 1. Today's Focused curriculum header consolidates Selected plan + Edit Plan & Pacing in TomSelect and omits the text-heavy Unit Map overview
+  // 1. Today's Focused syllabus header consolidates Selected plan + Edit Plan & Pacing in TomSelect and omits the text-heavy Unit Map overview
   assert.ok(today.includes('data-tom-select="plan"'));
-  assert.ok(today.includes('<option value="__new_curriculum__" data-action-option="new-curriculum"'));
-  assert.equal(today.includes('<details class="today-curriculum-overview">'), false);
+  assert.ok(today.includes('<option value="__new_syllabus__" data-action-option="new-syllabus"'));
+  assert.equal(today.includes('<details class="today-syllabus-overview">'), false);
 
   // Clicking a Unit cell opens the InspectorDrawer in Unit mode (data-inspector-mode="unit") without verbose "Row summary" labels
   const { root, click } = mountWithClicks();
@@ -1625,11 +1629,11 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
   assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-objectives">Objectives (1)</h3>'));
   assert.ok(unitDrawer.includes('<h3 id="learn-detail-inspector-unit-resources">Materials (3)</h3>'));
 
-  // 2. Plan opens with curriculum switcher cards, the curriculum title as H1, emphasized Goal, and plain text bullets
-  assert.ok(plan.includes('<nav class="plan-switcher" aria-label="Your curricula">'));
-  assert.ok(plan.includes('class="plan-switch" data-action="select-curriculum" data-curriculum-id="curriculum-rag-python-001" aria-current="true"'));
+  // 2. Plan opens with syllabus switcher cards, the syllabus title as H1, emphasized Goal, and plain text bullets
+  assert.ok(plan.includes('<nav class="plan-switcher" aria-label="Your syllabi">'));
+  assert.ok(plan.includes('class="plan-switch" data-action="select-syllabus" data-syllabus-id="syllabus-rag-python-001" aria-current="true"'));
   assert.ok(plan.includes('<h1 class="page-title plan-title">Build and Evaluate RAG Systems in Python</h1>'));
-  assert.equal(plan.includes('id="plan-curriculum-control"'), false, "Plan replaces the native <select> dropdown with curriculum switcher cards");
+  assert.equal(plan.includes('id="plan-syllabus-control"'), false, "Plan replaces the native <select> dropdown with syllabus switcher cards");
   assert.ok(plan.includes('<h2 id="plan-goal-label" class="plan-brief-label">Goal</h2>'));
   assert.ok(plan.includes('<p class="plan-goal">Start a Python RAG system from its model foundations: subword tokenization and scaled dot-product attention, with verified resources.</p>'));
   assert.ok(plan.includes('<h2 id="plan-covers-label" class="plan-brief-label">Covers</h2>'));
@@ -1646,7 +1650,7 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
     'id="plan-learning-approach"',
     'id="plan-status-sharing"',
     "Your study sessions",
-    "Tailor how this curriculum is taught",
+    "Tailor how this syllabus is taught",
     "Recommended syllabus adjustments",
     "Activate or share your syllabus",
   ]) {
@@ -1664,7 +1668,7 @@ test("Today consolidates Edit Plan & Pacing in TomSelect and opens Unit Row Accu
 });
 
 test("Progress renders the Competency & Evidence Portfolio without duplicating Today's counters/Unit strip or Plan's adaptation editor", () => {
-  const html = renderCurriculumWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
+  const html = renderSyllabusWebAppHtml({ activityStates: { "activity-theory": "self_reported_completed" } });
   const progress = html.slice(html.indexOf('id="panel-learn-progress"'), html.indexOf('id="panel-learn-resources"'));
 
   // 1. Progress does not duplicate Today's activity/review counters, Unit strip, or Plan's adaptation review card
@@ -1697,11 +1701,11 @@ test("Progress renders the Competency & Evidence Portfolio without duplicating T
   );
 });
 
-test("Resources renders a Filterable Data Table + Category Pill Bar with Synced Curriculum Switcher and All Curricula aggregation", () => {
+test("Resources renders a Filterable Data Table + Category Pill Bar with Synced Syllabus Switcher and All Syllabi aggregation", () => {
   const { app, root, click, change } = mountWithClicks({ learnSubDestination: "Resources" });
   const resourcesOf = (html) => html.slice(html.indexOf('id="panel-learn-resources"'), html.indexOf('id="panel-explore"'));
 
-  // 1. Default view: Current curriculum (RAG Python) with 4 resources across Course, Book, YouTube, and Code Lab
+  // 1. Default view: Current syllabus (RAG Python) with 4 resources across Course, Book, YouTube, and Code Lab
   const initialResources = resourcesOf(root.innerHTML);
   assert.ok(initialResources.includes('data-resource-scope="selected"'));
   assert.ok(initialResources.includes('data-resource-category="All"'));
@@ -1720,31 +1724,31 @@ test("Resources renders a Filterable Data Table + Category Pill Bar with Synced 
   assert.equal(youtubeResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 1);
   assert.ok(youtubeResources.includes("YouTube Lecture: Scaled Dot-Product Attention &amp; Softmax Variance Walkthrough"));
 
-  // 3. Switching to "All curricula (3)" aggregates resources across RAG Python, Linear Algebra, and Tolstoy
+  // 3. Switching to "All syllabi (3)" aggregates resources across RAG Python, Linear Algebra, and Tolstoy
   click({ action: "set-resource-category", resourceCategory: "All" });
   click({ action: "set-resource-scope", resourceScope: "all" });
-  const allCurriculaResources = resourcesOf(root.innerHTML);
-  assert.ok(allCurriculaResources.includes('data-resource-scope="all"'));
-  assert.equal(allCurriculaResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 11);
+  const allSyllabiResources = resourcesOf(root.innerHTML);
+  assert.ok(allSyllabiResources.includes('data-resource-scope="all"'));
+  assert.equal(allSyllabiResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 11);
   for (const cat of ["All (11)", "Course (1)", "Book (5)", "YouTube (2)", "Code Lab (2)", "Problem Set (1)"]) {
-    assert.ok(allCurriculaResources.includes(`<span>${cat}</span>`), `Missing aggregated category pill count ${cat}`);
+    assert.ok(allSyllabiResources.includes(`<span>${cat}</span>`), `Missing aggregated category pill count ${cat}`);
   }
 
-  // 4. Selecting a specific curriculum in the dropdown switches back to that curriculum's resources
-  change("curriculum-linear-algebra-002");
-  assert.equal(app.getState().selectedCurriculumId, "curriculum-linear-algebra-002");
+  // 4. Selecting a specific syllabus in the dropdown switches back to that syllabus's resources
+  change("syllabus-linear-algebra-002");
+  assert.equal(app.getState().selectedSyllabusId, "syllabus-linear-algebra-002");
   assert.equal(app.getState().resourceScope, "selected");
   const laResources = resourcesOf(root.innerHTML);
   assert.equal(laResources.match(/class="resource-catalog-card resource-table-row"/g)?.length, 4);
   assert.ok(laResources.includes("Public Problem Sets with Worked Solutions: Linear Algebra"));
 
-  // 5. Type is the first column without redundant curriculum title pills, and Units chips are external hyperlinks to the actual resource source (not sidebar drawer triggers)
+  // 5. Type is the first column without redundant syllabus title pills, and Units chips are external hyperlinks to the actual resource source (not sidebar drawer triggers)
   assert.match(
     initialResources,
     /<thead>\s*<tr>\s*<th scope="col">Type<\/th>\s*<th scope="col">Resource<\/th>\s*<th scope="col">Units<\/th>/
   );
-  assert.equal(initialResources.includes("resource-curriculum-pill"), false);
-  assert.equal(laResources.includes('data-action="resume-curriculum"'), false);
+  assert.equal(initialResources.includes("resource-syllabus-pill"), false);
+  assert.equal(laResources.includes('data-action="resume-syllabus"'), false);
   assert.match(
     laResources,
     /<a href="https:\/\/example\.invalid\/catalog\/linear-algebra-problem-sets(?:#[^"]+)?" target="_blank" rel="noopener noreferrer" class="resource-usage-chip"[^>]*data-activity-id="la-gate-spectral"/
@@ -1760,14 +1764,14 @@ test("Resources renders a Filterable Data Table + Category Pill Bar with Synced 
   assert.match(css, /@container \(width < 600px\)\s*\{[\s\S]*?\.resources-data-table thead\s*\{\s*display:\s*none;/);
 });
 
-test("Explore and Learn share one canonical curriculum tag source data with distinct UI representations", () => {
+test("Explore and Learn share one canonical syllabus tag source data with distinct UI representations", () => {
   const { app, root, click } = mountWithClicks();
   const todayOf = (html) => html.slice(html.indexOf('id="panel-learn-today"'), html.indexOf('id="panel-learn-plan"'));
   const planOf = (html) => html.slice(html.indexOf('id="panel-learn-plan"'), html.indexOf('id="panel-learn-progress"'));
 
-  // 1. Default curriculum (RAG Python): Today and Plan render the shared curriculum tags using Learn's metadata strip UI
+  // 1. Default syllabus (RAG Python): Today and Plan render the shared syllabus tags using Learn's metadata strip UI
   for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
-    assert.ok(panelHtml.includes('class="learn-curriculum-tags" aria-label="Curriculum taxonomy and topic tags" data-category="Computer Science" data-subject="Engineering" data-difficulty="Formal" data-format="Quiz"'));
+    assert.ok(panelHtml.includes('class="learn-syllabus-tags" aria-label="Syllabus taxonomy and topic tags" data-category="Computer Science" data-subject="Engineering" data-difficulty="Formal" data-format="Quiz"'));
     assert.ok(panelHtml.includes('<span class="learn-tag-category">Computer Science</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Engineering</span>'));
     assert.equal(panelHtml.includes('data-tag-facet="difficulty"'), false);
     assert.equal(panelHtml.includes('data-tag-facet="format"'), false);
@@ -1776,8 +1780,8 @@ test("Explore and Learn share one canonical curriculum tag source data with dist
     }
   }
 
-  // 2. Switching to Linear Algebra updates Today and Plan with Linear Algebra's shared curriculum tags (Math & Sciences › Math, Formal, Quiz, SVD)
-  click({ action: "select-curriculum", curriculumId: "curriculum-linear-algebra-002" });
+  // 2. Switching to Linear Algebra updates Today and Plan with Linear Algebra's shared syllabus tags (Math & Sciences › Math, Formal, Quiz, SVD)
+  click({ action: "select-syllabus", syllabusId: "syllabus-linear-algebra-002" });
   for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
     assert.ok(panelHtml.includes('data-category="Math &amp; Sciences" data-subject="Mathematics" data-difficulty="Formal" data-format="Quiz"'));
     assert.ok(panelHtml.includes('<span class="learn-tag-category">Math &amp; Sciences</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Math</span>'));
@@ -1786,10 +1790,10 @@ test("Explore and Learn share one canonical curriculum tag source data with dist
     }
   }
 
-  // 3. Adopting Rust Async from Explore into Learn preserves the exact same curriculum tag data across Explore and Learn
+  // 3. Adopting Rust Async from Explore into Learn preserves the exact same syllabus tag data across Explore and Learn
   app.navigateTopLevel("Explore");
   click({ action: "open-adopt-dialog", publicationId: "publication-rust-async-001" });
-  click({ action: "confirm-adopt-curriculum", publicationId: "publication-rust-async-001" });
+  click({ action: "confirm-adopt-syllabus", publicationId: "publication-rust-async-001" });
   for (const panelHtml of [todayOf(root.innerHTML), planOf(root.innerHTML)]) {
     assert.ok(panelHtml.includes('data-category="Computer Science" data-subject="Systems" data-difficulty="Applied" data-format="Code Lab"'));
     assert.ok(panelHtml.includes('<span class="learn-tag-category">Computer Science</span><span class="learn-tag-sep" aria-hidden="true">›</span><span class="learn-tag-subject">Systems</span>'));
@@ -1798,8 +1802,8 @@ test("Explore and Learn share one canonical curriculum tag source data with dist
     }
   }
 
-  // 4. curriculumTagsOf derives the canonical descriptor directly from a curriculum object
-  const customTags = curriculumTagsOf({
+  // 4. syllabusTagsOf derives the canonical descriptor directly from a syllabus object
+  const customTags = syllabusTagsOf({
     subject: "Physics",
     gate_style: "Problem Set Gate",
     topic_tags: ["Thermodynamics", "Ensembles"],
@@ -1846,19 +1850,19 @@ test("Study flow texts render inline LaTeX equations into accessible MathML acro
   assert.ok(unit2Drawer.includes('data-latex="\\frac{1}{\\sqrt{d_k}}"'));
 
   // 4. Switching to Linear Algebra renders projection matrix P = A(A^T A)^{-1}A^T and SVD A = U\Sigma V^T in Unit and Activity Study flow texts
-  click({ action: "select-curriculum", curriculumId: "curriculum-linear-algebra-002" });
+  click({ action: "select-syllabus", syllabusId: "syllabus-linear-algebra-002" });
   click({ action: "select-outline-module", moduleId: "la-module-spectral" });
   const laUnitDrawer = drawerOf(root.innerHTML);
   assert.ok(laUnitDrawer.includes('data-latex="P = A(A^T A)^{-1}A^T"'));
   assert.ok(laUnitDrawer.includes('data-latex="3 \\times 3"'));
 });
 
-test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing Fit tray, search-bypass toggle, and polymorphic Book/YouTube indexing", () => {
+test("New Syllabus modal runs the Step 0-4 AI pipeline with Suggested Existing Fit tray, search-bypass toggle, and polymorphic Book/YouTube indexing", () => {
   const { app, root, click } = mountWithClicks();
-  app.openDialog("dialog-new-curriculum");
+  app.openDialog("dialog-new-syllabus");
 
   const dialogOf = (html) => {
-    const start = html.indexOf('<dialog id="dialog-new-curriculum"');
+    const start = html.indexOf('<dialog id="dialog-new-syllabus"');
     return html.slice(start, html.indexOf("</dialog>", start));
   };
 
@@ -1877,7 +1881,7 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.equal(initialDialog.includes('class="intake-coverage-chips"'), false, "Selected topics must not be duplicated in a second chip bar");
   assert.equal(initialDialog.includes('data-action="review-generate"'), false, "Modal footer has one clear primary CTA");
   assert.equal(initialDialog.includes("Advanced &amp; billing"), false, "Internal billing jargon accordion is removed from modal");
-  for (const verbose of ["Toggle [Use] to bypass", "AI Curriculum Synthesizer", "Shared tag taxonomy"]) {
+  for (const verbose of ["Toggle [Use] to bypass", "AI Syllabus Synthesizer", "Shared tag taxonomy"]) {
     assert.equal(initialDialog.includes(verbose), false);
   }
 
@@ -1926,7 +1930,7 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   click({ action: "toggle-intake-resource", resourceId: "synthetic-resource-tokenization-v1" });
   assert.equal(app.getState().intakeSelectedResourceIds.includes("synthetic-resource-tokenization-v1"), true);
 
-  // 4. Designate an AI model in the modal footer (or Settings) and trigger Step 2-4 AI Curriculum Synthesis + Polymorphic DB Indexing
+  // 4. Designate an AI model in the modal footer (or Settings) and trigger Step 2-4 AI Syllabus Synthesis + Polymorphic DB Indexing
   assert.ok(dialogOf(root.innerHTML).includes('id="intake-ai-model"'));
   app.applyUiAction("set-intake-ai-model", { compoundModel: "anthropic:claude-opus-5-5" });
   assert.equal(app.getState().primaryCredentialRef, "cred-anthropic-1");
@@ -1934,10 +1938,10 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.ok(dialogOf(root.innerHTML).includes('data-designated-provider="anthropic" data-designated-model="claude-opus-5-5"'));
 
   click({ action: "set-intake-fit-mode", fitMode: "fill_gaps" });
-  click({ action: "generate-curriculum-ai" });
+  click({ action: "generate-syllabus-ai" });
 
   const afterGen = app.getState();
-  assert.equal(afterGen.selectedCurriculumId, "curriculum-ai-generated-001");
+  assert.equal(afterGen.selectedSyllabusId, "syllabus-ai-generated-001");
   assert.equal(afterGen.learnSubDestination, "Today");
   assert.equal(afterGen.openDialogId, null);
   assert.ok(afterGen.lastPipelineReceipt);
@@ -1961,7 +1965,7 @@ test("New Curriculum modal runs the Step 0-4 AI pipeline with Suggested Existing
   assert.ok(resourcesHtml.includes("Book: Approximate Nearest Neighbor &amp; HNSW Vector Indexing (Vector Indexing)"));
   assert.ok(resourcesHtml.includes("YouTube Playlist: RAG Triad Evaluation, Faithfulness &amp; Context Recall Walkthrough"));
 
-  // 6. Switching to Today shows the newly synthesized curriculum with inline LaTeX math and borderless Unit spine
+  // 6. Switching to Today shows the newly synthesized syllabus with inline LaTeX math and borderless Unit spine
   app.navigateLearnSubDestination("Today");
   assert.ok(root.innerHTML.includes('data-latex="\\mathrm{Recall}@k = \\frac{|R_k \\cap G|}{|G|}"'));
 });
@@ -1987,7 +1991,7 @@ test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector 
   assert.equal(css.includes(".progress-overview-bar"), false);
 
   // 3. Assert Progress panel uses borderless summary strip, explicit page-description + progress-cap-description, and indented capability contents
-  const html = renderCurriculumWebAppHtml({ topLevel: "Learn", learnSubDestination: "Progress" });
+  const html = renderSyllabusWebAppHtml({ topLevel: "Learn", learnSubDestination: "Progress" });
   const progressPanel = html.slice(
     html.indexOf('id="panel-learn-progress"'),
     html.indexOf('id="panel-learn-resources"')
@@ -2007,7 +2011,7 @@ test("Impeccable audit guardrails: zero anti-patterns in rendered HTML detector 
   assert.doesNotMatch(progressPanel, /class="today-selected-eyebrow"[^>]*>[\s\S]*?<h1 class="page-title">Your learning evidence<\/h1>/);
 });
 
-test("BYOK read-only API keys, Edit button toggle, and zero-API-keys states across Settings and New Curriculum dialog", () => {
+test("BYOK read-only API keys, Edit button toggle, and zero-API-keys states across Settings and New Syllabus dialog", () => {
   const { app, root, click } = mountWithClicks({ topLevel: "Settings" });
 
   // 1. Default state: all 3 providers have read-only masked keys and an explicit Edit button (no editable <input>)
@@ -2044,11 +2048,11 @@ test("BYOK read-only API keys, Edit button toggle, and zero-API-keys states acro
   assert.ok(root.innerHTML.includes("+ Add key"));
   assert.ok(root.innerHTML.includes("No API keys configured."));
 
-  // 5. Opening New Curriculum dialog when zero API keys are configured shows Add key in Settings prompt & disables Generate
-  app.openDialog("dialog-new-curriculum");
+  // 5. Opening New Syllabus dialog when zero API keys are configured shows Add key in Settings prompt & disables Generate
+  app.openDialog("dialog-new-syllabus");
   assert.ok(root.innerHTML.includes("No AI API key configured"));
   assert.ok(root.innerHTML.includes('data-action="open-ai-settings"'));
-  assert.match(root.innerHTML, /data-action="generate-curriculum-ai"[^>]*disabled/);
+  assert.match(root.innerHTML, /data-action="generate-syllabus-ai"[^>]*disabled/);
 
   // 6. Clicking "Add key in Settings →" closes the dialog, navigates to Settings, and opens OpenAI key input for editing
   click({ action: "open-ai-settings" });
@@ -2064,7 +2068,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
     learnSubDestination: "Resources",
   });
 
-  // 1. Learn › Resources shows only resources belonging to the learner's curricula and loads structured JSON Access fields
+  // 1. Learn › Resources shows only resources belonging to the learner's syllabi and loads structured JSON Access fields
   const resourcesPanel = root.innerHTML.slice(
     root.innerHTML.indexOf('id="panel-learn-resources"'),
     root.innerHTML.indexOf('id="panel-explore"')
@@ -2090,7 +2094,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   // 2. Admin is a role. The default learner gets the 403 boundary, and the curator persona opens the console.
   click({ action: "open-admin-resources" });
   assert.ok(root.innerHTML.includes("403 Unauthorized Role"));
-  app.applyUiAction("submit-sign-in", { email: "ada@curriculum.io" });
+  app.applyUiAction("submit-sign-in", { email: "ada@syllabus.io" });
   click({ action: "open-admin-resources" });
   assert.equal(app.getState().adminConsoleOpen, true);
   const adminPanel = root.innerHTML.slice(
@@ -2153,7 +2157,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   );
 
   // 6. Non-admin learner accounts receive a 403 role boundary if they view Admin
-  app.applyUiAction("submit-sign-in", { email: "sam@curriculum.io" });
+  app.applyUiAction("submit-sign-in", { email: "sam@syllabus.io" });
   app.applyUiAction("open-admin-resources");
   const unauthorizedAdminPanel = root.innerHTML.slice(
     root.innerHTML.indexOf('id="panel-admin-resources"'),

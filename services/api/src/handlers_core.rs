@@ -1,5 +1,5 @@
 //! Core HTTP handlers: auth sessions, learner proficiency, progress events, schedule,
-//! export jobs, catalog filtering/review/quarantine, goal intake, generation, curricula, and BYOK credentials.
+//! export jobs, catalog filtering/review/quarantine, goal intake, generation, syllabi, and BYOK credentials.
 
 use axum::{
     extract::{Path, Query, State},
@@ -7,23 +7,29 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use curriculum_application::{
+use syllabus_application::{
     default_cheap_model_for_provider, execute_generation_job, execute_search_and_index_pipeline,
-    interpret_goal_request, AcquisitionPermission, CatalogFilterQuery, CatalogResourceVersionRecord,
-    CatalogReviewEvidence, CatalogReviewInput, DiscoveredWebResourceCandidate,
-    IndexedMaterialCandidate, ResourceFitDecisionMode, ResourceFreshnessState,
+    ingest_manual_resource, interpret_goal_request, AcquisitionPermission, CatalogFilterQuery,
+    CatalogResourcePatchInput, CatalogResourceVersionRecord, CatalogReviewEvidence,
+    CatalogReviewInput, SyllabusResourceBindingInput, DiscoveredWebResourceCandidate,
+    IndexedMaterialCandidate, ManualResourceIngestRequest, ResourceFitDecisionMode,
+    ResourceFreshnessState,
 };
-use curriculum_domain::ActivityExecutionStatus;
-use curriculum_persistence::{
-    GenerationJobRecord, PersistenceError, ProgressEventInput, SchedulePatchInput,
+use syllabus_domain::ActivityExecutionStatus;
+use syllabus_persistence::{
+    AccountRecord, AuthSessionRecord, GenerationJobRecord, PersistenceError, ProgressEventInput,
+    SchedulePatchInput,
 };
-use curriculum_security::{AuthenticatedPrincipal, PrincipalRole};
+use syllabus_security::{
+    compute_pkce_s256_challenge, resolve_oauth_provider_statuses, verify_pkce_s256,
+    AuthenticatedPrincipal, OAuthProvider, PrincipalRole, SecurityError,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
     extract_bearer_token, extract_idempotency_key, extract_if_match, json_bool, json_str,
-    json_u64, json_with_etag, ApiAppState, ApiResult, AuthPrincipal, DEFAULT_CURRICULUM_ID,
+    json_u64, json_with_etag, ApiAppState, ApiResult, AuthPrincipal, DEFAULT_SYLLABUS_ID,
     DEFAULT_NOW_EPOCH_MS, HEADER_IDEMPOTENCY_REPLAYED,
 };
 
@@ -50,6 +56,35 @@ pub(crate) struct SessionResponseDto {
     pub(crate) expires_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) email: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) avatar_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) auth_provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) is_new_account: Option<bool>,
+}
+
+fn build_session_response(
+    account: Option<&AccountRecord>,
+    session: AuthSessionRecord,
+    auth_provider: Option<&str>,
+    is_new_account: Option<bool>,
+) -> SessionResponseDto {
+    SessionResponseDto {
+        account_id: session.account_id,
+        roles: session.roles,
+        expires_at: session.expires_at,
+        session_token: Some(session.token),
+        email: account.map(|a| a.email.clone()),
+        display_name: account.and_then(|a| a.display_name.clone()),
+        avatar_url: account.and_then(|a| a.avatar_url.clone()),
+        auth_provider: auth_provider.map(str::to_string),
+        is_new_account,
+    }
 }
 
 pub(crate) async fn create_auth_session_handler(
@@ -59,21 +94,19 @@ pub(crate) async fn create_auth_session_handler(
     let session = state
         .store
         .create_auth_session(&req.email, &req.authentication_code)?;
+    let account = state.store.get_account_by_id(&session.account_id);
     Ok((
         StatusCode::OK,
-        Json(SessionResponseDto {
-            account_id: session.account_id,
-            roles: session.roles,
-            expires_at: session.expires_at,
-            session_token: Some(session.token),
-        }),
+        Json(build_session_response(account.as_ref(), session, None, None)),
     )
         .into_response())
 }
 
 pub(crate) async fn get_auth_session_handler(
+    State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
 ) -> ApiResult {
+    let account = state.store.get_account_by_id(&principal.account_id);
     Ok((
         StatusCode::OK,
         Json(SessionResponseDto {
@@ -81,6 +114,11 @@ pub(crate) async fn get_auth_session_handler(
             roles: principal.roles,
             expires_at: DEFAULT_SESSION_EXPIRES_AT.to_string(),
             session_token: None,
+            email: account.as_ref().map(|a| a.email.clone()),
+            display_name: account.as_ref().and_then(|a| a.display_name.clone()),
+            avatar_url: account.as_ref().and_then(|a| a.avatar_url.clone()),
+            auth_provider: None,
+            is_new_account: None,
         }),
     )
         .into_response())
@@ -97,6 +135,222 @@ pub(crate) async fn delete_auth_session_handler(
             .revoke_session_token(token, DEFAULT_NOW_EPOCH_MS)?;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+/// Request payload for `POST /v1/auth/signup`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct EmailSignupRequestDto {
+    pub(crate) email: String,
+    pub(crate) password: String,
+    #[serde(default)]
+    pub(crate) display_name: Option<String>,
+}
+
+/// Request payload for `POST /v1/auth/login`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct EmailLoginRequestDto {
+    pub(crate) email: String,
+    pub(crate) password: String,
+}
+
+/// Query parameters for `GET /v1/auth/oauth/{provider}/authorize`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct OAuthAuthorizeQueryDto {
+    pub(crate) redirect_uri: String,
+    pub(crate) state: String,
+    #[serde(default)]
+    pub(crate) code_challenge: Option<String>,
+    #[serde(default)]
+    pub(crate) code_verifier: Option<String>,
+}
+
+/// Request payload for `POST /v1/auth/oauth/{provider}/callback`.
+#[derive(Debug, Deserialize)]
+pub(crate) struct OAuthCallbackExchangeRequestDto {
+    pub(crate) provider_subject: String,
+    pub(crate) email: String,
+    #[serde(default = "default_true")]
+    pub(crate) email_verified: bool,
+    #[serde(default)]
+    pub(crate) display_name: Option<String>,
+    #[serde(default)]
+    pub(crate) avatar_url: Option<String>,
+    #[serde(default)]
+    pub(crate) code_verifier: Option<String>,
+    #[serde(default)]
+    pub(crate) expected_code_challenge: Option<String>,
+}
+
+#[must_use]
+const fn default_true() -> bool {
+    true
+}
+
+pub(crate) async fn list_auth_providers_handler(
+    State(state): State<ApiAppState>,
+) -> ApiResult {
+    let origin = std::env::var("PUBLIC_WEB_ORIGIN")
+        .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let providers =
+        resolve_oauth_provider_statuses(&origin, state.gates.env.is_local_dev_or_test());
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "providers": providers,
+            "email_password_enabled": true,
+            "passkey_enabled": true,
+        })),
+    )
+        .into_response())
+}
+
+pub(crate) async fn signup_email_handler(
+    State(state): State<ApiAppState>,
+    Json(req): Json<EmailSignupRequestDto>,
+) -> ApiResult {
+    let (account, session) = state.store.register_email_account(
+        &req.email,
+        &req.password,
+        req.display_name.as_deref(),
+    )?;
+    Ok((
+        StatusCode::CREATED,
+        Json(build_session_response(
+            Some(&account),
+            session,
+            Some("email"),
+            Some(true),
+        )),
+    )
+        .into_response())
+}
+
+pub(crate) async fn login_email_handler(
+    State(state): State<ApiAppState>,
+    Json(req): Json<EmailLoginRequestDto>,
+) -> ApiResult {
+    let (account, session) = state.store.login_email_account(&req.email, &req.password)?;
+    Ok((
+        StatusCode::OK,
+        Json(build_session_response(
+            Some(&account),
+            session,
+            Some("email"),
+            Some(false),
+        )),
+    )
+        .into_response())
+}
+
+pub(crate) async fn oauth_authorize_url_handler(
+    State(state): State<ApiAppState>,
+    Path(provider_raw): Path<String>,
+    Query(query): Query<OAuthAuthorizeQueryDto>,
+) -> ApiResult {
+    let provider: OAuthProvider = provider_raw.parse().map_err(PersistenceError::Security)?;
+    let challenge = match (query.code_challenge.as_deref(), query.code_verifier.as_deref()) {
+        (Some(ch), _) if !ch.trim().is_empty() => ch.trim().to_string(),
+        (_, Some(verifier)) => {
+            compute_pkce_s256_challenge(verifier).map_err(PersistenceError::Security)?
+        }
+        _ => {
+            return Err(PersistenceError::Security(SecurityError::InvalidOAuthGrant(
+                "code_challenge or code_verifier is required for PKCE S256".to_string(),
+            ))
+            .into());
+        }
+    };
+
+    let env_client_id = match provider {
+        OAuthProvider::Google => std::env::var("GOOGLE_CLIENT_ID").ok(),
+        OAuthProvider::Github => std::env::var("GITHUB_CLIENT_ID").ok(),
+    }
+    .filter(|v| !v.trim().is_empty());
+
+    let origin = std::env::var("PUBLIC_WEB_ORIGIN")
+        .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let (client_id, override_url, mode) = match env_client_id {
+        Some(live_id) => (live_id, None, "live"),
+        None if state.gates.env.is_local_dev_or_test() => (
+            format!("dev-{}-client", provider.as_str()),
+            Some(format!(
+                "{}/auth/dev-idp/{}/authorize",
+                origin.trim_end_matches('/'),
+                provider.as_str()
+            )),
+            "dev_sandbox",
+        ),
+        None => {
+            return Err(PersistenceError::Security(SecurityError::InvalidOAuthGrant(
+                format!("OAuth client_id is not configured for `{}`", provider.as_str()),
+            ))
+            .into());
+        }
+    };
+
+    let authorize_url = provider
+        .build_authorization_url(
+            &client_id,
+            &query.redirect_uri,
+            &query.state,
+            &challenge,
+            override_url.as_deref(),
+        )
+        .map_err(PersistenceError::Security)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "provider": provider.as_str(),
+            "mode": mode,
+            "authorize_url": authorize_url,
+            "code_challenge_method": "S256",
+        })),
+    )
+        .into_response())
+}
+
+pub(crate) async fn oauth_callback_exchange_handler(
+    State(state): State<ApiAppState>,
+    Path(provider_raw): Path<String>,
+    Json(req): Json<OAuthCallbackExchangeRequestDto>,
+) -> ApiResult {
+    let provider: OAuthProvider = provider_raw.parse().map_err(PersistenceError::Security)?;
+    if let (Some(verifier), Some(expected)) = (
+        req.code_verifier.as_deref(),
+        req.expected_code_challenge.as_deref(),
+    ) {
+        if !verify_pkce_s256(verifier, expected) {
+            return Err(PersistenceError::Security(SecurityError::InvalidOAuthGrant(
+                "PKCE S256 code_verifier did not match code_challenge".to_string(),
+            ))
+            .into());
+        }
+    }
+
+    let outcome = state.store.authenticate_oauth_identity(
+        provider,
+        &req.provider_subject,
+        &req.email,
+        req.email_verified,
+        req.display_name.as_deref(),
+        req.avatar_url.as_deref(),
+    )?;
+    let status = if outcome.is_new_account {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((
+        status,
+        Json(build_session_response(
+            Some(&outcome.account),
+            outcome.session,
+            Some(outcome.provider.as_str()),
+            Some(outcome.is_new_account),
+        )),
+    )
+        .into_response())
 }
 
 /// Query parameters for inspecting learner proficiency projections.
@@ -125,7 +379,7 @@ pub(crate) async fn get_my_proficiency_handler(
 pub(crate) struct ProgressEventRequestDto {
     pub(crate) event_id: String,
     #[serde(default)]
-    pub(crate) curriculum_id: Option<String>,
+    pub(crate) syllabus_id: Option<String>,
     pub(crate) activity_id: String,
     #[serde(default)]
     pub(crate) objective_id: Option<String>,
@@ -145,33 +399,33 @@ pub(crate) async fn post_progress_event_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Json(mut req): Json<ProgressEventRequestDto>,
 ) -> ApiResult {
-    let curriculum_id = req.curriculum_id.take();
+    let syllabus_id = req.syllabus_id.take();
     handle_progress_event_inner(
         &state,
         &principal,
-        curriculum_id.as_deref().unwrap_or(DEFAULT_CURRICULUM_ID),
+        syllabus_id.as_deref().unwrap_or(DEFAULT_SYLLABUS_ID),
         req,
     )
 }
 
-pub(crate) async fn post_curriculum_progress_event_handler(
+pub(crate) async fn post_syllabus_progress_event_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     Json(req): Json<ProgressEventRequestDto>,
 ) -> ApiResult {
-    handle_progress_event_inner(&state, &principal, &curriculum_id, req)
+    handle_progress_event_inner(&state, &principal, &syllabus_id, req)
 }
 
 fn handle_progress_event_inner(
     state: &ApiAppState,
     principal: &AuthenticatedPrincipal,
-    curriculum_id: &str,
+    syllabus_id: &str,
     req: ProgressEventRequestDto,
 ) -> ApiResult {
     let input = ProgressEventInput {
         event_id: req.event_id,
-        curriculum_id: curriculum_id.to_string(),
+        syllabus_id: syllabus_id.to_string(),
         activity_id: req.activity_id,
         objective_id: req.objective_id,
         status: req.status,
@@ -198,9 +452,9 @@ fn handle_progress_event_inner(
 pub(crate) async fn get_schedule_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
 ) -> ApiResult {
-    let schedule = state.store.get_schedule(&principal, &curriculum_id)?;
+    let schedule = state.store.get_schedule(&principal, &syllabus_id)?;
     Ok(json_with_etag(StatusCode::OK, &schedule.etag, &schedule))
 }
 
@@ -208,24 +462,24 @@ pub(crate) async fn patch_schedule_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     Json(patch_input): Json<SchedulePatchInput>,
 ) -> ApiResult {
     let if_match = extract_if_match(&headers);
     let updated = state
         .store
-        .patch_schedule(&principal, &curriculum_id, if_match, patch_input)?;
+        .patch_schedule(&principal, &syllabus_id, if_match, patch_input)?;
 
     let job_id = format!(
         "job-sched-sync-{}-v{}",
-        updated.curriculum_id, updated.etag_version
+        updated.syllabus_id, updated.etag_version
     );
     let _ = state.outbox.enqueue(
         job_id,
         principal.account_id,
         "schedule_reminder_sync",
         json!({
-            "curriculum_id": updated.curriculum_id,
+            "syllabus_id": updated.syllabus_id,
             "schedule_revision_id": updated.schedule_revision_id,
             "etag_version": updated.etag_version,
         }),
@@ -508,7 +762,7 @@ pub(crate) async fn search_and_index_catalog_handler(
                 price_minor_units: disc.price_minor_units,
                 subscription_ids: Vec::new(),
                 is_optional_certification: false,
-                review_status: curriculum_application::ResourceReviewStatus::Approved,
+                review_status: syllabus_application::ResourceReviewStatus::Approved,
                 review_evidence: Some(CatalogReviewEvidence {
                     reviewer_principal_id: "00000000-0000-4000-8000-000000000099".to_string(),
                     reviewed_at: "2026-10-28T00:00:00Z".to_string(),
@@ -592,7 +846,7 @@ fn validate_and_record_byok_generation_usage(
             pinned_ver,
             &meta.provider_id,
             model_id,
-            "curriculum_generation",
+            "syllabus_generation",
             1_500,
             1_100,
             "provider_reported",
@@ -621,7 +875,7 @@ pub(crate) async fn start_generation_handler(
             let job_id = json_str(&payload, &["job_id"])
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("gen-job-{sanitized_key}"));
-            let curriculum_id = json_str(&payload, &["curriculum_id"])
+            let syllabus_id = json_str(&payload, &["syllabus_id"])
                 .map(str::to_string)
                 .unwrap_or_else(|| format!("cur-{sanitized_key}"));
             let revision_id = json_str(&payload, &["revision_id"])
@@ -631,7 +885,7 @@ pub(crate) async fn start_generation_handler(
             let _ = state.outbox.enqueue(
                 job_id.clone(),
                 principal.account_id.clone(),
-                "curriculum_generation",
+                "syllabus_generation",
                 payload.clone(),
                 DEFAULT_NOW_EPOCH_MS,
             );
@@ -642,7 +896,7 @@ pub(crate) async fn start_generation_handler(
                 &state.store,
                 &principal,
                 &job_id,
-                &curriculum_id,
+                &syllabus_id,
                 &revision_id,
                 &payload,
             )?;
@@ -671,33 +925,33 @@ pub(crate) async fn cancel_generation_job_handler(
     Ok((StatusCode::OK, Json(generation_job_body(&job))).into_response())
 }
 
-pub(crate) async fn list_my_curricula_handler(
+pub(crate) async fn list_my_syllabi_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
 ) -> ApiResult {
-    let items = state.store.list_my_curricula(&principal)?;
+    let items = state.store.list_my_syllabi(&principal)?;
     Ok((StatusCode::OK, Json(json!({ "items": items }))).into_response())
 }
 
-pub(crate) async fn get_curriculum_overview_handler(
+pub(crate) async fn get_syllabus_overview_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
 ) -> ApiResult {
     let overview = state
         .store
-        .get_curriculum_overview(&principal, &curriculum_id)?;
+        .get_syllabus_overview(&principal, &syllabus_id)?;
     Ok(json_with_etag(StatusCode::OK, &overview.etag, &overview))
 }
 
-pub(crate) async fn get_curriculum_revision_handler(
+pub(crate) async fn get_syllabus_revision_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path((curriculum_id, revision_id)): Path<(String, String)>,
+    Path((syllabus_id, revision_id)): Path<(String, String)>,
 ) -> ApiResult {
-    let (rev, etag) = state.store.get_curriculum_revision_by_curriculum_and_id(
+    let (rev, etag) = state.store.get_syllabus_revision_by_syllabus_and_id(
         &principal,
-        &curriculum_id,
+        &syllabus_id,
         &revision_id,
     )?;
     let mut body = serde_json::to_value(&rev).unwrap_or(Value::Null);
@@ -705,16 +959,16 @@ pub(crate) async fn get_curriculum_revision_handler(
     Ok(json_with_etag(StatusCode::OK, &etag, &body))
 }
 
-pub(crate) async fn activate_curriculum_revision_handler(
+pub(crate) async fn activate_syllabus_revision_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
-    Path((curriculum_id, revision_id)): Path<(String, String)>,
+    Path((syllabus_id, revision_id)): Path<(String, String)>,
 ) -> ApiResult {
-    activate_curriculum_revision_inner(&state, &principal, &headers, &curriculum_id, &revision_id)
+    activate_syllabus_revision_inner(&state, &principal, &headers, &syllabus_id, &revision_id)
 }
 
-/// Request payload for activating a curriculum revision via `PUT /v1/curricula/{id}/active-revision`.
+/// Request payload for activating a syllabus revision via `PUT /v1/syllabi/{id}/active-revision`.
 #[derive(Debug, Deserialize)]
 pub(crate) struct PutActiveRevisionRequestDto {
     pub(crate) revision_id: String,
@@ -724,29 +978,29 @@ pub(crate) async fn put_active_revision_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     Json(req): Json<PutActiveRevisionRequestDto>,
 ) -> ApiResult {
-    activate_curriculum_revision_inner(
+    activate_syllabus_revision_inner(
         &state,
         &principal,
         &headers,
-        &curriculum_id,
+        &syllabus_id,
         &req.revision_id,
     )
 }
 
-fn activate_curriculum_revision_inner(
+fn activate_syllabus_revision_inner(
     state: &ApiAppState,
     principal: &AuthenticatedPrincipal,
     headers: &HeaderMap,
-    curriculum_id: &str,
+    syllabus_id: &str,
     revision_id: &str,
 ) -> ApiResult {
     let if_match = extract_if_match(headers);
-    let (updated, next_etag) = state.store.activate_curriculum_revision(
+    let (updated, next_etag) = state.store.activate_syllabus_revision(
         principal,
-        curriculum_id,
+        syllabus_id,
         revision_id,
         if_match,
     )?;
@@ -756,14 +1010,14 @@ fn activate_curriculum_revision_inner(
     Ok(json_with_etag(StatusCode::OK, &next_etag, &body))
 }
 
-pub(crate) async fn get_curriculum_resource_alerts_handler(
+pub(crate) async fn get_syllabus_resource_alerts_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
 ) -> ApiResult {
     let alerts = state
         .store
-        .list_curriculum_resource_alerts(&principal, &curriculum_id)?;
+        .list_syllabus_resource_alerts(&principal, &syllabus_id)?;
     Ok((StatusCode::OK, Json(json!({ "items": alerts }))).into_response())
 }
 
@@ -860,4 +1114,155 @@ pub(crate) async fn get_my_usage_handler(
         })),
     )
         .into_response())
+}
+
+// =============================================================================
+// Manual Learning Resource Ingestion, Auto-Indexing & Per-Syllabus CRUD
+// =============================================================================
+
+pub(crate) async fn ingest_manual_catalog_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Json(req): Json<ManualResourceIngestRequest>,
+) -> ApiResult {
+    let receipt = ingest_manual_resource(&state.store, &principal, &req)?;
+    Ok((StatusCode::CREATED, Json(receipt)).into_response())
+}
+
+pub(crate) async fn patch_catalog_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(_principal): AuthPrincipal,
+    Path(resource_version_id): Path<String>,
+    Json(patch): Json<CatalogResourcePatchInput>,
+) -> ApiResult {
+    let updated = state
+        .store
+        .update_catalog_resource(&resource_version_id, patch)?;
+    let query_probe = format!("{} {}", updated.title, updated.topics.join(" "));
+    let tfidf_score = state
+        .store
+        .rank_catalog_tfidf(&query_probe)
+        .into_iter()
+        .find_map(|(id, score)| (id == updated.resource_version_id).then_some(score))
+        .unwrap_or(0.0);
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "resource": updated,
+            "tfidf_corpus_document_count": state.store.catalog_tfidf_document_count(),
+            "tfidf_self_match_score": tfidf_score,
+        })),
+    )
+        .into_response())
+}
+
+pub(crate) async fn delete_catalog_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(_principal): AuthPrincipal,
+    Path(resource_version_id): Path<String>,
+) -> ApiResult {
+    let deleted = state.store.delete_catalog_resource(&resource_version_id)?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "deleted": true,
+            "resource_version_id": deleted.resource_version_id,
+            "tfidf_corpus_document_count": state.store.catalog_tfidf_document_count(),
+        })),
+    )
+        .into_response())
+}
+
+pub(crate) async fn add_syllabus_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path(syllabus_id): Path<String>,
+    Json(input): Json<SyllabusResourceBindingInput>,
+) -> ApiResult {
+    let (revision, receipt) =
+        state
+            .store
+            .upsert_syllabus_resource_binding(&principal, &syllabus_id, input)?;
+    let body = json!({
+        "receipt": receipt,
+        "revision": revision,
+    });
+    Ok(json_with_etag(StatusCode::CREATED, &receipt.etag, &body))
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct PatchSyllabusResourceDto {
+    #[serde(default)]
+    pub(crate) module_id: Option<String>,
+    #[serde(default)]
+    pub(crate) activity_id: Option<String>,
+    #[serde(default)]
+    pub(crate) activity_title: Option<String>,
+    #[serde(default)]
+    pub(crate) role: Option<String>,
+    #[serde(default)]
+    pub(crate) requirement_level: Option<String>,
+    #[serde(default)]
+    pub(crate) segment_ids: Vec<String>,
+    #[serde(default)]
+    pub(crate) selection_rationale: Option<String>,
+    #[serde(default)]
+    pub(crate) catalog_patch: Option<CatalogResourcePatchInput>,
+}
+
+pub(crate) async fn patch_syllabus_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path((syllabus_id, resource_version_id)): Path<(String, String)>,
+    Json(dto): Json<PatchSyllabusResourceDto>,
+) -> ApiResult {
+    let updated_resource = if let Some(cat_patch) = dto.catalog_patch {
+        Some(
+            state
+                .store
+                .update_catalog_resource(&resource_version_id, cat_patch)?,
+        )
+    } else {
+        None
+    };
+
+    let (revision, receipt) = state.store.upsert_syllabus_resource_binding(
+        &principal,
+        &syllabus_id,
+        SyllabusResourceBindingInput {
+            resource_version_id,
+            module_id: dto.module_id,
+            activity_id: dto.activity_id,
+            activity_title: dto.activity_title,
+            role: dto.role,
+            requirement_level: dto.requirement_level,
+            segment_ids: dto.segment_ids,
+            selection_rationale: dto.selection_rationale,
+        },
+    )?;
+
+    let body = json!({
+        "receipt": receipt,
+        "revision": revision,
+        "resource": updated_resource,
+        "tfidf_corpus_document_count": state.store.catalog_tfidf_document_count(),
+    });
+    Ok(json_with_etag(StatusCode::OK, &receipt.etag, &body))
+}
+
+pub(crate) async fn delete_syllabus_resource_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path((syllabus_id, resource_version_id)): Path<(String, String)>,
+) -> ApiResult {
+    let (revision, receipt) = state.store.remove_syllabus_resource_binding(
+        &principal,
+        &syllabus_id,
+        &resource_version_id,
+    )?;
+    let body = json!({
+        "receipt": receipt,
+        "revision": revision,
+    });
+    Ok(json_with_etag(StatusCode::OK, &receipt.etag, &body))
 }

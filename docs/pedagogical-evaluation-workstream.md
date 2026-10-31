@@ -16,10 +16,10 @@ This document specifies the **4-part pedagogical evaluation workstream** enforce
 
 ---
 
-## 2. Blinded Expert Rubric Evaluation (`evaluate_curriculum_expert_rubric`)
+## 2. Blinded Expert Rubric Evaluation (`evaluate_syllabus_expert_rubric`)
 
-- **Purpose:** Blinded subject-matter expert (SME) evaluation of generated curricula across 5 core pedagogical dimensions on a $1.00$–$5.00$ scale (`100`–`500` centi-points) (`PED-001`..`PED-006`, `@S42`, `@S44`).
-- **Domain Invariants (`crates/domain::evaluate_curriculum_expert_rubric`):**
+- **Purpose:** Blinded subject-matter expert (SME) evaluation of generated syllabi across 5 core pedagogical dimensions on a $1.00$–$5.00$ scale (`100`–`500` centi-points) (`PED-001`..`PED-006`, `@S42`, `@S44`).
+- **Domain Invariants (`crates/domain::evaluate_syllabus_expert_rubric`):**
   - Requires at least 3 independent SME ratings (`min_required_reviews >= 3`).
   - Evaluates 5 dimensions:
     1. `prerequisite_sequencing_centi` (DAG topological validity and cognitive scaffolding)

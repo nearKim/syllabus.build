@@ -13,22 +13,22 @@ GENERATED_HEADER = "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: sp
 RETRIABLE_EFFECT_OPERATIONS = {
     "reserveInferenceBudget",
     "startGeneration",
-    "regenerateCurriculum",
+    "regenerateSyllabus",
     "acceptAdaptation",
-    "publishCurriculum",
+    "publishSyllabus",
     "publishRevision",
-    "adoptCurriculum",
+    "adoptSyllabus",
     "createBillingCheckoutSession",
     "createAccountExportJob",
     "createAccountDeletionRequest",
 }
 
 VERSIONED_MUTATION_OPERATIONS = {
-    "activateCurriculumRevision",
+    "activateSyllabusRevision",
     "patchSchedule",
     "rotateCredential",
     "revokeCredential",
-    "unpublishCurriculum",
+    "unpublishSyllabus",
     "updateNotificationPreferences",
 }
 
@@ -39,8 +39,8 @@ def sha256_file(path: Path) -> str:
 
 def collect_openapi_operations(root: Path):
     specs = [
-        ("core", root / "specs/001-curriculum-platform/contracts/openapi.yaml"),
-        ("companion", root / "specs/001-curriculum-platform/contracts/app-companion.openapi.yaml"),
+        ("core", root / "specs/001-syllabus-platform/contracts/openapi.yaml"),
+        ("companion", root / "specs/001-syllabus-platform/contracts/app-companion.openapi.yaml"),
     ]
     operations = []
     schema_names = {"core": [], "companion": []}
@@ -72,7 +72,7 @@ def collect_openapi_operations(root: Path):
 
 
 def generate_rust_contracts(root: Path, spec_sha: str, operations, schema_names) -> str:
-    schemas_dir = root / "specs/001-curriculum-platform/contracts"
+    schemas_dir = root / "specs/001-syllabus-platform/contracts"
     json_schemas = sorted(schemas_dir.glob("*.schema.json"))
     lines = [
         f"// {GENERATED_HEADER}",

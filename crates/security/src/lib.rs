@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub mod oauth;
+
+pub use oauth::{
+    compute_pkce_s256_challenge, hash_password, resolve_oauth_provider_statuses,
+    verify_password, verify_pkce_s256, OAuthProvider, OAuthProviderStatus,
+};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AppEnvironment {
@@ -108,6 +115,8 @@ pub enum SecurityError {
     VaultDecryptionFailed,
     #[error("invalid payment webhook HMAC-SHA256 signature: {0}")]
     InvalidWebhookSignature(String),
+    #[error("invalid OAuth 2.0 grant or PKCE parameter: {0}")]
+    InvalidOAuthGrant(String),
 }
 
 /// Provider-neutral HTTP/domain authentication verifier (`D11`).
@@ -202,7 +211,7 @@ pub struct ReleaseFeatureGates {
     pub d11_production_auth_approved: bool,
     /// `D07`: Commercial pricing, payment/tax vendor, and refund/expiration terms approved.
     pub d07_live_billing_enabled: bool,
-    /// `D16`: Final public-curriculum content license text and retention windows approved.
+    /// `D16`: Final public-syllabus content license text and retention windows approved.
     pub d16_public_sharing_enabled: bool,
     /// `D15`: OSI-approved Apache-2.0 open-source license and contributor terms approved.
     pub d15_operative_license_approved: bool,
@@ -253,7 +262,7 @@ impl ReleaseFeatureGates {
         } else {
             Err(SecurityError::ReleaseGateBlocked {
                 gate_id: "D16",
-                description: "Final public-curriculum content license text and retention periods required before production public publishing",
+                description: "Final public-syllabus content license text and retention periods required before production public publishing",
                 env: self.env,
             })
         }
@@ -294,7 +303,7 @@ impl std::fmt::Debug for CredentialVault {
 
 impl Default for CredentialVault {
     fn default() -> Self {
-        Self::new(*b"curriculum-dev-vault-kek-32bytes")
+        Self::new(*b"syllabus-local-vault-kek-32bytes")
     }
 }
 
@@ -444,7 +453,7 @@ fn compute_envelope_mac(
     hmac_sha256(mac_subkey, &mac_input)
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
     }
@@ -455,7 +464,7 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
+pub(crate) fn hmac_sha256(key: &[u8], message: &[u8]) -> [u8; 32] {
     let mut k_block = [0u8; 64];
     if key.len() > 64 {
         let hashed = sha256_digest(key);
@@ -644,5 +653,42 @@ mod tests {
                 .unwrap_err(),
             SecurityError::VaultDecryptionFailed
         );
+    }
+
+    #[test]
+    fn rfc7636_pkce_s256_challenge_and_oauth_authorization_url() {
+        // RFC 7636 Appendix B official test vector:
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let challenge = compute_pkce_s256_challenge(verifier).expect("valid RFC 7636 verifier");
+        assert_eq!(challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        assert!(verify_pkce_s256(verifier, &challenge));
+        assert!(!verify_pkce_s256(
+            "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXl",
+            &challenge
+        ));
+        assert!(compute_pkce_s256_challenge("too-short").is_err());
+
+        let url = OAuthProvider::Google
+            .build_authorization_url(
+                "client-123",
+                "http://127.0.0.1:3000/auth/oauth/google/callback",
+                "state-xyz",
+                &challenge,
+                None,
+            )
+            .expect("build Google authorize URL");
+        assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains(&format!("code_challenge={challenge}")));
+    }
+
+    #[test]
+    fn pbkdf2_password_hash_and_constant_time_verify() {
+        let encoded =
+            hash_password("CorrectHorseBatteryStaple!", b"syllabus-salt-01").expect("hash");
+        assert!(encoded.starts_with("pbkdf2-sha256$10000$"));
+        assert!(verify_password("CorrectHorseBatteryStaple!", &encoded));
+        assert!(!verify_password("WrongPassword123!", &encoded));
+        assert!(hash_password("short", b"syllabus-salt-01").is_err());
     }
 }

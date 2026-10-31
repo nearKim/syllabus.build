@@ -1,6 +1,6 @@
 //! BYOK credential vault custody, notification preferences, reminders, hosted credit wallet, and billing ledger.
 
-use curriculum_security::{verify_webhook_hmac_sha256, AuthenticatedPrincipal};
+use syllabus_security::{verify_webhook_hmac_sha256, AuthenticatedPrincipal};
 use serde_json::Value;
 
 use crate::*;
@@ -359,7 +359,7 @@ impl InMemoryTransactionalStore {
                 ReminderOccurrenceRecord {
                     occurrence_id: occurrence_id.to_string(),
                     account_id: principal.account_id.clone(),
-                    curriculum_id: None,
+                    syllabus_id: None,
                     scheduled_local_date: local_date_yyyy_mm_dd.to_string(),
                     scheduled_utc_iso: scheduled_utc_iso.clone(),
                     scheduled_utc_epoch,
@@ -395,7 +395,7 @@ impl InMemoryTransactionalStore {
             .or_insert_with(|| ReminderOccurrenceRecord {
                 occurrence_id: occurrence_id.to_string(),
                 account_id: principal.account_id.clone(),
-                curriculum_id: None,
+                syllabus_id: None,
                 scheduled_local_date: "2026-04-02".to_string(),
                 scheduled_utc_iso: format_epoch_utc_iso(now_utc_epoch_seconds),
                 scheduled_utc_epoch: now_utc_epoch_seconds,

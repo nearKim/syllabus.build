@@ -7,16 +7,16 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use curriculum_domain::{AmbiguousProviderOutcome, BillingModeKind, ModerationVisibilityState};
-use curriculum_persistence::PersistenceError;
-use curriculum_security::AuthenticatedPrincipal;
+use syllabus_domain::{AmbiguousProviderOutcome, BillingModeKind, ModerationVisibilityState};
+use syllabus_persistence::PersistenceError;
+use syllabus_security::AuthenticatedPrincipal;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
     extract_header_str, extract_idempotency_key, extract_if_match, json_bool, json_i64, json_str,
     json_string_vec, json_u64, json_with_etag, ApiAppState, ApiResult, AuthPrincipal,
-    DEFAULT_CURRICULUM_ID, DEFAULT_NOW_EPOCH_MS,
+    DEFAULT_SYLLABUS_ID, DEFAULT_NOW_EPOCH_MS,
 };
 
 // =============================================================================
@@ -25,10 +25,10 @@ use crate::{
 // =============================================================================
 
 pub(crate) const DEFAULT_WEBHOOK_SIGNING_SECRET: &[u8] =
-    b"whsec_curriculum_io_dev_secret_key_2026";
+    b"whsec_syllabus_io_dev_secret_key_2026";
 
 const DEFAULT_BILLING_MODE: &str = "hosted_credits";
-const DEFAULT_OPERATION_KIND: &str = "curriculum_generation";
+const DEFAULT_OPERATION_KIND: &str = "syllabus_generation";
 const DEFAULT_PROVIDER_ID: &str = "openai";
 const DEFAULT_MODEL_ID: &str = "gpt-4o-2024-08-06";
 const DEFAULT_MAX_RESERVABLE_MINOR_UNITS: i64 = 150;
@@ -42,8 +42,8 @@ const DEFAULT_RECONCILE_NOW_EPOCH_SECONDS: i64 = 1_800_000_600;
 const DEFAULT_CHECKOUT_PACKAGE_ID: &str = "pkg-hosted-starter";
 const DEFAULT_CHECKOUT_IDEMPOTENCY_KEY: &str = "idem-checkout-default";
 const DEFAULT_CHECKOUT_AMOUNT_MINOR_UNITS: i64 = 1_000;
-const DEFAULT_CHECKOUT_SUCCESS_URL: &str = "https://curriculum.example.test/billing/success";
-const DEFAULT_CHECKOUT_CANCEL_URL: &str = "https://curriculum.example.test/billing/cancel";
+const DEFAULT_CHECKOUT_SUCCESS_URL: &str = "https://syllabus.example.test/billing/success";
+const DEFAULT_CHECKOUT_CANCEL_URL: &str = "https://syllabus.example.test/billing/cancel";
 const DEFAULT_PUBLICATION_VISIBILITY: &str = "public";
 const DEFAULT_REPORT_REASON_CODE: &str = "policy_violation";
 const DEFAULT_REPORT_DETAILS: &str = "Reported publication";
@@ -329,13 +329,13 @@ pub(crate) async fn process_payment_webhook_handler(
 // Moderation & Partial Adoption
 // =============================================================================
 
-pub(crate) async fn preview_curriculum_publication_handler(
+pub(crate) async fn preview_syllabus_publication_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    preview_publication_inner(&state, &principal, &curriculum_id, &payload)
+    preview_publication_inner(&state, &principal, &syllabus_id, &payload)
 }
 
 pub(crate) async fn preview_body_publication_handler(
@@ -343,14 +343,14 @@ pub(crate) async fn preview_body_publication_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    let curriculum_id = json_str(&payload, &["curriculum_id"]).unwrap_or(DEFAULT_CURRICULUM_ID);
-    preview_publication_inner(&state, &principal, curriculum_id, &payload)
+    let syllabus_id = json_str(&payload, &["syllabus_id"]).unwrap_or(DEFAULT_SYLLABUS_ID);
+    preview_publication_inner(&state, &principal, syllabus_id, &payload)
 }
 
 fn preview_publication_inner(
     state: &ApiAppState,
     principal: &AuthenticatedPrincipal,
-    curriculum_id: &str,
+    syllabus_id: &str,
     payload: &Value,
 ) -> ApiResult {
     let vis_str = json_str(payload, &["visibility"]).unwrap_or(DEFAULT_PUBLICATION_VISIBILITY);
@@ -361,7 +361,7 @@ fn preview_publication_inner(
 
     let preview = state.store.preview_publication(
         principal,
-        curriculum_id,
+        syllabus_id,
         visibility,
         publisher_display_name,
         attribution_text,
@@ -382,13 +382,13 @@ fn extract_expected_preview_sha256(payload: &Value) -> &str {
     .unwrap_or("")
 }
 
-pub(crate) async fn publish_curriculum_handler(
+pub(crate) async fn publish_syllabus_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let preview_id = json_str(&payload, &["preview_id"]);
-    let curriculum_id = json_str(&payload, &["curriculum_id"]);
+    let syllabus_id = json_str(&payload, &["syllabus_id"]);
     let publication_id = json_str(&payload, &["publication_id"]);
     let expected_sha256 = extract_expected_preview_sha256(&payload);
     let accept_terms = json_bool(&payload, &["accept_publication_terms"]).unwrap_or(true);
@@ -396,10 +396,10 @@ pub(crate) async fn publish_curriculum_handler(
         .map(ModerationVisibilityState::from_wire)
         .transpose()?;
 
-    let view = state.store.publish_curriculum(
+    let view = state.store.publish_syllabus(
         &principal,
         preview_id,
-        curriculum_id,
+        syllabus_id,
         publication_id,
         expected_sha256,
         accept_terms,
@@ -431,7 +431,7 @@ pub(crate) async fn publish_publication_revision_handler(
     Ok((StatusCode::CREATED, Json(view)).into_response())
 }
 
-/// Query parameters for discovering public curriculum templates (`T13`).
+/// Query parameters for discovering public syllabus templates (`T13`).
 #[derive(Debug, Deserialize, Default)]
 pub(crate) struct PublicationDiscoveryQueryDto {
     pub(crate) q: Option<String>,
@@ -645,7 +645,7 @@ fn adopt_publication_inner(
     payload: &Value,
 ) -> ApiResult {
     let selected_module_ids = json_string_vec(payload, "selected_module_ids");
-    let new_curriculum_id = json_str(payload, &["new_curriculum_id", "curriculum_id"]);
+    let new_syllabus_id = json_str(payload, &["new_syllabus_id", "syllabus_id"]);
     let free_only = json_bool(payload, &["free_only"]).unwrap_or(true);
     let max_budget_minor_units = json_u64(payload, &["max_budget_minor_units"]);
 
@@ -653,7 +653,7 @@ fn adopt_publication_inner(
         principal,
         publication_id,
         publication_revision_id,
-        new_curriculum_id,
+        new_syllabus_id,
         &selected_module_ids,
         free_only,
         max_budget_minor_units,
@@ -689,7 +689,7 @@ pub(crate) async fn import_external_completion_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    let curriculum_id = json_str(&payload, &["curriculum_id"]).unwrap_or(DEFAULT_CURRICULUM_ID);
+    let syllabus_id = json_str(&payload, &["syllabus_id"]).unwrap_or(DEFAULT_SYLLABUS_ID);
     let activity_id = json_str(&payload, &["activity_id"]).unwrap_or(DEFAULT_IMPORT_ACTIVITY_ID);
     let objective_id = json_str(&payload, &["objective_id"]);
     let external_provider = json_str(
@@ -703,7 +703,7 @@ pub(crate) async fn import_external_completion_handler(
 
     let res = state.store.import_external_provider_completion(
         &principal,
-        curriculum_id,
+        syllabus_id,
         activity_id,
         objective_id,
         external_provider,

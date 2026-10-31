@@ -12,7 +12,7 @@ import re
 import sys
 
 GENERATED_MARKER = 'GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md'
-EXAMPLES_NOTICE_REL = 'specs/001-curriculum-platform/examples/.generated-notice'
+EXAMPLES_NOTICE_REL = 'specs/001-syllabus-platform/examples/.generated-notice'
 examples_notice_text = (
     '# ' + GENERATED_MARKER + '\n'
     '# Synthetic JSON fixtures in this directory are extracted byte-for-byte from specs/product.md\n'
@@ -30,7 +30,7 @@ SLICE_METADATA = {
     'T01': ('Slice 1 — Identity, Tenant Isolation, HTTP Concurrency & Transactional Outbox', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T02': ('Slice 3 — Small Reviewed Catalog & Deterministic Metadata Filtering', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T03': ('Slice 4 — Goal Intake, Async Generation & Deterministic Semantic Validator', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
-    'T04': ('Slice 5 — Responsive Curriculum (Outline + Basic Map), Today View & Activation', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
+    'T04': ('Slice 5 — Responsive Syllabus (Outline + Basic Map), Today View & Activation', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
     'T05': ('Slice 6 — Practice, Reviewed Anchor Assessments, Mastery Gates & Honest Progress', 'Tier 2: Closed Beta'),
     'T06': ('Slice 7 — Workload Math, ScheduleRevision, ReviewScheduleItem & Offline Sync', 'Tier 2: Closed Beta'),
     'T07': ('Slices 9A–9D — BYOK Custody, Live Providers, Hosted Ledger & Checkout (Parent Task)', 'Tier 2: Closed Beta (T07A) / Tier 3: Public Beta (T07B–T07D)'),
@@ -42,7 +42,7 @@ SLICE_METADATA = {
     'T09': ('Slice 13 — Release Operations, Export/Deletion, Backup Restore & Public-Beta Gate', 'Tier 3: Public Beta'),
     'T10': ('Slice 14 — Native Clients & Precise OS Alarms (If Selected)', 'Post-Public-Beta Extension'),
     'T11': ('Slice 15 — Pedagogical Evaluation Workstream, Delayed Learning/Transfer Study & Scope Expansion', 'Continuous Evaluation & Post-Public-Beta'),
-    'T12': ('Slice 8 — Objective Diagnostics, Prerequisite Waivers & Curriculum Adaptation', 'Tier 2: Closed Beta'),
+    'T12': ('Slice 8 — Objective Diagnostics, Prerequisite Waivers & Syllabus Adaptation', 'Tier 2: Closed Beta'),
     'T13': ('Slice 11 — Public Templates, Discovery, Partial Adoption, Upvotes & Moderation', 'Tier 3: Public Beta (Requires D11 & D16 Gates)'),
     'T14': ('Slices 2 & 12 — Responsive UI Shell (T14-Core) & Complete UI/Accessibility Evidence (T14-Full)', 'Tier 1: Private Alpha (T14-Core) / Tier 3: Public Beta (T14-Full)'),
     'T14-Core': ('Slice 2 — Design Tokens, Fail-Closed SafeActivityRenderer & Learn/Explore/Settings Shell', 'Tier 1: Private Alpha (Foundation Tracer Bullet)'),
@@ -72,7 +72,7 @@ def read_assets(text):
         body = match['body']
         if hashlib.sha256(body.encode('utf-8')).hexdigest() != match['digest']:
             raise ValueError('Embedded asset integrity mismatch: ' + name)
-        if not name.startswith('specs/001-curriculum-platform/examples/'):
+        if not name.startswith('specs/001-syllabus-platform/examples/'):
             if GENERATED_MARKER not in body:
                 raise ValueError('Missing generated-file notice in embedded asset: ' + name)
         assets[name] = body
@@ -116,9 +116,9 @@ def build_slice_contexts(spec_text, assets):
     slice_sections = {}
     for m in re.finditer(r'^### (T\d{2}) — ([^\n]+)\n(?P<body>.*?)(?=^### |^---)', spec_text, re.M | re.S):
         slice_sections[m.group(1)] = (m.group(2).strip(), m.group('body').strip())
-    trace_rows = _parse_csv(assets['specs/001-curriculum-platform/traceability.csv'])
-    ctrl_rows = _parse_csv(assets['specs/001-curriculum-platform/control-traceability.csv'])
-    scenarios = _parse_scenarios(assets['specs/001-curriculum-platform/acceptance.feature'])
+    trace_rows = _parse_csv(assets['specs/001-syllabus-platform/traceability.csv'])
+    ctrl_rows = _parse_csv(assets['specs/001-syllabus-platform/control-traceability.csv'])
+    scenarios = _parse_scenarios(assets['specs/001-syllabus-platform/acceptance.feature'])
 
     contexts = {}
     for slice_id, (title, tier) in sorted(SLICE_METADATA.items()):
@@ -197,7 +197,7 @@ def build_slice_contexts(spec_text, assets):
             '````',
             '',
         ])
-        rel_path = f'specs/001-curriculum-platform/slices/{slice_id}.context.md'
+        rel_path = f'specs/001-syllabus-platform/slices/{slice_id}.context.md'
         contexts[rel_path] = '\n'.join(out)
     return contexts
 

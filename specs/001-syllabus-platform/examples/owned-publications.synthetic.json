@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "publication_id": "publication-001",
+      "state": "active",
+      "visibility": "public",
+      "current_publication_revision_id": "public-revision-001",
+      "management_version_id": "management-001",
+      "updated_at": "2026-10-20T12:00:00Z",
+      "display_title": "Synthetic tokenization syllabus",
+      "current_revision_upvote_count": 0
+    },
+    {
+      "publication_id": "publication-quarantined",
+      "state": "quarantined",
+      "visibility": "unlisted",
+      "current_publication_revision_id": "public-revision-quarantined",
+      "management_version_id": "management-quarantined",
+      "updated_at": "2026-10-19T12:00:00Z",
+      "display_title": null,
+      "current_revision_upvote_count": null
+    }
+  ],
+  "next_cursor": null
+}

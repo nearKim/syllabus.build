@@ -48,7 +48,7 @@ export interface SelfCheckRubric {
   readonly criteria: readonly string[];
 }
 
-// One practice question per curriculum, with its formula in TeX. A choice value is what Submit records.
+// One practice question per syllabus, with its formula in TeX. A choice value is what Submit records.
 export interface ConceptCheck {
   readonly formula: string;
   readonly question: string;
@@ -64,7 +64,7 @@ export interface PracticeState {
   readonly choice: string | null;
 }
 
-// A worked example, quiz, or review ends with the curriculum's concept check, unless a rubric checks it instead.
+// A worked example, quiz, or review ends with the syllabus's concept check, unless a rubric checks it instead.
 const CONCEPT_CHECK_TYPES: ReadonlySet<string> = new Set(["worked_example", "quiz", "review"]);
 
 export type SourceCardView = StudyActivity["resourceProvenanceCards"][number];
@@ -126,6 +126,7 @@ export function displayLocation(url: string): string {
 export type InspectorMode = "unit" | "activity";
 
 export interface InspectorDrawerProps {
+  readonly syllabusId?: string | undefined;
   readonly modules: readonly StudyModule[];
   readonly mod: StudyModule;
   readonly activity: StudyActivity;
@@ -142,6 +143,7 @@ export interface InspectorDrawerProps {
 }
 
 export function InspectorDrawer({
+  syllabusId,
   modules,
   mod,
   activity,
@@ -329,10 +331,24 @@ export function InspectorDrawer({
             </ul>
           </section>
 
-          {unitResources.length > 0 ? (
-            <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-resources`}>
+          <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-resources`}>
+            <div class="inspector-section-head">
               <h3 id={`${INSPECTOR_ID}-unit-resources`}>Materials ({unitResources.length})</h3>
-              {unitResources.map((card, index) => {
+              <button
+                type="button"
+                class="inspector-inline-action"
+                data-action="open-resource-editor"
+                data-editor-mode="ingest"
+                data-syllabus-id={syllabusId}
+                data-module-id={mod.moduleId}
+              >
+                + Add resource
+              </button>
+            </div>
+            {unitResources.length === 0 ? (
+              <p class="meta-text">No materials linked to this unit yet.</p>
+            ) : (
+              unitResources.map((card, index) => {
                 const url = card.canonicalUrl;
                 return (
                   <article
@@ -340,7 +356,33 @@ export function InspectorDrawer({
                     class="source-card"
                     data-resource-version-id={card.resourceVersionId}
                   >
-                    <h4 class="source-title">{card.title}</h4>
+                    <div class="source-card-top">
+                      <h4 class="source-title">{card.title}</h4>
+                      <div class="source-card-actions">
+                        <button
+                          type="button"
+                          class="source-action-btn"
+                          data-action="open-resource-editor"
+                          data-editor-mode="edit"
+                          data-resource-id={card.resourceVersionId}
+                          data-syllabus-id={syllabusId}
+                          data-module-id={mod.moduleId}
+                        >
+                          Edit
+                        </button>
+                        {syllabusId ? (
+                          <button
+                            type="button"
+                            class="source-action-btn source-action-danger"
+                            data-action="unlink-syllabus-resource"
+                            data-resource-id={card.resourceVersionId}
+                            data-syllabus-id={syllabusId}
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                     <p class="source-publisher">{card.verifiedPublisher}</p>
                     {url ? (
                       <p class="source-location">
@@ -352,9 +394,9 @@ export function InspectorDrawer({
                     ) : null}
                   </article>
                 );
-              })}
-            </section>
-          ) : null}
+              })
+            )}
+          </section>
         </div>
         {nextUnitActivity ? (
           <div class="inspector-actions">
@@ -523,6 +565,30 @@ export function InspectorDrawer({
                 ) : null}
                 <span>{provenance.join(" · ")}</span>
               </p>
+              <div class="subtask-material-actions">
+                <button
+                  type="button"
+                  class="source-action-btn"
+                  data-action="open-resource-editor"
+                  data-editor-mode="edit"
+                  data-resource-id={card.resourceVersionId}
+                  data-syllabus-id={syllabusId}
+                  data-module-id={mod.moduleId}
+                >
+                  Edit
+                </button>
+                {syllabusId ? (
+                  <button
+                    type="button"
+                    class="source-action-btn source-action-danger"
+                    data-action="unlink-syllabus-resource"
+                    data-resource-id={card.resourceVersionId}
+                    data-syllabus-id={syllabusId}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
             </>
           ),
         };
@@ -711,11 +777,11 @@ export function InspectorDrawer({
           </section>
         ) : null}
 
-        {subtasks.length > 0 ? (
-          <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-subtasks`}>
-            <h3 id={`${INSPECTOR_ID}-subtasks`} class="subtasks-head">
-              Subtasks <span class="subtasks-count">{doneSubtasks}/{subtasks.length}</span>
-            </h3>
+        <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-subtasks`}>
+          <h3 id={`${INSPECTOR_ID}-subtasks`} class="subtasks-head">
+            Subtasks {subtasks.length > 0 ? <span class="subtasks-count">{doneSubtasks}/{subtasks.length}</span> : null}
+          </h3>
+          {subtasks.length > 0 ? (
             <ul class="subtask-list" role="list">
               {subtasks.map(({ subtaskId, title, details }, idx) => {
                 const done = subtaskDone(subtaskId);
@@ -743,8 +809,23 @@ export function InspectorDrawer({
                 );
               })}
             </ul>
-          </section>
-        ) : null}
+          ) : (
+            <p class="meta-text">No study materials attached to this step yet.</p>
+          )}
+          <div class="subtask-material-actions">
+            <button
+              type="button"
+              class="inspector-inline-action"
+              data-action="open-resource-editor"
+              data-editor-mode="ingest"
+              data-syllabus-id={syllabusId}
+              data-module-id={mod.moduleId}
+              data-activity-id={id}
+            >
+              + Add resource
+            </button>
+          </div>
+        </section>
 
         <div class="inspector-reference-group">
           <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-focus`}>

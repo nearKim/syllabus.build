@@ -490,6 +490,17 @@ impl TfIdfCorpusIndex {
         self.documents.insert(doc_id.into(), text.to_string());
     }
 
+    /// Removes a document from the corpus index by `doc_id`.
+    pub fn remove_document(&mut self, doc_id: &str) -> bool {
+        self.documents.remove(doc_id).is_some()
+    }
+
+    /// Returns `true` when `doc_id` is currently present in the corpus index.
+    #[must_use]
+    pub fn contains_document(&self, doc_id: &str) -> bool {
+        self.documents.contains_key(doc_id)
+    }
+
     /// Indexes or updates an [`IndexedMaterialCandidate`] in the corpus.
     pub fn upsert_candidate(&mut self, candidate: &IndexedMaterialCandidate) {
         self.upsert_document(

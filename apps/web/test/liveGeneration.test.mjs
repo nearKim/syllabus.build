@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createCurriculumWebAppController } from "../src/browserApp.ts";
-import { buildIndexedMaterialCandidates, CHEAP_MODEL_BY_PROVIDER } from "../src/components/NewCurriculumDialog.tsx";
-import { parseCurriculumDraft, requestLiveDraft } from "../src/liveDraft.ts";
+import { createSyllabusWebAppController } from "../src/browserApp.ts";
+import { buildIndexedMaterialCandidates, CHEAP_MODEL_BY_PROVIDER } from "../src/components/NewSyllabusDialog.tsx";
+import { parseSyllabusDraft, requestLiveDraft } from "../src/liveDraft.ts";
 import { buildTfidfIndex, searchTfidf, tokenize } from "../src/tfidfIndex.ts";
 
 const module = (n) => ({
@@ -42,16 +42,16 @@ test("MiniSearch TF-IDF/BM25 index ranks by shared distinctive terms", () => {
   assert.deepEqual(searchTfidf(index, "unknown words only"), []);
 });
 
-test("parseCurriculumDraft keeps a complete draft and drops resources that fail validation", () => {
+test("parseSyllabusDraft keeps a complete draft and drops resources that fail validation", () => {
   const reply = `Here is the plan:\n${JSON.stringify({
     ...DRAFT,
     resources: [...DRAFT.resources, { ...DRAFT.resources[0], url: "javascript:alert(1)" }, { ...DRAFT.resources[0], category: "Podcast" }],
   })}`;
-  const draft = parseCurriculumDraft(reply);
+  const draft = parseSyllabusDraft(reply);
   assert.equal(draft.modules[1].objective.successCriterion, "Annotate three passages.");
   assert.deepEqual(draft.resources.map((r) => r.url), ["https://open.example.edu/courses/free-indirect-discourse"]);
-  assert.throws(() => parseCurriculumDraft(JSON.stringify({ ...DRAFT, modules: [module(1)] })), /exactly two modules/);
-  assert.throws(() => parseCurriculumDraft("no json here"), /no JSON object/);
+  assert.throws(() => parseSyllabusDraft(JSON.stringify({ ...DRAFT, modules: [module(1)] })), /exactly two modules/);
+  assert.throws(() => parseSyllabusDraft("no json here"), /no JSON object/);
 });
 
 test("requestLiveDraft sends each provider's native web search request and reads its reply", async () => {
@@ -82,7 +82,7 @@ test("requestLiveDraft sends each provider's native web search request and reads
 });
 
 test("a live draft writes the plan, and its resources are indexed and searchable at once", () => {
-  const app = createCurriculumWebAppController({});
+  const app = createSyllabusWebAppController({});
   // Generation defaults to the cheapest model of the primary provider.
   assert.deepEqual(app.getState().providerModels, CHEAP_MODEL_BY_PROVIDER);
   app.applyUiAction("set-intake-goal", { intakeGoalTitle: "Close reading of narrative voice in Tolstoy" });
@@ -93,16 +93,16 @@ test("a live draft writes the plan, and its resources are indexed and searchable
   assert.ok(request.prompt.includes("GOAL: Close reading of narrative voice in Tolstoy"));
 
   // A failed call creates nothing and says why.
-  app.applyUiAction("generate-curriculum-ai", {}, null, { error: "429 rate limited" });
+  app.applyUiAction("generate-syllabus-ai", {}, null, { error: "429 rate limited" });
   assert.equal(app.getState().generatedPlans.length, 0);
-  assert.equal(app.getState().intakeNote, "Live generation with gpt-6-luna failed: 429 rate limited. No curriculum was created.");
+  assert.equal(app.getState().intakeNote, "Live generation with gpt-6-luna failed: 429 rate limited. No syllabus was created.");
 
-  app.applyUiAction("generate-curriculum-ai", {}, null, { draft: DRAFT });
+  app.applyUiAction("generate-syllabus-ai", {}, null, { draft: DRAFT });
   const state = app.getState();
   const plan = state.generatedPlans[0];
-  assert.equal(plan.curriculumId, "curriculum-ai-generated-001");
-  assert.equal(plan.curriculum.goal.summary, DRAFT.summary);
-  assert.deepEqual(plan.curriculum.activities.map((a) => a.type), ["theory", "worked_example", "quiz", "theory", "worked_example", "quiz"], "Literature practises on worked examples, not code labs");
+  assert.equal(plan.syllabusId, "syllabus-ai-generated-001");
+  assert.equal(plan.syllabus.goal.summary, DRAFT.summary);
+  assert.deepEqual(plan.syllabus.activities.map((a) => a.type), ["theory", "worked_example", "quiz", "theory", "worked_example", "quiz"], "Literature practises on worked examples, not code labs");
   assert.ok(state.lastPipelineReceipt.liveDraft);
   assert.ok(state.lastPipelineReceipt.summaryNote.startsWith("Live draft from OpenAI · GPT-6 Luna (Lightweight)."));
 
@@ -116,8 +116,8 @@ test("a live draft writes the plan, and its resources are indexed and searchable
   assert.ok(hit.matchScore > 0.3);
 
   // A second plan gets new plan and activity ids, so it never overwrites the first.
-  app.applyUiAction("generate-curriculum-ai", {}, null, { draft: DRAFT });
-  const ids = app.getState().generatedPlans.map((p) => p.curriculumId);
-  assert.deepEqual(ids, ["curriculum-ai-generated-001", "curriculum-ai-generated-002"]);
+  app.applyUiAction("generate-syllabus-ai", {}, null, { draft: DRAFT });
+  const ids = app.getState().generatedPlans.map((p) => p.syllabusId);
+  assert.deepEqual(ids, ["syllabus-ai-generated-001", "syllabus-ai-generated-002"]);
   assert.equal(app.getState().lastPipelineReceipt.newlyIndexedResourceIds.length, 0, "a known URL is reused, not indexed twice");
 });

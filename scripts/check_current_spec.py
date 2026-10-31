@@ -6,7 +6,7 @@ from pathlib import Path
 import csv, io, json, re, sys
 from extract_spec import read_assets
 
-BASE = 'specs/001-curriculum-platform/'
+BASE = 'specs/001-syllabus-platform/'
 REQ = re.compile(r'(?:GOAL|CAT|GEN|PED|PROG|UI|BILL|NOT|OPS|NFR|ADAPT|SHARE)-\d{3}')
 
 def require(condition, message):

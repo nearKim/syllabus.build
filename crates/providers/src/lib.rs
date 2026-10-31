@@ -4,9 +4,9 @@
 //! Architectural invariant (`D12`): Live providers (`OpenAiHttpProvider` in `T07A`,
 //! `AnthropicHttpProvider` and `GeminiHttpProvider` in `T07C`) are implemented over
 //! direct official REST APIs via `reqwest`. Provider-specific SDK or HTTP response
-//! types must never enter `curriculum-domain`.
+//! types must never enter `syllabus-domain`.
 
-use curriculum_contracts::jcs::sha256_bytes_hex;
+use syllabus_contracts::jcs::sha256_bytes_hex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
@@ -126,7 +126,7 @@ pub enum ProviderError {
 pub trait InferenceProvider: Send + Sync {
     fn capabilities(&self) -> &ProviderCapabilities;
 
-    fn generate_curriculum_candidate(
+    fn generate_syllabus_candidate(
         &self,
         request: &CandidateGenerationRequest,
     ) -> Result<CandidateGenerationOutput, ProviderError>;
@@ -143,7 +143,7 @@ pub enum FakeFaultInjection {
 }
 
 /// First phase inference adapter (`D12`, `T00`) returning the canonical synthetic
-/// `curriculum-candidate.synthetic.json` fixture deterministically.
+/// `syllabus-candidate.synthetic.json` fixture deterministically.
 pub struct DeterministicFakeProvider {
     capabilities: ProviderCapabilities,
     fault_mode: FakeFaultInjection,
@@ -161,7 +161,7 @@ impl DeterministicFakeProvider {
         Self {
             capabilities: ProviderCapabilities {
                 provider_id: "deterministic-fake".to_string(),
-                model_id: "fake-curriculum-v1".to_string(),
+                model_id: "fake-syllabus-v1".to_string(),
                 structured_output: StructuredOutputCapability::NativeJsonSchema,
                 streaming: false,
                 output_limit: TokenLimits {
@@ -177,9 +177,9 @@ impl DeterministicFakeProvider {
 }
 
 pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Value), ProviderError> {
-    let root = curriculum_contracts::workspace_root();
+    let root = syllabus_contracts::workspace_root();
     let candidate_path =
-        root.join("specs/001-curriculum-platform/examples/curriculum-candidate.synthetic.json");
+        root.join("specs/001-syllabus-platform/examples/syllabus-candidate.synthetic.json");
     let raw_bytes =
         std::fs::read(&candidate_path).map_err(|e| ProviderError::InvalidCandidateOutput {
             message: format!("failed to read canonical candidate fixture: {e}"),
@@ -196,14 +196,14 @@ pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Va
             }
         })?;
 
-    let registry = curriculum_contracts::ContractRegistry::global().map_err(|e| {
+    let registry = syllabus_contracts::ContractRegistry::global().map_err(|e| {
         ProviderError::InvalidCandidateOutput {
             message: e.to_string(),
         }
     })?;
     registry
         .validate_def(
-            "curriculum.schema.json",
+            "syllabus.schema.json",
             "modelCandidate",
             &parsed_candidate,
         )
@@ -219,7 +219,7 @@ impl InferenceProvider for DeterministicFakeProvider {
         &self.capabilities
     }
 
-    fn generate_curriculum_candidate(
+    fn generate_syllabus_candidate(
         &self,
         request: &CandidateGenerationRequest,
     ) -> Result<CandidateGenerationOutput, ProviderError> {
@@ -256,13 +256,13 @@ impl InferenceProvider for DeterministicFakeProvider {
             FakeFaultInjection::InvalidExecutableCandidate => {
                 let (_, _, mut parsed) = load_validated_canonical_candidate()?;
                 parsed["html"] = serde_json::json!("<script>alert(1)</script>");
-                let registry = curriculum_contracts::ContractRegistry::global().map_err(|e| {
+                let registry = syllabus_contracts::ContractRegistry::global().map_err(|e| {
                     ProviderError::InvalidCandidateOutput {
                         message: e.to_string(),
                     }
                 })?;
                 if let Err(e) =
-                    registry.validate_def("curriculum.schema.json", "modelCandidate", &parsed)
+                    registry.validate_def("syllabus.schema.json", "modelCandidate", &parsed)
                 {
                     return Err(ProviderError::InvalidCandidateOutput {
                         message: e.to_string(),

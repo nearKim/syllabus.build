@@ -39,13 +39,13 @@ CREATE TABLE IF NOT EXISTS learner_profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Immutable private learner curriculum revisions (SHARE-001, SHARE-002, NFR-007)
+-- Immutable private learner syllabus revisions (SHARE-001, SHARE-002, NFR-007)
 -- Strictly isolated identifier space: private revision IDs must never use the `pubrev_` prefix.
-CREATE TABLE IF NOT EXISTS curriculum_revisions (
+CREATE TABLE IF NOT EXISTS syllabus_revisions (
     revision_id TEXT PRIMARY KEY
         CHECK (length(revision_id) BETWEEN 3 AND 128 AND revision_id NOT LIKE 'pubrev_%'),
-    curriculum_id TEXT NOT NULL
-        CHECK (length(curriculum_id) BETWEEN 3 AND 128 AND curriculum_id NOT LIKE 'pub_%'),
+    syllabus_id TEXT NOT NULL
+        CHECK (length(syllabus_id) BETWEEN 3 AND 128 AND syllabus_id NOT LIKE 'pub_%'),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
     revision_number INTEGER NOT NULL CHECK (revision_number >= 1),
     schema_version TEXT NOT NULL DEFAULT '0.3.0',
@@ -53,11 +53,11 @@ CREATE TABLE IF NOT EXISTS curriculum_revisions (
     payload_json JSONB NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (curriculum_id, revision_number)
+    UNIQUE (syllabus_id, revision_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_curriculum_revisions_tenant_curriculum
-    ON curriculum_revisions (account_id, curriculum_id, revision_number DESC);
+CREATE INDEX IF NOT EXISTS idx_syllabus_revisions_tenant_syllabus
+    ON syllabus_revisions (account_id, syllabus_id, revision_number DESC);
 
 -- Separate storage projection and identifier namespace for immutable public/unlisted template revisions
 -- (SHARE-001, SHARE-002, SHARE-007, CTRL-070, @S56, @S57)
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS public_template_revisions (
     publication_id TEXT NOT NULL
         CHECK (length(publication_id) BETWEEN 4 AND 128 AND publication_id LIKE 'pub_%'),
     publisher_account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE RESTRICT,
-    source_private_revision_id TEXT NOT NULL REFERENCES curriculum_revisions(revision_id) ON DELETE RESTRICT,
+    source_private_revision_id TEXT NOT NULL REFERENCES syllabus_revisions(revision_id) ON DELETE RESTRICT,
     visibility TEXT NOT NULL CHECK (visibility IN ('public', 'unlisted')),
     content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
     preview_sha256 TEXT NOT NULL CHECK (length(preview_sha256) = 64),
@@ -86,9 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_public_template_revisions_discovery
 -- Schedule revisions with optimistic concurrency etag_version (PROG-003, PROG-004, @S22, @S24)
 CREATE TABLE IF NOT EXISTS schedule_revisions (
     schedule_revision_id TEXT PRIMARY KEY CHECK (length(schedule_revision_id) BETWEEN 3 AND 128),
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_revision_id TEXT NOT NULL REFERENCES curriculum_revisions(revision_id) ON DELETE CASCADE,
+    syllabus_revision_id TEXT NOT NULL REFERENCES syllabus_revisions(revision_id) ON DELETE CASCADE,
     etag_version BIGINT NOT NULL DEFAULT 1 CHECK (etag_version >= 1),
     timezone TEXT NOT NULL DEFAULT 'UTC',
     weekly_available_minutes INTEGER NOT NULL CHECK (weekly_available_minutes >= 0),
@@ -96,18 +96,18 @@ CREATE TABLE IF NOT EXISTS schedule_revisions (
     feasibility_status TEXT NOT NULL CHECK (feasibility_status IN ('feasible', 'infeasible')),
     sessions_json JSONB NOT NULL DEFAULT '[]'::JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (account_id, curriculum_id, etag_version)
+    UNIQUE (account_id, syllabus_id, etag_version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_schedule_revisions_latest
-    ON schedule_revisions (account_id, curriculum_id, etag_version DESC);
+    ON schedule_revisions (account_id, syllabus_id, etag_version DESC);
 
 -- Append-only learner progress events deduplicated by (account_id, event_id)
 -- (PROG-001, PROG-004, PROG-005, @S16, @S21, @S24)
 CREATE TABLE IF NOT EXISTS progress_events (
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
     event_id TEXT NOT NULL CHECK (length(event_id) BETWEEN 3 AND 128),
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
     activity_id TEXT NOT NULL CHECK (length(activity_id) BETWEEN 3 AND 128),
     event_type TEXT NOT NULL CHECK (event_type IN ('completed', 'skipped', 'study_time_reported')),
     evidence_origin TEXT NOT NULL DEFAULT 'self_reported_activity_completion'
@@ -119,5 +119,5 @@ CREATE TABLE IF NOT EXISTS progress_events (
     PRIMARY KEY (account_id, event_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_progress_events_curriculum
-    ON progress_events (account_id, curriculum_id, recorded_at ASC);
+CREATE INDEX IF NOT EXISTS idx_progress_events_syllabus
+    ON progress_events (account_id, syllabus_id, recorded_at ASC);

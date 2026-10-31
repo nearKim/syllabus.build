@@ -6,8 +6,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "preact",
     "paths": {
-      "@curriculum/ui": ["../../packages/ui/src/index.ts"],
-      "@curriculum/api-client": ["../../packages/api-client/src/index.ts"]
+      "@syllabus/ui": ["../../packages/ui/src/index.ts"],
+      "@syllabus/api-client": ["../../packages/api-client/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.json", "../../packages/ui/src/**/*.ts", "../../packages/api-client/src/**/*.ts"]

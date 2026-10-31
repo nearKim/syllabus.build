@@ -5,7 +5,7 @@ import { searchTfidf, TFIDF_ENGINE } from "../tfidfIndex.ts";
 import type { Account } from "./HeaderBar.tsx";
 import { SfIcon } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
-import { catalogIndexOf } from "./NewCurriculumDialog.tsx";
+import { catalogIndexOf } from "./NewSyllabusDialog.tsx";
 import {
   RESOURCE_CATEGORIES,
   categoryIcon,
@@ -257,7 +257,7 @@ export function AdminResourcesView({
         <div class="page-heading-group">
           <h1 class="page-title">Global resource index</h1>
           <p class="page-description">
-            Manage all study resources discovered across every learner and curriculum. Intake ranks them by TF-IDF
+            Manage all study resources discovered across every learner and syllabus. Intake ranks them by TF-IDF
             cosine similarity over titles, publishers, subjects, topics, summaries, and section titles. No embedding
             model runs.
           </p>
@@ -276,7 +276,7 @@ export function AdminResourcesView({
             data-action="navigate-learn-sub"
             data-sub-destination="Resources"
           >
-            <span>My curriculum resources</span>
+            <span>My syllabus resources</span>
             <span aria-hidden="true">→</span>
           </button>
         </div>

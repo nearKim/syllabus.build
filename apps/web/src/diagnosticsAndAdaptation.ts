@@ -25,7 +25,7 @@ export interface ProficiencyProfileFixture {
 }
 
 export interface DiagnosticSessionFixture {
-  diagnostic_session_id: string; curriculum_id?: string; curriculum_revision_id?: string;
+  diagnostic_session_id: string; syllabus_id?: string; syllabus_revision_id?: string;
   state: "active" | "completed" | "stopped" | "abandoned";
   started_at?: string; stopped_at?: string | null;
   stop_reason?: "completed" | "learner_stopped" | "time_budget_reached" | "sufficient_evidence" | null;
@@ -61,7 +61,7 @@ export interface AdaptationImpactBlock {
 }
 
 export interface AdaptationProposalFixture {
-  proposal_id: string; curriculum_id: string; base_revision_id: string; candidate_revision_id: string;
+  proposal_id: string; syllabus_id: string; base_revision_id: string; candidate_revision_id: string;
   proficiency_snapshot_ref: string; proposal_sha256: string; base_schedule_revision_id?: string | null;
   status?: "pending" | "accepted" | "rejected" | "superseded" | "expired"; created_at?: string;
   instruction_preferences_applied?: { math_depth?: "intuitive" | "standard" | "formal"; [k: string]: unknown };
@@ -76,12 +76,12 @@ export interface AdaptationDiffBuckets {
 
 export interface AcceptAdaptationRequestPayload {
   expected_proposal_sha256: string; expected_base_revision_id: string;
-  expected_base_schedule_revision_id?: string | null; base_curriculum_revision_id: string;
+  expected_base_schedule_revision_id?: string | null; base_syllabus_revision_id: string;
   base_schedule_revision_id?: string | null; accepted_waiver_ids: string[];
 }
 
 export interface AcceptAdaptationOptions {
-  idempotencyKey: string; expectedProposalSha256?: string; baseCurriculumRevisionId?: string;
+  idempotencyKey: string; expectedProposalSha256?: string; baseSyllabusRevisionId?: string;
   baseScheduleRevisionId?: string | null; acceptedWaiverIds?: string[];
 }
 
@@ -192,8 +192,8 @@ export function createDiagnosticFlowController(
   mode: ThemeMode = "light",
 ) {
   const surfaceStyle = resolveSurfaceStyle("assessment", { themePreference: mode });
-  const curriculumId = initialSession.curriculum_id ?? "curriculum-formal-synthetic";
-  const curriculumRevisionId = initialSession.curriculum_revision_id ?? "formal-plan-before";
+  const syllabusId = initialSession.syllabus_id ?? "syllabus-formal-synthetic";
+  const syllabusRevisionId = initialSession.syllabus_revision_id ?? "formal-plan-before";
 
   let state = initialSession.state;
   let stopReason: DiagnosticSessionFixture["stop_reason"] = initialSession.stop_reason ?? null;
@@ -216,7 +216,7 @@ export function createDiagnosticFlowController(
 
     return {
       diagnostic_session_id: initialSession.diagnostic_session_id,
-      curriculum_id: curriculumId, curriculum_revision_id: curriculumRevisionId,
+      syllabus_id: syllabusId, syllabus_revision_id: syllabusRevisionId,
       state, stop_reason: stopReason,
       target_objective_version_ids: [...targetIds],
       assessed_objective_version_ids: assessed, unassessed_objective_version_ids: unassessed,
@@ -257,12 +257,12 @@ export function createDiagnosticFlowController(
     getState: snapshot,
     buildStartDiagnosticRequest: (
       input: { target_topic_ids?: string[]; max_duration_minutes?: number } = {},
-    ): DiagnosticHttpRequest<{ curriculum_revision_id: string; target_topic_ids?: string[]; max_duration_minutes?: number }> => ({
+    ): DiagnosticHttpRequest<{ syllabus_revision_id: string; target_topic_ids?: string[]; max_duration_minutes?: number }> => ({
       method: "POST",
-      path: `/v1/curricula/${encodeURIComponent(curriculumId)}/diagnostics`,
+      path: `/v1/syllabi/${encodeURIComponent(syllabusId)}/diagnostics`,
       headers: buildOperationHeaders("startDiagnostic"),
       body: {
-        curriculum_revision_id: curriculumRevisionId,
+        syllabus_revision_id: syllabusRevisionId,
         ...(input.target_topic_ids ? { target_topic_ids: [...input.target_topic_ids] } : {}),
         ...(input.max_duration_minutes !== undefined ? { max_duration_minutes: input.max_duration_minutes } : {}),
       },
@@ -364,7 +364,7 @@ export function createAdaptationDiffController(proposal: AdaptationProposalFixtu
     );
 
     return {
-      proposal_id: proposal.proposal_id, curriculum_id: proposal.curriculum_id,
+      proposal_id: proposal.proposal_id, syllabus_id: proposal.syllabus_id,
       base_revision_id: proposal.base_revision_id, candidate_revision_id: proposal.candidate_revision_id,
       base_schedule_revision_id: proposal.base_schedule_revision_id ?? null,
       proficiency_snapshot_ref: proposal.proficiency_snapshot_ref,
@@ -395,7 +395,7 @@ export function createAdaptationDiffController(proposal: AdaptationProposalFixtu
       }
 
       const expectedSha = options.expectedProposalSha256 ?? proposal.proposal_sha256;
-      const expectedBaseRevision = options.baseCurriculumRevisionId ?? proposal.base_revision_id;
+      const expectedBaseRevision = options.baseSyllabusRevisionId ?? proposal.base_revision_id;
       const expectedScheduleRevision =
         options.baseScheduleRevisionId !== undefined ? options.baseScheduleRevisionId : (proposal.base_schedule_revision_id ?? null);
 
@@ -403,7 +403,7 @@ export function createAdaptationDiffController(proposal: AdaptationProposalFixtu
         failConflict("Adaptation proposal checksum mismatch: the proposal changed since preview.");
       }
       if (expectedBaseRevision !== proposal.base_revision_id) {
-        failConflict("Stale curriculum base revision: cannot apply adaptation against a modified plan.");
+        failConflict("Stale syllabus base revision: cannot apply adaptation against a modified plan.");
       }
       if (proposal.base_schedule_revision_id && expectedScheduleRevision !== proposal.base_schedule_revision_id) {
         failConflict("Stale schedule base revision: cannot apply adaptation against a modified schedule.");
@@ -417,13 +417,13 @@ export function createAdaptationDiffController(proposal: AdaptationProposalFixtu
 
       return {
         method: "POST",
-        path: `/v1/curricula/${encodeURIComponent(proposal.curriculum_id)}/adaptations/${encodeURIComponent(proposal.proposal_id)}/accept`,
+        path: `/v1/syllabi/${encodeURIComponent(proposal.syllabus_id)}/adaptations/${encodeURIComponent(proposal.proposal_id)}/accept`,
         headers,
         body: {
           expected_proposal_sha256: expectedSha,
           expected_base_revision_id: expectedBaseRevision,
           expected_base_schedule_revision_id: expectedScheduleRevision,
-          base_curriculum_revision_id: expectedBaseRevision,
+          base_syllabus_revision_id: expectedBaseRevision,
           base_schedule_revision_id: expectedScheduleRevision,
           accepted_waiver_ids: [...acceptedWaiverIds],
         },
@@ -436,7 +436,7 @@ export function createAdaptationDiffController(proposal: AdaptationProposalFixtu
       status = "superseded";
       conflictBanner =
         message ??
-        "This adaptation proposal is stale because the underlying curriculum or schedule revision changed. Please refresh the proposal preview.";
+        "This adaptation proposal is stale because the underlying syllabus or schedule revision changed. Please refresh the proposal preview.";
       return computeDiffModel();
     },
   };

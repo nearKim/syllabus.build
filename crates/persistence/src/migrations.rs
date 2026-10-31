@@ -19,6 +19,8 @@ pub const POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL: &str =
     include_str!("../migrations/0006_polymorphic_resource_indices_and_tags.sql");
 pub const INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL: &str =
     include_str!("../migrations/0007_incremental_catalog_and_hybrid_index.sql");
+pub const OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL: &str =
+    include_str!("../migrations/0008_oauth_identities_and_password_auth.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +31,7 @@ pub struct SqlMigration {
 }
 
 /// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
-pub const MIGRATIONS: [SqlMigration; 8] = [
+pub const MIGRATIONS: [SqlMigration; 9] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -70,6 +72,11 @@ pub const MIGRATIONS: [SqlMigration; 8] = [
         name: "0007_incremental_catalog_and_hybrid_index.sql",
         sql: INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL,
     },
+    SqlMigration {
+        version: 8,
+        name: "0008_oauth_identities_and_password_auth.sql",
+        sql: OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,7 +88,7 @@ pub struct DatabaseConfig {
 impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
-            database_url: "postgres://postgres:postgres@localhost:5432/curriculum_dev".to_string(),
+            database_url: "postgres://postgres:postgres@localhost:5432/syllabus_dev".to_string(),
             max_connections: 10,
         }
     }
@@ -156,8 +163,8 @@ impl PostgresTransactionalStatements {
              required_minutes = COALESCE($6, required_minutes), \
              feasibility_status = $7, \
              sessions_json = COALESCE($8, sessions_json) \
-         WHERE account_id = $1 AND curriculum_id = $2 AND etag_version = $3 \
-         RETURNING schedule_revision_id, account_id, curriculum_id, curriculum_revision_id, etag_version, feasibility_status;"
+         WHERE account_id = $1 AND syllabus_id = $2 AND etag_version = $3 \
+         RETURNING schedule_revision_id, account_id, syllabus_id, syllabus_revision_id, etag_version, feasibility_status;"
     }
 
     /// Canonical `pg_stat_user_tables` bloat and autovacuum monitoring query (`T01`).

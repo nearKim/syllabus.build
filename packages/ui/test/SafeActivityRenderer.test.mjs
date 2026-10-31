@@ -6,12 +6,12 @@ import { fileURLToPath } from "node:url";
 import {
   ALLOWLISTED_ACTIVITY_TYPES,
   ACTIVITY_COMPONENT_BLUEPRINTS,
-  evaluateSafeCurriculumRender,
+  evaluateSafeSyllabusRender,
   isSafeResourceUrl,
   renderAccessibleMathFormula,
   renderTextWithLatexHtml,
   renderUntrustedCatalogText,
-  SUPPORTED_CURRICULUM_MAJOR_VERSION,
+  SUPPORTED_SYLLABUS_MAJOR_VERSION,
   tokenizeTextWithLatex,
 } from "../src/SafeActivityRenderer.ts";
 import {
@@ -30,15 +30,15 @@ import { UI_TOKENS } from "../src/tokens.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../../..");
 
-const canonicalCurriculum = JSON.parse(
+const canonicalSyllabus = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/curriculum.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/syllabus.synthetic.json"),
     "utf-8"
   )
 );
 
-test("SafeActivityRenderer accepts canonical 0.2.0 curriculum fixture and maps allowlisted activity components", () => {
-  const res = evaluateSafeCurriculumRender(canonicalCurriculum);
+test("SafeActivityRenderer accepts canonical 0.2.0 syllabus fixture and maps allowlisted activity components", () => {
+  const res = evaluateSafeSyllabusRender(canonicalSyllabus);
   assert.equal(res.status, "supported");
   if (res.status === "supported") {
     assert.equal(res.schemaVersion, "0.2.0");
@@ -58,9 +58,9 @@ test("SafeActivityRenderer accepts canonical 0.2.0 curriculum fixture and maps a
   }
 });
 
-test("SafeActivityRenderer fails closed on unknown major curriculum schema versions (2.0.0 and 1.0.0) with compatibility banner and safe outline (@S11, @S88, NFR-002)", () => {
+test("SafeActivityRenderer fails closed on unknown major syllabus schema versions (2.0.0 and 1.0.0) with compatibility banner and safe outline (@S11, @S88, NFR-002)", () => {
   const docMajor2 = {
-    ...canonicalCurriculum,
+    ...canonicalSyllabus,
     schema_version: "2.0.0",
     modules: [
       {
@@ -70,11 +70,11 @@ test("SafeActivityRenderer fails closed on unknown major curriculum schema versi
       },
     ],
   };
-  const res2 = evaluateSafeCurriculumRender(docMajor2);
+  const res2 = evaluateSafeSyllabusRender(docMajor2);
   assert.equal(res2.status, "unsupported_schema_version");
   if (res2.status === "unsupported_schema_version") {
     assert.equal(res2.schemaVersion, "2.0.0");
-    assert.equal(res2.supportedMajorVersion, SUPPORTED_CURRICULUM_MAJOR_VERSION);
+    assert.equal(res2.supportedMajorVersion, SUPPORTED_SYLLABUS_MAJOR_VERSION);
     assert.equal(res2.inferredComponentsRendered, 0);
     assert.equal(res2.compatibilityBanner.role, "alert");
     assert.ok(res2.compatibilityBanner.title.includes("2.0.0"));
@@ -84,10 +84,10 @@ test("SafeActivityRenderer fails closed on unknown major curriculum schema versi
   }
 
   const docMajor1 = {
-    ...canonicalCurriculum,
+    ...canonicalSyllabus,
     schema_version: "1.0.0",
   };
-  const res1 = evaluateSafeCurriculumRender(docMajor1);
+  const res1 = evaluateSafeSyllabusRender(docMajor1);
   assert.equal(res1.status, "unsupported_schema_version");
   if (res1.status === "unsupported_schema_version") {
     assert.equal(res1.schemaVersion, "1.0.0");
@@ -97,27 +97,27 @@ test("SafeActivityRenderer fails closed on unknown major curriculum schema versi
 
 test("SafeActivityRenderer rejects unallowlisted activity types, raw markup fields, and unsafe URL schemes (@S11, NFR-002)", () => {
   const unknownComponentDoc = {
-    ...canonicalCurriculum,
+    ...canonicalSyllabus,
     activities: [
       {
-        ...canonicalCurriculum.activities[0],
+        ...canonicalSyllabus.activities[0],
         type: "arbitrary_iframe_widget",
       },
     ],
   };
-  const resUnknown = evaluateSafeCurriculumRender(unknownComponentDoc);
+  const resUnknown = evaluateSafeSyllabusRender(unknownComponentDoc);
   assert.equal(resUnknown.status, "rejected_unsafe_payload");
 
   const rawSvgDoc = {
-    ...canonicalCurriculum,
+    ...canonicalSyllabus,
     activities: [
       {
-        ...canonicalCurriculum.activities[0],
+        ...canonicalSyllabus.activities[0],
         raw_svg: "<svg onload=alert(1)></svg>",
       },
     ],
   };
-  assert.equal(evaluateSafeCurriculumRender(rawSvgDoc).status, "rejected_unsafe_payload");
+  assert.equal(evaluateSafeSyllabusRender(rawSvgDoc).status, "rejected_unsafe_payload");
 
   assert.equal(isSafeResourceUrl("https://example.edu/course"), true);
   assert.equal(isSafeResourceUrl("mailto:registrar@example.edu"), true);

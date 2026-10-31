@@ -20,7 +20,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLES_DIR = path.resolve(
   __dirname,
-  "../../../specs/001-curriculum-platform/examples"
+  "../../../specs/001-syllabus-platform/examples"
 );
 
 function readExampleJson(fileName) {
@@ -217,14 +217,14 @@ test("T13: Publication preview confirmation, mutation invalidation, owner manage
   // Publishing without accepting terms fails
   assert.throws(
     () =>
-      controller.buildPublishCurriculumRequest({
+      controller.buildPublishSyllabusRequest({
         idempotencyKey: "idem-pub-001",
       }),
     /TERMS_REQUIRED/
   );
 
   controller.setPublicationTermsAccepted(true);
-  const publishReq = controller.buildPublishCurriculumRequest({
+  const publishReq = controller.buildPublishSyllabusRequest({
     idempotencyKey: "idem-pub-001",
   });
   assert.equal(publishReq.headers["Idempotency-Key"], "idem-pub-001");
@@ -239,14 +239,14 @@ test("T13: Publication preview confirmation, mutation invalidation, owner manage
   assert.equal(controller.getState().isPreviewStale, true);
   assert.throws(
     () =>
-      controller.buildPublishCurriculumRequest({
+      controller.buildPublishSyllabusRequest({
         idempotencyKey: "idem-pub-002",
       }),
     /PREVIEW_STALE/
   );
 
   // Unpublish requires If-Match bound to management_version_id
-  const unpublishReq = controller.buildUnpublishCurriculumRequest({
+  const unpublishReq = controller.buildUnpublishSyllabusRequest({
     publicationId: "publication-001",
     confirmUnpublish: true,
   });
@@ -278,20 +278,20 @@ test("T13: Publication preview confirmation, mutation invalidation, owner manage
 });
 
 test("T13: Full and partial adoption with transitive prerequisite closure across deterministic, hosted, and BYOK modes", () => {
-  const publicCurriculum = readExampleJson("public-curriculum.synthetic.json");
+  const publicSyllabus = readExampleJson("public-syllabus.synthetic.json");
   const detFixture = readExampleJson("adoption-request.synthetic.json");
   const hostedFixture = readExampleJson(
     "adoption-request.hosted.synthetic.json"
   );
   const byokFixture = readExampleJson("adoption-request.byok.synthetic.json");
 
-  // Extend public curriculum with a dependent module & prerequisite edge to verify transitive prerequisite resolution
-  const multiModuleCurriculum = {
-    ...publicCurriculum,
+  // Extend public syllabus with a dependent module & prerequisite edge to verify transitive prerequisite resolution
+  const multiModuleSyllabus = {
+    ...publicSyllabus,
     content: {
-      ...publicCurriculum.content,
+      ...publicSyllabus.content,
       objectives: [
-        ...publicCurriculum.content.objectives,
+        ...publicSyllabus.content.objectives,
         {
           objective_id: "objective-bpe",
           title: "Train a BPE vocabulary",
@@ -304,7 +304,7 @@ test("T13: Full and partial adoption with transitive prerequisite closure across
         },
       ],
       modules: [
-        ...publicCurriculum.content.modules,
+        ...publicSyllabus.content.modules,
         {
           module_id: "public-module-bpe",
           title: "Subword BPE & Unigram Tokenizers",
@@ -315,7 +315,7 @@ test("T13: Full and partial adoption with transitive prerequisite closure across
     },
   };
 
-  const adoption = createPublicAdoptionController(multiModuleCurriculum);
+  const adoption = createPublicAdoptionController(multiModuleSyllabus);
   const partialScope = adoption.resolveScope(["public-module-bpe"]);
   assert.deepEqual(partialScope.resolvedModuleIds, [
     "public-module-tokenization",
@@ -329,7 +329,7 @@ test("T13: Full and partial adoption with transitive prerequisite closure across
   ]);
 
   // 1. Deterministic full adoption matches adoption-request.synthetic.json
-  const fullAdapter = createPublicAdoptionController(publicCurriculum);
+  const fullAdapter = createPublicAdoptionController(publicSyllabus);
   const detReq = fullAdapter.buildAdoptionRequest({
     idempotencyKey: "idem-adopt-det-001",
     basePlanningOrRequest: detFixture.planning,

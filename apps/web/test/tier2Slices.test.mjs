@@ -16,7 +16,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const EXAMPLES_DIR = path.resolve(
   __dirname,
-  "../../../specs/001-curriculum-platform/examples"
+  "../../../specs/001-syllabus-platform/examples"
 );
 
 function loadSyntheticExample(filename) {
@@ -27,17 +27,17 @@ function loadSyntheticExample(filename) {
 
 test("T06 (@S20, @S02, @S53, @S22, @S24): ScheduleEditorController scales only media_minutes at 1.5x, redistributes missed sessions without overbooking, and enforces If-Match", () => {
   const scheduleFixture = loadSyntheticExample("schedule.synthetic.json");
-  const curriculumFixture = loadSyntheticExample("curriculum.synthetic.json");
+  const syllabusFixture = loadSyntheticExample("syllabus.synthetic.json");
 
   const controller = createScheduleEditorController({
-    curriculumId: curriculumFixture.curriculum_id,
-    curriculum: curriculumFixture,
+    syllabusId: syllabusFixture.syllabus_id,
+    syllabus: syllabusFixture,
     schedule: scheduleFixture,
     ifMatch: '"schedule-etag-v1"',
     maxSessionMinutes: 40,
   });
 
-  // 1. Playback speed 1.5x scales only media_minutes via ceiling math (@S20) and never mutates CurriculumRevision
+  // 1. Playback speed 1.5x scales only media_minutes via ceiling math (@S20) and never mutates SyllabusRevision
   const playbackPreview = controller.previewPlaybackSpeed(1.5, {
     "activity-theory": {
       media_minutes: 30,
@@ -60,10 +60,10 @@ test("T06 (@S20, @S02, @S53, @S22, @S24): ScheduleEditorController scales only m
     playbackPreview.readingCodingSetupAssessmentReviewUnchanged,
     true
   );
-  assert.equal(playbackPreview.mutatesCurriculumRevision, false);
+  assert.equal(playbackPreview.mutatesSyllabusRevision, false);
   assert.equal(
-    playbackPreview.curriculumRevisionId,
-    scheduleFixture.curriculum_revision_id
+    playbackPreview.syllabusRevisionId,
+    scheduleFixture.syllabus_revision_id
   );
 
   // 2. Missed-session redistribution never overbooks remaining sessions (@S02, @S53)
@@ -76,7 +76,7 @@ test("T06 (@S20, @S02, @S53, @S22, @S24): ScheduleEditorController scales only m
   );
   assert.equal(missedPreview.silentlyOverbookedFutureSessions, false);
   assert.equal(missedPreview.overbookedSessionMinutes, 0);
-  assert.equal(missedPreview.mutatesCurriculumRevision, false);
+  assert.equal(missedPreview.mutatesSyllabusRevision, false);
   for (const session of missedPreview.proposedSessions) {
     assert.ok(session.duration_minutes <= 40);
   }
@@ -96,7 +96,7 @@ test("T06 (@S20, @S02, @S53, @S22, @S24): ScheduleEditorController scales only m
   assert.equal(reviewPreview.reviewsConsumeDeclaredStudyCapacity, true);
   assert.equal(reviewPreview.erasesDatedDemonstrationWhenDue, false);
 
-  // 4. PATCH /curricula/{id}/schedule requires If-Match header
+  // 4. PATCH /syllabi/{id}/schedule requires If-Match header
   const patchReq = controller.buildPatchScheduleRequest({
     patch: { weekly_minutes: 150 },
   });
@@ -126,7 +126,7 @@ test("T06 (@S20, @S02, @S53, @S22, @S24): ScheduleEditorController scales only m
 test("T06 (@S21, @S24, @S25, @S29, @S87): BoundedOfflineQueue enforces 100-item bound, deduplicates by event_id, rejects secrets/answer keys/full text, and purges on sign-out", () => {
   const queue = createBoundedOfflineQueue({
     accountId: "learner-1",
-    curriculumId: "curr-1",
+    syllabusId: "curr-1",
     maxCapacity: 100,
   });
 
@@ -300,7 +300,7 @@ test("T12 (@S18, @S19, @S51, @S59, @S64, @S70): DiagnosticSessionController and 
     proposalFixture.proposal_sha256
   );
   assert.equal(
-    acceptReq.body.base_curriculum_revision_id,
+    acceptReq.body.base_syllabus_revision_id,
     "formal-plan-before"
   );
   assert.equal(
@@ -312,9 +312,9 @@ test("T12 (@S18, @S19, @S51, @S59, @S64, @S70): DiagnosticSessionController and 
   assert.throws(() => {
     diffController.buildAcceptAdaptationRequest({
       idempotencyKey: "idem-stale-002",
-      baseCurriculumRevisionId: "outdated-plan-revision",
+      baseSyllabusRevisionId: "outdated-plan-revision",
     });
-  }, /Stale curriculum base revision/);
+  }, /Stale syllabus base revision/);
 });
 
 test("T07A (@S28, @S29, @S38, @S68, @S80): ByokCustodyController wipes transient secret buffer, displays only masked metadata, enforces If-Match, and disables silent fallback", () => {
@@ -470,7 +470,7 @@ test("T08 (@S23, @S84, @S87): ReminderPreferenceController enforces If-Match and
   assert.equal(authRoute.allowCache, false);
 
   const withdrawnPublication = evaluatePwaCacheEligibility({
-    path: "/v1/catalog/curricula/withdrawn-1",
+    path: "/v1/catalog/syllabi/withdrawn-1",
     method: "GET",
     publicationStatus: "withdrawn",
   });

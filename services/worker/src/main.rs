@@ -1,16 +1,16 @@
 //! Background job worker binary (`T00`–`T01` transactional outbox worker loop, lease reaper, and bloat health monitor).
 
-use curriculum_contracts::ContractRegistry;
-use curriculum_jobs::{
+use syllabus_contracts::ContractRegistry;
+use syllabus_jobs::{
     evaluate_pg_bloat_health, OutboxJobQueue, OutboxQueueConfig, PgBloatHealthReport,
     PgTableTupleStats, QueueMetricsSnapshot,
 };
-use curriculum_persistence::{PostgresTransactionalStatements, MIGRATIONS};
-use curriculum_providers::{DeterministicFakeProvider, InferenceProvider};
+use syllabus_persistence::{PostgresTransactionalStatements, MIGRATIONS};
+use syllabus_providers::{DeterministicFakeProvider, InferenceProvider};
 
 const DEFAULT_WORKER_ID: &str = "worker-main";
 const INITIAL_TICK_NOW_MS: u64 = 1_000;
-const EXPECTED_MIGRATION_COUNT: usize = 8;
+const EXPECTED_MIGRATION_COUNT: usize = 9;
 const DEFAULT_MAX_DEAD_TUPLE_RATIO: f64 = 0.20;
 
 /// Verifies that the workspace contract registry, deterministic provider, and embedded SQL
@@ -64,7 +64,7 @@ async fn main() {
     let queue = OutboxJobQueue::new(cfg);
     let snapshot = run_worker_maintenance_tick(&queue, DEFAULT_WORKER_ID, INITIAL_TICK_NOW_MS);
     println!(
-        "curriculum-worker bootstrap verified (lease={}s, max_attempts={}, queued={})",
+        "syllabus-worker bootstrap verified (lease={}s, max_attempts={}, queued={})",
         cfg.lease_duration_seconds, cfg.max_attempts, snapshot.queued_depth
     );
 }
@@ -90,7 +90,7 @@ mod tests {
                 "worker-job-1",
                 "00000000-0000-4000-8000-000000000001",
                 "schedule_reminder_sync",
-                json!({"curriculum_id": "cur-1"}),
+                json!({"syllabus_id": "cur-1"}),
                 1_000,
             )
             .expect("enqueue test job");

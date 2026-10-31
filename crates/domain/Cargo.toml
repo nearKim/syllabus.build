@@ -1,5 +1,5 @@
 [package]
-name = "curriculum-domain"
+name = "syllabus-domain"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

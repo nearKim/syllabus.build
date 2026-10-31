@@ -237,7 +237,7 @@ export interface ReminderPreferenceState extends NotificationPreferenceFixture {
 }
 
 const BEST_EFFORT_REMINDER_DISCLOSURE =
-  "Best-effort delivery disclosure: Study reminders respect your local timezone and quiet hours as opt-in nudges. Delivery is best-effort and missed reminders never lock or penalize your curriculum.";
+  "Best-effort delivery disclosure: Study reminders respect your local timezone and quiet hours as opt-in nudges. Delivery is best-effort and missed reminders never lock or penalize your syllabus.";
 const HH_MM_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function assertValidTimezone(tz: string): void {
@@ -371,7 +371,7 @@ export function evaluatePwaCacheEligibility(input: PwaCacheCandidateInput): PwaC
   ) {
     return { allowCache: true, cacheBucket: "static-shell-v1", reason: "static_shell_asset" };
   }
-  if (p.startsWith("/v1/curricula/") || p.startsWith("/v1/catalog/")) {
+  if (p.startsWith("/v1/syllabi/") || p.startsWith("/v1/catalog/")) {
     return { allowCache: true, cacheBucket: "active-study-metadata-v1", reason: "permitted_study_metadata" };
   }
   return denyCache("unclassified_route_default_deny");

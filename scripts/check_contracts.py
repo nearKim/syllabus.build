@@ -15,7 +15,7 @@ from referencing.jsonschema import DRAFT202012
 from openapi_spec_validator import OpenAPIV31SpecValidator
 
 ROOT=Path(__file__).resolve().parents[1]
-BASE=ROOT/'specs/001-curriculum-platform'
+BASE=ROOT/'specs/001-syllabus-platform'
 CON=BASE/'contracts'
 EX=BASE/'examples'
 report={'json_schema_meta_checks':0,'openapi_schema_checks':0,'positive_fixtures':0,
@@ -63,13 +63,13 @@ positive_targets={
 'generation-request.byok.synthetic.json':uri('generation-request.schema.json'),
 'resource.synthetic.json':uri('resource.schema.json'),
 'resource-unknown-price.synthetic.json':uri('resource.schema.json'),
-'curriculum-candidate.synthetic.json':uri('curriculum.schema.json','#/$defs/modelCandidate'),
-'curriculum.synthetic.json':uri('curriculum.schema.json'),
+'syllabus-candidate.synthetic.json':uri('syllabus.schema.json','#/$defs/modelCandidate'),
+'syllabus.synthetic.json':uri('syllabus.schema.json'),
 'schedule.synthetic.json':oas_uri('Schedule'),
 'progress-event.synthetic.json':oas_uri('ProgressEventRequest'),
 'generation-request.formal-math.synthetic.json':uri('generation-request.schema.json'),
 'proficiency.synthetic.json':uri('proficiency.schema.json'),
-'public-curriculum.synthetic.json':uri('public-curriculum.schema.json'),
+'public-syllabus.synthetic.json':uri('public-syllabus.schema.json'),
 'publication-preview.synthetic.json':oas_uri('PublicationPreview'),
 'adaptation-proposal.synthetic.json':uri('adaptation-proposal.schema.json'),
 'diagnostic-session.synthetic.json':oas_uri('DiagnosticSession'),
@@ -87,19 +87,19 @@ for filename,target in positive_targets.items():
     else:
         report['positive_fixtures']+=1
 
-candidate=fixtures['curriculum-candidate.synthetic.json']
-canonical=fixtures['curriculum.synthetic.json']
+candidate=fixtures['syllabus-candidate.synthetic.json']
+canonical=fixtures['syllabus.synthetic.json']
 gen=fixtures['generation-request.hosted.synthetic.json']
 byok=fixtures['generation-request.byok.synthetic.json']
 resource=fixtures['resource.synthetic.json']
 schedule=fixtures['schedule.synthetic.json']
 negative=[]
 x=deepcopy(candidate);x['html']='<script>alert(1)</script>'
-negative.append(('candidate executable field',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('candidate executable field',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(candidate);x['activities'][3]['content']['answer_key']=['secret']
-negative.append(('assessment key leakage',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('assessment key leakage',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(canonical);x['mastered']=True
-negative.append(('model mastery field',x,positive_targets['curriculum.synthetic.json']))
+negative.append(('model mastery field',x,positive_targets['syllabus.synthetic.json']))
 x=deepcopy(gen);x['api_key']='not-a-real-key'
 negative.append(('raw key in generation',x,positive_targets['generation-request.hosted.synthetic.json']))
 x=deepcopy(byok);x['inference']['base_url']='https://example.invalid'
@@ -118,27 +118,27 @@ x=deepcopy(fixtures['owned-publications.synthetic.json']);x['items'][0]['account
 negative.append(('owner list rejects extra private identity',x,oas_uri('OwnedPublicationPage')))
 x=deepcopy(fixtures['owned-publication-revisions.synthetic.json']);x['items'][0]['reporter_identity']='private-marker'
 negative.append(('owner history rejects reporter identity',x,oas_uri('OwnedPublicationRevisionPage')))
-public=fixtures['public-curriculum.synthetic.json']
+public=fixtures['public-syllabus.synthetic.json']
 prof=fixtures['proficiency.synthetic.json']
 adapt=fixtures['adaptation-proposal.synthetic.json']
 formal=fixtures['generation-request.formal-math.synthetic.json']
 adoption=fixtures['adoption-request.synthetic.json']
 x=deepcopy(public);x['account_id']='private-account-marker'
-negative.append(('private account in public snapshot',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private account in public snapshot',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['objectives'][0]['prior_evidence_refs']=['private-attempt-marker']
-negative.append(('private prior evidence in public objective',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private prior evidence in public objective',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['activities'][0]['assessment_expectation']={'objective_ids':x['content']['activities'][0]['objective_ids'],'assurance':'reviewed_anchor_available','description':'Synthetic','answer_key':'private-solution-marker'}
-negative.append(('public assessment solution leakage',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('public assessment solution leakage',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['schedule']={'timezone':'private-timezone-marker'}
-negative.append(('private schedule in public content',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private schedule in public content',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(public);x['content']['owned_subscription_ids']=['private-subscription-marker']
-negative.append(('private owned access in publication',x,positive_targets['public-curriculum.synthetic.json']))
+negative.append(('private owned access in publication',x,positive_targets['public-syllabus.synthetic.json']))
 x=deepcopy(prof);x['objective_evidence'][0]['mastery_probability']=0.99
 negative.append(('uncalibrated ability probability',x,positive_targets['proficiency.synthetic.json']))
 x=deepcopy(prof);x['objective_evidence'][1]['status']='demonstrated'
 negative.append(('demonstrated without evidence',x,positive_targets['proficiency.synthetic.json']))
 x=deepcopy(candidate);x['adaptation_context']=deepcopy(canonical['adaptation_context'])
-negative.append(('model assigns server adaptation context',x,positive_targets['curriculum-candidate.synthetic.json']))
+negative.append(('model assigns server adaptation context',x,positive_targets['syllabus-candidate.synthetic.json']))
 x=deepcopy(adapt);x['proposed_waivers'][0]['qualifying_evidence_refs']=[]
 negative.append(('waiver without qualifying references',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(formal);x['instruction_preferences']['math_depth']='expert'
@@ -158,7 +158,7 @@ negative.append(('generated BYOK adoption carries hosted reservation',x,oas_uri(
 x=deepcopy(adoption);x['planning']['inference']=deepcopy(byok['inference'])
 negative.append(('deterministic adoption contains credentials',x,oas_uri('AdoptionRequest')))
 x=deepcopy(adapt);x['changes'][0]['kind']='reschedule'
-negative.append(('curriculum proposal used for schedule-only change',x,positive_targets['adaptation-proposal.synthetic.json']))
+negative.append(('syllabus proposal used for schedule-only change',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(adapt);del x['base_schedule_revision_id']
 negative.append(('adaptation lacks schedule concurrency binding',x,positive_targets['adaptation-proposal.synthetic.json']))
 x=deepcopy(fixtures['publication-preview.synthetic.json']);del x['publisher']
@@ -166,7 +166,7 @@ negative.append(('publication preview omits public identity',x,oas_uri('Publicat
 x=deepcopy(adoption);x['planning']['template_origin']=None
 negative.append(('adoption without bound public origin',x,oas_uri('AdoptionRequest')))
 x=deepcopy(canonical);x['activities'][0]['mastery_gated']='yes'
-negative.append(('non-boolean mastery_gated rejected',x,positive_targets['curriculum.synthetic.json']))
+negative.append(('non-boolean mastery_gated rejected',x,positive_targets['syllabus.synthetic.json']))
 x=deepcopy(schedule);x['review_schedule_items']=[{'review_item_id':'rev-1','objective_id':'obj-1','activity_id':'act-1','status':'invalid_state','due_at':None,'interval_policy_version':'policy-v1'}]
 negative.append(('invalid ReviewScheduleItem status rejected',x,positive_targets['schedule.synthetic.json']))
 for name,data,target in negative:
@@ -222,7 +222,7 @@ sem('duration upper total',sum(effort(v['duration_estimate']['upper_bounds']) fo
 refs={r['resource_version_id'] for v in a.values() for r in v['resource_assignments']} | {c['resource_version_id'] for c in canonical['certification_options']}
 sem('catalog provenance reference equality',refs==set(canonical['provenance']['source_resource_version_ids'])=={resource['resource_version_id']})
 sem('candidate and canonical plan agree',all(canonical[k]==v for k,v in candidate.items() if k!='candidate_schema_version'))
-sem('archived candidate hash matches',hashlib.sha256((EX/'curriculum-candidate.synthetic.json').read_bytes()).hexdigest()==canonical['provenance']['candidate_sha256'])
+sem('archived candidate hash matches',hashlib.sha256((EX/'syllabus-candidate.synthetic.json').read_bytes()).hexdigest()==canonical['provenance']['candidate_sha256'])
 sem('schedule references resolve',all(set(s['activity_ids'])<=set(a) for s in schedule['sessions']))
 sem('schedule point totals agree',sum(s['duration_minutes'] for s in schedule['sessions'])==canonical['total_estimated_minutes'])
 sessions={aid:s['session_id'] for s in schedule['sessions'] for aid in s['activity_ids']}
@@ -263,7 +263,7 @@ def keys_recursive(value):
     if isinstance(value,list):return set().union(*(keys_recursive(v) for v in value))
     return set()
 sem('public fixture excludes private keys at every level',not (keys_recursive(public)&forbidden))
-sem('private canonical object rejected by public schema',bool(validate_ref(canonical,positive_targets['public-curriculum.synthetic.json'])))
+sem('private canonical object rejected by public schema',bool(validate_ref(canonical,positive_targets['public-syllabus.synthetic.json'])))
 sem('public collection operations explicitly unauthenticated',oas['paths']['/publications']['get'].get('security')==[] and oas['paths']['/publications/{publication_id}']['get'].get('security')==[])
 sem('private proficiency cannot be overwritten through a modeled endpoint',set(oas['paths']['/me/proficiency'])=={'get'} and oas['paths']['/me/proficiency']['get'].get('security')!=[])
 sem('vote mutations use idempotent set and remove',set(oas['paths']['/publications/{publication_id}/revisions/{publication_revision_id}/my-vote'])=={'get','put','delete'})
@@ -292,7 +292,7 @@ def walk_refs(value,root,source_path):
                 p=(source_path.parent/path).resolve()
                 doc=json.loads(p.read_text()) if p.suffix=='.json' else yaml.safe_load(p.read_text())
                 pointer(doc,fragment)
-            elif path.startswith('https://curriculum.example.invalid/'):
+            elif path.startswith('https://syllabus.example.invalid/'):
                 matches=[s for s in schemas.values() if s.get('$id')==path]
                 if len(matches)!=1:raise ValueError('Unresolved schema ID '+path)
                 pointer(matches[0],fragment)

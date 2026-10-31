@@ -16,7 +16,7 @@ test("generated OpenAPI TypeScript descriptors carry generated-file notice and a
 });
 
 test("T01 HTTP concurrency policy: GET requires neither Idempotency-Key nor If-Match", () => {
-  const getHeaders = buildOperationHeaders("getCurriculumOverview");
+  const getHeaders = buildOperationHeaders("getSyllabusOverview");
   assert.equal(getHeaders["Idempotency-Key"], undefined);
   assert.equal(getHeaders["If-Match"], undefined);
   assert.equal(getHeaders["Accept"], "application/json");
@@ -36,10 +36,10 @@ test("T01 HTTP concurrency policy: retriable effect-producing commands require I
 
 test("T01 HTTP concurrency policy: mutations of existing versioned mutable resources require If-Match", () => {
   assert.throws(
-    () => buildOperationHeaders("activateCurriculumRevision"),
+    () => buildOperationHeaders("activateSyllabusRevision"),
     /requires an If-Match header/
   );
-  const headers = buildOperationHeaders("activateCurriculumRevision", {
+  const headers = buildOperationHeaders("activateSyllabusRevision", {
     ifMatch: "\"rev-1\"",
   });
   assert.equal(headers["If-Match"], "\"rev-1\"");

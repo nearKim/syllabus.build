@@ -1,11 +1,13 @@
 use super::*;
-use curriculum_security::{AuthenticatedPrincipal, PrincipalRole};
+use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 use serde_json::json;
 
 
     #[test]
     fn baseline_and_t01_migrations_are_embedded_and_valid() {
-        assert_eq!(MIGRATIONS.len(), 8);
+        assert_eq!(MIGRATIONS.len(), 9);
+        assert!(OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS oauth_identities"));
         assert!(POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL
             .contains("ADD COLUMN IF NOT EXISTS index_descriptor JSONB"));
         assert!(INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL
@@ -23,7 +25,7 @@ use serde_json::json;
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS learner_profiles"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
-            .contains("CREATE TABLE IF NOT EXISTS curriculum_revisions"));
+            .contains("CREATE TABLE IF NOT EXISTS syllabus_revisions"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS public_template_revisions"));
         assert!(INIT_IDENTITY_AND_TENANCY_MIGRATION_SQL
@@ -114,7 +116,7 @@ use serde_json::json;
 
         // Private revision cannot use `pubrev_` prefix
         assert!(matches!(
-            store.commit_private_curriculum_revision(
+            store.commit_private_syllabus_revision(
                 &learner_a,
                 "cur-learner-a-1",
                 "pubrev_illegal_private",
@@ -125,7 +127,7 @@ use serde_json::json;
 
         // Client or model payload cannot assign account_id or mastered status
         assert!(matches!(
-            store.commit_private_curriculum_revision(
+            store.commit_private_syllabus_revision(
                 &learner_a,
                 "cur-learner-a-1",
                 "rev-learner-a-2",
@@ -295,7 +297,7 @@ use serde_json::json;
     #[test]
     fn t02_s04_s05_s06_s09_catalog_filtering_budget_subscriptions_unknown_price_and_synthetic_exclusion() {
         let store = InMemoryTransactionalStore::new_with_dev_fixtures();
-        let registry = curriculum_contracts::ContractRegistry::load_from_workspace()
+        let registry = syllabus_contracts::ContractRegistry::load_from_workspace()
             .expect("load contract registry");
 
         // All non-synthetic seeded resources must validate against resource.schema.json
@@ -573,15 +575,15 @@ use serde_json::json;
             }]
         });
         let committed = store
-            .commit_validated_curriculum_revision(
+            .commit_validated_syllabus_revision(
                 &learner_a,
                 "cur-rag-1",
                 "rev-rag-1",
-                "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de",
+                "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505",
                 rev_payload.clone(),
                 true,
             )
-            .expect("commit curriculum revision");
+            .expect("commit syllabus revision");
 
         // Quarantine the referenced resource version
         store
@@ -596,7 +598,7 @@ use serde_json::json;
 
         // Historical revision payload and candidate_sha256 MUST remain byte-for-byte unchanged (@S07, @S09, @S63)
         let after_quarantine = store
-            .get_private_curriculum_revision(&learner_a, "rev-rag-1")
+            .get_private_syllabus_revision(&learner_a, "rev-rag-1")
             .expect("fetch historical revision");
         assert_eq!(after_quarantine.payload, rev_payload);
         assert_eq!(
@@ -604,9 +606,9 @@ use serde_json::json;
             committed.candidate_sha256
         );
 
-        // Resource alert is surfaced on the curriculum without mutating the revision
+        // Resource alert is surfaced on the syllabus without mutating the revision
         let alerts = store
-            .list_curriculum_resource_alerts(&learner_a, "cur-rag-1")
+            .list_syllabus_resource_alerts(&learner_a, "cur-rag-1")
             .expect("list resource alerts");
         assert_eq!(alerts.len(), 1);
         assert_eq!(
@@ -664,7 +666,7 @@ use serde_json::json;
         // Verify all core domain tables are covered by the rendered migration bundle
         for required_table in [
             "accounts",
-            "curriculum_revisions",
+            "syllabus_revisions",
             "public_template_revisions",
             "idempotency_keys",
             "outbox_jobs",
@@ -702,9 +704,87 @@ use serde_json::json;
 
         let sched_sql = PostgresTransactionalStatements::optimistic_schedule_update_sql();
         assert!(sched_sql.contains("UPDATE schedule_revisions"));
-        assert!(sched_sql.contains("WHERE account_id = $1 AND curriculum_id = $2 AND etag_version = $3"));
+        assert!(sched_sql.contains("WHERE account_id = $1 AND syllabus_id = $2 AND etag_version = $3"));
 
         let bloat_sql = PostgresTransactionalStatements::pg_bloat_monitoring_sql();
         assert!(bloat_sql.contains("FROM pg_stat_user_tables"));
         assert!(bloat_sql.contains("outbox_jobs"));
+    }
+
+    #[test]
+    fn email_signup_login_and_oauth_account_linking_lifecycle() {
+        let store = InMemoryTransactionalStore::new();
+        let (acct, signup_sess) = store
+            .register_email_account("Jane@Example.com", "StrongPass123!", Some("Jane Doe"))
+            .expect("register email account");
+        assert_eq!(acct.email, "jane@example.com");
+        assert_eq!(acct.display_name.as_deref(), Some("Jane Doe"));
+        assert!(store
+            .resolve_session_token(&signup_sess.token)
+            .expect("resolve signup session")
+            .is_some());
+
+        // Duplicate registration fails with 409 Conflict
+        assert_eq!(
+            store
+                .register_email_account("jane@example.com", "AnotherPass123!", None)
+                .unwrap_err()
+                .http_status_code(),
+            409
+        );
+
+        // Wrong password fails with 401
+        assert_eq!(
+            store
+                .login_email_account("jane@example.com", "WrongPassword!")
+                .unwrap_err()
+                .http_status_code(),
+            401
+        );
+
+        // Correct password logs into the same account
+        let (login_acct, _) = store
+            .login_email_account("JANE@example.com", "StrongPass123!")
+            .expect("login with hashed password");
+        assert_eq!(login_acct.account_id, acct.account_id);
+
+        // Verified Google OAuth with the same email links to Jane's existing account
+        let linked = store
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Google,
+                "google-sub-999",
+                "jane@example.com",
+                true,
+                Some("Jane Google"),
+                Some("https://lh3.googleusercontent.com/a/jane"),
+            )
+            .expect("link Google OAuth identity");
+        assert!(!linked.is_new_account);
+        assert_eq!(linked.account.account_id, acct.account_id);
+        assert!(linked.account.email_verified);
+
+        // Brand-new GitHub OAuth user creates a new account, and second login reuses it
+        let gh_first = store
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Github,
+                "gh-42",
+                "linus@kernel.org",
+                true,
+                Some("Linus Torvalds"),
+                None,
+            )
+            .expect("create GitHub OAuth account");
+        assert!(gh_first.is_new_account);
+        let gh_second = store
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Github,
+                "gh-42",
+                "linus@kernel.org",
+                true,
+                Some("Linus Torvalds"),
+                None,
+            )
+            .expect("reuse GitHub OAuth account");
+        assert!(!gh_second.is_new_account);
+        assert_eq!(gh_first.account.account_id, gh_second.account.account_id);
     }

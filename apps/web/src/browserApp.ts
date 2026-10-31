@@ -41,18 +41,18 @@ import {
   type ConceptCheck, type InspectorMode, type SelfCheckRubric, type SettableStatus,
 } from "./components/InspectorDrawer.tsx";
 import {
-  AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner, displayNameOf, initialsOf,
+  AppSidebar, CompactBottomNav, HeaderBar, SessionExpiredBanner, defaultUsernameOfEmail, initialsOf, usernameOf,
   type Account, type AuthStatus,
 } from "./components/HeaderBar.tsx";
 import {
-  AuthDialog, PERSONAS, PERSONA_CHOICES, handleOf,
-  type PersonaChoice, type ReturnDestination,
+  AUTH_MODES, AuthDialog, PERSONAS, PERSONA_CHOICES, handleOf,
+  type AuthMode, type PersonaChoice, type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 import {
-  AdoptCurriculumDialog, CurriculumTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
-  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, curriculumTagsOf, facetValuesOf, goalTitleOf, mathDepthFor,
+  AdoptSyllabusDialog, SyllabusTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
+  PublicationPreviewDialog, adoptedPlanOf, adoptionScopeOf, asRecord, syllabusTagsOf, facetValuesOf, goalTitleOf, mathDepthFor,
   rawListOf, studyMinutesOf, unitIdsOf, withMarketplaceFilter,
-  type ActiveCurriculum, type Adoption, type CurriculumTagDescriptor, type MarketplaceFilters, type MarketplaceListing,
+  type ActiveSyllabus, type Adoption, type SyllabusTagDescriptor, type MarketplaceFilters, type MarketplaceListing,
   type MarketplaceSort, type Vote,
 } from "./components/ExploreMarketplace.tsx";
 import {
@@ -60,29 +60,39 @@ import {
   type ResourceCategory, type ResourceScope,
 } from "./components/ResourcesView.tsx";
 import {
+  MANUAL_RESOURCE_CATEGORIES, RESOURCE_EDITOR_MODES, ResourceEditorDialog,
+  type ResourceEditorMode,
+} from "./components/ResourceEditorDialog.tsx";
+import {
+  analyzeManualResourceDeterministic, applyResourceBindingToSyllabus, buildCatalogMetadataFromDraft,
+  formatAccessLabels, inferSubjectFromResourceText, parseFreeFormResourceInput, removeResourceBindingFromSyllabus,
+  type AnalyzedManualResourceDraft, type ManualResourceAccessModel, type ManualResourceCategory,
+} from "./resourceAnalyzer.ts";
+import {
   ADMIN_DISCOVERY_SOURCES, AdminResourcesView, isAdminAccount,
   type AdminDiscoverySource,
 } from "./components/AdminResourcesView.tsx";
 import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
 import {
   CHEAP_MODEL_BY_PROVIDER, DEFAULT_SUBJECT_TOPICS, DESIGNATED_AI_MODELS, INTAKE_DEPTH_CHOICES, INTAKE_FIT_MODES, INTAKE_FLOW_CHOICES,
-  INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewCurriculumDialog, buildIndexedMaterialCandidates,
+  INTAKE_MATERIALS_CHOICES, INTAKE_SUBJECTS, NewSyllabusDialog, buildIndexedMaterialCandidates,
   evaluateIntakeResourceFit, executeIntakeGenerationPipeline, inferIntakeSubjectFromGoal, resolveDependentTopicToggle,
   type IntakeDepthChoice, type IntakeFitMode, type IntakeFlowChoice, type IntakeMaterialsChoice,
   type IntakePipelineExecutionReceipt, type IntakeSubject,
-} from "./components/NewCurriculumDialog.tsx";
+} from "./components/NewSyllabusDialog.tsx";
 import { buildLiveDraftPrompt, type LiveDraftOutcome, type LiveDraftRequest } from "./liveDraft.ts";
-import { createCurriculumSignalStore, type CurriculumSignalStore } from "./state/store.ts";
+import { createSyllabusSignalStore, type SyllabusSignalStore } from "./state/store.ts";
 
 export {
-  createCurriculumSignalStore,
-  curriculumTagsOf,
-  type CurriculumSignalStore,
-  type CurriculumTagDescriptor,
+  createSyllabusSignalStore,
+  syllabusTagsOf,
+  type SyllabusSignalStore,
+  type SyllabusTagDescriptor,
   type FlowOrder,
   type DeepDiveMode,
   type SpacedReviewMode,
   type AuthStatus,
+  type AuthMode,
   type Account,
   type PersonaChoice,
   type ReturnDestination,
@@ -102,7 +112,16 @@ export {
   type IntakePipelineExecutionReceipt,
 };
 
-export interface CurriculumWebAppStateInput {
+export interface PasskeySummaryItem {
+  readonly id: string;
+  readonly name: string;
+  readonly credentialDeviceType: "singleDevice" | "multiDevice";
+  readonly credentialBackedUp: boolean;
+  readonly registeredAt: number;
+  readonly lastUsedAt?: number | undefined;
+}
+
+export interface SyllabusWebAppStateInput {
   readonly topLevel?: TopLevelDestination; readonly learnSubDestination?: LearnSubDestination;
   readonly planView?: PlanSynchronizedView; readonly selectedModuleId?: string | null;
   readonly selectedActivityId?: string | null; readonly focusedNodeId?: string | null;
@@ -110,7 +129,7 @@ export interface CurriculumWebAppStateInput {
   readonly themePreference?: ThemePreference; readonly solidSurfaces?: boolean; readonly reduceMotion?: boolean;
   readonly activityStates?: Readonly<Record<string, ActivityExecutionStatus>>;
   readonly recordedProgressEvents?: readonly ProgressEventInput[];
-  readonly curriculum?: Record<string, unknown>; readonly schedule?: Record<string, unknown>;
+  readonly syllabus?: Record<string, unknown>; readonly schedule?: Record<string, unknown>;
   readonly proficiency?: ProficiencyProfileFixture;
   readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly diagnosticSession?: DiagnosticSessionFixture; readonly adaptationProposal?: AdaptationProposalFixture;
@@ -132,9 +151,11 @@ export interface CurriculumWebAppStateInput {
   readonly depthOverrideReset?: boolean; readonly studyDetailOpen?: boolean;
   readonly inspectorMode?: InspectorMode;
   readonly flowOrder?: FlowOrder; readonly deepDive?: DeepDiveMode; readonly spacedReview?: SpacedReviewMode;
-  readonly selectedCurriculumId?: string;
+  readonly selectedSyllabusId?: string;
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
   readonly authNotice?: string | null; readonly profileNotice?: string | null;
+  readonly authMode?: AuthMode; readonly authPasswordVisible?: boolean;
+  readonly passkeys?: readonly PasskeySummaryItem[]; readonly passkeyNotice?: string | null;
   readonly marketplaceFilters?: Partial<MarketplaceFilters>; readonly marketplaceSort?: MarketplaceSort;
   readonly marketplaceTopicsExpanded?: boolean;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
@@ -153,7 +174,17 @@ export interface CurriculumWebAppStateInput {
   readonly intakeFlow?: IntakeFlowChoice; readonly intakeMaterials?: IntakeMaterialsChoice;
   readonly intakeWeeklyMinutes?: number; readonly intakeFitMode?: IntakeFitMode;
   readonly intakeSelectedResourceIds?: readonly string[]; readonly intakeSkippedResourceIds?: readonly string[];
-  readonly generatedPlans?: readonly ActiveCurriculum[];
+  readonly generatedPlans?: readonly ActiveSyllabus[];
+  readonly syllabusOverrides?: Readonly<Record<string, Record<string, unknown>>>;
+  readonly userLibraryResourceIds?: readonly string[];
+  readonly resourceEditorMode?: ResourceEditorMode;
+  readonly editingResourceId?: string | null;
+  readonly editingResourceSyllabusId?: string | null;
+  readonly editingResourceModuleId?: string | null;
+  readonly editingResourceActivityId?: string | null;
+  readonly resourceRawDraft?: string;
+  readonly resourceEditorError?: string | null;
+  readonly resourceNotice?: string | null;
   readonly lastPipelineReceipt?: IntakePipelineExecutionReceipt | null;
 }
 
@@ -170,8 +201,8 @@ const makeResAssign = (resource_version_id: string, role: string, segment_ids: s
   resource_version_id, role, segment_ids, selection_rationale,
 });
 
-const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-rag-python-001",
+const DEFAULT_SYNTHETIC_SYLLABUS: Record<string, unknown> = {
+  schema_version: "0.2.0", syllabus_id: "syllabus-rag-python-001",
   revision_id: "revision-attention-v2", revision_number: 2, predecessor_revision_id: "revision-attention-v1",
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
   subject: "Engineering", gate_style: "Reviewed Quiz", topic_tags: ["Python", "RAG", "Attention", "Linear Algebra"],
@@ -277,7 +308,7 @@ const DEFAULT_SYNTHETIC_CURRICULUM: Record<string, unknown> = {
 
 const DEFAULT_SYNTHETIC_SCHEDULE: Record<string, unknown> = {
   schedule_id: "schedule-attention-1", schedule_revision_id: "schedule-revision-attention-1",
-  version: 1, curriculum_revision_id: "revision-attention-v2", timezone: "America/New_York", weekly_minutes: 120,
+  version: 1, syllabus_revision_id: "revision-attention-v2", timezone: "America/New_York", weekly_minutes: 120,
   sessions: [
     { session_id: "session-today-1", start_at: "2026-10-26T18:00:00-04:00", duration_minutes: 65, activity_ids: ["activity-theory", "activity-example", "activity-coding"], reminder_enabled: true },
     { session_id: "session-quiz-2", start_at: "2026-10-28T18:00:00-04:00", duration_minutes: 10, activity_ids: ["activity-quiz"], reminder_enabled: true },
@@ -301,8 +332,8 @@ const DEFAULT_SYNTHETIC_PROFICIENCY: ProficiencyProfileFixture = {
 const DEFAULT_CATALOG_RESOURCES: Readonly<Record<string, CatalogResourceMetadataInput>> =
   catalogResourcesJson.resources as Readonly<Record<string, CatalogResourceMetadataInput>>;
 
-const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-linear-algebra-002",
+const LINEAR_ALGEBRA_SYLLABUS: Record<string, unknown> = {
+  schema_version: "0.2.0", syllabus_id: "syllabus-linear-algebra-002",
   revision_id: "revision-linear-algebra-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
   subject: "Mathematics", gate_style: "Public Quiz Bank", topic_tags: ["Linear Algebra", "Eigenvalues", "SVD"],
@@ -416,7 +447,7 @@ const LINEAR_ALGEBRA_CURRICULUM: Record<string, unknown> = {
 
 const LINEAR_ALGEBRA_SCHEDULE: Record<string, unknown> = {
   schedule_id: "schedule-linear-algebra-1", schedule_revision_id: "schedule-revision-linear-algebra-1",
-  version: 1, curriculum_revision_id: "revision-linear-algebra-v1", timezone: "America/New_York", weekly_minutes: 150,
+  version: 1, syllabus_revision_id: "revision-linear-algebra-v1", timezone: "America/New_York", weekly_minutes: 150,
   sessions: [
     { session_id: "la-session-1", start_at: "2026-10-27T18:00:00-04:00", duration_minutes: 65, activity_ids: ["la-read-eigen", "la-example-projection", "la-lab-power-iteration"], reminder_enabled: true },
     { session_id: "la-session-2", start_at: "2026-10-29T18:00:00-04:00", duration_minutes: 30, activity_ids: ["la-gate-spectral"], reminder_enabled: true },
@@ -426,8 +457,8 @@ const LINEAR_ALGEBRA_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-20T16:00:00Z",
 };
 
-const TOLSTOY_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-tolstoy-lit-003",
+const TOLSTOY_SYLLABUS: Record<string, unknown> = {
+  schema_version: "0.2.0", syllabus_id: "syllabus-tolstoy-lit-003",
   revision_id: "revision-tolstoy-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "learner-default", created_at: "2026-10-20T16:00:00Z", revision_reason: "initial_generation",
   subject: "Literature", gate_style: "Self-Check Rubric", topic_tags: ["Tolstoy", "Realism", "Narrative"],
@@ -541,7 +572,7 @@ const TOLSTOY_CURRICULUM: Record<string, unknown> = {
 
 const TOLSTOY_SCHEDULE: Record<string, unknown> = {
   schedule_id: "schedule-tolstoy-1", schedule_revision_id: "schedule-revision-tolstoy-1",
-  version: 1, curriculum_revision_id: "revision-tolstoy-v1", timezone: "America/New_York", weekly_minutes: 180,
+  version: 1, syllabus_revision_id: "revision-tolstoy-v1", timezone: "America/New_York", weekly_minutes: 180,
   sessions: [
     { session_id: "tl-session-1", start_at: "2026-10-27T20:00:00-04:00", duration_minutes: 85, activity_ids: ["tl-read-war-and-peace", "tl-close-austerlitz"], reminder_enabled: true },
     { session_id: "tl-session-2", start_at: "2026-10-30T20:00:00-04:00", duration_minutes: 80, activity_ids: ["tl-read-berlin", "tl-gate-war-and-peace"], reminder_enabled: true },
@@ -552,43 +583,43 @@ const TOLSTOY_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-20T16:00:00Z",
 };
 
-function makeActiveCurriculum(
-  curriculumId: string,
-  curriculum: Record<string, unknown>,
+function makeActiveSyllabus(
+  syllabusId: string,
+  syllabus: Record<string, unknown>,
   schedule: Record<string, unknown>,
   publicationId: string | null,
-): ActiveCurriculum {
-  const tags = curriculumTagsOf(curriculum);
+): ActiveSyllabus {
+  const tags = syllabusTagsOf(syllabus);
   return {
-    curriculumId,
+    syllabusId,
     domain: tags.subject,
     assessmentMode: tags.gateStyle,
-    curriculum,
+    syllabus,
     schedule,
     publicationId,
     draft: false,
   };
 }
 
-const RAG_PLAN: ActiveCurriculum = makeActiveCurriculum(
-  "curriculum-rag-python-001",
-  DEFAULT_SYNTHETIC_CURRICULUM,
+const RAG_PLAN: ActiveSyllabus = makeActiveSyllabus(
+  "syllabus-rag-python-001",
+  DEFAULT_SYNTHETIC_SYLLABUS,
   DEFAULT_SYNTHETIC_SCHEDULE,
   "publication-synthetic-001",
 );
 
 // The base plans in queue order. The first one is selected by default.
-const ACTIVE_CURRICULA: readonly ActiveCurriculum[] = [
+const ACTIVE_SYLLABI: readonly ActiveSyllabus[] = [
   RAG_PLAN,
-  makeActiveCurriculum("curriculum-linear-algebra-002", LINEAR_ALGEBRA_CURRICULUM, LINEAR_ALGEBRA_SCHEDULE, "publication-linear-algebra-001"),
-  makeActiveCurriculum("curriculum-tolstoy-lit-003", TOLSTOY_CURRICULUM, TOLSTOY_SCHEDULE, "publication-tolstoy-001"),
+  makeActiveSyllabus("syllabus-linear-algebra-002", LINEAR_ALGEBRA_SYLLABUS, LINEAR_ALGEBRA_SCHEDULE, "publication-linear-algebra-001"),
+  makeActiveSyllabus("syllabus-tolstoy-lit-003", TOLSTOY_SYLLABUS, TOLSTOY_SCHEDULE, "publication-tolstoy-001"),
 ];
 
-const planIn = (plans: readonly ActiveCurriculum[], curriculumId: unknown): ActiveCurriculum =>
-  plans.find((plan) => plan.curriculumId === curriculumId) ?? RAG_PLAN;
+const planIn = (plans: readonly ActiveSyllabus[], syllabusId: unknown): ActiveSyllabus =>
+  plans.find((plan) => plan.syllabusId === syllabusId) ?? RAG_PLAN;
 
-const RUST_ASYNC_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-rust-async-004",
+const RUST_ASYNC_SYLLABUS: Record<string, unknown> = {
+  schema_version: "0.2.0", syllabus_id: "syllabus-rust-async-004",
   revision_id: "revision-rust-async-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "curator-ferris", created_at: "2026-10-18T12:00:00Z", revision_reason: "initial_generation",
   subject: "Systems", gate_style: "Code Lab Gate", topic_tags: ["Rust", "Async", "Concurrency"],
@@ -696,7 +727,7 @@ const RUST_ASYNC_CURRICULUM: Record<string, unknown> = {
 
 const RUST_ASYNC_SCHEDULE: Record<string, unknown> = {
   schedule_id: "schedule-rust-async-1", schedule_revision_id: "schedule-revision-rust-async-1",
-  version: 1, curriculum_revision_id: "revision-rust-async-v1", timezone: "America/New_York", weekly_minutes: 180,
+  version: 1, syllabus_revision_id: "revision-rust-async-v1", timezone: "America/New_York", weekly_minutes: 180,
   sessions: [
     { session_id: "rs-session-1", start_at: "2026-10-28T19:00:00-04:00", duration_minutes: 50, activity_ids: ["rs-read-futures", "rs-example-waker"], reminder_enabled: true },
     { session_id: "rs-session-2", start_at: "2026-10-31T10:00:00-04:00", duration_minutes: 45, activity_ids: ["rs-gate-executor"], reminder_enabled: true },
@@ -706,8 +737,8 @@ const RUST_ASYNC_SCHEDULE: Record<string, unknown> = {
   generated_at: "2026-10-18T12:00:00Z",
 };
 
-const STAT_MECH_CURRICULUM: Record<string, unknown> = {
-  schema_version: "0.2.0", curriculum_id: "curriculum-statmech-005",
+const STAT_MECH_SYLLABUS: Record<string, unknown> = {
+  schema_version: "0.2.0", syllabus_id: "syllabus-statmech-005",
   revision_id: "revision-statmech-v1", revision_number: 1, predecessor_revision_id: null,
   account_id: "curator-ada", created_at: "2026-10-08T10:00:00Z", revision_reason: "initial_generation",
   subject: "Physics", gate_style: "Problem Set Gate", topic_tags: ["Thermodynamics", "Ensembles", "Phase Transitions"],
@@ -807,7 +838,7 @@ const STAT_MECH_CURRICULUM: Record<string, unknown> = {
 
 const STAT_MECH_SCHEDULE: Record<string, unknown> = {
   schedule_id: "schedule-statmech-1", schedule_revision_id: "schedule-revision-statmech-1",
-  version: 1, curriculum_revision_id: "revision-statmech-v1", timezone: "America/New_York", weekly_minutes: 150,
+  version: 1, syllabus_revision_id: "revision-statmech-v1", timezone: "America/New_York", weekly_minutes: 150,
   sessions: [
     { session_id: "sm-session-1", start_at: "2026-10-29T18:00:00-04:00", duration_minutes: 55, activity_ids: ["sm-read-ensembles", "sm-example-two-level"], reminder_enabled: true },
     { session_id: "sm-session-2", start_at: "2026-11-01T10:00:00-05:00", duration_minutes: 35, activity_ids: ["sm-gate-ensembles"], reminder_enabled: true },
@@ -821,7 +852,7 @@ const STAT_MECH_SCHEDULE: Record<string, unknown> = {
 function makeMarketplaceListing(
   input: Omit<MarketplaceListing, "subject" | "gateStyle" | "topicTags">,
 ): MarketplaceListing {
-  const tags = curriculumTagsOf(input.curriculum);
+  const tags = syllabusTagsOf(input.syllabus);
   return {
     ...input,
     subject: tags.subject,
@@ -834,28 +865,28 @@ const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
   makeMarketplaceListing({
     publicationId: "publication-synthetic-001", revisionId: "public-revision-synthetic-001",
     handle: "@alex", upvotes: 14, adoptions: 142, publishedAt: "2026-10-20T16:00:00Z",
-    ownerAccountId: "learner-default", sourceCurriculumId: "curriculum-rag-python-001", basedOn: null,
-    curriculum: DEFAULT_SYNTHETIC_CURRICULUM, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
+    ownerAccountId: "learner-default", sourceSyllabusId: "syllabus-rag-python-001", basedOn: null,
+    syllabus: DEFAULT_SYNTHETIC_SYLLABUS, schedule: DEFAULT_SYNTHETIC_SCHEDULE,
   }),
   makeMarketplaceListing({
     publicationId: "publication-linear-algebra-001", revisionId: "public-revision-linear-algebra-001",
     handle: "@spectral_sam", upvotes: 31, adoptions: 87, publishedAt: "2026-10-12T15:00:00Z",
-    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: LINEAR_ALGEBRA_CURRICULUM, schedule: LINEAR_ALGEBRA_SCHEDULE,
+    ownerAccountId: null, sourceSyllabusId: null, basedOn: null, syllabus: LINEAR_ALGEBRA_SYLLABUS, schedule: LINEAR_ALGEBRA_SCHEDULE,
   }),
   makeMarketplaceListing({
     publicationId: "publication-tolstoy-001", revisionId: "public-revision-tolstoy-001",
     handle: "@tolstoy_seminar", upvotes: 19, adoptions: 23, publishedAt: "2026-10-16T18:00:00Z",
-    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: TOLSTOY_CURRICULUM, schedule: TOLSTOY_SCHEDULE,
+    ownerAccountId: null, sourceSyllabusId: null, basedOn: null, syllabus: TOLSTOY_SYLLABUS, schedule: TOLSTOY_SCHEDULE,
   }),
   makeMarketplaceListing({
     publicationId: "publication-rust-async-001", revisionId: "public-revision-rust-async-001",
     handle: "@ferris_ops", upvotes: 48, adoptions: 64, publishedAt: "2026-10-18T12:00:00Z",
-    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: RUST_ASYNC_CURRICULUM, schedule: RUST_ASYNC_SCHEDULE,
+    ownerAccountId: null, sourceSyllabusId: null, basedOn: null, syllabus: RUST_ASYNC_SYLLABUS, schedule: RUST_ASYNC_SCHEDULE,
   }),
   makeMarketplaceListing({
     publicationId: "publication-statmech-001", revisionId: "public-revision-statmech-001",
     handle: "@ada_curates", upvotes: 27, adoptions: 39, publishedAt: "2026-10-08T10:00:00Z",
-    ownerAccountId: null, sourceCurriculumId: null, basedOn: null, curriculum: STAT_MECH_CURRICULUM, schedule: STAT_MECH_SCHEDULE,
+    ownerAccountId: null, sourceSyllabusId: null, basedOn: null, syllabus: STAT_MECH_SYLLABUS, schedule: STAT_MECH_SCHEDULE,
   }),
 ];
 
@@ -863,14 +894,15 @@ const PRACTICE_ACTIONS: ReadonlySet<string> = new Set(["request-hint", "study-wo
 
 // Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
 const OPEN_ACTIONS: ReadonlySet<string> = new Set([
-  "submit-sign-in", "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
+  "submit-sign-in", "submit-sign-up", "switch-auth-mode", "toggle-auth-password",
+  "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
   "set-marketplace-filter", "toggle-marketplace-topics", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query",
   "load-more",
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
   "view-evidence", "check-prerequisites", "set-resource-scope", "set-resource-category",
 ]);
 
-// The drawer's practice question for each published curriculum. An adopted copy keeps its publication id, so it shares the check.
+// The drawer's practice question for each published syllabus. An adopted copy keeps its publication id, so it shares the check.
 const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
   "publication-synthetic-001": {
     formula: "\\mathrm{Attention}(Q, K, V) = \\mathrm{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V",
@@ -939,18 +971,18 @@ const SELF_CHECK_RUBRICS: Readonly<Record<string, SelfCheckRubric>> = {
 };
 
 const DEFAULT_DIAGNOSTIC_SESSION: DiagnosticSessionFixture = {
-  diagnostic_session_id: "diagnostic-synthetic-001", curriculum_id: "curriculum-rag-python-001",
-  curriculum_revision_id: "revision-attention-v2", state: "active",
+  diagnostic_session_id: "diagnostic-synthetic-001", syllabus_id: "syllabus-rag-python-001",
+  syllabus_revision_id: "revision-attention-v2", state: "active",
   target_objective_version_ids: ["objective-tokenization-v1", "objective-attention-v1"],
   assessed_objective_version_ids: ["objective-tokenization-v1"], unassessed_objective_version_ids: ["objective-attention-v1"],
   proficiency_snapshot_ref: "proficiency-snapshot-001", stop_reason: null,
 };
 
 const DEFAULT_ADAPTATION_PROPOSAL: AdaptationProposalFixture = {
-  proposal_id: "adaptation-synthetic-001", curriculum_id: "curriculum-rag-python-001",
+  proposal_id: "adaptation-synthetic-001", syllabus_id: "syllabus-rag-python-001",
   base_revision_id: "revision-attention-v2", candidate_revision_id: "revision-attention-v3-candidate",
   base_schedule_revision_id: "schedule-revision-attention-1", proficiency_snapshot_ref: "proficiency-snapshot-001",
-  proposal_sha256: "938896be1292fd64cd5bf7f71c45068b10758ef3d3253833bd17b79a4e0d6dae", status: "pending",
+  proposal_sha256: "e3de58105ed9020b861fa9ed9fda685296a6a2f6d278f65e8bd7485e4c99a20d", status: "pending",
   instruction_preferences_applied: { math_depth: "formal" },
   changes: [
     { kind: "waive_instruction", node_id: "activity-theory", activity_ids: ["activity-theory"], objective_version_ids: ["objective-tokenization-v1"], qualifying_evidence_refs: ["anchor-attempt-001"], rationale: "Reviewed diagnostic anchor attempt-001 corroborated tokenization proficiency; waive introductory reading while retaining formal math depth." },
@@ -1111,21 +1143,21 @@ function renderStepRow(
   return renderToString(h(StepRow, { activity, selectedActivityId, note, reviewSeparationValid }));
 }
 
-// The plan model keeps one prompt per activity, so a lab's deliverables and a gate's assessment come from the raw curriculum.
-const rawContentOf = (curriculum: Record<string, unknown>, activityId: string): Readonly<Record<string, unknown>> =>
-  asRecord(rawListOf(curriculum, "activities").find((entry) => entry["activity_id"] === activityId)?.["content"]);
+// The plan model keeps one prompt per activity, so a lab's deliverables and a gate's assessment come from the raw syllabus.
+const rawContentOf = (syllabus: Record<string, unknown>, activityId: string): Readonly<Record<string, unknown>> =>
+  asRecord(rawListOf(syllabus, "activities").find((entry) => entry["activity_id"] === activityId)?.["content"]);
 
-const rubricOf = (curriculum: Record<string, unknown>, activityId: string): SelfCheckRubric | null => {
-  const ref = rawContentOf(curriculum, activityId)["assessment_ref"];
+const rubricOf = (syllabus: Record<string, unknown>, activityId: string): SelfCheckRubric | null => {
+  const ref = rawContentOf(syllabus, activityId)["assessment_ref"];
   return typeof ref === "string" ? SELF_CHECK_RUBRICS[ref] ?? null : null;
 };
 
-const activityIdsOf = (curriculum: Record<string, unknown>): ReadonlySet<string> =>
-  new Set(rawListOf(curriculum, "activities").map((entry) => entry["activity_id"]).filter((id): id is string => typeof id === "string"));
+const activityIdsOf = (syllabus: Record<string, unknown>): ReadonlySet<string> =>
+  new Set(rawListOf(syllabus, "activities").map((entry) => entry["activity_id"]).filter((id): id is string => typeof id === "string"));
 
 // The module that holds the given activity, or else the plan's first module, and the activity to open there.
-function stepOf(curriculum: Record<string, unknown>, activityId?: string | null): { readonly moduleId: string; readonly activityId: string } {
-  const modules = rawListOf(curriculum, "modules").map((mod) => ({ id: mod["module_id"], activityIds: normalizeStringList(mod["activity_ids"]) }));
+function stepOf(syllabus: Record<string, unknown>, activityId?: string | null): { readonly moduleId: string; readonly activityId: string } {
+  const modules = rawListOf(syllabus, "modules").map((mod) => ({ id: mod["module_id"], activityIds: normalizeStringList(mod["activity_ids"]) }));
   const holder = modules.find((mod) => activityId && mod.activityIds.includes(activityId)) ?? modules[0];
   return {
     moduleId: typeof holder?.id === "string" ? holder.id : "",
@@ -1134,7 +1166,7 @@ function stepOf(curriculum: Record<string, unknown>, activityId?: string | null)
 }
 
 interface TodayInput {
-  readonly curriculum: Record<string, unknown>;
+  readonly syllabus: Record<string, unknown>;
   readonly schedule: Record<string, unknown>;
   readonly proficiency: ProficiencyProfileFixture;
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
@@ -1143,15 +1175,15 @@ interface TodayInput {
 }
 
 // One plan's Today view. All plans share one activity-state map, and each replays only its own progress events.
-function buildTodayFor({ curriculum, schedule, proficiency, catalogResources, activityStates, events }: TodayInput) {
-  const own = activityIdsOf(curriculum);
-  const today = createTodayViewController({ curriculum, schedule, proficiency, catalogResources, initialActivityStates: activityStates });
+function buildTodayFor({ syllabus, schedule, proficiency, catalogResources, activityStates, events }: TodayInput) {
+  const own = activityIdsOf(syllabus);
+  const today = createTodayViewController({ syllabus, schedule, proficiency, catalogResources, initialActivityStates: activityStates });
   for (const ev of events) if (own.has(ev.activityId ?? ev.activity_id ?? "")) today.recordProgressEvent(ev);
   return today;
 }
 
-function deliverablesOf(curriculum: Record<string, unknown>, activityId: string): readonly string[] {
-  const content = rawContentOf(curriculum, activityId);
+function deliverablesOf(syllabus: Record<string, unknown>, activityId: string): readonly string[] {
+  const content = rawContentOf(syllabus, activityId);
   const listed: unknown = content["deliverables"];
   return [content["deliverable_description"], ...(Array.isArray(listed) ? listed : [])]
     .filter((item): item is string => typeof item === "string" && item.trim() !== "")
@@ -1163,15 +1195,21 @@ const plansFor = (
   accountId: string,
   adoptions: readonly Adoption[],
   listings: readonly MarketplaceListing[],
-  generatedPlans: readonly ActiveCurriculum[] = [],
-): readonly ActiveCurriculum[] => [
-  ...ACTIVE_CURRICULA,
-  ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
-    const listing = listings.find((entry) => entry.publicationId === adoption.publicationId);
-    return listing ? [adoptedPlanOf(listing, adoption)] : [];
-  }),
-  ...generatedPlans.filter((plan) => (plan.curriculum["account_id"] ?? accountId) === accountId),
-];
+  generatedPlans: readonly ActiveSyllabus[] = [],
+  syllabusOverrides: Readonly<Record<string, Record<string, unknown>>> = {},
+): readonly ActiveSyllabus[] =>
+  [
+    ...ACTIVE_SYLLABI,
+    ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
+      const listing = listings.find((entry) => entry.publicationId === adoption.publicationId);
+      return listing ? [adoptedPlanOf(listing, adoption)] : [];
+    }),
+    ...generatedPlans.filter((plan) => (plan.syllabus["account_id"] ?? accountId) === accountId),
+  ].map((plan) =>
+    syllabusOverrides[plan.syllabusId]
+      ? { ...plan, syllabus: syllabusOverrides[plan.syllabusId]! }
+      : plan,
+  );
 
 function renderInspector(props: Parameters<typeof InspectorDrawer>[0]): string {
   return renderToString(h(InspectorDrawer, props));
@@ -1271,7 +1309,7 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
     })
     .join("\n            ");
 
-  return `<svg class="plan-dag-svg" role="group" aria-label="Curriculum prerequisite DAG map" viewBox="${escapeHtml(svgViewport.viewBox)}" width="100%" height="400" overflow="visible" data-zoom="${svgViewport.zoom}" data-focused-node="${escapeHtml(svgViewport.focusedNodeId ?? "")}" data-opaque-surface="true">
+  return `<svg class="plan-dag-svg" role="group" aria-label="Syllabus prerequisite DAG map" viewBox="${escapeHtml(svgViewport.viewBox)}" width="100%" height="400" overflow="visible" data-zoom="${svgViewport.zoom}" data-focused-node="${escapeHtml(svgViewport.focusedNodeId ?? "")}" data-opaque-surface="true">
           <defs>
             <filter id="node-elev" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="1" stdDeviation="2.5" flood-color="#17191C" flood-opacity="0.10" /></filter>
             <filter id="node-elev-selected" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2" stdDeviation="3.5" flood-color="#17191C" flood-opacity="0.14" /></filter>
@@ -1282,7 +1320,7 @@ function renderPlanDagSvgHtml(planModel: PlanMapAndOutlineModel): string {
         </svg>`;
 }
 
-export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInput = {}): string {
+export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = {}): string {
   // A guest sees only public pages. Private panels, the drawer, and private dialogs are not rendered at all (UI-023).
   const authStatus: AuthStatus = inputState.authStatus ?? "authenticated";
   const account: Account = inputState.account ?? PERSONAS.learner;
@@ -1291,13 +1329,16 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const votes = inputState.votes ?? [];
   const adoptions = inputState.adoptions ?? [];
   const generatedPlans = inputState.generatedPlans ?? [];
-  const plans = plansFor(account.accountId, adoptions, listings, generatedPlans);
-  // A curriculum or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
-  const registered = planIn(plans, inputState.selectedCurriculumId);
-  const selectedPlan: ActiveCurriculum = {
-    ...registered, curriculum: inputState.curriculum ?? registered.curriculum, schedule: inputState.schedule ?? registered.schedule,
+  const syllabusOverrides = inputState.syllabusOverrides ?? {};
+  const plans = plansFor(account.accountId, adoptions, listings, generatedPlans, syllabusOverrides);
+  // A syllabus or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
+  const registered = planIn(plans, inputState.selectedSyllabusId);
+  const selectedPlan: ActiveSyllabus = {
+    ...registered,
+    syllabus: syllabusOverrides[registered.syllabusId] ?? inputState.syllabus ?? registered.syllabus,
+    schedule: inputState.schedule ?? registered.schedule,
   };
-  const { curriculum, schedule } = selectedPlan;
+  const { syllabus, schedule } = selectedPlan;
   const proficiency = inputState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
   const catalogResources = inputState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
 
@@ -1316,18 +1357,18 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     { prefersReducedTransparency: solidSurfaces, prefersReducedMotion: reduceMotion },
   );
 
-  const todayOf = (plan: ActiveCurriculum) => buildTodayFor({
-    curriculum: plan.curriculum, schedule: plan.schedule, proficiency, catalogResources,
+  const todayOf = (plan: ActiveSyllabus) => buildTodayFor({
+    syllabus: plan.syllabus, schedule: plan.schedule, proficiency, catalogResources,
     activityStates: inputState.activityStates ?? {}, events: inputState.recordedProgressEvents ?? [],
   }).getState();
   const todayState = todayOf(selectedPlan);
   const planToday = plans.map((plan) => (plan === registered ? { plan: selectedPlan, today: todayState } : { plan, today: todayOf(plan) }));
   // Today queues active plans only. A draft waits on the Plan page until the learner activates it.
   const queue = planToday.filter(({ plan }) => !plan.draft);
-  const openingStep = stepOf(curriculum, inputState.selectedActivityId);
+  const openingStep = stepOf(syllabus, inputState.selectedActivityId);
 
   const basePlanModel = buildPlanMapAndOutlineModel({
-    curriculum, proficiency, activityStates: todayState.activityExecutionStates, catalogResources, viewportWidthPx,
+    syllabus, proficiency, activityStates: todayState.activityExecutionStates, catalogResources, viewportWidthPx,
     selectedModuleId: inputState.selectedModuleId ?? openingStep.moduleId,
     selectedActivityId: inputState.selectedActivityId ?? openingStep.activityId,
     focusedNodeId: inputState.focusedNodeId ?? inputState.selectedModuleId ?? openingStep.moduleId,
@@ -1352,7 +1393,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   });
 
   const revisionActivationReq = buildRevisionActivationRequest({
-    curriculumId: basePlanModel.curriculumId, revisionId: basePlanModel.revisionId,
+    syllabusId: basePlanModel.syllabusId, revisionId: basePlanModel.revisionId,
     ifMatch: `"${basePlanModel.revisionId}-etag"`, confirmedByLearner: true, acknowledgeScheduleChanges: true,
   });
 
@@ -1372,6 +1413,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const adoptListing = listings.find((listing) => listing.publicationId === inputState.adoptPublicationId);
   const returnTo = inputState.returnTo ?? null;
   const authNotice = inputState.authNotice ?? null;
+  const authMode: AuthMode = inputState.authMode ?? "login";
+  const authPasswordVisible = inputState.authPasswordVisible ?? false;
+  const passkeys = inputState.passkeys ?? [];
+  const passkeyNotice = inputState.passkeyNotice ?? null;
 
   const byokCredentialsList = inputState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS;
   const activeByokCredentials = byokCredentialsList.filter((c) => c.status === "active" && Boolean(c.masked_suffix));
@@ -1443,7 +1488,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const studyDetailOpen = inputState.studyDetailOpen ?? false;
   const inspectorMode: InspectorMode = inputState.inspectorMode ?? "activity";
   const flowView: FlowView = {
-    order: inputState.flowOrder ?? plannedFlowOrder(curriculum),
+    order: inputState.flowOrder ?? plannedFlowOrder(syllabus),
     deepDive: inputState.deepDive ?? "included",
     spacedReview: inputState.spacedReview ?? "included",
   };
@@ -1481,37 +1526,37 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
 
   // Today's queue: one card per active plan, showing that plan's next session and its next open activity.
   const queueCardsHtml = queue.map(({ plan, today }) => {
-    const id = escapeHtml(plan.curriculumId);
-    const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
+    const id = escapeHtml(plan.syllabusId);
+    const planTags = syllabusTagsOf(plan.syllabus, { subject: plan.domain, gateStyle: plan.assessmentMode });
     const session = today.nextSession?.activityBreakdown ?? [];
     const open = session.filter((act) => !isClosed(act.executionStatus));
     const next = open[0];
     const done = session.length - open.length;
     const minutesLeft = open.reduce((sum, act) => sum + act.durationTriplet.point, 0);
-    return `<article class="curriculum-card" data-curriculum-id="${id}" data-action="select-curriculum" aria-labelledby="queue-${id}-title"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+    return `<article class="syllabus-card" data-syllabus-id="${id}" data-action="select-syllabus" aria-labelledby="queue-${id}-title"${plan.syllabusId === selectedPlan.syllabusId ? ' aria-current="true"' : ""}>
             <p class="domain-pill">${escapeHtml(`${planTags.subject} · ${planTags.gateStyle}`)}</p>
-            <h2 id="queue-${id}-title" class="curriculum-card-title">${escapeHtml(goalTitleOf(plan.curriculum))}</h2>
+            <h2 id="queue-${id}-title" class="syllabus-card-title">${escapeHtml(goalTitleOf(plan.syllabus))}</h2>
             <p class="queue-progress"><span class="st-sr">Upcoming session: </span>${done}/${session.length} completed${minutesLeft > 0 ? ` · ${minutesLeft}m left` : ""}</p>
             ${next ? `<div class="queue-next"><p class="queue-next-title">${renderTextWithLatexHtml(next.title)}</p><p class="queue-next-meta"><span>${next.durationTriplet.point}m</span><span class="track-badge">${TRACK_LABELS[TRACK_OF_TYPE[next.type]].badge}</span></p></div>` : `<p class="queue-next">Nothing is scheduled next.</p>`}
             <div class="queue-actions">
-              ${next ? `<button type="button" class="btn-primary" data-action="resume-curriculum" data-curriculum-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}
+              ${next ? `<button type="button" class="btn-primary" data-action="resume-syllabus" data-syllabus-id="${id}" data-activity-id="${escapeHtml(next.activityId)}" data-module-id="${escapeHtml(next.moduleId)}">Resume<span aria-hidden="true">→</span></button>` : ""}
             </div>
           </article>`;
   }).join("");
   const planOptionsHtml = [
     ...planToday.map(({ plan, today }) => {
-      const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
+      const planTags = syllabusTagsOf(plan.syllabus, { subject: plan.domain, gateStyle: plan.assessmentMode });
       const session = today.nextSession?.activityBreakdown ?? [];
       const open = session.filter((act) => !isClosed(act.executionStatus));
       const done = session.length - open.length;
-      const unitsCount = rawListOf(plan.curriculum, "modules").length;
-      return `<option value="${escapeHtml(plan.curriculumId)}" data-domain="${escapeHtml(planTags.subject)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.curriculumId === selectedPlan.curriculumId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.curriculum))}${plan.draft ? " · Draft" : ""}</option>`;
+      const unitsCount = rawListOf(plan.syllabus, "modules").length;
+      return `<option value="${escapeHtml(plan.syllabusId)}" data-domain="${escapeHtml(planTags.subject)}" data-units="${unitsCount} units" data-progress="${done}/${session.length} completed"${plan.draft ? ' data-draft="true"' : ""}${plan.syllabusId === selectedPlan.syllabusId ? " selected" : ""}>${escapeHtml(goalTitleOf(plan.syllabus))}${plan.draft ? " · Draft" : ""}</option>`;
     }),
-    `<option value="__new_curriculum__" data-action-option="new-curriculum">+ New Curriculum</option>`,
+    `<option value="__new_syllabus__" data-action-option="new-syllabus">+ New Syllabus</option>`,
   ].join("");
   const selectedTagStripHtml = renderToString(
-    h(CurriculumTagStrip, {
-      curriculum: selectedPlan.curriculum,
+    h(SyllabusTagStrip, {
+      syllabus: selectedPlan.syllabus,
       fallbackSubject: selectedPlan.domain,
       fallbackGateStyle: selectedPlan.assessmentMode,
     }),
@@ -1583,9 +1628,10 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     ? renderInspector({
       modules, mod: selectedModule, activity: selectedActivity, open: studyDetailOpen && isLearn,
       mode: inspectorMode,
-      rigor: mathDepthFor(curriculum, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
-      deliverables: deliverablesOf(curriculum, selectedActivity.activityId), catalogResources,
-      rubric: rubricOf(curriculum, selectedActivity.activityId),
+      syllabusId: selectedPlan.syllabusId,
+      rigor: mathDepthFor(syllabus, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
+      deliverables: deliverablesOf(syllabus, selectedActivity.activityId), catalogResources,
+      rubric: rubricOf(syllabus, selectedActivity.activityId),
       conceptCheck: CONCEPT_CHECKS[selectedPlan.publicationId ?? ""] ?? null,
       practice: { hintRequested, workedSolutionRevealed, submitted: practiceSubmitted, choice: practiceChoice },
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
@@ -1765,7 +1811,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     <ul>${adaptationDiff.waivers.map((waiver) => `<li><strong>${escapeHtml(adaptationNodeTitle(waiver.node_id))}</strong> — ${escapeHtml(waiver.rationale)} <button type="button" class="btn-secondary" data-action="view-evidence" data-evidence-ref="${escapeHtml(waiver.qualifying_evidence_refs[0] ?? "")}">View evidence</button></li>`).join("")}</ul>
     <h3>Added bridge lessons</h3>
     <ul>${adaptationDiff.buckets.added.map((added) => `<li><strong>${escapeHtml(adaptationNodeTitle(added.node_id ?? ""))}</strong> — ${escapeHtml(added.rationale ?? "")}</li>`).join("")}</ul>
-    <details class="today-curriculum-overview evidence-technical-details">
+    <details class="today-syllabus-overview evidence-technical-details">
       <summary class="today-overview-summary"><span>Technical revision metadata</span></summary>
       <div class="today-overview-body">
         <p class="meta-text">Preserved math depth: <code>${escapeHtml(adaptationDiff.preserved_math_depth ?? "formal")}</code> · Proposal SHA-256: <code>${escapeHtml(adaptationDiff.proposal_sha256)}</code> · Waived IDs: <code>${escapeHtml(adaptationDiff.waivers.map((w) => w.node_id).join(", "))}</code> · Evidence refs: <code>${escapeHtml(adaptationDiff.waivers.flatMap((w) => w.qualifying_evidence_refs).join(", "))}</code></p>
@@ -1830,17 +1876,17 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       </li>`;
     }).join("\n");
 
-  const sidebarCurricula = planToday.map(({ plan, today }) => {
-    const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
+  const sidebarSyllabi = planToday.map(({ plan, today }) => {
+    const planTags = syllabusTagsOf(plan.syllabus, { subject: plan.domain, gateStyle: plan.assessmentMode });
     const session = today.nextSession?.activityBreakdown ?? [];
     const open = session.filter((act) => !isClosed(act.executionStatus));
     const done = session.length - open.length;
     return {
-      curriculumId: plan.curriculumId,
-      title: goalTitleOf(plan.curriculum),
+      syllabusId: plan.syllabusId,
+      title: goalTitleOf(plan.syllabus),
       subject: planTags.subject,
       progressLabel: `${done}/${session.length} done`,
-      isSelected: plan.curriculumId === selectedPlan.curriculumId,
+      isSelected: plan.syllabusId === selectedPlan.syllabusId,
       isDraft: Boolean(plan.draft),
     };
   });
@@ -1857,13 +1903,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
   const adoptionsOfListing = (listing: MarketplaceListing): number =>
     listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
   const studyHoursOfListing = (listing: MarketplaceListing): number =>
-    Math.round((studyMinutesOf(listing.curriculum) * adoptionsOfListing(listing)) / 60);
+    Math.round((studyMinutesOf(listing.syllabus) * adoptionsOfListing(listing)) / 60);
   const totalLearnersReached = ownedListings.reduce((sum, listing) => sum + adoptionsOfListing(listing), 0);
   const totalStudyHoursGifted = ownedListings.reduce((sum, listing) => sum + studyHoursOfListing(listing), 0);
   const totalUpvotesReceived = ownedListings.reduce((sum, listing) => sum + upvotesOfListing(listing), 0);
   const derivedListings = listings.filter((listing) => listing.basedOn === handleOf(account));
 
-  return `<div class="curriculum-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${adminConsoleOpen ? "Admin" : activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
+  return `<div class="syllabus-app-shell" data-theme="${resolvedThemeMode}" data-theme-preference="${themePreference}" data-solid-surfaces="${solidSurfaces}" data-reduce-motion="${reduceMotion}" data-auth-status="${authStatus}" data-breakpoint="${layout.breakpoint}" data-navigation-chrome="${layout.navigationChrome}" data-current-top-level="${adminConsoleOpen ? "Admin" : activeTopLevel}" data-current-learn-sub="${activeLearnSub}" data-current-plan-view="${activePlanView}" data-selected-module-id="${escapeHtml(basePlanModel.selectedModuleId ?? "")}" data-selected-activity-id="${escapeHtml(basePlanModel.selectedActivityId ?? "")}" style="--active-canvas: ${palette.colors.canvas}; --active-surface: ${studySurface.backgroundColor};">
   <a class="skip-link" href="#main-workspace">Skip to main study workspace</a>
   ${renderToString(h(HeaderBar, {
     activeTopLevel,
@@ -1882,7 +1928,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       activeLearnSub,
       goalTitle: basePlanModel.goal.title,
       totalEffort,
-      curricula: sidebarCurricula,
+      syllabi: sidebarSyllabi,
       adminConsoleOpen,
     }))}
     <main id="main-workspace" class="app-main-workspace" role="main" tabindex="-1">
@@ -1892,21 +1938,22 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <header class="today-unified-header" data-opaque-surface="true">
               <div class="section-header">
                 <div class="today-selected-heading">
-                  <h1 class="page-title today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.curriculum))}</h1>
+                  <h1 class="page-title today-selected-title">${escapeHtml(goalTitleOf(selectedPlan.syllabus))}</h1>
                   <span class="today-selected-eyebrow"><span class="today-selected-progress">${planProgress.done}/${planProgress.total} completed${planProgress.left > 0 ? ` · ${planProgress.left}m left` : ""}</span></span>
                   ${selectedTagStripHtml}
                 </div>
-                <div class="plan-toolbar today-curriculum-actions">
-                  ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
+                <div class="plan-toolbar today-syllabus-actions">
+                  ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-syllabus-id="${escapeHtml(revisionActivationReq.syllabusId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : ""}
+                  <button type="button" class="btn-secondary" data-action="open-resource-editor" data-editor-mode="ingest" data-syllabus-id="${escapeHtml(selectedPlan.syllabusId)}">+ Add resource</button>
                   <button type="button" class="btn-ghost-share" data-action="open-dialog" data-dialog-id="dialog-publication-preview"><svg class="sf-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 2.5h3v3"/><path d="M6.5 9.5 13.5 2.5"/><path d="M13 9v4a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4"/></svg><span>Share with Community</span></button>
                 </div>
                 <div class="plan-toolbar plan-command-picker" hidden>
-                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Curriculum</span>
-                    <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-curriculum" data-tom-select="plan">${planOptionsHtml}</select>
+                  <label class="field field-inline plan-command-field" for="selected-plan-control"><span class="plan-command-label st-sr">Syllabus</span>
+                    <select id="selected-plan-control" class="plan-command-select" name="selected-plan" data-action="select-syllabus" data-tom-select="plan">${planOptionsHtml}</select>
                   </label>
                 </div>
               </div>
-              <div class="plan-brief today-curriculum-brief">
+              <div class="plan-brief today-syllabus-brief">
                 <section class="plan-brief-goal" aria-labelledby="today-goal-label">
                   <h2 id="today-goal-label" class="plan-brief-label">Goal</h2>
                   <p class="plan-goal">${escapeHtml(basePlanModel.goal.summary)}</p>
@@ -1931,27 +1978,28 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               ${listOrEmpty(completedRows, "check", "No self-reported completions yet.")}
             </section>
           </section>
-          <section class="today-curricula-grid" aria-label="Active curricula" hidden>
+          <section class="today-syllabi-grid" aria-label="Active syllabi" hidden>
           ${queueCardsHtml}
           </section>
         </section>
 
         <section class="learn-sub-panel" id="panel-learn-plan" data-learn-panel="Plan" data-active="${isLearn && activeLearnSub === "Plan"}"${isLearn && activeLearnSub === "Plan" ? "" : " hidden"} data-opaque-surface="true">
           <header class="plan-hero">
-            ${planToday.length < 2 ? "" : `<nav class="plan-switcher" aria-label="Your curricula">
+            ${planToday.length < 2 ? "" : `<nav class="plan-switcher" aria-label="Your syllabi">
               ${planToday.map(({ plan }) => {
-                const planTags = curriculumTagsOf(plan.curriculum, { subject: plan.domain, gateStyle: plan.assessmentMode });
-                return `<button type="button" class="plan-switch" data-action="select-curriculum" data-curriculum-id="${escapeHtml(plan.curriculumId)}"${plan.curriculumId === selectedPlan.curriculumId ? ' aria-current="true"' : ""}>
+                const planTags = syllabusTagsOf(plan.syllabus, { subject: plan.domain, gateStyle: plan.assessmentMode });
+                return `<button type="button" class="plan-switch" data-action="select-syllabus" data-syllabus-id="${escapeHtml(plan.syllabusId)}"${plan.syllabusId === selectedPlan.syllabusId ? ' aria-current="true"' : ""}>
                 <span class="plan-switch-domain">${escapeHtml(planTags.subject)}</span>
-                <span class="plan-switch-title">${escapeHtml(goalTitleOf(plan.curriculum))}</span>
-                <span class="plan-switch-meta">${rawListOf(plan.curriculum, "modules").length} units${plan.draft ? " · Draft" : ""}</span>
+                <span class="plan-switch-title">${escapeHtml(goalTitleOf(plan.syllabus))}</span>
+                <span class="plan-switch-meta">${rawListOf(plan.syllabus, "modules").length} units${plan.draft ? " · Draft" : ""}</span>
               </button>`;
               }).join("")}
             </nav>`}
             <div class="plan-title-row">
-              <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(curriculum))}</h1>
+              <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(syllabus))}</h1>
               <div class="plan-toolbar">
-                ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : `<button type="button" class="btn-secondary" data-action="activate-revision" data-curriculum-id="${escapeHtml(revisionActivationReq.curriculumId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" hidden>Activate plan</button>`}
+                ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-syllabus-id="${escapeHtml(revisionActivationReq.syllabusId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : `<button type="button" class="btn-secondary" data-action="activate-revision" data-syllabus-id="${escapeHtml(revisionActivationReq.syllabusId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" hidden>Activate plan</button>`}
+                <button type="button" class="btn-secondary" data-action="open-resource-editor" data-editor-mode="ingest" data-syllabus-id="${escapeHtml(selectedPlan.syllabusId)}">+ Add resource</button>
                 <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>
                 <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
               </div>
@@ -2003,11 +2051,11 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           <div class="section-header">
             <div class="page-heading-group">
               <h1 class="page-title">Your learning evidence</h1>
-              <p class="page-description">${escapeHtml(goalTitleOf(selectedPlan.curriculum))} — verified objective checks alongside self-reported study activities.</p>
+              <p class="page-description">${escapeHtml(goalTitleOf(selectedPlan.syllabus))} — verified objective checks alongside self-reported study activities.</p>
             </div>
             <div class="plan-toolbar">
-              <label class="field field-inline" for="progress-curriculum-control" hidden><span>Curriculum</span>
-                <select id="progress-curriculum-control" name="progress-curriculum" data-action="select-curriculum">${planOptionsHtml}</select>
+              <label class="field field-inline" for="progress-syllabus-control" hidden><span>Syllabus</span>
+                <select id="progress-syllabus-control" name="progress-syllabus" data-action="select-syllabus">${planOptionsHtml}</select>
               </label>
               <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Open Study Flow<span aria-hidden="true">→</span></button>
             </div>
@@ -2060,7 +2108,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <p>${escapeHtml(inspectedObjective ? calibrationSummary(inspectedObjective) : "No qualifying check is recorded.")}</p>
               <p>Demonstrating introductory matrix operations does not establish matrix calculus or unassessed downstream objectives.</p>
               <p>${escapeHtml(inspectedObjective ? retentionSummary(inspectedObjective) : "No delayed check recorded.")}</p>
-              <details class="today-curriculum-overview evidence-technical-details">
+              <details class="today-syllabus-overview evidence-technical-details">
                 <summary class="today-overview-summary"><span>Technical audit metadata</span></summary>
                 <div class="today-overview-body">
                   <p class="meta-text">Canonical proficiency states: ${canonicalStatusesLegendHtml}</p>
@@ -2081,6 +2129,9 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
           catalogResources,
           resourceScope,
           resourceCategory,
+          userLibraryResourceIds: inputState.userLibraryResourceIds ?? [],
+          removedResourceIds: adminRemovedResourceIds,
+          resourceNotice: inputState.resourceNotice ?? null,
         }))}
       </section>`}
 
@@ -2116,18 +2167,12 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               </div>
               <form class="profile-edit-form" data-action="update-profile">
                 <div class="profile-fields-grid">
-                  <label class="field" for="profile-name-input">Display name
-                    <input id="profile-name-input" type="text" name="displayName" autocomplete="name" value="${escapeHtml(displayNameOf(account))}" required>
-                  </label>
                   <label class="field" for="profile-handle-input">Username
-                    <input id="profile-handle-input" type="text" name="username" autocomplete="username" spellcheck="false" value="${escapeHtml(handleOf(account))}">
+                    <input id="profile-handle-input" type="text" name="username" autocomplete="username" spellcheck="false" value="${escapeHtml(usernameOf(account))}">
                   </label>
-                </div>
-                <div class="profile-email-row">
                   <label class="field" for="profile-email-input">Email address
                     <input id="profile-email-input" type="email" name="email" autocomplete="email" spellcheck="false" value="${escapeHtml(account.email)}" required>
                   </label>
-                  <button type="submit" class="btn-secondary">Update email</button>
                 </div>
                 <div class="profile-form-actions">
                   <button type="submit" class="btn-primary profile-save-btn">Save changes</button>
@@ -2137,12 +2182,45 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
           </section>
 
+          <section class="settings-section" id="settings-passkeys" aria-labelledby="settings-passkeys-title" data-opaque-surface="true">
+            <div class="settings-section-head">
+              <div>
+                <h2 id="settings-passkeys-title">Passkeys</h2>
+                <p class="section-lede">Sign in with Touch ID, Face ID, Windows Hello, or your password manager without typing a password.</p>
+              </div>
+              <button type="button" class="btn-secondary" data-action="register-passkey">+ Add a passkey</button>
+            </div>
+            ${passkeyNotice ? `<p class="section-lede" id="settings-passkey-notice" role="status">${escapeHtml(passkeyNotice)}</p>` : ""}
+            ${passkeys.length > 0 ? `<ul class="passkey-list">
+              ${passkeys.map((pk) => {
+                const syncLabel = pk.credentialDeviceType === "multiDevice" && pk.credentialBackedUp
+                  ? "Synced across devices"
+                  : "This device only";
+                const addedDate = pk.registeredAt > 0
+                  ? new Date(pk.registeredAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+                  : "Recently";
+                const usedPart = pk.lastUsedAt
+                  ? ` · Last used ${new Date(pk.lastUsedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}`
+                  : "";
+                return `<li class="passkey-row" data-passkey-id="${escapeHtml(pk.id)}">
+                <div class="passkey-row-text">
+                  <span class="passkey-row-title">${escapeHtml(pk.name)}</span>
+                  <p class="row-meta">${escapeHtml(`${syncLabel} · Added ${addedDate}${usedPart}`)}</p>
+                </div>
+                <div class="row-actions">
+                  <button type="button" class="btn-secondary" data-action="delete-passkey" data-credential-id="${escapeHtml(pk.id)}">Remove</button>
+                </div>
+              </li>`;
+              }).join("\n")}
+            </ul>` : ""}
+          </section>
+
           <section class="settings-section" id="settings-community" aria-labelledby="settings-community-title" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-community-title">Your contributions</h2>
               </div>
-              ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another curriculum</button>` : ""}
+              ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another syllabus</button>` : ""}
             </div>
             ${ownedListings.length > 0 ? `<div class="community-impact-banner">
               <div class="impact-copy-group">
@@ -2152,8 +2230,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             </div>
             <ul class="contribution-list">
               ${ownedListings.map((listing) => {
-                const title = goalTitleOf(listing.curriculum);
-                const myPlan = plans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
+                const title = goalTitleOf(listing.syllabus);
+                const myPlan = plans.find((plan) => plan.publicationId === listing.publicationId || plan.syllabusId === listing.sourceSyllabusId);
                 const adoptCount = adoptionsOfListing(listing);
                 const upvoteCount = upvotesOfListing(listing);
                 const hoursCount = studyHoursOfListing(listing);
@@ -2172,7 +2250,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   </div>
                 </div>
                 <div class="row-actions">
-                  ${myPlan ? `<button type="button" class="btn-secondary" data-action="open-curriculum-plan" data-curriculum-id="${escapeHtml(myPlan.curriculumId)}">Open plan</button>` : ""}
+                  ${myPlan ? `<button type="button" class="btn-secondary" data-action="open-syllabus-plan" data-syllabus-id="${escapeHtml(myPlan.syllabusId)}">Open plan</button>` : ""}
                   <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Explore">View in Explore</button>
                 </div>
               </li>`;
@@ -2192,7 +2270,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <blockquote class="comment-body"><p>The BPE and scaled dot-product attention progression finally made variance scaling click before writing the retrieval pipeline.</p></blockquote>
                   <div class="comment-author-row">
                     <span class="user-avatar-circle comment-avatar" aria-hidden="true">MD</span>
-                    <p class="row-meta"><strong>@maya_dev</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))}</p>
+                    <p class="row-meta"><strong>@maya_dev</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.syllabus ?? syllabus))}</p>
                   </div>
                 </li>
                 <li class="comment-card">
@@ -2203,13 +2281,13 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                   <blockquote class="comment-body"><p>Cleanest self-study syllabus I have found for RAG evaluation metrics. It saved me weeks of piecing together scattered blog posts.</p></blockquote>
                   <div class="comment-author-row">
                     <span class="user-avatar-circle comment-avatar" aria-hidden="true">KM</span>
-                    <p class="row-meta"><strong>@kenji_ml</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.curriculum ?? curriculum))}</p>
+                    <p class="row-meta"><strong>@kenji_ml</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.syllabus ?? syllabus))}</p>
                   </div>
                 </li>
               </ul>
             </div>` : `<div class="settings-card">
               <p class="section-lede">Share a plan and any self-learner can adopt it for free. Your progress, notes, keys, billing, and session dates stay private.</p>
-              <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first curriculum</button></div>
+              <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button></div>
             </div>`}
           </section>
 
@@ -2329,7 +2407,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
                 </tbody>
               </table>
             </div>
-            ${activeByokCredentials.length === 0 ? `<p class="provider-empty-banner" role="status">No API keys configured. Click <strong>+ Add key</strong> on OpenAI, Anthropic, or Google Gemini above to enable AI curriculum synthesis and web search grounding.</p>` : ""}${"\n            "}${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
+            ${activeByokCredentials.length === 0 ? `<p class="provider-empty-banner" role="status">No API keys configured. Click <strong>+ Add key</strong> on OpenAI, Anthropic, or Google Gemini above to enable AI syllabus synthesis and web search grounding.</p>` : ""}${"\n            "}${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
             <details class="settings-disclosure" id="byok-add">
               <summary>Custody, rotation &amp; billing details</summary>
               <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} You act directly as the API account holder with your chosen provider (OpenAI, Anthropic, or Google) under their respective Terms of Service and direct billing. Saving a key does not run a chargeable test. Applying a new key updates future jobs while queued jobs stay on their active key version. Removing a key deletes this app's encrypted copy and does not revoke the key at the issuer.</p>
@@ -2372,7 +2450,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
             <div class="settings-privacy-row">
               <div>
                 <h2>Privacy &amp; account</h2>
-                <p class="row-meta">Download a portable archive of your curricula and study history, or permanently delete your account.</p>
+                <p class="row-meta">Download a portable archive of your syllabi and study history, or permanently delete your account.</p>
               </div>
               <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
             </div>
@@ -2381,7 +2459,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
               <p class="disclosure-text">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
-              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Open-source software licensed under Apache-2.0. Shared curriculum structures in Explore are licensed under CC BY 4.0, while linked books, papers, and videos remain governed by their original publishers.</p>
+              <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Open-source software licensed under Apache-2.0. Shared syllabus structures in Explore are licensed under CC BY 4.0, while linked books, papers, and videos remain governed by their original publishers.</p>
             </details>
           </section>
         </div>
@@ -2437,8 +2515,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
       inputState.providerModels?.[designatedProviderId] ?? CHEAP_MODEL_BY_PROVIDER[designatedProviderId as keyof typeof CHEAP_MODEL_BY_PROVIDER];
     const configuredProviderIds = activeByokCredentials.map((c) => c.provider_id);
     return renderToString(
-      h(NewCurriculumDialog, {
-        open: openDialogId === "dialog-new-curriculum",
+      h(NewSyllabusDialog, {
+        open: openDialogId === "dialog-new-syllabus",
         goalTitle: intakeGoalTitle,
         subject: intakeSubject,
         requestedTopics: intakeTopics,
@@ -2458,6 +2536,27 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     );
   })()}
 
+  ${renderToString(
+    h(ResourceEditorDialog, {
+      open: openDialogId === "dialog-resource-editor",
+      mode: inputState.resourceEditorMode ?? "ingest",
+      selectedPlan,
+      allPlans: plans,
+      catalogResources: {
+        ...(catalogResourcesJson.global_discovered_resources as Readonly<Record<string, CatalogResourceMetadataInput>>),
+        ...catalogResources,
+      },
+      userLibraryResourceIds: inputState.userLibraryResourceIds ?? [],
+      removedResourceIds: adminRemovedResourceIds,
+      editingResourceId: inputState.editingResourceId ?? null,
+      targetSyllabusId: inputState.editingResourceSyllabusId ?? selectedPlan.syllabusId,
+      targetModuleId: inputState.editingResourceModuleId ?? null,
+      targetActivityId: inputState.editingResourceActivityId ?? null,
+      rawDraft: inputState.resourceRawDraft ?? "",
+      editorError: inputState.resourceEditorError ?? null,
+    }),
+  )}
+
   <dialog id="dialog-adaptation-diff" closedby="any" aria-labelledby="dialog-adaptation-diff-title"${dialogOpen("dialog-adaptation-diff")} data-opaque-surface="true">
     <form method="dialog" class="dialog-surface">
       <header class="dialog-header"><h2 id="dialog-adaptation-diff-title">Adaptation Diff Preview (${escapeHtml(adaptationDiff.proposal_id)})</h2>${DIALOG_CLOSE_BUTTON}</header>
@@ -2465,7 +2564,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     </form>
   </dialog>
 
-  ${renderToString(h(AdoptCurriculumDialog, {
+  ${renderToString(h(AdoptSyllabusDialog, {
     open: openDialogId === "dialog-partial-adoption",
     adoptListing: adoptListing ?? null,
     adoptions,
@@ -2478,7 +2577,7 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     open: openDialogId === "dialog-publication-preview",
     account,
     selectedPlan,
-    publishedFromHere: listings.some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedPlan.curriculumId),
+    publishedFromHere: listings.some((listing) => listing.ownerAccountId === account.accountId && listing.sourceSyllabusId === selectedPlan.syllabusId),
     originListing,
   }))}
 
@@ -2540,6 +2639,8 @@ export function renderCurriculumWebAppHtml(inputState: CurriculumWebAppStateInpu
     account,
     returnTo,
     authNotice,
+    authMode,
+    authPasswordVisible,
   }))}
 
   <script data-dialog-light-dismiss-fallback="true">
@@ -2547,7 +2648,7 @@ ${getDialogLightDismissFallbackScript()}
   </script>
 </div>`;
 }
-export function createCurriculumWebAppController(initialState: CurriculumWebAppStateInput = {}) {
+export function createSyllabusWebAppController(initialState: SyllabusWebAppStateInput = {}) {
   let topLevel: TopLevelDestination = initialState.topLevel ?? "Learn";
   let learnSubDestination: LearnSubDestination = initialState.learnSubDestination ?? "Today";
   let planView: PlanSynchronizedView = initialState.planView ?? "Map";
@@ -2555,6 +2656,10 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let account: Account = initialState.account ?? PERSONAS.learner;
   let returnTo: ReturnDestination | null = initialState.returnTo ?? null;
   let authNotice: string | null = initialState.authNotice ?? null;
+  let authMode: AuthMode = initialState.authMode ?? "login";
+  let authPasswordVisible: boolean = initialState.authPasswordVisible ?? false;
+  let passkeys: PasskeySummaryItem[] = [...(initialState.passkeys ?? [])];
+  let passkeyNotice: string | null = initialState.passkeyNotice ?? null;
   let profileNotice: string | null = initialState.profileNotice ?? null;
   let marketplaceFilters: MarketplaceFilters = { ...NO_MARKETPLACE_FILTERS, ...initialState.marketplaceFilters };
   let marketplaceSort: MarketplaceSort = initialState.marketplaceSort ?? "top_upvoted";
@@ -2577,16 +2682,32 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
   const adoptListing = (): MarketplaceListing | undefined => listings().find((entry) => entry.publicationId === adoptPublicationId);
   let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? unitIdsOf(adoptListing()))];
-  let generatedPlans: ActiveCurriculum[] = [...(initialState.generatedPlans ?? [])];
-  const currentPlans = () => plansFor(account.accountId, adoptions, listings(), generatedPlans);
-  const isMyPlan = (curriculumId: unknown): curriculumId is string => currentPlans().some((plan) => plan.curriculumId === curriculumId);
-  // Input overrides replace the selected plan's curriculum and schedule, the same rule the render applies.
-  let selectedCurriculumId = planIn(currentPlans(), initialState.selectedCurriculumId).curriculumId;
-  const planData = (): ActiveCurriculum => {
-    const plan = planIn(currentPlans(), selectedCurriculumId);
-    return { ...plan, curriculum: initialState.curriculum ?? plan.curriculum, schedule: initialState.schedule ?? plan.schedule };
+  let generatedPlans: ActiveSyllabus[] = [...(initialState.generatedPlans ?? [])];
+  let syllabusOverrides: Record<string, Record<string, unknown>> = {
+    ...(initialState.syllabusOverrides ?? {}),
   };
-  const openingStep = stepOf(planData().curriculum, initialState.selectedActivityId);
+  let userLibraryResourceIds: string[] = [...(initialState.userLibraryResourceIds ?? [])];
+  let resourceEditorMode: ResourceEditorMode = initialState.resourceEditorMode ?? "ingest";
+  let editingResourceId: string | null = initialState.editingResourceId ?? null;
+  let editingResourceSyllabusId: string | null = initialState.editingResourceSyllabusId ?? null;
+  let editingResourceModuleId: string | null = initialState.editingResourceModuleId ?? null;
+  let editingResourceActivityId: string | null = initialState.editingResourceActivityId ?? null;
+  let resourceRawDraft: string = initialState.resourceRawDraft ?? "";
+  let resourceEditorError: string | null = initialState.resourceEditorError ?? null;
+  let resourceNotice: string | null = initialState.resourceNotice ?? null;
+  const currentPlans = () => plansFor(account.accountId, adoptions, listings(), generatedPlans, syllabusOverrides);
+  const isMyPlan = (syllabusId: unknown): syllabusId is string => currentPlans().some((plan) => plan.syllabusId === syllabusId);
+  // Input overrides replace the selected plan's syllabus and schedule, the same rule the render applies.
+  let selectedSyllabusId = planIn(currentPlans(), initialState.selectedSyllabusId).syllabusId;
+  const planData = (): ActiveSyllabus => {
+    const plan = planIn(currentPlans(), selectedSyllabusId);
+    return {
+      ...plan,
+      syllabus: syllabusOverrides[plan.syllabusId] ?? initialState.syllabus ?? plan.syllabus,
+      schedule: initialState.schedule ?? plan.schedule,
+    };
+  };
+  const openingStep = stepOf(planData().syllabus, initialState.selectedActivityId);
   let selectedModuleId: string | null = initialState.selectedModuleId ?? openingStep.moduleId;
   let selectedActivityId: string | null = initialState.selectedActivityId ?? openingStep.activityId;
   let focusedNodeId: string | null = initialState.focusedNodeId ?? selectedModuleId;
@@ -2648,7 +2769,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   ];
   let intakeSkippedResourceIds: string[] = [...(initialState.intakeSkippedResourceIds ?? [])];
   let lastPipelineReceipt: IntakePipelineExecutionReceipt | null = initialState.lastPipelineReceipt ?? null;
-  let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(planData().curriculum);
+  let flowOrder: FlowOrder = initialState.flowOrder ?? plannedFlowOrder(planData().syllabus);
   let deepDive: DeepDiveMode = initialState.deepDive ?? "included";
   let spacedReview: SpacedReviewMode = initialState.spacedReview ?? "included";
 
@@ -2658,8 +2779,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   let recordedProgressEvents: ProgressEventInput[] = [...(initialState.recordedProgressEvents ?? [])];
   const activityStatesInput = (): Readonly<Record<string, ActivityExecutionStatus>> =>
     ({ ...(initialState.activityStates ?? {}), ...Object.fromEntries(statusOverrides) });
-  const todayFor = (plan: ActiveCurriculum) => buildTodayFor({
-    curriculum: plan.curriculum, schedule: plan.schedule, proficiency, catalogResources,
+  const todayFor = (plan: ActiveSyllabus) => buildTodayFor({
+    syllabus: plan.syllabus, schedule: plan.schedule, proficiency, catalogResources,
     activityStates: activityStatesInput(), events: recordedProgressEvents,
   });
   const buildToday = () => todayFor(planData());
@@ -2691,12 +2812,12 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
 
   // The activity's subtask ids, from the same list the drawer renders.
   function subtaskIdsOf(activityId: string): readonly string[] {
-    const { curriculum, publicationId } = planData();
+    const { syllabus, publicationId } = planData();
     const modules = buildCurrentPlanModel().outlineModules;
     const activity = modules.flatMap((mod) => mod.activities).find((act) => act.activityId === activityId);
     if (!activity) return [];
     const conceptCheck = CONCEPT_CHECKS[publicationId ?? ""] ?? null;
-    return activitySubtasks(modules, activity, rubricOf(curriculum, activityId), conceptCheck).map(({ subtaskId }) => subtaskId);
+    return activitySubtasks(modules, activity, rubricOf(syllabus, activityId), conceptCheck).map(({ subtaskId }) => subtaskId);
   }
 
   // A Done activity shows every subtask as checked, even one completed elsewhere, so a change starts from all of them.
@@ -2726,7 +2847,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
 
   const buildCurrentPlanModel = (): PlanMapAndOutlineModel =>
     buildPlanMapAndOutlineModel({
-      curriculum: planData().curriculum, proficiency, activityStates: todayController.getState().activityExecutionStates,
+      syllabus: planData().syllabus, proficiency, activityStates: todayController.getState().activityExecutionStates,
       catalogResources, viewportWidthPx, selectedModuleId, selectedActivityId, focusedNodeId, zoom,
     });
 
@@ -2750,11 +2871,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   }
 
   // Another plan opens on its own first step, with the drawer closed.
-  function selectCurriculum(curriculumId: string): void {
-    if (curriculumId === selectedCurriculumId) return;
-    selectedCurriculumId = curriculumId;
+  function selectSyllabus(syllabusId: string): void {
+    if (syllabusId === selectedSyllabusId) return;
+    selectedSyllabusId = syllabusId;
     resetPractice();
-    const first = stepOf(planData().curriculum);
+    const first = stepOf(planData().syllabus);
     selectedModuleId = first.moduleId;
     selectedActivityId = first.activityId;
     focusedNodeId = first.moduleId;
@@ -2774,6 +2895,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   function requireSignIn(destination: ReturnDestination) {
     returnTo = destination;
     authNotice = null;
+    authMode = "login";
+    authPasswordVisible = false;
     openDialogId = "dialog-auth";
     return getState();
   }
@@ -2799,6 +2922,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     intakeNote = null;
     keyActionNote = null;
     profileNotice = null;
+    passkeys = [];
+    passkeyNotice = null;
     snoozeNote = null;
     rescheduleSessionId = null;
     rescheduleValue = null;
@@ -2817,12 +2942,22 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     adminResourceOverrides = {};
     adminNotice = null;
     generatedPlans = [];
+    syllabusOverrides = {};
+    userLibraryResourceIds = [];
+    resourceEditorMode = "ingest";
+    editingResourceId = null;
+    editingResourceSyllabusId = null;
+    editingResourceModuleId = null;
+    editingResourceActivityId = null;
+    resourceRawDraft = "";
+    resourceEditorError = null;
+    resourceNotice = null;
     intakeGoalTitle = "";
     lastPipelineReceipt = null;
     studyDetailOpen = false;
     openDialogId = null;
-    selectedCurriculumId = RAG_PLAN.curriculumId;
-    const first = stepOf(planData().curriculum);
+    selectedSyllabusId = RAG_PLAN.syllabusId;
+    const first = stepOf(planData().syllabus);
     selectedModuleId = first.moduleId;
     selectedActivityId = first.activityId;
     focusedNodeId = first.moduleId;
@@ -2835,6 +2970,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     account = next;
     authStatus = "authenticated";
     authNotice = null;
+    authPasswordVisible = false;
     openDialogId = null;
     const destination = returnTo;
     returnTo = null;
@@ -2855,10 +2991,39 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       openDialogId = "dialog-auth";
       return;
     }
-    signIn(Object.values(PERSONAS).find((persona) => persona.email === address) ?? { accountId: `account-${address}`, email: address, role: "Learner" });
+    signIn(
+      Object.values(PERSONAS).find((persona) => persona.email === address) ?? {
+        accountId: `account-${address}`,
+        email: address,
+        username: defaultUsernameOfEmail(address),
+        role: "Learner",
+      },
+    );
   }
 
-  // A guest browses public curricula, so signing out lands on Explore.
+  function signUpWithEmail(email: string, password: string): void {
+    const address = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      authNotice = "Enter a valid email address.";
+      authMode = "signup";
+      openDialogId = "dialog-auth";
+      return;
+    }
+    if (password.length < 8) {
+      authNotice = "Use a password with at least 8 characters.";
+      authMode = "signup";
+      openDialogId = "dialog-auth";
+      return;
+    }
+    signIn({
+      accountId: `account-${address}`,
+      email: address,
+      username: defaultUsernameOfEmail(address),
+      role: "Learner",
+    });
+  }
+
+  // A guest browses public syllabi, so signing out lands on Explore.
   function signOut(): void {
     purgeSessionState();
     authStatus = "guest";
@@ -2899,27 +3064,27 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     adoptPublicationId = null;
     adoptModuleIds = [];
     openDialogId = null;
-    selectCurriculum(`adopted-${listing.publicationId}`);
+    selectSyllabus(`adopted-${listing.publicationId}`);
     topLevel = "Learn";
     learnSubDestination = "Today";
   }
 
   function activateSelectedDraft(): void {
-    adoptions = adoptions.map((adoption) => (adoption.accountId === account.accountId && `adopted-${adoption.publicationId}` === selectedCurriculumId
+    adoptions = adoptions.map((adoption) => (adoption.accountId === account.accountId && `adopted-${adoption.publicationId}` === selectedSyllabusId
       ? { ...adoption, active: true } : adoption));
-    generatedPlans = generatedPlans.map((plan) => (plan.curriculumId === selectedCurriculumId ? { ...plan, draft: false } : plan));
+    generatedPlans = generatedPlans.map((plan) => (plan.syllabusId === selectedSyllabusId ? { ...plan, draft: false } : plan));
   }
 
   const publishedFromSelected = (): boolean =>
-    listings().some((listing) => listing.ownerAccountId === account.accountId && listing.sourceCurriculumId === selectedCurriculumId);
+    listings().some((listing) => listing.ownerAccountId === account.accountId && listing.sourceSyllabusId === selectedSyllabusId);
 
   // Publishing adds an immutable public revision of the selected plan to Explore and My Publications (@S56).
   // The listing keeps the plan's structure and drops account, evidence, date, and reminder data (@S57).
   function publishSelectedPlan(): void {
     const plan = planData();
-    const key = `${plan.curriculumId}-${account.accountId}`;
+    const key = `${plan.syllabusId}-${account.accountId}`;
     const origin = listings().find((listing) => listing.publicationId === plan.publicationId && listing.ownerAccountId !== account.accountId);
-    const tags = curriculumTagsOf(plan.curriculum, {
+    const tags = syllabusTagsOf(plan.syllabus, {
       subject: plan.domain,
       gateStyle: plan.assessmentMode,
       topicTags: origin?.topicTags,
@@ -2928,11 +3093,11 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       publicationId: `publication-${key}`, revisionId: `public-revision-${key}-1`,
       subject: tags.subject, gateStyle: tags.gateStyle, topicTags: tags.topicTags, handle: handleOf(account),
       upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
-      ownerAccountId: account.accountId, sourceCurriculumId: plan.curriculumId, basedOn: origin?.handle ?? null,
-      curriculum: {
-        ...plan.curriculum, account_id: "public-template",
+      ownerAccountId: account.accountId, sourceSyllabusId: plan.syllabusId, basedOn: origin?.handle ?? null,
+      syllabus: {
+        ...plan.syllabus, account_id: "public-template",
         subject: tags.subject, gate_style: tags.gateStyle, topic_tags: tags.topicTags,
-        objectives: rawListOf(plan.curriculum, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
+        objectives: rawListOf(plan.syllabus, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
       },
       schedule: {
         ...plan.schedule,
@@ -2948,16 +3113,18 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
   const getState = () => {
     const tState = todayController.getState();
     // Study minutes and completions count across every active plan, as the app header shows them.
-    const allToday = currentPlans().map((plan) => (plan.curriculumId === selectedCurriculumId ? tState : todayFor(plan).getState()));
+    const allToday = currentPlans().map((plan) => (plan.syllabusId === selectedSyllabusId ? tState : todayFor(plan).getState()));
     return {
-      topLevel, learnSubDestination, planView, selectedCurriculumId, selectedModuleId, selectedActivityId, focusedNodeId,
+      topLevel, learnSubDestination, planView, selectedSyllabusId, selectedModuleId, selectedActivityId, focusedNodeId,
       zoom, viewportWidthPx, textScalePercent, themePreference, solidSurfaces, reduceMotion,
       activityStates: tState.activityExecutionStates,
       recordedProgressEvents: [...recordedProgressEvents] as readonly ProgressEventInput[],
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      authStatus, account, returnTo, authNotice, profileNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
+      authStatus, account, returnTo, authNotice, authMode, authPasswordVisible,
+      passkeys: [...passkeys] as readonly PasskeySummaryItem[], passkeyNotice,
+      profileNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
       adoptPublicationId, adoptModuleIds: [...adoptModuleIds] as readonly string[],
@@ -2987,10 +3154,44 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       intakeDepth, intakeFlow, intakeMaterials, intakeWeeklyMinutes, intakeFitMode,
       intakeSelectedResourceIds: [...intakeSelectedResourceIds] as readonly string[],
       intakeSkippedResourceIds: [...intakeSkippedResourceIds] as readonly string[],
-      generatedPlans: [...generatedPlans] as readonly ActiveCurriculum[],
+      generatedPlans: [...generatedPlans] as readonly ActiveSyllabus[],
+      syllabusOverrides: { ...syllabusOverrides } as Readonly<Record<string, Record<string, unknown>>>,
+      userLibraryResourceIds: [...userLibraryResourceIds] as readonly string[],
+      resourceEditorMode,
+      editingResourceId,
+      editingResourceSyllabusId,
+      editingResourceModuleId,
+      editingResourceActivityId,
+      resourceRawDraft,
+      resourceEditorError,
+      resourceNotice,
       lastPipelineReceipt,
     };
   };
+
+  function getSyllabusPayload(targetSyllabusId: string): Record<string, unknown> | null {
+    if (targetSyllabusId === selectedSyllabusId) return planData().syllabus;
+    const found = currentPlans().find((p) => p.syllabusId === targetSyllabusId);
+    return found ? found.syllabus : null;
+  }
+
+  function setSyllabusPayload(targetSyllabusId: string, updatedSyllabus: Record<string, unknown>): void {
+    syllabusOverrides = { ...syllabusOverrides, [targetSyllabusId]: updatedSyllabus };
+    if (generatedPlans.some((p) => p.syllabusId === targetSyllabusId)) {
+      generatedPlans = generatedPlans.map((p) =>
+        p.syllabusId === targetSyllabusId ? { ...p, syllabus: updatedSyllabus } : p,
+      );
+    }
+    todayController = buildToday();
+  }
+
+  function lookupAnyCatalogResource(resId: string): CatalogResourceMetadataInput | undefined {
+    return (
+      catalogResources[resId] ??
+      (catalogResourcesJson.global_discovered_resources as Readonly<Record<string, CatalogResourceMetadataInput>>)[resId] ??
+      (catalogResourcesJson.resources as Readonly<Record<string, CatalogResourceMetadataInput>>)[resId]
+    );
+  }
 
   function intakeFitEvaluation() {
     return evaluateIntakeResourceFit({
@@ -3010,7 +3211,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     });
   }
 
-  // The provider and model that write the curriculum: the primary key's provider, or null without an active key.
+  // The provider and model that write the syllabus: the primary key's provider, or null without an active key.
   function designatedModel(): { readonly providerId: string; readonly modelId: string } | null {
     const activeByok = byokCredentials.filter((c) => c.status === "active" && Boolean(c.masked_suffix));
     const cred = activeByok.find((c) => c.credential_ref === primaryCredentialRef) ?? activeByok[0];
@@ -3029,7 +3230,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     getState,
     renderHtml: (): string => {
       const { activityStates: _a, ...restState } = getState();
-      return renderCurriculumWebAppHtml({ ...initialState, ...restState, activityStates: activityStatesInput() });
+      return renderSyllabusWebAppHtml({ ...initialState, ...restState, activityStates: activityStatesInput() });
     },
     // The prompt and model for a live draft, or null when nobody is signed in or no key is configured.
     // The server sends it with the key from its own environment, then passes the outcome to applyUiAction.
@@ -3054,6 +3255,18 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       const missing = Object.entries(entries).filter(([id]) => !catalogResources[id]);
       if (missing.length > 0) catalogResources = { ...catalogResources, ...Object.fromEntries(missing) };
     },
+    syncCatalogResources(
+      entries: Readonly<Record<string, CatalogResourceMetadataInput>>,
+      removedIds: readonly string[] = [],
+    ) {
+      const removedSet = new Set(removedIds);
+      const next: Record<string, CatalogResourceMetadataInput> = { ...catalogResources, ...entries };
+      for (const id of removedSet) {
+        delete next[id];
+      }
+      catalogResources = next;
+    },
+    designatedAiModel: () => designatedModel(),
     navigateTopLevel(destination: TopLevelDestination) {
       if (destination !== "Explore" && !signedIn()) return requireSignIn(placeOf(destination, learnSubDestination));
       adminConsoleOpen = false;
@@ -3123,10 +3336,15 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       votes = votes.some(mine) ? votes.filter((vote) => !mine(vote)) : [...votes, { accountId: account.accountId, revisionId: publicationRevisionId }];
       return getState();
     },
-    openDialog(dialogId: string) {
+    openDialog(dialogId: string, requestedAuthMode?: string) {
       if (dialogId !== "dialog-auth" && !signedIn()) {
         const label = dialogId === "dialog-publication-preview" ? "Share with Community" : undefined;
         return requireSignIn(placeOf(topLevel, learnSubDestination, dialogId, null, label));
+      }
+      if (dialogId === "dialog-auth") {
+        authNotice = null;
+        authPasswordVisible = false;
+        if (isOneOf(AUTH_MODES, requestedAuthMode)) authMode = requestedAuthMode;
       }
       openDialogId = dialogId;
       return getState();
@@ -3134,39 +3352,80 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     closeDialog() {
       // A guest who closes the sign-in dialog has dropped that return. An expired session keeps it for the banner.
       if (openDialogId === "dialog-auth" && authStatus === "guest") returnTo = null;
+      authPasswordVisible = false;
       openDialogId = null;
       return getState();
     },
-    // The live draft for generate-curriculum-ai. Only the server sets it, after its own model call.
+    completeExternalAuth(nextAccount: Account) {
+      const hadReturn = Boolean(returnTo);
+      const wasGuest = authStatus === "guest";
+      signIn(nextAccount);
+      if (!hadReturn && wasGuest) {
+        topLevel = "Learn";
+        learnSubDestination = "Today";
+      }
+      return getState();
+    },
+    failExternalAuth(message: string, mode?: AuthMode) {
+      authNotice = message;
+      if (mode) authMode = mode;
+      openDialogId = "dialog-auth";
+      return getState();
+    },
+    setPasskeys(nextPasskeys: readonly PasskeySummaryItem[], notice?: string | null) {
+      passkeys = [...nextPasskeys];
+      if (notice !== undefined) passkeyNotice = notice;
+      return getState();
+    },
+    // The live draft for generate-syllabus-ai and analyzedResourceOutcome for ingest-manual-resource are passed by the server.
     applyUiAction(
       action: string,
       data: Readonly<Record<string, string | undefined>> = {},
       submittedChoice: string | null = null,
       liveOutcome: LiveDraftOutcome | null = null,
+      analyzedResourceOutcome: AnalyzedManualResourceDraft | { readonly error: string } | null = null,
     ) {
       const value = (key: string) => data[key];
       // Without a valid session only reading, filtering, appearance, and signing in run. Anything else asks for sign-in.
       if (!signedIn() && !OPEN_ACTIONS.has(action)) {
         const listing = action === "open-adopt-dialog" ? listings().find((entry) => entry.publicationId === value("publicationId")) : undefined;
         requireSignIn(listing
-          ? placeOf("Explore", learnSubDestination, "dialog-partial-adoption", listing.publicationId, `Explore › Details: ${goalTitleOf(listing.curriculum)}`)
+          ? placeOf("Explore", learnSubDestination, "dialog-partial-adoption", listing.publicationId, `Explore › Details: ${goalTitleOf(listing.syllabus)}`)
           : placeOf(topLevel, learnSubDestination));
         return { handled: true, state: getState() };
       }
       let handled = true;
       if (action === "close-study-detail") studyDetailOpen = false;
       else if (action === "submit-sign-in") signInWithEmail(value("email") ?? "");
-      else if (action === "sign-in-passkey") signIn(account);
-      else if (action === "update-profile") {
-        const nextName = (value("displayName") ?? "").trim();
+      else if (action === "submit-sign-up") signUpWithEmail(value("email") ?? "", value("password") ?? "");
+      else if (action === "switch-auth-mode" && isOneOf(AUTH_MODES, data["authMode"])) {
+        authMode = data["authMode"];
+        authNotice = null;
+        authPasswordVisible = false;
+        openDialogId = "dialog-auth";
+      } else if (action === "toggle-auth-password") {
+        authPasswordVisible = !authPasswordVisible;
+      } else if (action === "sign-in-passkey") signIn(account);
+      else if (action === "delete-passkey" && data["credentialId"]) {
+        passkeys = passkeys.filter((pk) => pk.id !== data["credentialId"]);
+        passkeyNotice = "Passkey removed from your account.";
+      } else if (action === "update-profile") {
+        const nextUsername = (value("username") ?? "").trim().replace(/^@+/, "");
         const nextEmail = (value("email") ?? "").trim().toLowerCase();
         if (nextEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
           profileNotice = "Enter a valid email address.";
         } else {
+          const resolvedEmail = nextEmail || account.email;
+          const prevDefault = defaultUsernameOfEmail(account.email);
+          const resolvedUsername =
+            nextUsername ||
+            (resolvedEmail !== account.email && usernameOf(account) === prevDefault
+              ? defaultUsernameOfEmail(resolvedEmail)
+              : usernameOf(account));
           account = {
             ...account,
-            displayName: nextName || displayNameOf(account),
-            email: nextEmail || account.email,
+            email: resolvedEmail,
+            username: resolvedUsername,
           };
           profileNotice = "Profile saved.";
         }
@@ -3199,20 +3458,20 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       } else if (action === "toggle-adopt-module") handled = toggleAdoptUnit(data["moduleId"] ?? "");
       else if (action === "select-all-adopt-modules" && adoptListing()) adoptModuleIds = unitIdsOf(adoptListing());
       // The selection belongs to the open listing, so a confirm for another listing adopts nothing.
-      else if (action === "confirm-adopt-curriculum" && data["publicationId"] === adoptPublicationId) {
+      else if (action === "confirm-adopt-syllabus" && data["publicationId"] === adoptPublicationId) {
         const listing = adoptableListing(adoptPublicationId);
         if (listing) adopt(listing);
-      } else if (action === "confirm-publish-curriculum" && !publishedFromSelected()) publishSelectedPlan();
+      } else if (action === "confirm-publish-syllabus" && !publishedFromSelected()) publishSelectedPlan();
       else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
-      else if (action === "select-curriculum" && data["curriculumId"] === "__new_curriculum__") {
-        openDialogId = "dialog-new-curriculum";
-      } else if (action === "select-curriculum" && data["curriculumId"] === "__edit_plan__") {
+      else if (action === "select-syllabus" && data["syllabusId"] === "__new_syllabus__") {
+        openDialogId = "dialog-new-syllabus";
+      } else if (action === "select-syllabus" && data["syllabusId"] === "__edit_plan__") {
         topLevel = "Learn";
         learnSubDestination = "Plan";
         studyDetailOpen = false;
-      } else if (action === "select-curriculum" && data["curriculumId"] === "all") resourceScope = "all";
-      else if (action === "select-curriculum" && isMyPlan(data["curriculumId"])) {
-        selectCurriculum(data["curriculumId"]);
+      } else if (action === "select-syllabus" && data["syllabusId"] === "all") resourceScope = "all";
+      else if (action === "select-syllabus" && isMyPlan(data["syllabusId"])) {
+        selectSyllabus(data["syllabusId"]);
         resourceScope = "selected";
       } else if (action === "set-resource-scope" && isOneOf(RESOURCE_SCOPES, data["resourceScope"])) {
         resourceScope = data["resourceScope"];
@@ -3289,12 +3548,12 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           adminRemovedResourceIds = [...adminRemovedResourceIds, resId];
         }
         adminNotice = `Removed ${resId} from the global resource index.`;
-      } else if (action === "open-curriculum-plan" && isMyPlan(data["curriculumId"])) {
-        selectCurriculum(data["curriculumId"]);
+      } else if (action === "open-syllabus-plan" && isMyPlan(data["syllabusId"])) {
+        selectSyllabus(data["syllabusId"]);
         topLevel = "Learn";
         learnSubDestination = "Plan";
-      } else if (action === "resume-curriculum" && isMyPlan(data["curriculumId"]) && data["activityId"]) {
-        selectCurriculum(data["curriculumId"]);
+      } else if (action === "resume-syllabus" && isMyPlan(data["syllabusId"]) && data["activityId"]) {
+        selectSyllabus(data["syllabusId"]);
         selectPlanActivity(data["activityId"], data["moduleId"]);
       } else if (action === "set-flow-order" && isOneOf(FLOW_ORDERS, value("flowOrder"))) flowOrder = value("flowOrder") as FlowOrder;
       else if (action === "set-deep-dive" && isOneOf(DEEP_DIVE_MODES, value("deepDive"))) deepDive = value("deepDive") as DeepDiveMode;
@@ -3344,7 +3603,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         const matchedCred = byokCredentials.find((c) => c.credential_ref === data["credentialRef"] && c.status === "active");
         if (matchedCred) {
           primaryCredentialRef = matchedCred.credential_ref;
-          keyActionNote = `${matchedCred.label ?? primaryCredentialRef} is now set as your primary AI provider for curriculum synthesis and diagnostics.`;
+          keyActionNote = `${matchedCred.label ?? primaryCredentialRef} is now set as your primary AI provider for syllabus synthesis and diagnostics.`;
         }
       } else if (action === "set-provider-model" && data["providerId"] && (data["modelId"] || data["value"])) {
         const providerId = data["providerId"];
@@ -3505,8 +3764,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           intakeSkippedResourceIds = [...intakeSkippedResourceIds, resId];
           intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
         }
-      } else if (action === "intake-open-existing-plan" && isMyPlan(data["curriculumId"])) {
-        selectCurriculum(data["curriculumId"]);
+      } else if (action === "intake-open-existing-plan" && isMyPlan(data["syllabusId"])) {
+        selectSyllabus(data["syllabusId"]);
         openDialogId = null;
         topLevel = "Learn";
         learnSubDestination = "Today";
@@ -3519,7 +3778,7 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
         } else {
           const existing = currentPlans().find((p) => p.publicationId === data["publicationId"]);
           if (existing) {
-            selectCurriculum(existing.curriculumId);
+            selectSyllabus(existing.syllabusId);
             openDialogId = null;
             topLevel = "Learn";
             learnSubDestination = "Today";
@@ -3528,13 +3787,13 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
       } else if (action === "review-generate") {
         if (typeof data["intakeGoalTitle"] === "string") intakeGoalTitle = data["intakeGoalTitle"];
         intakeNote = "Review recorded. Generation was not started and the plan was not activated. Chargeable inference needs a separate authorization.";
-      } else if (action === "generate-curriculum-ai") {
+      } else if (action === "generate-syllabus-ai") {
         applyGenerateFields(data);
         const model = designatedModel();
         if (!model) {
-          intakeNote = "Configure at least one AI provider API key in Settings before generating a curriculum.";
+          intakeNote = "Configure at least one AI provider API key in Settings before generating a syllabus.";
         } else if (liveOutcome && "error" in liveOutcome) {
-          intakeNote = `Live generation with ${model.modelId} failed: ${liveOutcome.error}. No curriculum was created.`;
+          intakeNote = `Live generation with ${model.modelId} failed: ${liveOutcome.error}. No syllabus was created.`;
         } else {
           const pipelineResult = executeIntakeGenerationPipeline({
             fitEvaluation: intakeFitEvaluation(),
@@ -3560,9 +3819,295 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
           lastPipelineReceipt = pipelineResult.receipt;
           intakeNote = pipelineResult.receipt.summaryNote;
           openDialogId = null;
-          selectCurriculum(pipelineResult.generatedPlan.curriculumId);
+          selectSyllabus(pipelineResult.generatedPlan.syllabusId);
           topLevel = "Learn";
           learnSubDestination = "Today";
+        }
+      } else if (action === "open-resource-editor") {
+        resourceEditorMode = isOneOf(RESOURCE_EDITOR_MODES, data["editorMode"]) ? data["editorMode"] : "ingest";
+        editingResourceId = data["resourceId"] ?? null;
+        editingResourceSyllabusId = data["syllabusId"] ?? selectedSyllabusId;
+        editingResourceModuleId = data["moduleId"] ?? null;
+        editingResourceActivityId = data["activityId"] ?? null;
+        resourceEditorError = null;
+        studyDetailOpen = false;
+        openDialogId = "dialog-resource-editor";
+      } else if (action === "set-resource-editor-mode") {
+        if (typeof data["rawText"] === "string") resourceRawDraft = data["rawText"];
+        if (isOneOf(RESOURCE_EDITOR_MODES, data["editorMode"])) {
+          resourceEditorMode = data["editorMode"];
+          resourceEditorError = null;
+          if (resourceEditorMode === "link" && editingResourceSyllabusId === "__library_only__") {
+            editingResourceSyllabusId = selectedSyllabusId;
+          }
+        }
+      } else if (action === "set-resource-editor-syllabus") {
+        if (typeof data["rawText"] === "string") resourceRawDraft = data["rawText"];
+        const nextTarget = data["targetSyllabusId"] ?? data["value"];
+        if (nextTarget === "__library_only__" || isMyPlan(nextTarget)) {
+          editingResourceSyllabusId = nextTarget;
+          editingResourceModuleId = null;
+          editingResourceActivityId = null;
+          resourceEditorError = null;
+        }
+      } else if (action === "ingest-manual-resource") {
+        const rawText = (data["rawText"] ?? "").trim();
+        const explicitUrl = data["explicitUrl"]?.trim();
+        resourceRawDraft = data["rawText"] ?? "";
+        let draft: AnalyzedManualResourceDraft | null = null;
+        if (analyzedResourceOutcome && "error" in analyzedResourceOutcome) {
+          resourceEditorError = analyzedResourceOutcome.error;
+        } else if (analyzedResourceOutcome) {
+          draft = analyzedResourceOutcome;
+        } else {
+          const parsed = parseFreeFormResourceInput(rawText, explicitUrl);
+          if ("error" in parsed) {
+            resourceEditorError = parsed.error;
+          } else {
+            draft = analyzeManualResourceDeterministic({ parsed });
+          }
+        }
+        if (draft) {
+          const resId = draft.resourceVersionId;
+          const metadata = buildCatalogMetadataFromDraft(draft, handleOf(account));
+          catalogResources = { ...catalogResources, [resId]: metadata };
+          adminRemovedResourceIds = adminRemovedResourceIds.filter((id) => id !== resId);
+          if (!userLibraryResourceIds.includes(resId)) {
+            userLibraryResourceIds = [resId, ...userLibraryResourceIds];
+          }
+          if (!intakeSkippedResourceIds.includes(resId) && !intakeSelectedResourceIds.includes(resId)) {
+            intakeSelectedResourceIds = [resId, ...intakeSelectedResourceIds];
+          }
+          const targetCurrId = data["targetSyllabusId"] ?? editingResourceSyllabusId ?? selectedSyllabusId;
+          const role = data["role"] === "supplemental" ? "supplemental" : "primary";
+          let linkedPlanTitle: string | null = null;
+          if (targetCurrId && targetCurrId !== "__library_only__" && isMyPlan(targetCurrId)) {
+            const basePayload = getSyllabusPayload(targetCurrId);
+            if (basePayload) {
+              const updatedSyllabus = applyResourceBindingToSyllabus({
+                syllabus: basePayload,
+                resourceVersionId: resId,
+                resourceEntry: metadata,
+                targetModuleId: data["targetModuleId"] ?? editingResourceModuleId,
+                targetActivityId: data["targetActivityId"] ?? editingResourceActivityId,
+                role,
+                selectionRationale: draft.selectionRationale,
+              });
+              setSyllabusPayload(targetCurrId, updatedSyllabus);
+              linkedPlanTitle = goalTitleOf(updatedSyllabus);
+            }
+          } else {
+            resourceScope = "all";
+          }
+          resourceRawDraft = "";
+          resourceEditorError = null;
+          editingResourceId = null;
+          editingResourceActivityId = null;
+          openDialogId = null;
+          const sourceTag = draft.analyzedBy === "ai" ? "AI-analyzed" : "Analyzed";
+          resourceNotice = linkedPlanTitle
+            ? `${sourceTag} and indexed "${draft.title}" (${draft.category}), and linked it to ${linkedPlanTitle}.`
+            : `${sourceTag} and indexed "${draft.title}" (${draft.category}) into your resource library.`;
+        }
+      } else if (action === "link-library-resource") {
+        const resId = (data["resourceVersionId"] ?? editingResourceId ?? "").trim();
+        const targetCurrId = (data["targetSyllabusId"] ?? editingResourceSyllabusId ?? selectedSyllabusId).trim();
+        const entry = resId ? lookupAnyCatalogResource(resId) : undefined;
+        const targetSyllabus = isMyPlan(targetCurrId) ? getSyllabusPayload(targetCurrId) : null;
+        if (!entry || !resId) {
+          resourceEditorError = "Choose an indexed resource from your library.";
+        } else if (!targetSyllabus) {
+          resourceEditorError = "Choose a target syllabus to link this resource.";
+        } else {
+          if (!catalogResources[resId]) {
+            catalogResources = { ...catalogResources, [resId]: entry };
+          }
+          const updatedSyllabus = applyResourceBindingToSyllabus({
+            syllabus: targetSyllabus,
+            resourceVersionId: resId,
+            resourceEntry: entry,
+            targetModuleId: data["targetModuleId"] ?? editingResourceModuleId,
+            targetActivityId: data["targetActivityId"] ?? editingResourceActivityId,
+            role: data["role"] === "supplemental" ? "supplemental" : "primary",
+            selectionRationale: data["selectionRationale"],
+          });
+          setSyllabusPayload(targetCurrId, updatedSyllabus);
+          resourceEditorError = null;
+          editingResourceId = null;
+          editingResourceActivityId = null;
+          openDialogId = null;
+          resourceNotice = `Linked "${entry.title ?? resId}" to ${goalTitleOf(updatedSyllabus)}.`;
+        }
+      } else if (action === "save-resource-edit") {
+        const resId = (data["resourceVersionId"] ?? editingResourceId ?? "").trim();
+        const prev = resId ? lookupAnyCatalogResource(resId) : undefined;
+        const title = (data["title"] ?? "").trim();
+        const rawUrl = (data["canonicalUrl"] ?? "").trim();
+        const parsedPrimary = parseFreeFormResourceInput("", rawUrl);
+        const parsedUrl = "error" in parsedPrimary ? parseFreeFormResourceInput(rawUrl) : parsedPrimary;
+        if (!resId || !prev) {
+          resourceEditorError = "Resource record could not be found.";
+        } else if (!title) {
+          resourceEditorError = "Enter a clear resource title.";
+        } else if ("error" in parsedUrl) {
+          resourceEditorError = parsedUrl.error;
+        } else {
+          const category: ManualResourceCategory = isOneOf(MANUAL_RESOURCE_CATEGORIES, data["category"])
+            ? data["category"]
+            : (MANUAL_RESOURCE_CATEGORIES.includes(prev.category as ManualResourceCategory)
+                ? (prev.category as ManualResourceCategory)
+                : "Course");
+          const accessModel: ManualResourceAccessModel =
+            data["accessModel"] === "freemium_optional_certificate" ||
+            data["accessModel"] === "paid" ||
+            data["accessModel"] === "library_loan"
+              ? data["accessModel"]
+              : "free";
+          const publisher = (data["publisher"] ?? "").trim() || prev.provider?.display_name || "External Resource";
+          const topics = (data["topics"] ?? "")
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean);
+          const segmentLines = (data["segments"] ?? "")
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const segments =
+            segmentLines.length > 0
+              ? segmentLines.map((segTitle, idx) => ({
+                  segment_id: prev.segments?.[idx]?.segment_id ?? `seg-manual-${idx + 1}`,
+                  title: segTitle,
+                  verified: prev.segments?.[idx]?.verified ?? true,
+                }))
+              : (prev.segments ?? []);
+          const rationale = (data["selectionRationale"] ?? "").trim();
+          const combinedText = [title, rationale, ...topics, ...segments.map((s) => s.title)].join(" ");
+          const subject = inferSubjectFromResourceText(combinedText);
+          const { tierLabel, costLabel } = formatAccessLabels(
+            accessModel,
+            undefined,
+            accessModel === "freemium_optional_certificate" ? 4900 : 0,
+          );
+          const nowIso = new Date().toISOString();
+          const updatedEntry: CatalogResourceMetadataInput = {
+            ...prev,
+            resource_version_id: resId,
+            title,
+            canonical_url: parsedUrl.canonicalUrl,
+            category,
+            subject,
+            description: rationale || prev.description || "",
+            topics: topics.length > 0 ? topics : (prev.topics ?? [subject]),
+            provider: {
+              provider_id: prev.provider?.provider_id ?? parsedUrl.host.replace(/[^a-z0-9]+/g, "-"),
+              display_name: publisher,
+            },
+            access: {
+              ...prev.access,
+              model: accessModel,
+              tier_label: tierLabel,
+              cost_label: costLabel,
+              rights_label: prev.access?.rights_label ?? "External Link · Metadata Indexed",
+              certificate_included: accessModel === "freemium_optional_certificate",
+              optional_certificate_price_minor: accessModel === "freemium_optional_certificate" ? 4900 : null,
+              access_verified_at: nowIso,
+            },
+            vector_index: {
+              ...prev.vector_index,
+              status: "indexed",
+              last_indexed_at: nowIso,
+            },
+            segments,
+          };
+          catalogResources = { ...catalogResources, [resId]: updatedEntry };
+          if (!userLibraryResourceIds.includes(resId)) {
+            userLibraryResourceIds = [resId, ...userLibraryResourceIds];
+          }
+          const targetCurrId = data["targetSyllabusId"];
+          const priorCurrId =
+            editingResourceSyllabusId && editingResourceSyllabusId !== "__library_only__"
+              ? editingResourceSyllabusId
+              : selectedSyllabusId;
+          if (targetCurrId === "__library_only__") {
+            if (isMyPlan(priorCurrId)) {
+              const priorPayload = getSyllabusPayload(priorCurrId);
+              if (priorPayload) {
+                setSyllabusPayload(priorCurrId, removeResourceBindingFromSyllabus(priorPayload, resId));
+              }
+            }
+          } else if (targetCurrId && isMyPlan(targetCurrId)) {
+            if (priorCurrId !== targetCurrId && isMyPlan(priorCurrId)) {
+              const priorPayload = getSyllabusPayload(priorCurrId);
+              if (priorPayload) {
+                setSyllabusPayload(priorCurrId, removeResourceBindingFromSyllabus(priorPayload, resId));
+              }
+            }
+            const destPayload = getSyllabusPayload(targetCurrId);
+            if (destPayload) {
+              const updatedSyllabus = applyResourceBindingToSyllabus({
+                syllabus: destPayload,
+                resourceVersionId: resId,
+                resourceEntry: updatedEntry,
+                targetModuleId: data["targetModuleId"],
+                role: data["role"] === "supplemental" ? "supplemental" : "primary",
+                selectionRationale: rationale || updatedEntry.description,
+              });
+              setSyllabusPayload(targetCurrId, updatedSyllabus);
+            }
+          } else {
+            todayController = buildToday();
+          }
+          resourceEditorError = null;
+          editingResourceId = null;
+          editingResourceActivityId = null;
+          openDialogId = null;
+          resourceNotice = `Updated "${title}" and refreshed the search index.`;
+        }
+      } else if (action === "unlink-syllabus-resource") {
+        const resId = (data["resourceId"] ?? editingResourceId ?? "").trim();
+        const targetCurrId = (data["syllabusId"] ?? editingResourceSyllabusId ?? selectedSyllabusId).trim();
+        const entry = resId ? lookupAnyCatalogResource(resId) : undefined;
+        const targetPayload = isMyPlan(targetCurrId) ? getSyllabusPayload(targetCurrId) : null;
+        if (resId && targetPayload) {
+          if (entry && !catalogResources[resId]) {
+            catalogResources = { ...catalogResources, [resId]: entry };
+          }
+          if (!userLibraryResourceIds.includes(resId)) {
+            userLibraryResourceIds = [resId, ...userLibraryResourceIds];
+          }
+          const updatedSyllabus = removeResourceBindingFromSyllabus(targetPayload, resId);
+          setSyllabusPayload(targetCurrId, updatedSyllabus);
+          if (openDialogId === "dialog-resource-editor") {
+            openDialogId = null;
+            editingResourceId = null;
+            editingResourceActivityId = null;
+          }
+          resourceNotice = `Removed "${entry?.title ?? resId}" from ${goalTitleOf(updatedSyllabus)}. It remains saved in your library.`;
+        }
+      } else if (action === "delete-library-resource") {
+        const resId = (data["resourceId"] ?? editingResourceId ?? "").trim();
+        if (resId) {
+          const entry = lookupAnyCatalogResource(resId);
+          for (const plan of currentPlans()) {
+            const payload = getSyllabusPayload(plan.syllabusId);
+            if (payload) {
+              setSyllabusPayload(plan.syllabusId, removeResourceBindingFromSyllabus(payload, resId));
+            }
+          }
+          const { [resId]: _removed, ...restCatalog } = catalogResources;
+          catalogResources = restCatalog;
+          userLibraryResourceIds = userLibraryResourceIds.filter((id) => id !== resId);
+          intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
+          if (!adminRemovedResourceIds.includes(resId)) {
+            adminRemovedResourceIds = [...adminRemovedResourceIds, resId];
+          }
+          todayController = buildToday();
+          if (openDialogId === "dialog-resource-editor") {
+            openDialogId = null;
+            editingResourceId = null;
+            editingResourceActivityId = null;
+          }
+          resourceNotice = `Deleted "${entry?.title ?? resId}" from your library and search index.`;
         }
       } else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
       else handled = false;
@@ -3570,8 +4115,8 @@ export function createCurriculumWebAppController(initialState: CurriculumWebAppS
     },
   };
 }
-export type CurriculumWebAppController = ReturnType<typeof createCurriculumWebAppController>;
-export type CurriculumWebAppResolvedState = ReturnType<CurriculumWebAppController["getState"]>;
+export type SyllabusWebAppController = ReturnType<typeof createSyllabusWebAppController>;
+export type SyllabusWebAppResolvedState = ReturnType<SyllabusWebAppController["getState"]>;
 
 export interface MountableRootElement {
   innerHTML: string;
@@ -3579,6 +4124,8 @@ export interface MountableRootElement {
   querySelectorAll?: (selector: string) => Iterable<unknown>;
   addEventListener?: (type: string, listener: (event: unknown) => void) => void;
 }
+
+const AUTH_FIELD_IDS = ["auth-email-input", "auth-password-input"] as const;
 
 interface MountedDialog {
   readonly id?: string;
@@ -3592,11 +4139,11 @@ interface MountedDialog {
   querySelector?: (selector: string) => { focus?: () => void } | null;
 }
 
-export function mountCurriculumWebApp(
+export function mountSyllabusWebApp(
   rootElement: MountableRootElement,
-  initialState: CurriculumWebAppStateInput = {},
-): CurriculumWebAppController {
-  const controller = createCurriculumWebAppController(initialState);
+  initialState: SyllabusWebAppStateInput = {},
+): SyllabusWebAppController {
+  const controller = createSyllabusWebAppController(initialState);
 
   // Native Esc, backdrop, and close() all fire "close"; the controller state follows it.
   function bindDialogs(): void {
@@ -3623,7 +4170,7 @@ export function mountCurriculumWebApp(
   }
 
   type ScrollableRail = { scrollLeft: number } | null | undefined;
-  const getRail = (): ScrollableRail => rootElement.querySelector?.(".today-curricula-grid") as ScrollableRail;
+  const getRail = (): ScrollableRail => rootElement.querySelector?.(".today-syllabi-grid") as ScrollableRail;
 
   // The focused control, as a selector made from its data attributes. A control without a data-action has none.
   function focusedControlSelector(): string | null {
@@ -3634,13 +4181,17 @@ export function mountCurriculumWebApp(
       .join("");
   }
 
+  const authField = (id: string) => rootElement.querySelector?.(`#${id}`) as { value?: string } | null | undefined;
+
   // A render replaces every element. When the same dialog stays open, it keeps its scroll position and focused control.
   // Without this, checking a unit far down in Details jumps back to the top and moves focus to the close button.
+  // The sign-in fields also keep what the learner typed: a password reveal, a mode switch, or a failed submit re-renders them.
   function syncDom(): void {
     const railLeft = getRail()?.scrollLeft ?? 0;
     const shown = rootElement.querySelector?.("dialog[open]") as MountedDialog | null | undefined;
     const shownTop = shown?.scrollTop ?? 0;
     const focused = focusedControlSelector();
+    const typed = shown?.id === "dialog-auth" ? AUTH_FIELD_IDS.map((id) => authField(id)?.value) : [];
     rootElement.innerHTML = controller.renderHtml();
     const nextRail = getRail();
     if (nextRail) nextRail.scrollLeft = railLeft;
@@ -3650,6 +4201,11 @@ export function mountCurriculumWebApp(
     if (marked && shown && marked.id === shown.id) {
       marked.scrollTop = shownTop;
       if (focused) marked.querySelector?.(focused)?.focus?.();
+      AUTH_FIELD_IDS.forEach((id, index) => {
+        const field = authField(id);
+        const value = typed[index];
+        if (field && value !== undefined) field.value = value;
+      });
     }
   }
 
@@ -3677,7 +4233,7 @@ export function mountCurriculumWebApp(
     else if (action === "complete-activity" && ds["activityId"]) controller.recordTodayActivityCompletion(ds["activityId"], ds["eventId"]);
     else if (action === "set-theme" && ds["themeValue"]) controller.setThemePreference(ds["themeValue"] as ThemePreference);
     else if (action === "toggle-upvote") controller.toggleUpvote(ds["revisionId"]);
-    else if (action === "open-dialog" && ds["dialogId"]) controller.openDialog(ds["dialogId"]);
+    else if (action === "open-dialog" && ds["dialogId"]) controller.openDialog(ds["dialogId"], ds["authMode"]);
     else if (action === "close-dialog") {
       ev.preventDefault?.();
       controller.closeDialog();
@@ -3695,6 +4251,10 @@ export function mountCurriculumWebApp(
       if (typeof rootElement.querySelector === "function") {
         const goalInput = rootElement.querySelector("#intake-goal") as { value?: string } | null;
         if (typeof goalInput?.value === "string") data["intakeGoalTitle"] = goalInput.value;
+        if (action === "set-resource-editor-mode") {
+          const rawInput = rootElement.querySelector("#resource-raw-input") as { value?: string } | null;
+          if (typeof rawInput?.value === "string") data["rawText"] = rawInput.value;
+        }
       }
       if (action === "replace-key" && typeof rootElement.querySelector === "function") {
         const providerId = ds["providerId"] ?? "openai";
@@ -3702,7 +4262,7 @@ export function mountCurriculumWebApp(
         const keyInput = rootElement.querySelector(keySelector) as { value?: string } | null;
         if (typeof keyInput?.value === "string") data["keyValue"] = keyInput.value;
       }
-      if ((action === "generate-curriculum-ai" || action === "review-generate") && typeof rootElement.querySelector === "function") {
+      if ((action === "generate-syllabus-ai" || action === "review-generate") && typeof rootElement.querySelector === "function") {
         const minsInput = rootElement.querySelector("#weekly-minutes") as { value?: string } | null;
         if (minsInput?.value) data["weeklyMinutes"] = minsInput.value;
       }
@@ -3729,24 +4289,31 @@ export function mountCurriculumWebApp(
     const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string; dataset?: Record<string, string | undefined> } | null } | null };
     const select = ev.target?.closest?.("select[data-action]");
     if (!select?.value) return;
-    const action = select.dataset?.["action"] ?? "select-curriculum";
+    const action = select.dataset?.["action"] ?? "select-syllabus";
     const goalInput =
       typeof rootElement.querySelector === "function"
         ? (rootElement.querySelector("#intake-goal") as { value?: string } | null)
         : null;
     const intakeGoalTitle = typeof goalInput?.value === "string" ? goalInput.value : undefined;
+    const rawResourceInput =
+      typeof rootElement.querySelector === "function"
+        ? (rootElement.querySelector("#resource-raw-input") as { value?: string } | null)
+        : null;
+    const rawText = typeof rawResourceInput?.value === "string" ? rawResourceInput.value : undefined;
     const payload: Record<string, string | undefined> =
-      action === "select-curriculum"
-        ? { curriculumId: select.value }
+      action === "select-syllabus"
+        ? { syllabusId: select.value }
         : action === "set-intake-subject"
           ? { intakeSubject: select.value, intakeGoalTitle }
           : action === "toggle-intake-topic"
             ? { intakeTopic: select.value, intakeGoalTitle }
-            : { ...select.dataset, value: select.value };
+            : action === "set-resource-editor-syllabus"
+              ? { targetSyllabusId: select.value, rawText }
+              : { ...select.dataset, value: select.value };
     if (controller.applyUiAction(action, payload).handled) syncDom();
   });
 
-  // The sign-in form, the Marketplace search, and the topic finder submit through their own data-action, with the field they carry.
+  // The sign-in form, the Marketplace search, the resource editor, and the topic finder submit through their own data-action.
   rootElement.addEventListener?.("submit", (rawEvent: unknown) => {
     const ev = rawEvent as {
       target?: { closest?: (s: string) => { dataset?: Record<string, string | undefined> } | null } | null;
@@ -3756,12 +4323,46 @@ export function mountCurriculumWebApp(
     if (!action) return;
     ev.preventDefault?.();
     const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
-    const data =
-      action === "submit-sign-in" ? { email: valueOf("#auth-email-input") }
-      : action === "update-profile" ? { displayName: valueOf("#profile-name-input"), email: valueOf("#profile-email-input") }
-      : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
-      : action === "set-admin-resource-query" ? { query: valueOf("#admin-resource-search") }
-      : { query: valueOf("#marketplace-search") };
+    const data: Record<string, string | undefined> =
+      action === "submit-sign-in" || action === "submit-sign-up"
+        ? { email: valueOf("#auth-email-input"), password: valueOf("#auth-password-input") }
+        : action === "update-profile"
+          ? { username: valueOf("#profile-handle-input"), email: valueOf("#profile-email-input") }
+          : action === "ingest-manual-resource"
+            ? {
+                rawText: valueOf("#resource-raw-input"),
+                targetSyllabusId: valueOf("#resource-target-syllabus") || undefined,
+                targetModuleId: valueOf("#resource-target-module") || undefined,
+                role: valueOf("#resource-target-role") || undefined,
+                targetActivityId: valueOf('#dialog-resource-editor input[name="targetActivityId"]') || undefined,
+              }
+            : action === "link-library-resource"
+              ? {
+                  resourceVersionId: valueOf("#resource-link-id"),
+                  targetSyllabusId: valueOf("#resource-link-syllabus") || undefined,
+                  targetModuleId: valueOf("#resource-link-module") || undefined,
+                  role: valueOf("#resource-link-role") || undefined,
+                  selectionRationale: valueOf("#resource-link-rationale"),
+                  targetActivityId: valueOf('#dialog-resource-editor input[name="targetActivityId"]') || undefined,
+                }
+              : action === "save-resource-edit"
+                ? {
+                    resourceVersionId: valueOf("#resource-edit-id"),
+                    title: valueOf("#resource-edit-title"),
+                    canonicalUrl: valueOf("#resource-edit-url"),
+                    category: valueOf("#resource-edit-category") || undefined,
+                    publisher: valueOf("#resource-edit-publisher"),
+                    accessModel: valueOf("#resource-edit-access") || undefined,
+                    topics: valueOf("#resource-edit-topics"),
+                    segments: valueOf("#resource-edit-segments"),
+                    targetSyllabusId: valueOf("#resource-edit-syllabus") || undefined,
+                    targetModuleId: valueOf("#resource-edit-module") || undefined,
+                    role: valueOf("#resource-edit-role") || undefined,
+                    selectionRationale: valueOf("#resource-edit-rationale"),
+                  }
+                : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
+                : action === "set-admin-resource-query" ? { query: valueOf("#admin-resource-search") }
+                : { query: valueOf("#marketplace-search") };
     if (controller.applyUiAction(action, data).handled) syncDom();
   });
 
@@ -3778,6 +4379,8 @@ export function mountCurriculumWebApp(
     renderHtml: () => controller.renderHtml(),
     liveGenerationRequest: withSync(controller.liveGenerationRequest),
     addCatalogResources: withSync(controller.addCatalogResources),
+    syncCatalogResources: withSync(controller.syncCatalogResources),
+    designatedAiModel: () => controller.designatedAiModel(),
     navigateTopLevel: withSync(controller.navigateTopLevel),
     navigateLearnSubDestination: withSync(controller.navigateLearnSubDestination),
     switchPlanView: withSync(controller.switchPlanView),
@@ -3791,6 +4394,9 @@ export function mountCurriculumWebApp(
     toggleUpvote: withSync(controller.toggleUpvote),
     openDialog: withSync(controller.openDialog),
     closeDialog: withSync(controller.closeDialog),
+    completeExternalAuth: withSync(controller.completeExternalAuth),
+    failExternalAuth: withSync(controller.failExternalAuth),
+    setPasskeys: withSync(controller.setPasskeys),
     applyUiAction: withSync(controller.applyUiAction),
   };
 }

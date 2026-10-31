@@ -120,7 +120,7 @@ test("T05 (@S58, @S46, @S55): defective item report and attributable key correct
   assert.equal(correction.resultingAttemptStatus, "invalidated");
   assert.equal(correction.recomputedProficiencyStatus, "needs_review");
   assert.equal(correction.dependentWaiversInvalidated, true);
-  assert.equal(correction.activeCurriculumSilentlyReplaced, false);
+  assert.equal(correction.activeSyllabusSilentlyReplaced, false);
   assert.notEqual(
     correction.newEvaluationRevisionId,
     correction.previousEvaluationRevisionId
@@ -133,8 +133,8 @@ test("T05 (@S58, @S46, @S55): defective item report and attributable key correct
 test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-gated study-ahead, reviewed anchor override, and missing anchor notice", () => {
   // 1. Non-mastery_gated activity allows immediate study-ahead with warning & bridging work
   const nonGated = evaluateMasteryGateInterstitial({
-    curriculumId: "curr-1",
-    curriculumRevisionId: "rev-1",
+    syllabusId: "curr-1",
+    syllabusRevisionId: "rev-1",
     activityId: "activity-optional-reading",
     masteryGated: false,
     prerequisiteProficiencyStatus: "unassessed",
@@ -150,8 +150,8 @@ test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-
 
   // 2. mastery_gated: true with active reviewed anchor rejects non-qualifying support (@S51) and requires demonstration or auditable override
   const gatedBlocked = evaluateMasteryGateInterstitial({
-    curriculumId: "curr-1",
-    curriculumRevisionId: "rev-1",
+    syllabusId: "curr-1",
+    syllabusRevisionId: "rev-1",
     activityId: "activity-advanced-proof",
     masteryGated: true,
     hasActiveReviewedAnchor: true,
@@ -166,8 +166,8 @@ test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-
   assert.equal(gatedBlocked.requiredAuditEventType, "prerequisite_override_recorded");
 
   const gatedOverridden = evaluateMasteryGateInterstitial({
-    curriculumId: "curr-1",
-    curriculumRevisionId: "rev-1",
+    syllabusId: "curr-1",
+    syllabusRevisionId: "rev-1",
     activityId: "activity-advanced-proof",
     masteryGated: true,
     hasActiveReviewedAnchor: true,
@@ -186,8 +186,8 @@ test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-
 
   // 3. mastery_gated: true without active reviewed anchor displays exact notice and requires unverified_prerequisite_acknowledged (@S15)
   const unverifiedBlocked = evaluateMasteryGateInterstitial({
-    curriculumId: "curr-1",
-    curriculumRevisionId: "rev-1",
+    syllabusId: "curr-1",
+    syllabusRevisionId: "rev-1",
     activityId: "activity-unanchored-lab",
     masteryGated: true,
     hasActiveReviewedAnchor: false,
@@ -205,8 +205,8 @@ test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-
   );
 
   const unverifiedAcked = evaluateMasteryGateInterstitial({
-    curriculumId: "curr-1",
-    curriculumRevisionId: "rev-1",
+    syllabusId: "curr-1",
+    syllabusRevisionId: "rev-1",
     activityId: "activity-unanchored-lab",
     masteryGated: true,
     hasActiveReviewedAnchor: false,

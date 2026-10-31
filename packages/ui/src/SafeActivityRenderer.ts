@@ -3,8 +3,8 @@
  * (`NFR-002`, `UI-010`, `UI-024`, `@S11`, `@S57`, `@S80`, `@S88`, Section 9.6, Section 9.12, Section 14.5).
  */
 
-export const SUPPORTED_CURRICULUM_MAJOR_VERSION = 0 as const;
-export const SUPPORTED_CURRICULUM_MINOR_VERSION = 2 as const;
+export const SUPPORTED_SYLLABUS_MAJOR_VERSION = 0 as const;
+export const SUPPORTED_SYLLABUS_MINOR_VERSION = 2 as const;
 
 export const ALLOWLISTED_ACTIVITY_TYPES = [
   "theory", "worked_example", "coding", "quiz", "review", "reflection", "project",
@@ -124,7 +124,7 @@ export interface ValidatedActivityNode {
   };
 }
 
-export interface SupportedCurriculumView {
+export interface SupportedSyllabusView {
   readonly status: "supported";
   readonly schemaVersion: string;
   readonly title: string;
@@ -132,7 +132,7 @@ export interface SupportedCurriculumView {
 }
 
 export type SafeRenderResult =
-  | SupportedCurriculumView
+  | SupportedSyllabusView
   | UnsupportedVersionCompatibilityView
   | RejectedPayloadView;
 
@@ -313,7 +313,7 @@ const LATEX_OPERATOR_NAMES: ReadonlySet<string> = new Set([
   "min", "max", "det", "dim", "rank", "softmax", "Attention", "lim", "arg", "sup", "inf", "Var",
 ]);
 
-// Recursive descent over the LaTeX subset that curriculum formulas use: groups, \frac, \sqrt,
+// Recursive descent over the LaTeX subset that syllabus formulas use: groups, \frac, \sqrt,
 // \mathrm-style text, \left/\right fences, sub/superscripts, and named symbols.
 function tokenizeLatexToMrowContent(latex: string): string {
   let pos = 0;
@@ -601,10 +601,10 @@ function extractSafeOutlines(rawDoc: Record<string, unknown>): {
   return { safeTextOutline, safeActivityOutline };
 }
 
-export function evaluateSafeCurriculumRender(input: unknown): SafeRenderResult {
+export function evaluateSafeSyllabusRender(input: unknown): SafeRenderResult {
   const doc = asRecord(input);
   if (!doc) {
-    return { status: "rejected_unsafe_payload", reason: "Curriculum document must be a non-null JSON object." };
+    return { status: "rejected_unsafe_payload", reason: "Syllabus document must be a non-null JSON object." };
   }
 
   const rawVersion = typeof doc["schema_version"] === "string" ? doc["schema_version"] : "";
@@ -612,8 +612,8 @@ export function evaluateSafeCurriculumRender(input: unknown): SafeRenderResult {
   const unsupportedResult = (schemaVersion: string, title: string, message: string, actionableNextStep: string): UnsupportedVersionCompatibilityView => ({
     status: "unsupported_schema_version",
     schemaVersion,
-    supportedMajorVersion: SUPPORTED_CURRICULUM_MAJOR_VERSION,
-    supportedMinorVersion: SUPPORTED_CURRICULUM_MINOR_VERSION,
+    supportedMajorVersion: SUPPORTED_SYLLABUS_MAJOR_VERSION,
+    supportedMinorVersion: SUPPORTED_SYLLABUS_MINOR_VERSION,
     message,
     compatibilityBanner: { role: "alert", title, message, actionableNextStep },
     ...extractSafeOutlines(doc),
@@ -623,19 +623,19 @@ export function evaluateSafeCurriculumRender(input: unknown): SafeRenderResult {
   if (!match) {
     return unsupportedResult(
       rawVersion || "missing",
-      "Unsupported curriculum format",
-      "Missing or malformed curriculum schema_version; failing closed.",
+      "Unsupported syllabus format",
+      "Missing or malformed syllabus schema_version; failing closed.",
       "Refresh the application or inspect the safe plain-text outline below.",
     );
   }
 
   const major = Number.parseInt(match[1] ?? "-1", 10);
   const minor = Number.parseInt(match[2] ?? "-1", 10);
-  if (major !== SUPPORTED_CURRICULUM_MAJOR_VERSION || minor !== SUPPORTED_CURRICULUM_MINOR_VERSION) {
+  if (major !== SUPPORTED_SYLLABUS_MAJOR_VERSION || minor !== SUPPORTED_SYLLABUS_MINOR_VERSION) {
     return unsupportedResult(
       rawVersion,
-      `Unsupported curriculum schema version (${rawVersion})`,
-      `Unsupported curriculum schema version ${rawVersion} (expected ${SUPPORTED_CURRICULUM_MAJOR_VERSION}.${SUPPORTED_CURRICULUM_MINOR_VERSION}.x). Failing closed and rendering safe text outline only.`,
+      `Unsupported syllabus schema version (${rawVersion})`,
+      `Unsupported syllabus schema version ${rawVersion} (expected ${SUPPORTED_SYLLABUS_MAJOR_VERSION}.${SUPPORTED_SYLLABUS_MINOR_VERSION}.x). Failing closed and rendering safe text outline only.`,
       "Update your client to a compatible release or view the safe plain-text module outline.",
     );
   }
@@ -707,7 +707,7 @@ export function evaluateSafeCurriculumRender(input: unknown): SafeRenderResult {
   return {
     status: "supported",
     schemaVersion: rawVersion,
-    title: sanitizeText(goalObj["title"] ?? doc["title"], "Curriculum Plan", 240),
+    title: sanitizeText(goalObj["title"] ?? doc["title"], "Syllabus Plan", 240),
     activities: validatedActivities,
   };
 }

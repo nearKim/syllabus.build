@@ -50,7 +50,7 @@ pub struct PinnedByokBinding {
     pub account_id: String,
     pub credential_id: String,
     pub credential_version: u32,
-    pub status: curriculum_domain::CredentialStatus,
+    pub status: syllabus_domain::CredentialStatus,
     pub allow_hosted_fallback: bool,
 }
 
@@ -74,7 +74,7 @@ pub enum OpenAiTransportMode {
 pub type HttpTransportMode = OpenAiTransportMode;
 
 fn validate_endpoint_egress(endpoint_url: &str, allowed_hosts: &[&str]) -> Result<(), ProviderError> {
-    curriculum_domain::validate_outbound_egress_url(endpoint_url, allowed_hosts)
+    syllabus_domain::validate_outbound_egress_url(endpoint_url, allowed_hosts)
         .map(|_| ())
         .map_err(|e| ProviderError::UnsafeEndpointUrl {
             url: endpoint_url.to_string(),
@@ -120,7 +120,7 @@ pub struct OpenAiHttpProvider {
 
 impl OpenAiHttpProvider {
     /// Constructs a new `OpenAiHttpProvider`, validating `endpoint_url` against `OPENAI_ALLOWED_EGRESS_HOSTS`
-    /// via `curriculum_domain::validate_outbound_egress_url` (`@S31`).
+    /// via `syllabus_domain::validate_outbound_egress_url` (`@S31`).
     pub fn new(
         endpoint_url: &str,
         model_id: impl Into<String>,
@@ -181,14 +181,14 @@ impl OpenAiHttpProvider {
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
-                    "name": "curriculum_candidate",
+                    "name": "syllabus_candidate",
                     "strict": true
                 }
             },
             "messages": [
                 {
                     "role": "system",
-                    "content": "Generate a schema-valid curriculum candidate JSON object grounded only in approved catalog resource versions."
+                    "content": "Generate a schema-valid syllabus candidate JSON object grounded only in approved catalog resource versions."
                 },
                 {
                     "role": "user",
@@ -226,7 +226,7 @@ impl InferenceProvider for OpenAiHttpProvider {
         &self.capabilities
     }
 
-    fn generate_curriculum_candidate(
+    fn generate_syllabus_candidate(
         &self,
         request: &CandidateGenerationRequest,
     ) -> Result<CandidateGenerationOutput, ProviderError> {
@@ -285,7 +285,7 @@ fn execute_pinned_byok_candidate_generation(
         }
     }
 
-    curriculum_domain::validate_byok_credential_usable(
+    syllabus_domain::validate_byok_credential_usable(
         pinned_binding.status,
         pinned_binding.allow_hosted_fallback,
     )
@@ -433,8 +433,8 @@ impl AnthropicHttpProvider {
             "max_tokens": request.max_output_tokens,
             "tools": [
                 {
-                    "name": "curriculum_candidate",
-                    "description": "Emit a schema-valid curriculum candidate JSON object grounded only in approved catalog resource versions.",
+                    "name": "syllabus_candidate",
+                    "description": "Emit a schema-valid syllabus candidate JSON object grounded only in approved catalog resource versions.",
                     "input_schema": {
                         "type": "object"
                     }
@@ -442,7 +442,7 @@ impl AnthropicHttpProvider {
             ],
             "tool_choice": {
                 "type": "tool",
-                "name": "curriculum_candidate"
+                "name": "syllabus_candidate"
             },
             "messages": [
                 {
@@ -482,7 +482,7 @@ impl InferenceProvider for AnthropicHttpProvider {
         &self.capabilities
     }
 
-    fn generate_curriculum_candidate(
+    fn generate_syllabus_candidate(
         &self,
         request: &CandidateGenerationRequest,
     ) -> Result<CandidateGenerationOutput, ProviderError> {
@@ -621,7 +621,7 @@ impl InferenceProvider for GeminiHttpProvider {
         &self.capabilities
     }
 
-    fn generate_curriculum_candidate(
+    fn generate_syllabus_candidate(
         &self,
         request: &CandidateGenerationRequest,
     ) -> Result<CandidateGenerationOutput, ProviderError> {

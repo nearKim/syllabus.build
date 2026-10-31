@@ -141,7 +141,7 @@ RETURNING j.*;
 /// Canonical SQL query over `pg_stat_user_tables` for autovacuum & dead-tuple bloat monitoring (`T01`).
 #[must_use]
 pub fn pg_bloat_monitoring_sql() -> &'static str {
-    curriculum_persistence::PostgresTransactionalStatements::pg_bloat_monitoring_sql()
+    syllabus_persistence::PostgresTransactionalStatements::pg_bloat_monitoring_sql()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -514,7 +514,7 @@ mod tests {
             .enqueue(
                 "job-1",
                 "00000000-0000-4000-8000-000000000001",
-                "curriculum_generation",
+                "syllabus_generation",
                 json!({"goal": "algebra"}),
                 1_000,
             )
@@ -523,7 +523,7 @@ mod tests {
             .enqueue(
                 "job-2",
                 "00000000-0000-4000-8000-000000000001",
-                "curriculum_generation",
+                "syllabus_generation",
                 json!({"goal": "calculus"}),
                 2_000,
             )
@@ -586,7 +586,7 @@ mod tests {
                 "job-crash-1",
                 "00000000-0000-4000-8000-000000000001",
                 "schedule_reminder_sync",
-                json!({"curriculum_id": "cur-1"}),
+                json!({"syllabus_id": "cur-1"}),
                 1_000,
             )
             .unwrap();

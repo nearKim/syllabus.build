@@ -1,25 +1,25 @@
 import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
 import type { MapKeyboardKey, PlanMapAndOutlineModel, ThemePreference } from "../../../../packages/ui/src/index.ts";
 import {
-  createCurriculumWebAppController,
-  type CurriculumWebAppController,
-  type CurriculumWebAppResolvedState,
-  type CurriculumWebAppStateInput,
+  createSyllabusWebAppController,
+  type SyllabusWebAppController,
+  type SyllabusWebAppResolvedState,
+  type SyllabusWebAppStateInput,
 } from "../browserApp.ts";
 import type { Account, AuthStatus } from "../components/HeaderBar.tsx";
 import type { SettableStatus } from "../components/InspectorDrawer.tsx";
 import type { LearnSubDestination, MapNonDraggingControl, PlanSynchronizedView, TopLevelDestination } from "../index.ts";
 import type { RecordedProgressEventReceipt } from "../tracerBulletViews.ts";
 
-export interface CurriculumSignalStore {
-  readonly controller: CurriculumWebAppController;
-  readonly state: Signal<CurriculumWebAppResolvedState>;
+export interface SyllabusSignalStore {
+  readonly controller: SyllabusWebAppController;
+  readonly state: Signal<SyllabusWebAppResolvedState>;
   readonly topLevel: ReadonlySignal<TopLevelDestination>;
   readonly learnSubDestination: ReadonlySignal<LearnSubDestination>;
   readonly planView: ReadonlySignal<PlanSynchronizedView>;
   readonly authStatus: ReadonlySignal<AuthStatus>;
   readonly account: ReadonlySignal<Account>;
-  readonly selectedCurriculumId: ReadonlySignal<string>;
+  readonly selectedSyllabusId: ReadonlySignal<string>;
   readonly selectedModuleId: ReadonlySignal<string | null>;
   readonly selectedActivityId: ReadonlySignal<string | null>;
   readonly studyDetailOpen: ReadonlySignal<boolean>;
@@ -27,35 +27,35 @@ export interface CurriculumSignalStore {
   readonly totalStudyMinutes: ReadonlySignal<number>;
   readonly selfReportedCompletedCount: ReadonlySignal<number>;
   readonly renderedHtml: ReadonlySignal<string>;
-  getState(): CurriculumWebAppResolvedState;
+  getState(): SyllabusWebAppResolvedState;
   renderHtml(): string;
-  navigateTopLevel(destination: TopLevelDestination): CurriculumWebAppResolvedState;
-  navigateLearnSubDestination(subDestination: LearnSubDestination): CurriculumWebAppResolvedState;
-  switchPlanView(view: PlanSynchronizedView): CurriculumWebAppResolvedState;
-  selectPlanModule(moduleId: string, sourceView?: PlanSynchronizedView): CurriculumWebAppResolvedState;
+  navigateTopLevel(destination: TopLevelDestination): SyllabusWebAppResolvedState;
+  navigateLearnSubDestination(subDestination: LearnSubDestination): SyllabusWebAppResolvedState;
+  switchPlanView(view: PlanSynchronizedView): SyllabusWebAppResolvedState;
+  selectPlanModule(moduleId: string, sourceView?: PlanSynchronizedView): SyllabusWebAppResolvedState;
   selectPlanActivity(
     activityId: string,
     explicitModuleId?: string,
     sourceView?: PlanSynchronizedView,
-  ): CurriculumWebAppResolvedState;
-  applyMapControl(control: MapNonDraggingControl): CurriculumWebAppResolvedState;
-  navigateMapKeyboard(key: MapKeyboardKey): CurriculumWebAppResolvedState;
+  ): SyllabusWebAppResolvedState;
+  applyMapControl(control: MapNonDraggingControl): SyllabusWebAppResolvedState;
+  navigateMapKeyboard(key: MapKeyboardKey): SyllabusWebAppResolvedState;
   recordTodayActivityCompletion(activityId: string, explicitEventId?: string): RecordedProgressEventReceipt | null;
-  setActivityStatus(activityId: string, status: SettableStatus): CurriculumWebAppResolvedState;
-  setThemePreference(theme: ThemePreference): CurriculumWebAppResolvedState;
-  toggleUpvote(publicationRevisionId?: string): CurriculumWebAppResolvedState;
-  openDialog(dialogId: string): CurriculumWebAppResolvedState;
-  closeDialog(): CurriculumWebAppResolvedState;
+  setActivityStatus(activityId: string, status: SettableStatus): SyllabusWebAppResolvedState;
+  setThemePreference(theme: ThemePreference): SyllabusWebAppResolvedState;
+  toggleUpvote(publicationRevisionId?: string): SyllabusWebAppResolvedState;
+  openDialog(dialogId: string): SyllabusWebAppResolvedState;
+  closeDialog(): SyllabusWebAppResolvedState;
   applyUiAction(
     action: string,
     data?: Readonly<Record<string, string | undefined>>,
     submittedChoice?: string | null,
-  ): { handled: boolean; state: CurriculumWebAppResolvedState };
+  ): { handled: boolean; state: SyllabusWebAppResolvedState };
 }
 
-export function createCurriculumSignalStore(initialState: CurriculumWebAppStateInput = {}): CurriculumSignalStore {
-  const controller = createCurriculumWebAppController(initialState);
-  const state = signal<CurriculumWebAppResolvedState>(controller.getState());
+export function createSyllabusSignalStore(initialState: SyllabusWebAppStateInput = {}): SyllabusSignalStore {
+  const controller = createSyllabusWebAppController(initialState);
+  const state = signal<SyllabusWebAppResolvedState>(controller.getState());
   const revision = signal(0);
 
   const sync = <T>(fn: () => T): T => {
@@ -76,7 +76,7 @@ export function createCurriculumSignalStore(initialState: CurriculumWebAppStateI
     planView: computed(() => state.value.planView),
     authStatus: computed(() => state.value.authStatus),
     account: computed(() => state.value.account),
-    selectedCurriculumId: computed(() => state.value.selectedCurriculumId),
+    selectedSyllabusId: computed(() => state.value.selectedSyllabusId),
     selectedModuleId: computed(() => state.value.selectedModuleId),
     selectedActivityId: computed(() => state.value.selectedActivityId),
     studyDetailOpen: computed(() => state.value.studyDetailOpen),

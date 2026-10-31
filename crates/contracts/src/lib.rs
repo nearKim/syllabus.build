@@ -55,7 +55,7 @@ pub fn workspace_root() -> PathBuf {
 }
 
 /// Authoritative backend JSON Schema Draft 2020-12 registry loaded from
-/// `specs/001-curriculum-platform/contracts/*.schema.json`.
+/// `specs/001-syllabus-platform/contracts/*.schema.json`.
 pub struct ContractRegistry {
     validators: BTreeMap<String, Validator>,
     raw_schemas: BTreeMap<String, Value>,
@@ -227,7 +227,7 @@ mod tests {
     fn validates_all_six_json_schemas_and_positive_and_negative_fixtures() {
         let root = workspace_root();
         let registry = ContractRegistry::load_from_root(&root).expect("load contract registry");
-        let examples = root.join("specs/001-curriculum-platform/examples");
+        let examples = root.join("specs/001-syllabus-platform/examples");
 
         let positive_standalone = [
             (
@@ -247,11 +247,11 @@ mod tests {
                 "resource.schema.json",
                 "resource-unknown-price.synthetic.json",
             ),
-            ("curriculum.schema.json", "curriculum.synthetic.json"),
+            ("syllabus.schema.json", "syllabus.synthetic.json"),
             ("proficiency.schema.json", "proficiency.synthetic.json"),
             (
-                "public-curriculum.schema.json",
-                "public-curriculum.synthetic.json",
+                "public-syllabus.schema.json",
+                "public-syllabus.synthetic.json",
             ),
             (
                 "adaptation-proposal.schema.json",
@@ -266,29 +266,29 @@ mod tests {
                 .unwrap_or_else(|e| panic!("positive fixture {fixture} failed {schema}: {e}"));
         }
 
-        // Also validate curriculum-candidate against curriculum.schema.json#/$defs/modelCandidate
-        let candidate = read_json(&examples.join("curriculum-candidate.synthetic.json"));
+        // Also validate syllabus-candidate against syllabus.schema.json#/$defs/modelCandidate
+        let candidate = read_json(&examples.join("syllabus-candidate.synthetic.json"));
         registry
-            .validate_def("curriculum.schema.json", "modelCandidate", &candidate)
-            .expect("positive curriculum-candidate must validate against modelCandidate");
+            .validate_def("syllabus.schema.json", "modelCandidate", &candidate)
+            .expect("positive syllabus-candidate must validate against modelCandidate");
 
         // Negative cases (matching check_contracts.py negative mutations)
         let mut bad_candidate = candidate.clone();
         bad_candidate["html"] = json!("<script>alert(1)</script>");
         assert!(registry
-            .validate_def("curriculum.schema.json", "modelCandidate", &bad_candidate)
+            .validate_def("syllabus.schema.json", "modelCandidate", &bad_candidate)
             .is_err());
 
-        let mut bad_curriculum = read_json(&examples.join("curriculum.synthetic.json"));
-        bad_curriculum["mastered"] = json!(true);
+        let mut bad_syllabus = read_json(&examples.join("syllabus.synthetic.json"));
+        bad_syllabus["mastered"] = json!(true);
         assert!(registry
-            .validate("curriculum.schema.json", &bad_curriculum)
+            .validate("syllabus.schema.json", &bad_syllabus)
             .is_err());
 
-        let mut bad_mastery_gated = read_json(&examples.join("curriculum.synthetic.json"));
+        let mut bad_mastery_gated = read_json(&examples.join("syllabus.synthetic.json"));
         bad_mastery_gated["activities"][0]["mastery_gated"] = json!("yes");
         assert!(registry
-            .validate("curriculum.schema.json", &bad_mastery_gated)
+            .validate("syllabus.schema.json", &bad_mastery_gated)
             .is_err());
 
         let mut bad_byok = read_json(&examples.join("generation-request.byok.synthetic.json"));
@@ -297,10 +297,10 @@ mod tests {
             .validate("generation-request.schema.json", &bad_byok)
             .is_err());
 
-        let mut bad_public = read_json(&examples.join("public-curriculum.synthetic.json"));
+        let mut bad_public = read_json(&examples.join("public-syllabus.synthetic.json"));
         bad_public["account_id"] = json!("private-account-marker");
         assert!(registry
-            .validate("public-curriculum.schema.json", &bad_public)
+            .validate("public-syllabus.schema.json", &bad_public)
             .is_err());
 
         let mut bad_prof = read_json(&examples.join("proficiency.synthetic.json"));
@@ -313,21 +313,21 @@ mod tests {
     #[test]
     fn verifies_all_four_cryptographic_sha256_and_rfc8785_jcs_digests() {
         let root = workspace_root();
-        let examples = root.join("specs/001-curriculum-platform/examples");
+        let examples = root.join("specs/001-syllabus-platform/examples");
 
-        // 1. Candidate archive raw UTF-8 SHA-256 digest stored in curriculum.synthetic.json provenance
+        // 1. Candidate archive raw UTF-8 SHA-256 digest stored in syllabus.synthetic.json provenance
         let candidate_bytes =
-            std::fs::read(examples.join("curriculum-candidate.synthetic.json")).unwrap();
-        let canonical = read_json(&examples.join("curriculum.synthetic.json"));
+            std::fs::read(examples.join("syllabus-candidate.synthetic.json")).unwrap();
+        let canonical = read_json(&examples.join("syllabus.synthetic.json"));
         assert_eq!(
             jcs::sha256_bytes_hex(&candidate_bytes),
             canonical["provenance"]["candidate_sha256"].as_str().unwrap()
         );
 
-        // 2. Public curriculum JCS content_sha256 digest
-        let public_curriculum = read_json(&examples.join("public-curriculum.synthetic.json"));
-        let expected_content_sha = public_curriculum["content_sha256"].as_str().unwrap();
-        let actual_content_sha = jcs::jcs_sha256_hex(&public_curriculum["content"]);
+        // 2. Public syllabus JCS content_sha256 digest
+        let public_syllabus = read_json(&examples.join("public-syllabus.synthetic.json"));
+        let expected_content_sha = public_syllabus["content_sha256"].as_str().unwrap();
+        let actual_content_sha = jcs::jcs_sha256_hex(&public_syllabus["content"]);
         assert_eq!(actual_content_sha, expected_content_sha);
 
         // 3. Publication preview JCS preview_sha256 digest
@@ -372,7 +372,7 @@ mod tests {
         // Must be licensed under the OSI-approved Apache License 2.0
         assert!(license_text.contains("Apache License"));
         assert!(license_text.contains("Version 2.0"));
-        // LEGAL.md must document BYOK direct provider responsibility, CC BY 4.0 shared curricula, and metadata/link-only third-party resource boundaries
+        // LEGAL.md must document BYOK direct provider responsibility, CC BY 4.0 shared syllabi, and metadata/link-only third-party resource boundaries
         assert!(legal_text.contains("Apache-2.0"));
         assert!(legal_text.contains("Bring Your Own Key (BYOK)"));
         assert!(legal_text.contains("CC BY 4.0"));
@@ -380,7 +380,7 @@ mod tests {
 
         // Synthetic catalog must remain marked is_synthetic_fixture = true
         let synthetic_cat = read_json(
-            &root.join("specs/001-curriculum-platform/examples/resource.synthetic.json"),
+            &root.join("specs/001-syllabus-platform/examples/resource.synthetic.json"),
         );
         assert_eq!(
             synthetic_cat["provenance"]["is_synthetic_fixture"].as_bool(),

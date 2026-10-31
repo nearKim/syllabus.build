@@ -6,7 +6,7 @@ import {
   type CatalogResourceMetadataInput,
 } from "../../../../packages/ui/src/index.ts";
 import type { ProficiencyProfileFixture } from "../diagnosticsAndAdaptation.ts";
-import { resolveTransitiveAdoptionScope, type PublicCurriculumContentBlock } from "../billingAndSharing.ts";
+import { resolveTransitiveAdoptionScope, type PublicSyllabusContentBlock } from "../billingAndSharing.ts";
 import { normalizeStringList } from "../shared.ts";
 import { handleOf } from "./AuthDialog.tsx";
 import type { Account, AuthStatus } from "./HeaderBar.tsx";
@@ -109,9 +109,9 @@ export interface MarketplaceListing {
   readonly adoptions: number;
   readonly publishedAt: string;
   readonly ownerAccountId: string | null;
-  readonly sourceCurriculumId: string | null;
+  readonly sourceSyllabusId: string | null;
   readonly basedOn: string | null;
-  readonly curriculum: Record<string, unknown>;
+  readonly syllabus: Record<string, unknown>;
   readonly schedule: Record<string, unknown>;
 }
 
@@ -127,11 +127,11 @@ export interface Vote {
   readonly revisionId: string;
 }
 
-export interface ActiveCurriculum {
-  readonly curriculumId: string;
+export interface ActiveSyllabus {
+  readonly syllabusId: string;
   readonly domain: string;
   readonly assessmentMode: string;
-  readonly curriculum: Record<string, unknown>;
+  readonly syllabus: Record<string, unknown>;
   readonly schedule: Record<string, unknown>;
   readonly publicationId: string | null;
   readonly draft: boolean;
@@ -153,8 +153,8 @@ export const rawListOf = (
 
 export const textOf = (value: unknown): string => (typeof value === "string" ? value : "");
 
-export function mathDepthFor(curriculum: Record<string, unknown>, topicIds: readonly string[]): string {
-  const prefs = asRecord(curriculum["instruction_preferences_applied"]);
+export function mathDepthFor(syllabus: Record<string, unknown>, topicIds: readonly string[]): string {
+  const prefs = asRecord(syllabus["instruction_preferences_applied"]);
   const rawOverrides: unknown = prefs["topic_math_depth_overrides"];
   const overrides = (Array.isArray(rawOverrides) ? rawOverrides : []).map(asRecord);
   const depthOf = (topicId: string | null): unknown =>
@@ -165,7 +165,7 @@ export function mathDepthFor(curriculum: Record<string, unknown>, topicIds: read
   return [...depths].map(humanize).join(", ") || "Not stated";
 }
 
-export interface CurriculumTagDescriptor {
+export interface SyllabusTagDescriptor {
   readonly category: CategoryTag | null;
   readonly subject: string;
   readonly subjectLabel: string;
@@ -176,29 +176,29 @@ export interface CurriculumTagDescriptor {
   readonly topicTags: readonly string[];
 }
 
-// Single source of truth for curriculum tags shared by Explore and Learn.
-// Reads canonical tag metadata directly from the curriculum document (with optional legacy fallbacks).
-export function curriculumTagsOf(
-  curriculum: Record<string, unknown>,
+// Single source of truth for syllabus tags shared by Explore and Learn.
+// Reads canonical tag metadata directly from the syllabus document (with optional legacy fallbacks).
+export function syllabusTagsOf(
+  syllabus: Record<string, unknown>,
   fallback?: {
     readonly subject?: string | undefined;
     readonly gateStyle?: string | undefined;
     readonly topicTags?: readonly string[] | undefined;
   },
-): CurriculumTagDescriptor {
-  const subject = textOf(curriculum["subject"]) || fallback?.subject || "Engineering";
-  const gateStyle = textOf(curriculum["gate_style"]) || fallback?.gateStyle || "Reviewed Quiz";
-  const depth = mathDepthFor(curriculum, []);
+): SyllabusTagDescriptor {
+  const subject = textOf(syllabus["subject"]) || fallback?.subject || "Engineering";
+  const gateStyle = textOf(syllabus["gate_style"]) || fallback?.gateStyle || "Reviewed Quiz";
+  const depth = mathDepthFor(syllabus, []);
   const difficulty = isOneOf(DIFFICULTY_TAGS, depth) ? depth : null;
   const format = FORMAT_TAGS.find((entry) => gateStyle.includes(entry)) ?? null;
-  const fromCurriculum = normalizeStringList(curriculum["topic_tags"]);
+  const fromSyllabus = normalizeStringList(syllabus["topic_tags"]);
   const fromFallback = fallback?.topicTags ? [...fallback.topicTags] : [];
   const topicTags =
-    fromCurriculum.length > 0
-      ? fromCurriculum
+    fromSyllabus.length > 0
+      ? fromSyllabus
       : fromFallback.length > 0
         ? fromFallback
-        : normalizeStringList(asRecord(curriculum["goal"])["included_topics"]);
+        : normalizeStringList(asRecord(syllabus["goal"])["included_topics"]);
   return {
     category: categoryOf(subject) ?? null,
     subject,
@@ -211,25 +211,25 @@ export function curriculumTagsOf(
   };
 }
 
-export interface CurriculumTagStripProps {
-  readonly curriculum: Record<string, unknown>;
+export interface SyllabusTagStripProps {
+  readonly syllabus: Record<string, unknown>;
   readonly fallbackSubject?: string;
   readonly fallbackGateStyle?: string;
 }
 
-// Learn tab UI representation of the shared curriculum tag data.
+// Learn tab UI representation of the shared syllabus tag data.
 // While Explore renders these tags as interactive filter buttons, Learn renders the same underlying
-// curriculum taxonomy and topic tags as a concise metadata strip.
-export function CurriculumTagStrip({
-  curriculum,
+// syllabus taxonomy and topic tags as a concise metadata strip.
+export function SyllabusTagStrip({
+  syllabus,
   fallbackSubject,
   fallbackGateStyle,
-}: CurriculumTagStripProps): VNode {
-  const tags = curriculumTagsOf(curriculum, { subject: fallbackSubject, gateStyle: fallbackGateStyle });
+}: SyllabusTagStripProps): VNode {
+  const tags = syllabusTagsOf(syllabus, { subject: fallbackSubject, gateStyle: fallbackGateStyle });
   return (
     <div
-      class="learn-curriculum-tags"
-      aria-label="Curriculum taxonomy and topic tags"
+      class="learn-syllabus-tags"
+      aria-label="Syllabus taxonomy and topic tags"
       data-category={tags.category ?? undefined}
       data-subject={tags.subject}
       data-difficulty={tags.difficulty ?? undefined}
@@ -263,24 +263,24 @@ export function CurriculumTagStrip({
 }
 
 // A plan's estimated study time at 1x speed, in minutes.
-export const studyMinutesOf = (curriculum: Record<string, unknown>): number =>
-  rawListOf(curriculum, "activities").reduce(
+export const studyMinutesOf = (syllabus: Record<string, unknown>): number =>
+  rawListOf(syllabus, "activities").reduce(
     (sum, activity) => sum + computeActivityDurationTriplet(activity["duration_estimate"], 1).point,
     0,
   );
 
-export const goalTitleOf = (curriculum: Record<string, unknown>): string =>
-  renderUntrustedCatalogText(asRecord(curriculum["goal"])["title"], { maxLength: 200 }).text || "Untitled plan";
+export const goalTitleOf = (syllabus: Record<string, unknown>): string =>
+  renderUntrustedCatalogText(asRecord(syllabus["goal"])["title"], { maxLength: 200 }).text || "Untitled plan";
 
-export function publicProjectionOf(curriculum: Record<string, unknown>): PublicCurriculumContentBlock {
-  const edges = rawListOf(curriculum, "prerequisite_edges").map((edge) => ({
+export function publicProjectionOf(syllabus: Record<string, unknown>): PublicSyllabusContentBlock {
+  const edges = rawListOf(syllabus, "prerequisite_edges").map((edge) => ({
     from_objective_id: textOf(edge["from_objective_id"]),
     to_objective_id: textOf(edge["to_objective_id"]),
   }));
   return {
-    title: goalTitleOf(curriculum),
-    summary: renderUntrustedCatalogText(asRecord(curriculum["goal"])["summary"], { maxLength: 600 }).text,
-    objectives: rawListOf(curriculum, "objectives").map((objective) => ({
+    title: goalTitleOf(syllabus),
+    summary: renderUntrustedCatalogText(asRecord(syllabus["goal"])["summary"], { maxLength: 600 }).text,
+    objectives: rawListOf(syllabus, "objectives").map((objective) => ({
       objective_id: textOf(objective["objective_id"]),
       title: textOf(objective["title"]),
       prerequisite_objective_ids: edges
@@ -288,7 +288,7 @@ export function publicProjectionOf(curriculum: Record<string, unknown>): PublicC
         .map((edge) => edge.from_objective_id),
     })),
     prerequisite_edges: edges,
-    modules: rawListOf(curriculum, "modules").map((mod) => ({
+    modules: rawListOf(syllabus, "modules").map((mod) => ({
       module_id: textOf(mod["module_id"]),
       title: textOf(mod["title"]),
       summary: textOf(mod["summary"]),
@@ -301,7 +301,7 @@ export function publicProjectionOf(curriculum: Record<string, unknown>): PublicC
 
 // A listing's units in the author's order. Details opens with all of them selected.
 export const unitIdsOf = (listing: MarketplaceListing | undefined): string[] =>
-  listing ? publicProjectionOf(listing.curriculum).modules.map((mod) => mod.module_id) : [];
+  listing ? publicProjectionOf(listing.syllabus).modules.map((mod) => mod.module_id) : [];
 
 export const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly string[]) =>
   resolveTransitiveAdoptionScope(
@@ -312,7 +312,7 @@ export const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly
       revision_number: 1,
       published_at: listing.publishedAt,
       content_sha256: "",
-      content: publicProjectionOf(listing.curriculum),
+      content: publicProjectionOf(listing.syllabus),
       publisher: { public_author_id: listing.handle, display_name: listing.handle },
       publication_terms: {
         policy_id: "publication-terms-v1",
@@ -325,15 +325,15 @@ export const adoptionScopeOf = (listing: MarketplaceListing, requested: readonly
     requested,
   );
 
-export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): ActiveCurriculum {
-  const curriculumId = `adopted-${listing.publicationId}`;
-  const tags = curriculumTagsOf(listing.curriculum, listing);
-  const modules = rawListOf(listing.curriculum, "modules").filter((mod) =>
+export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): ActiveSyllabus {
+  const syllabusId = `adopted-${listing.publicationId}`;
+  const tags = syllabusTagsOf(listing.syllabus, listing);
+  const modules = rawListOf(listing.syllabus, "modules").filter((mod) =>
     adoption.moduleIds.includes(textOf(mod["module_id"])),
   );
   const activityIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["activity_ids"])));
   const objectiveIds = new Set(modules.flatMap((mod) => normalizeStringList(mod["objective_ids"])));
-  const revisionId = `${curriculumId}-draft-1`;
+  const revisionId = `${syllabusId}-draft-1`;
   const sessions = rawListOf(listing.schedule, "sessions")
     .map((session) => ({
       ...session,
@@ -341,38 +341,38 @@ export function adoptedPlanOf(listing: MarketplaceListing, adoption: Adoption): 
     }))
     .filter((session) => session.activity_ids.length > 0);
   return {
-    curriculumId,
+    syllabusId,
     domain: tags.subject,
     assessmentMode: tags.gateStyle,
     publicationId: listing.publicationId,
     draft: !adoption.active,
-    curriculum: {
-      ...listing.curriculum,
+    syllabus: {
+      ...listing.syllabus,
       subject: tags.subject,
       gate_style: tags.gateStyle,
       topic_tags: tags.topicTags,
-      curriculum_id: curriculumId,
+      syllabus_id: syllabusId,
       revision_id: revisionId,
       revision_number: 1,
       account_id: adoption.accountId,
       predecessor_revision_id: null,
       revision_reason: "adoption",
       modules,
-      activities: rawListOf(listing.curriculum, "activities").filter((act) => activityIds.has(textOf(act["activity_id"]))),
-      objectives: rawListOf(listing.curriculum, "objectives")
+      activities: rawListOf(listing.syllabus, "activities").filter((act) => activityIds.has(textOf(act["activity_id"]))),
+      objectives: rawListOf(listing.syllabus, "objectives")
         .filter((objective) => objectiveIds.has(textOf(objective["objective_id"])))
         .map((objective) => ({ ...objective, prior_evidence_refs: [] })),
-      prerequisite_edges: rawListOf(listing.curriculum, "prerequisite_edges").filter(
+      prerequisite_edges: rawListOf(listing.syllabus, "prerequisite_edges").filter(
         (edge) =>
           objectiveIds.has(textOf(edge["from_objective_id"])) && objectiveIds.has(textOf(edge["to_objective_id"])),
       ),
     },
-    schedule: { ...listing.schedule, curriculum_revision_id: revisionId, sessions },
+    schedule: { ...listing.schedule, syllabus_revision_id: revisionId, sessions },
   };
 }
 
-const listingTagsOf = (listing: MarketplaceListing): CurriculumTagDescriptor =>
-  curriculumTagsOf(listing.curriculum, listing);
+const listingTagsOf = (listing: MarketplaceListing): SyllabusTagDescriptor =>
+  syllabusTagsOf(listing.syllabus, listing);
 
 // The difficulty is the plan's math depth.
 const difficultyTagOf = (listing: MarketplaceListing): (typeof DIFFICULTY_TAGS)[number] | null =>
@@ -398,7 +398,7 @@ const matchesFilters = (listing: MarketplaceListing, filters: MarketplaceFilters
     (filters.difficulty === "All" || tags.difficulty === filters.difficulty) &&
     (filters.format === "All" || tags.format === filters.format) &&
     (!filters.query ||
-      [goalTitleOf(listing.curriculum), publicProjectionOf(listing.curriculum).summary, listing.handle, tags.subject,
+      [goalTitleOf(listing.syllabus), publicProjectionOf(listing.syllabus).summary, listing.handle, tags.subject,
         tags.category ?? "", ...tags.topicTags]
         .join(" ")
         .toLowerCase()
@@ -484,7 +484,7 @@ export interface ExploreMarketplaceProps {
   readonly signedOut: boolean;
   readonly account: Account;
   readonly listings: readonly MarketplaceListing[];
-  readonly myPlans: readonly ActiveCurriculum[];
+  readonly myPlans: readonly ActiveSyllabus[];
   readonly votes: readonly Vote[];
   readonly adoptions: readonly Adoption[];
   readonly marketplaceFilters: MarketplaceFilters;
@@ -512,9 +512,9 @@ export function ExploreMarketplace({
     listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
   // Study hours count a plan's estimated study time once for each learner who adopted it.
   const studyHoursOf = (listing: MarketplaceListing): number =>
-    Math.round((studyMinutesOf(listing.curriculum) * adoptionsOf(listing)) / 60);
-  const planOf = (listing: MarketplaceListing): ActiveCurriculum | undefined =>
-    myPlans.find((plan) => plan.publicationId === listing.publicationId || plan.curriculumId === listing.sourceCurriculumId);
+    Math.round((studyMinutesOf(listing.syllabus) * adoptionsOf(listing)) / 60);
+  const planOf = (listing: MarketplaceListing): ActiveSyllabus | undefined =>
+    myPlans.find((plan) => plan.publicationId === listing.publicationId || plan.syllabusId === listing.sourceSyllabusId);
   const rank = (listing: MarketplaceListing): number =>
     marketplaceSort === "top_upvoted"
       ? upvotesOf(listing)
@@ -523,7 +523,7 @@ export function ExploreMarketplace({
         : Date.parse(listing.publishedAt);
   const shownListings = listings
     .filter((listing) => matchesFilters(listing, filters))
-    .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.curriculum).localeCompare(goalTitleOf(b.curriculum)));
+    .sort((a, b) => rank(b) - rank(a) || goalTitleOf(a.syllabus).localeCompare(goalTitleOf(b.syllabus)));
   // A count is the number of results that choosing the value gives, after the tier rules apply.
   const countIf = (facet: MarketplaceFacet, value: string): number => {
     const next = withMarketplaceFilter(filters, facet, value, listings);
@@ -603,7 +603,7 @@ export function ExploreMarketplace({
       </div>
       <form class="marketplace-search" role="search" data-action="set-marketplace-query">
         <label class="st-sr" for="marketplace-search">
-          Search Community Curricula
+          Search Community Syllabi
         </label>
         <input
           id="marketplace-search"
@@ -697,8 +697,8 @@ export function ExploreMarketplace({
         <div class="marketplace-trail">
           <p class="marketplace-count" role="status">
             {filtered
-              ? `${shownListings.length} of ${listings.length} curricula`
-              : `${listings.length} curricul${listings.length === 1 ? "um" : "a"}`}
+              ? `${shownListings.length} of ${listings.length} syllabi`
+              : `${listings.length} syllab${listings.length === 1 ? "us" : "i"}`}
           </p>
           {filtered ? (
             <>
@@ -749,7 +749,7 @@ export function ExploreMarketplace({
         <div class="marketplace-grid">
           {shownListings.map((listing) => {
             const id = listing.publicationId;
-            const projection = publicProjectionOf(listing.curriculum);
+            const projection = publicProjectionOf(listing.syllabus);
             const yours = !signedOut && listing.ownerAccountId === account.accountId;
             const myPlan = planOf(listing);
             const voted =
@@ -811,8 +811,8 @@ export function ExploreMarketplace({
                     <button
                       type="button"
                       class="btn-secondary"
-                      data-action="open-curriculum-plan"
-                      data-curriculum-id={myPlan.curriculumId}
+                      data-action="open-syllabus-plan"
+                      data-syllabus-id={myPlan.syllabusId}
                     >
                       Open
                     </button>
@@ -829,7 +829,7 @@ export function ExploreMarketplace({
       ) : (
         <div class="empty-state marketplace-empty">
           <SfIcon name="explore" />
-          <span>No curricula match these filters.</span>
+          <span>No syllabi match these filters.</span>
           {clearButton}
         </div>
       )}
@@ -857,7 +857,7 @@ export function ExploreMarketplace({
                 </p>
               ) : null}
             </div>
-            {published ? shareButton("Share another curriculum", "btn-secondary") : null}
+            {published ? shareButton("Share another syllabus", "btn-secondary") : null}
           </div>
           {published ? (
             <>
@@ -879,7 +879,7 @@ export function ExploreMarketplace({
               </p>
               <ul class="publication-list">
                 {ownedListings.map((listing) => {
-                  const title = goalTitleOf(listing.curriculum);
+                  const title = goalTitleOf(listing.syllabus);
                   const myPlan = planOf(listing);
                   const tags = listingTagsOf(listing);
                   return (
@@ -917,8 +917,8 @@ export function ExploreMarketplace({
                           <button
                             type="button"
                             class="btn-secondary"
-                            data-action="open-curriculum-plan"
-                            data-curriculum-id={myPlan.curriculumId}
+                            data-action="open-syllabus-plan"
+                            data-syllabus-id={myPlan.syllabusId}
                           >
                             Open
                           </button>
@@ -945,7 +945,7 @@ export function ExploreMarketplace({
                 <p class="prose meta-text">
                   Publishing shares your plan's structure under CC BY 4.0, so any self-learner can adopt it for free. Your progress, notes, evidence, keys, billing, and session dates stay private.
                 </p>
-                {shareButton("Share your first curriculum", "btn-primary")}
+                {shareButton("Share your first syllabus", "btn-primary")}
               </div>
             </div>
           )}
@@ -955,7 +955,7 @@ export function ExploreMarketplace({
   );
 }
 
-export interface AdoptCurriculumDialogProps {
+export interface AdoptSyllabusDialogProps {
   readonly open: boolean;
   readonly adoptListing: MarketplaceListing | null;
   readonly adoptModuleIds: readonly string[];
@@ -973,14 +973,14 @@ const requirementOf = (activity: StudyActivity): "gate" | "required" | "optional
 
 const REQUIREMENT_LABELS = { gate: "Mastery gate", required: "Required", optional: "Optional" } as const;
 
-export function AdoptCurriculumDialog({
+export function AdoptSyllabusDialog({
   open,
   adoptListing,
   adoptModuleIds,
   adoptions,
   proficiency,
   catalogResources,
-}: AdoptCurriculumDialogProps): VNode {
+}: AdoptSyllabusDialogProps): VNode {
   const adoptionsOf = (listing: MarketplaceListing): number =>
     listing.adoptions + adoptions.filter((adoption) => adoption.publicationId === listing.publicationId).length;
 
@@ -1000,16 +1000,16 @@ export function AdoptCurriculumDialog({
           </button>
         </header>
         {!adoptListing ? (
-          <p class="meta-text">Choose a curriculum in Explore to preview it.</p>
+          <p class="meta-text">Choose a syllabus in Explore to preview it.</p>
         ) : (
           (() => {
-            const projection = publicProjectionOf(adoptListing.curriculum);
-            // The resolver reads an empty selection as the whole curriculum, so an empty selection adopts nothing here.
+            const projection = publicProjectionOf(adoptListing.syllabus);
+            // The resolver reads an empty selection as the whole syllabus, so an empty selection adopts nothing here.
             const scope = adoptModuleIds.length > 0 ? adoptionScopeOf(adoptListing, adoptModuleIds) : null;
             const included = new Set(scope?.resolvedModuleIds ?? []);
             const autoIncluded = new Set(scope?.autoIncludedPrerequisiteModuleIds ?? []);
             const model = buildPlanMapAndOutlineModel({
-              curriculum: adoptListing.curriculum,
+              syllabus: adoptListing.syllabus,
               proficiency,
               activityStates: {},
               catalogResources,
@@ -1181,7 +1181,7 @@ export function AdoptCurriculumDialog({
                   <button
                     type="button"
                     class="btn-primary"
-                    data-action="confirm-adopt-curriculum"
+                    data-action="confirm-adopt-syllabus"
                     data-publication-id={adoptListing.publicationId}
                     disabled={!scope}
                   >
@@ -1201,7 +1201,7 @@ export function AdoptCurriculumDialog({
 export interface PublicationPreviewDialogProps {
   readonly open: boolean;
   readonly account: Account;
-  readonly selectedPlan: ActiveCurriculum;
+  readonly selectedPlan: ActiveSyllabus;
   readonly publishedFromHere: boolean;
   readonly originListing: MarketplaceListing | undefined;
 }
@@ -1213,7 +1213,7 @@ export function PublicationPreviewDialog({
   publishedFromHere,
   originListing,
 }: PublicationPreviewDialogProps): VNode {
-  const publicProjection = publicProjectionOf(selectedPlan.curriculum);
+  const publicProjection = publicProjectionOf(selectedPlan.syllabus);
   return (
     <dialog
       id="dialog-publication-preview"
@@ -1267,7 +1267,7 @@ export function PublicationPreviewDialog({
           </p>
         ) : (
           <footer class="dialog-footer">
-            <button type="button" class="btn-primary" data-action="confirm-publish-curriculum">
+            <button type="button" class="btn-primary" data-action="confirm-publish-syllabus">
               Publish to Community
               <span aria-hidden="true">→</span>
             </button>

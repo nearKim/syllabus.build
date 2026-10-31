@@ -383,14 +383,14 @@ fn last_sunday_of_month(y: i32, m: u32) -> u32 {
 pub struct AccountDeletionImpact {
     pub deleted_account_id: String,
     pub withdrawn_publication_ids: Vec<String>,
-    pub preserved_adopter_curriculum_ids: Vec<String>,
+    pub preserved_adopter_syllabus_ids: Vec<String>,
     pub tombstone_keys: Vec<String>,
 }
 
 pub fn evaluate_account_deletion_impact(
     account_id: &str,
     owned_publication_ids: &[String],
-    adopter_curriculum_ids: &[String],
+    adopter_syllabus_ids: &[String],
 ) -> Result<AccountDeletionImpact, DomainError> {
     if account_id.trim().is_empty() {
         return Err(DomainError::AccountLifecycleInvariantViolation(
@@ -404,7 +404,7 @@ pub fn evaluate_account_deletion_impact(
     Ok(AccountDeletionImpact {
         deleted_account_id: account_id.to_string(),
         withdrawn_publication_ids: owned_publication_ids.to_vec(),
-        preserved_adopter_curriculum_ids: adopter_curriculum_ids.to_vec(),
+        preserved_adopter_syllabus_ids: adopter_syllabus_ids.to_vec(),
         tombstone_keys,
     })
 }
@@ -481,7 +481,7 @@ pub fn evaluate_retrieval_benchmark(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumExpertRubricScore {
+pub struct SyllabusExpertRubricScore {
     pub rater_id: String,
     pub prerequisite_coherence_bp: u32,
     pub workload_realism_bp: u32,
@@ -490,21 +490,21 @@ pub struct CurriculumExpertRubricScore {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumExpertRubricEvaluation {
+pub struct SyllabusExpertRubricEvaluation {
     pub composite_score_bp: u32,
     pub inter_rater_spread_bp: u32,
     pub passed: bool,
 }
 
-/// Evaluates Part 2 of the Pedagogical Evaluation Workstream: Curriculum Generation Expert Rubric (`@S42`).
-pub fn evaluate_curriculum_expert_rubric(
-    scores: &[CurriculumExpertRubricScore],
+/// Evaluates Part 2 of the Pedagogical Evaluation Workstream: Syllabus Generation Expert Rubric (`@S42`).
+pub fn evaluate_syllabus_expert_rubric(
+    scores: &[SyllabusExpertRubricScore],
     min_composite_bp: u32,
     max_inter_rater_spread_bp: u32,
-) -> Result<CurriculumExpertRubricEvaluation, DomainError> {
+) -> Result<SyllabusExpertRubricEvaluation, DomainError> {
     if scores.len() < 2 {
         return Err(DomainError::PedagogicalEvaluationViolation(
-            "curriculum expert rubric requires at least two independent raters".to_string(),
+            "syllabus expert rubric requires at least two independent raters".to_string(),
         ));
     }
     let mut rater_averages = Vec::with_capacity(scores.len());
@@ -524,7 +524,7 @@ pub fn evaluate_curriculum_expert_rubric(
     let passed = composite_score_bp >= min_composite_bp
         && inter_rater_spread_bp <= max_inter_rater_spread_bp;
 
-    Ok(CurriculumExpertRubricEvaluation {
+    Ok(SyllabusExpertRubricEvaluation {
         composite_score_bp,
         inter_rater_spread_bp,
         passed,

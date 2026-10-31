@@ -8,38 +8,30 @@ export type AuthStatus = "authenticated" | "guest" | "session_expired";
 export interface Account {
   readonly accountId: string;
   readonly email: string;
+  readonly username?: string | undefined;
   readonly displayName?: string | undefined;
   readonly avatarUrl?: string | undefined;
   readonly role: PlatformRole;
 }
 
-const KNOWN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  "alex@curriculum.io": "Alex Rivera",
-  "ada@curriculum.io": "Ada Lovelace",
-  "mo@curriculum.io": "Mo Chen",
-};
-
-export function displayNameOf(account: Account): string {
-  if (account.displayName && account.displayName.trim().length > 0) {
-    return account.displayName.trim();
-  }
-  const email = account.email.trim().toLowerCase();
-  if (KNOWN_DISPLAY_NAMES[email]) return KNOWN_DISPLAY_NAMES[email];
-  const local = (email.split("@")[0] ?? "Learner").replace(/[._-]+/g, " ").trim();
-  return local
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ") || "Learner";
+export function defaultUsernameOfEmail(email: string): string {
+  const local = (email.trim().toLowerCase().split("@")[0] ?? "").replace(/^@+/, "").trim();
+  return local || "learner";
 }
 
-export function initialsOf(account: Account): string {
-  const name = displayNameOf(account);
-  const parts = name.split(/\s+/).filter(Boolean);
+export function usernameOf(account: Pick<Account, "email" | "username">): string {
+  const custom = account.username?.trim().replace(/^@+/, "");
+  if (custom && custom.length > 0) return custom;
+  return defaultUsernameOfEmail(account.email);
+}
+
+export function initialsOf(account: Pick<Account, "email" | "username">): string {
+  const handle = usernameOf(account);
+  const parts = handle.split(/[._\-\s]+/).filter(Boolean);
   if (parts.length >= 2) {
     return `${parts[0]?.charAt(0) ?? ""}${parts[parts.length - 1]?.charAt(0) ?? ""}`.toUpperCase();
   }
-  return (name.slice(0, 2) || "U").toUpperCase();
+  return (handle.slice(0, 2) || "U").toUpperCase();
 }
 
 // The navbar shows Learn and Explore. Settings opens from the account menu, and Admin has no visible entry.
@@ -102,6 +94,31 @@ export interface HeaderBarProps {
   readonly adminConsoleOpen?: boolean | undefined;
 }
 
+// Pathway S brand mark: a continuous S-shaped study track winding upward into a Cobalt milestone.
+export function BrandMark({ className = "brand-mark" }: { readonly className?: string | undefined }): VNode {
+  return (
+    <span class={className} aria-hidden="true">
+      <svg class="brand-mark-svg" viewBox="0 0 24 24" width="18" height="18" fill="none">
+        <path
+          d="M6.2 17.2H14.6A1.7 1.7 0 0 0 14.6 13.8H9.4A5.3 5.3 0 0 1 9.4 3.2H12.2A1.8 1.8 0 0 1 12.2 6.8H9.4A1.7 1.7 0 0 0 9.4 10.2H14.6A5.3 5.3 0 0 1 14.6 20.8H6.2A1.8 1.8 0 0 1 6.2 17.2Z"
+          fill="currentColor"
+        />
+        <circle class="brand-mark-apex" cx="17.8" cy="5.0" r="2.25" fill="var(--brand-mark-apex, #8FB3FF)" />
+      </svg>
+    </span>
+  );
+}
+
+// The Syllabus.io mark and wordmark.
+export function BrandLockup(): VNode {
+  return (
+    <div class="brand-cluster">
+      <BrandMark />
+      <span class="brand-title">Syllabus.io</span>
+    </div>
+  );
+}
+
 export function HeaderBar({
   activeTopLevel,
   authStatus,
@@ -115,25 +132,7 @@ export function HeaderBar({
   const isDark = resolvedThemeMode === "dark";
   return (
     <header class="app-header nav-chrome-glass" role="banner">
-      <div class="brand-cluster">
-        <span class="brand-mark" aria-hidden="true">
-          <svg
-            viewBox="0 0 24 24"
-            width="15"
-            height="15"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.75"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" />
-            <path d="m3.3 7 8.7 5 8.7-5" />
-            <path d="M12 22V12" />
-          </svg>
-        </span>
-        <span class="brand-title">Curriculum.io</span>
-      </div>
+      <BrandLockup />
       <nav class="top-level-nav" aria-label="Primary navigation">
         {PRIMARY_DESTINATIONS.map((dest) => (
           <TopDestButton
@@ -205,11 +204,10 @@ export function HeaderBar({
         </button>
         {authStatus === "authenticated" ? (
           <details class="navbar-user-menu">
-            <summary class="navbar-avatar-trigger" aria-label={`Account menu for ${displayNameOf(account)}`}>
+            <summary class="navbar-avatar-trigger" aria-label={`Account menu (${account.email})`}>
               <span class="user-avatar-circle" aria-hidden="true">
                 {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
               </span>
-              <span class="navbar-user-name">{displayNameOf(account)}</span>
               <svg
                 class="navbar-user-chevron"
                 width="12"
@@ -231,7 +229,7 @@ export function HeaderBar({
                   {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
                 </span>
                 <div class="navbar-dropdown-meta">
-                  <span class="navbar-dropdown-name">{displayNameOf(account)}</span>
+                  <span class="navbar-dropdown-name">{`@${usernameOf(account)}`}</span>
                   <span class="account-email">{account.email}</span>
                 </div>
               </div>
@@ -262,6 +260,7 @@ export function HeaderBar({
               class="header-login-btn"
               data-action="open-dialog"
               data-dialog-id="dialog-auth"
+              data-auth-mode="login"
             >
               Log in
             </button>
@@ -270,8 +269,9 @@ export function HeaderBar({
               class="btn-primary header-btn"
               data-action="open-dialog"
               data-dialog-id="dialog-auth"
+              data-auth-mode="signup"
             >
-              Sign in
+              Sign up
             </button>
           </div>
         )}
@@ -287,7 +287,13 @@ export function SessionExpiredBanner({ authStatus }: { readonly authStatus: Auth
       <p>
         <strong>Session expired.</strong> Sign in to resume where you left off.
       </p>
-      <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-auth">
+      <button
+        type="button"
+        class="btn-primary session-banner-btn"
+        data-action="open-dialog"
+        data-dialog-id="dialog-auth"
+        data-auth-mode="login"
+      >
         Sign in
       </button>
     </div>
@@ -296,8 +302,8 @@ export function SessionExpiredBanner({ authStatus }: { readonly authStatus: Auth
 
 const SIDEBAR_LEARN_DESTINATIONS: readonly LearnSubDestination[] = ["Today", "Progress", "Resources"];
 
-export interface SidebarCurriculumItem {
-  readonly curriculumId: string;
+export interface SidebarSyllabusItem {
+  readonly syllabusId: string;
   readonly title: string;
   readonly subject: string;
   readonly progressLabel: string;
@@ -311,7 +317,7 @@ export function AppSidebar({
   activeLearnSub,
   goalTitle,
   totalEffort,
-  curricula = [],
+  syllabi = [],
   adminConsoleOpen = false,
 }: {
   readonly signedOut: boolean;
@@ -319,7 +325,7 @@ export function AppSidebar({
   readonly activeLearnSub: LearnSubDestination;
   readonly goalTitle: string;
   readonly totalEffort: { readonly min: number; readonly point: number; readonly max: number };
-  readonly curricula?: readonly SidebarCurriculumItem[] | undefined;
+  readonly syllabi?: readonly SidebarSyllabusItem[] | undefined;
   readonly adminConsoleOpen?: boolean | undefined;
 }): VNode {
   const effectiveSub: LearnSubDestination = activeLearnSub === "Plan" ? "Today" : activeLearnSub;
@@ -327,11 +333,11 @@ export function AppSidebar({
     <aside class="app-sidebar" aria-label="Learn sections">
       {signedOut ? (
         <div class="sidebar-section sidebar-guest-card">
-          <p class="sidebar-section-label">Your curricula</p>
-          <p class="meta-text">Sign in to save curricula, track verified mastery, and build custom study flows.</p>
+          <p class="sidebar-section-label">Your syllabi</p>
+          <p class="meta-text">Sign in to save syllabi, track verified mastery, and build custom study flows.</p>
           <button
             type="button"
-            class="sidebar-new-curriculum-btn"
+            class="sidebar-new-syllabus-btn"
             data-action="open-dialog"
             data-dialog-id="dialog-auth"
           >
@@ -347,21 +353,21 @@ export function AppSidebar({
               ))}
             </nav>
           </div>
-          {curricula.length > 0 ? (
-            <div class="sidebar-section sidebar-curricula">
-              <p class="sidebar-section-label">Your curricula</p>
-              <nav class="sidebar-curricula-list" aria-label="Your curricula">
-                {curricula.map((item) => (
+          {syllabi.length > 0 ? (
+            <div class="sidebar-section sidebar-syllabi">
+              <p class="sidebar-section-label">Your syllabi</p>
+              <nav class="sidebar-syllabi-list" aria-label="Your syllabi">
+                {syllabi.map((item) => (
                   <button
-                    key={item.curriculumId}
+                    key={item.syllabusId}
                     type="button"
-                    class={`sidebar-curriculum-btn${item.isSelected ? " is-active" : ""}`}
-                    data-action="select-curriculum"
-                    data-curriculum-id={item.curriculumId}
+                    class={`sidebar-syllabus-btn${item.isSelected ? " is-active" : ""}`}
+                    data-action="select-syllabus"
+                    data-syllabus-id={item.syllabusId}
                     aria-current={item.isSelected ? "true" : undefined}
                   >
-                    <span class="sidebar-curriculum-title">{item.title}</span>
-                    <span class="sidebar-curriculum-meta">
+                    <span class="sidebar-syllabus-title">{item.title}</span>
+                    <span class="sidebar-syllabus-meta">
                       {item.subject} · {item.progressLabel}
                       {item.isDraft ? " · Draft" : ""}
                     </span>
@@ -369,9 +375,9 @@ export function AppSidebar({
                 ))}
                 <button
                   type="button"
-                  class="sidebar-new-curriculum-btn"
+                  class="sidebar-new-syllabus-btn"
                   data-action="open-dialog"
-                  data-dialog-id="dialog-new-curriculum"
+                  data-dialog-id="dialog-new-syllabus"
                 >
                   <svg
                     class="sf-icon"
@@ -387,7 +393,7 @@ export function AppSidebar({
                   >
                     <path d="M8 3v10M3 8h10" />
                   </svg>
-                  <span>New curriculum</span>
+                  <span>New syllabus</span>
                 </button>
               </nav>
             </div>
@@ -399,9 +405,9 @@ export function AppSidebar({
               </p>
               <button
                 type="button"
-                class="sidebar-new-curriculum-btn"
+                class="sidebar-new-syllabus-btn"
                 data-action="open-dialog"
-                data-dialog-id="dialog-new-curriculum"
+                data-dialog-id="dialog-new-syllabus"
               >
                 <svg
                   class="sf-icon"
@@ -417,7 +423,7 @@ export function AppSidebar({
                 >
                   <path d="M8 3v10M3 8h10" />
                 </svg>
-                <span>New curriculum</span>
+                <span>New syllabus</span>
               </button>
             </div>
           )}

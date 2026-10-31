@@ -3,8 +3,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
-use curriculum_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
-use curriculum_security::{AuthenticatedPrincipal, PrincipalRole};
+use syllabus_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
+use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 use serde_json::{json, Value};
 
 use crate::*;
@@ -20,19 +20,19 @@ pub(crate) struct SanitizedPublicEnvelope {
     pub(crate) withheld_restricted_fields: Vec<String>,
 }
 
-fn cached_synthetic_public_curriculum() -> Result<&'static Value, PersistenceError> {
-    static PUBLIC_CURRICULUM_TEMPLATE: OnceLock<Value> = OnceLock::new();
-    if let Some(doc) = PUBLIC_CURRICULUM_TEMPLATE.get() {
+fn cached_synthetic_public_syllabus() -> Result<&'static Value, PersistenceError> {
+    static PUBLIC_SYLLABUS_TEMPLATE: OnceLock<Value> = OnceLock::new();
+    if let Some(doc) = PUBLIC_SYLLABUS_TEMPLATE.get() {
         return Ok(doc);
     }
-    let root = curriculum_contracts::workspace_root();
+    let root = syllabus_contracts::workspace_root();
     let synthetic_path =
-        root.join("specs/001-curriculum-platform/examples/public-curriculum.synthetic.json");
+        root.join("specs/001-syllabus-platform/examples/public-syllabus.synthetic.json");
     let raw = std::fs::read_to_string(&synthetic_path)
         .map_err(|e| PersistenceError::Validation(e.to_string()))?;
     let parsed: Value =
         serde_json::from_str(&raw).map_err(|e| PersistenceError::Validation(e.to_string()))?;
-    Ok(PUBLIC_CURRICULUM_TEMPLATE.get_or_init(|| parsed))
+    Ok(PUBLIC_SYLLABUS_TEMPLATE.get_or_init(|| parsed))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -44,13 +44,13 @@ impl InMemoryTransactionalStore {
 
     pub(crate) fn build_sanitized_public_envelope(
         guard: &StoreInner,
-        curriculum_id: &str,
-        source_rev: &CurriculumRevisionRecord,
+        syllabus_id: &str,
+        source_rev: &SyllabusRevisionRecord,
         visibility: ModerationVisibilityState,
         publisher_display_name: &str,
         attribution_text: &str,
     ) -> Result<SanitizedPublicEnvelope, PersistenceError> {
-        let base_doc = cached_synthetic_public_curriculum()?;
+        let base_doc = cached_synthetic_public_syllabus()?;
 
         let mut stripped_private_fields = vec![
             "account_id".to_string(),
@@ -86,7 +86,7 @@ impl InMemoryTransactionalStore {
         if let Some(title) = source_rev.payload.get("title").and_then(|v| v.as_str()) {
             content["title"] = Value::String(title.to_string());
         } else {
-            content["title"] = Value::String(format!("Public Template — {curriculum_id}"));
+            content["title"] = Value::String(format!("Public Template — {syllabus_id}"));
         }
         if let Some(summary) = source_rev.payload.get("summary").and_then(|v| v.as_str()) {
             content["summary"] = Value::String(summary.to_string());
@@ -105,7 +105,7 @@ impl InMemoryTransactionalStore {
                         if overlay.lifted_at.is_none() {
                             return Err(PersistenceError::IneligibleCatalogResource {
                                 resource_version_id: rv_id.to_string(),
-                                reason: "cannot publish curriculum referencing quarantined catalog resource".to_string(),
+                                reason: "cannot publish syllabus referencing quarantined catalog resource".to_string(),
                             });
                         }
                     }
@@ -141,7 +141,7 @@ impl InMemoryTransactionalStore {
 
         let content_sha256 = jcs_sha256_hex(&content);
         let preview_envelope = json!({
-            "curriculum_id": curriculum_id,
+            "syllabus_id": syllabus_id,
             "source_revision_id": source_rev.revision_id,
             "visibility": visibility.as_str(),
             "publisher": publisher,
@@ -167,7 +167,7 @@ impl InMemoryTransactionalStore {
     pub fn preview_publication(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         visibility: ModerationVisibilityState,
         publisher_display_name: Option<&str>,
         attribution_text: Option<&str>,
@@ -182,16 +182,16 @@ impl InMemoryTransactionalStore {
         }
 
         let mut guard = self.write_inner();
-        let mut revs: Vec<&CurriculumRevisionRecord> = guard
+        let mut revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == curriculum_id)
+            .filter(|r| r.syllabus_id == syllabus_id)
             .collect();
         let owner_id = revs
             .first()
             .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "curriculum",
-                resource_id: curriculum_id.to_string(),
+                resource_type: "syllabus",
+                resource_id: syllabus_id.to_string(),
             })?
             .owner_account_id
             .clone();
@@ -225,7 +225,7 @@ impl InMemoryTransactionalStore {
             withheld_restricted_fields,
         } = Self::build_sanitized_public_envelope(
             &guard,
-            curriculum_id,
+            syllabus_id,
             &active_rev,
             visibility,
             display_name,
@@ -239,7 +239,7 @@ impl InMemoryTransactionalStore {
         let record = PublicationPreviewRecord {
             preview_id: preview_id.clone(),
             account_id: principal.account_id.clone(),
-            curriculum_id: curriculum_id.to_string(),
+            syllabus_id: syllabus_id.to_string(),
             source_revision_id: active_rev.revision_id,
             visibility,
             publisher_display_name: display_name.to_string(),
@@ -260,12 +260,12 @@ impl InMemoryTransactionalStore {
         Ok(record)
     }
 
-    /// Confirms and publishes a new public or unlisted curriculum template (`T13`, `SHARE-001`, `SHARE-007`, `SHARE-009`, `@S56`, `@S61`, `@S79`).
-    pub fn publish_curriculum(
+    /// Confirms and publishes a new public or unlisted syllabus template (`T13`, `SHARE-001`, `SHARE-007`, `SHARE-009`, `@S56`, `@S61`, `@S79`).
+    pub fn publish_syllabus(
         &self,
         principal: &AuthenticatedPrincipal,
         preview_id: Option<&str>,
-        curriculum_id: Option<&str>,
+        syllabus_id: Option<&str>,
         publication_id: Option<&str>,
         expected_preview_sha256: &str,
         accept_publication_terms: bool,
@@ -273,7 +273,7 @@ impl InMemoryTransactionalStore {
     ) -> Result<PublicationViewRecord, PersistenceError> {
         let mut guard = self.write_inner();
 
-        // Resolve preview by preview_id or latest preview for (account_id, curriculum_id / expected_preview_sha256)
+        // Resolve preview by preview_id or latest preview for (account_id, syllabus_id / expected_preview_sha256)
         let preview = if let Some(pid) = preview_id {
             guard.publication_previews.get(pid).cloned()
         } else {
@@ -283,7 +283,7 @@ impl InMemoryTransactionalStore {
                 .rev()
                 .find(|p| {
                     p.account_id == principal.account_id
-                        && (curriculum_id.map(|cid| p.curriculum_id == cid).unwrap_or(true))
+                        && (syllabus_id.map(|cid| p.syllabus_id == cid).unwrap_or(true))
                 })
                 .cloned()
         }
@@ -294,11 +294,11 @@ impl InMemoryTransactionalStore {
 
         principal.require_learner_ownership(&preview.account_id)?;
 
-        // Recompute current envelope from current active revision of the source curriculum (@S79, @S83)
-        let mut revs: Vec<&CurriculumRevisionRecord> = guard
+        // Recompute current envelope from current active revision of the source syllabus (@S79, @S83)
+        let mut revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == preview.curriculum_id)
+            .filter(|r| r.syllabus_id == preview.syllabus_id)
             .collect();
         revs.sort_by_key(|r| r.revision_number);
         let current_active_rev = (*revs
@@ -311,7 +311,7 @@ impl InMemoryTransactionalStore {
         let effective_visibility = visibility_override.unwrap_or(preview.visibility);
         let current_envelope = Self::build_sanitized_public_envelope(
             &guard,
-            &preview.curriculum_id,
+            &preview.syllabus_id,
             &current_active_rev,
             effective_visibility,
             &preview.publisher_display_name,
@@ -378,12 +378,12 @@ impl InMemoryTransactionalStore {
             "origin": preview.origin
         });
 
-        let registry = curriculum_contracts::ContractRegistry::global()
+        let registry = syllabus_contracts::ContractRegistry::global()
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
-            .validate("public-curriculum.schema.json", &snapshot)
+            .validate("public-syllabus.schema.json", &snapshot)
             .map_err(|e| {
-                PersistenceError::Validation(format!("public-curriculum.schema.json error: {e}"))
+                PersistenceError::Validation(format!("public-syllabus.schema.json error: {e}"))
             })?;
 
         let public_author_id = snapshot["publisher"]["public_author_id"]
@@ -394,7 +394,7 @@ impl InMemoryTransactionalStore {
         let pub_record = PublicationRecord {
             publication_id: resolved_pub_id.clone(),
             owner_account_id: Some(principal.account_id.clone()),
-            source_curriculum_id: preview.curriculum_id.clone(),
+            source_syllabus_id: preview.syllabus_id.clone(),
             public_author_id,
             publisher_display_name: preview.publisher_display_name.clone(),
             visibility: effective_visibility,
@@ -413,7 +413,7 @@ impl InMemoryTransactionalStore {
             publication_id: resolved_pub_id.clone(),
             revision_number: 1,
             supersedes_publication_revision_id: None,
-            source_curriculum_revision_id: preview.source_revision_id.clone(),
+            source_syllabus_revision_id: preview.source_revision_id.clone(),
             preview_sha256: preview.preview_sha256.clone(),
             content_sha256: preview.content_sha256.clone(),
             upvote_count: 0,
@@ -472,7 +472,7 @@ impl InMemoryTransactionalStore {
                 .rev()
                 .find(|p| {
                     p.account_id == principal.account_id
-                        && p.curriculum_id == existing_pub.source_curriculum_id
+                        && p.syllabus_id == existing_pub.source_syllabus_id
                 })
                 .cloned()
         }
@@ -481,10 +481,10 @@ impl InMemoryTransactionalStore {
             resource_id: preview_id.unwrap_or("latest").to_string(),
         })?;
 
-        let mut revs: Vec<&CurriculumRevisionRecord> = guard
+        let mut revs: Vec<&SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
-            .filter(|r| r.curriculum_id == existing_pub.source_curriculum_id)
+            .filter(|r| r.syllabus_id == existing_pub.source_syllabus_id)
             .collect();
         revs.sort_by_key(|r| r.revision_number);
         let current_active_rev = (*revs
@@ -496,7 +496,7 @@ impl InMemoryTransactionalStore {
 
         let current_envelope = Self::build_sanitized_public_envelope(
             &guard,
-            &existing_pub.source_curriculum_id,
+            &existing_pub.source_syllabus_id,
             &current_active_rev,
             preview.visibility,
             &preview.publisher_display_name,
@@ -555,12 +555,12 @@ impl InMemoryTransactionalStore {
             "origin": preview.origin
         });
 
-        let registry = curriculum_contracts::ContractRegistry::global()
+        let registry = syllabus_contracts::ContractRegistry::global()
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
-            .validate("public-curriculum.schema.json", &snapshot)
+            .validate("public-syllabus.schema.json", &snapshot)
             .map_err(|e| {
-                PersistenceError::Validation(format!("public-curriculum.schema.json error: {e}"))
+                PersistenceError::Validation(format!("public-syllabus.schema.json error: {e}"))
             })?;
 
         let rev_record = PublicationRevisionRecord {
@@ -568,7 +568,7 @@ impl InMemoryTransactionalStore {
             publication_id: publication_id.to_string(),
             revision_number: next_rev_num,
             supersedes_publication_revision_id: Some(existing_pub.current_revision_id.clone()),
-            source_curriculum_revision_id: preview.source_revision_id.clone(),
+            source_syllabus_revision_id: preview.source_revision_id.clone(),
             preview_sha256: preview.preview_sha256.clone(),
             content_sha256: preview.content_sha256.clone(),
             upvote_count: 0,
@@ -744,7 +744,7 @@ impl InMemoryTransactionalStore {
             };
             out.push(OwnedPublicationSummaryRecord {
                 publication_id: pub_rec.publication_id.clone(),
-                source_curriculum_id: pub_rec.source_curriculum_id.clone(),
+                source_syllabus_id: pub_rec.source_syllabus_id.clone(),
                 current_revision_id: pub_rec.current_revision_id.clone(),
                 latest_revision_number: pub_rec.latest_revision_number,
                 visibility: pub_rec.visibility.as_str().to_string(),
@@ -781,7 +781,7 @@ impl InMemoryTransactionalStore {
         let rev = guard.publication_revisions.get(&pub_rec.current_revision_id);
         Ok(OwnedPublicationManagementRecord {
             publication_id: pub_rec.publication_id.clone(),
-            source_curriculum_id: pub_rec.source_curriculum_id.clone(),
+            source_syllabus_id: pub_rec.source_syllabus_id.clone(),
             current_revision_id: pub_rec.current_revision_id.clone(),
             latest_revision_number: pub_rec.latest_revision_number,
             visibility: pub_rec.visibility.as_str().to_string(),
@@ -836,7 +836,7 @@ impl InMemoryTransactionalStore {
                 publication_revision_id: r.publication_revision_id.clone(),
                 publication_id: r.publication_id.clone(),
                 revision_number: r.revision_number,
-                source_curriculum_revision_id: r.source_curriculum_revision_id.clone(),
+                source_syllabus_revision_id: r.source_syllabus_revision_id.clone(),
                 content_sha256: r.content_sha256.clone(),
                 public_readability: readable,
                 upvote_count: if readable { Some(r.upvote_count) } else { None },
@@ -1195,17 +1195,17 @@ impl InMemoryTransactionalStore {
     }
 
     /// Adopts a full or partial (`selected_module_ids`) public/unlisted template into an isolated
-    /// private learner curriculum (`T13`, `SHARE-004`, `ADAPT-005`, `@S59`, `@S62`, `@S63`, `@S72`, `@S73`).
+    /// private learner syllabus (`T13`, `SHARE-004`, `ADAPT-005`, `@S59`, `@S62`, `@S63`, `@S72`, `@S73`).
     pub fn adopt_publication_revision(
         &self,
         principal: &AuthenticatedPrincipal,
         publication_id: &str,
         publication_revision_id: Option<&str>,
-        new_curriculum_id: Option<&str>,
+        new_syllabus_id: Option<&str>,
         selected_module_ids: &[String],
         free_only: bool,
         max_budget_minor_units: Option<u64>,
-    ) -> Result<AdoptedCurriculumRecord, PersistenceError> {
+    ) -> Result<AdoptedSyllabusRecord, PersistenceError> {
         let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
@@ -1334,13 +1334,13 @@ impl InMemoryTransactionalStore {
 
         guard.next_seq += 1;
         let seq = guard.next_seq;
-        let resolved_curriculum_id = new_curriculum_id
+        let resolved_syllabus_id = new_syllabus_id
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("cur-adopted-{seq}"));
-        let new_revision_id = format!("rev-{resolved_curriculum_id}-v1");
-        let new_schedule_id = format!("sched-{resolved_curriculum_id}-v1");
+        let new_revision_id = format!("rev-{resolved_syllabus_id}-v1");
+        let new_schedule_id = format!("sched-{resolved_syllabus_id}-v1");
 
         let origin_binding = AdoptionOriginBinding {
             source_publication_id: publication_id.to_string(),
@@ -1358,7 +1358,7 @@ impl InMemoryTransactionalStore {
         };
 
         let private_payload = json!({
-            "title": pub_rev.snapshot["content"]["title"].as_str().unwrap_or("Adopted Curriculum"),
+            "title": pub_rev.snapshot["content"]["title"].as_str().unwrap_or("Adopted Syllabus"),
             "adopted_origin": origin_binding,
             "ordered_module_ids": closure.ordered_module_ids,
             "ordered_objective_ids": closure.ordered_objective_ids,
@@ -1368,9 +1368,9 @@ impl InMemoryTransactionalStore {
 
         guard.private_revisions.insert(
             new_revision_id.clone(),
-            CurriculumRevisionRecord {
+            SyllabusRevisionRecord {
                 revision_id: new_revision_id.clone(),
-                curriculum_id: resolved_curriculum_id.clone(),
+                syllabus_id: resolved_syllabus_id.clone(),
                 owner_account_id: principal.account_id.clone(),
                 revision_number: 1,
                 candidate_sha256,
@@ -1379,16 +1379,16 @@ impl InMemoryTransactionalStore {
             },
         );
         guard
-            .curriculum_activation_versions
-            .insert(resolved_curriculum_id.clone(), 1);
+            .syllabus_activation_versions
+            .insert(resolved_syllabus_id.clone(), 1);
 
         guard.schedules.insert(
-            resolved_curriculum_id.clone(),
+            resolved_syllabus_id.clone(),
             ScheduleRevisionRecord {
                 schedule_revision_id: new_schedule_id.clone(),
-                curriculum_id: resolved_curriculum_id.clone(),
+                syllabus_id: resolved_syllabus_id.clone(),
                 owner_account_id: principal.account_id.clone(),
-                curriculum_revision_id: new_revision_id.clone(),
+                syllabus_revision_id: new_revision_id.clone(),
                 etag_version: 1,
                 etag: "\"sched-v1\"".to_string(),
                 timezone: "UTC".to_string(),
@@ -1399,7 +1399,7 @@ impl InMemoryTransactionalStore {
                 excess_minutes: 0,
                 recovery_options: Vec::new(),
                 sessions: vec![ScheduledSessionItem {
-                    session_id: format!("sess-{resolved_curriculum_id}-1"),
+                    session_id: format!("sess-{resolved_syllabus_id}-1"),
                     activity_id: "public-activity-theory".to_string(),
                     duration_minutes: 45,
                     is_review: false,
@@ -1425,10 +1425,10 @@ impl InMemoryTransactionalStore {
         }
 
         guard
-            .adopted_curricula_by_publication
+            .adopted_syllabi_by_publication
             .entry(publication_id.to_string())
             .or_default()
-            .push(resolved_curriculum_id.clone());
+            .push(resolved_syllabus_id.clone());
 
         let four_cost_buckets = FourCostBucketBreakdown {
             currency: "USD".to_string(),
@@ -1438,8 +1438,8 @@ impl InMemoryTransactionalStore {
             learning_materials_and_exams_minor_units: materials_cost_minor,
         };
 
-        Ok(AdoptedCurriculumRecord {
-            curriculum_id: resolved_curriculum_id,
+        Ok(AdoptedSyllabusRecord {
+            syllabus_id: resolved_syllabus_id,
             revision_id: new_revision_id,
             schedule_revision_id: new_schedule_id,
             adopter_account_id: principal.account_id.clone(),
@@ -1457,7 +1457,7 @@ impl InMemoryTransactionalStore {
     // =========================================================================
 
     /// Generates a self-service account export archive (`T09`, `OPS-003`, `@S37`).
-    /// Includes all learner-owned curricula, schedules, progress events, proficiency,
+    /// Includes all learner-owned syllabi, schedules, progress events, proficiency,
     /// assessment attempts, ledger entries, and safe credential metadata while excluding
     /// raw BYOK API keys, ciphertext, nonces, and other tenants' records.
     pub fn create_account_export(
@@ -1474,7 +1474,7 @@ impl InMemoryTransactionalStore {
             .map(str::to_string)
             .unwrap_or_else(|| format!("exp-{seq}"));
 
-        let curricula: Vec<CurriculumRevisionRecord> = guard
+        let syllabi: Vec<SyllabusRevisionRecord> = guard
             .private_revisions
             .values()
             .filter(|r| r.owner_account_id == principal.account_id)
@@ -1532,7 +1532,7 @@ impl InMemoryTransactionalStore {
             "export_id": resolved_export_id,
             "account_id": principal.account_id,
             "exported_at": "2026-10-20T18:20:00Z",
-            "curricula_revisions": curricula,
+            "syllabi_revisions": syllabi,
             "schedules": schedules,
             "progress_events": progress_events,
             "proficiency": proficiency,
@@ -1560,7 +1560,7 @@ impl InMemoryTransactionalStore {
 
     /// Executes an account deletion request (`T09`, `OPS-003`, `OPS-004`, `SHARE-008`, `@S37`, `@S38`, `@S43`, `@S45`, `@S63`).
     /// Purges/revokes credentials, sessions, and reminders; withdraws and anonymizes owned publications;
-    /// preserves adopter-owned private curricula; and appends durable deletion tombstones.
+    /// preserves adopter-owned private syllabi; and appends durable deletion tombstones.
     pub fn request_account_deletion(
         &self,
         principal: &AuthenticatedPrincipal,
@@ -1582,11 +1582,11 @@ impl InMemoryTransactionalStore {
             .map(|p| p.publication_id.clone())
             .collect();
 
-        let mut preserved_adopter_curriculum_ids = Vec::new();
+        let mut preserved_adopter_syllabus_ids = Vec::new();
         for pub_id in &owned_pub_ids {
-            if let Some(adopted) = guard.adopted_curricula_by_publication.get(pub_id) {
+            if let Some(adopted) = guard.adopted_syllabi_by_publication.get(pub_id) {
                 for cid in adopted {
-                    preserved_adopter_curriculum_ids.push(cid.clone());
+                    preserved_adopter_syllabus_ids.push(cid.clone());
                 }
             }
         }
@@ -1594,7 +1594,7 @@ impl InMemoryTransactionalStore {
         let impact = evaluate_account_deletion_impact(
             &principal.account_id,
             &owned_pub_ids,
-            &preserved_adopter_curriculum_ids,
+            &preserved_adopter_syllabus_ids,
         )
         .map_err(|e| PersistenceError::Validation(e.to_string()))?;
 
@@ -1640,7 +1640,7 @@ impl InMemoryTransactionalStore {
             .retain(|_, e| e.account_id != principal.account_id);
         guard.proficiency_by_account.remove(&principal.account_id);
 
-        // Withdraw and anonymize owned publications while keeping adopter private curricula intact
+        // Withdraw and anonymize owned publications while keeping adopter private syllabi intact
         for pub_id in &owned_pub_ids {
             if let Some(pub_mut) = guard.publications.get_mut(pub_id) {
                 pub_mut.visibility = ModerationVisibilityState::Withdrawn;
@@ -1686,7 +1686,7 @@ impl InMemoryTransactionalStore {
             status: "completed".to_string(),
             tombstoned_entities_count: impact.tombstone_keys.len(),
             withdrawn_publication_ids: impact.withdrawn_publication_ids,
-            preserved_adopter_curriculum_ids: impact.preserved_adopter_curriculum_ids,
+            preserved_adopter_syllabus_ids: impact.preserved_adopter_syllabus_ids,
             completed_at: "2026-10-20T18:25:00Z".to_string(),
         };
         guard
@@ -1701,7 +1701,7 @@ impl InMemoryTransactionalStore {
     pub fn import_external_provider_completion(
         &self,
         principal: &AuthenticatedPrincipal,
-        curriculum_id: &str,
+        syllabus_id: &str,
         activity_id: &str,
         objective_id: Option<&str>,
         provider_name: &str,
@@ -1715,14 +1715,14 @@ impl InMemoryTransactionalStore {
         let event_id = format!(
             "ext-comp-{}-{}-{}",
             provider_name.trim().to_ascii_lowercase().replace(' ', "-"),
-            curriculum_id,
+            syllabus_id,
             activity_id
         );
         self.append_progress_event(
             principal,
             ProgressEventInput {
                 event_id,
-                curriculum_id: curriculum_id.to_string(),
+                syllabus_id: syllabus_id.to_string(),
                 activity_id: activity_id.to_string(),
                 objective_id: objective_id.map(str::to_string),
                 status: ActivityExecutionStatus::SelfReportedCompleted,

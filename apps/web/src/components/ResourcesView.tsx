@@ -6,7 +6,7 @@ import {
 import { formatMinorCurrency } from "../billingAndSharing.ts";
 import catalogResourcesJson from "../data/catalogResources.json" with { type: "json" };
 import type { ProficiencyProfileFixture } from "../diagnosticsAndAdaptation.ts";
-import { goalTitleOf, type ActiveCurriculum } from "./ExploreMarketplace.tsx";
+import { goalTitleOf, type ActiveSyllabus } from "./ExploreMarketplace.tsx";
 import { SfIcon, type SfIconName } from "./Icons.tsx";
 import type { SourceCardView } from "./InspectorDrawer.tsx";
 import { MathText } from "./MathText.tsx";
@@ -28,8 +28,8 @@ export interface StructuredResourceAccessJson {
 }
 
 export interface ResourceUsageEntry {
-  readonly curriculumId: string;
-  readonly curriculumTitle: string;
+  readonly syllabusId: string;
+  readonly syllabusTitle: string;
   readonly moduleId: string;
   readonly unitIndex: number;
   readonly unitTitle: string;
@@ -52,7 +52,7 @@ export interface AggregatedResourceRow {
   readonly selectionRationale: string;
   readonly category: Exclude<ResourceCategory, "All">;
   readonly segments: readonly { readonly segment_id: string; readonly title: string }[];
-  readonly curricula: readonly { readonly curriculumId: string; readonly curriculumTitle: string; readonly domain: string }[];
+  readonly syllabi: readonly { readonly syllabusId: string; readonly syllabusTitle: string; readonly domain: string }[];
   readonly usages: readonly ResourceUsageEntry[];
 }
 
@@ -167,23 +167,26 @@ export function formatResourceDate(iso: string): string {
 }
 
 export function buildAggregatedResourceRows(
-  plans: readonly ActiveCurriculum[],
+  plans: readonly ActiveSyllabus[],
   proficiency: ProficiencyProfileFixture,
   catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>,
+  extraLibraryIds: readonly string[] = [],
+  removedIds: readonly string[] = [],
 ): readonly AggregatedResourceRow[] {
+  const removedSet = new Set(removedIds);
   const byResourceId = new Map<
     string,
     {
       card: SourceCardView;
-      curriculaMap: Map<string, { curriculumId: string; curriculumTitle: string; domain: string }>;
+      syllabiMap: Map<string, { syllabusId: string; syllabusTitle: string; domain: string }>;
       usages: ResourceUsageEntry[];
     }
   >();
 
   for (const plan of plans) {
-    const curriculumTitle = goalTitleOf(plan.curriculum);
+    const syllabusTitle = goalTitleOf(plan.syllabus);
     const model = buildPlanMapAndOutlineModel({
-      curriculum: plan.curriculum,
+      syllabus: plan.syllabus,
       proficiency,
       activityStates: {},
       catalogResources,
@@ -196,22 +199,23 @@ export function buildAggregatedResourceRows(
       const unitIndex = unitIndexById.get(act.moduleId) ?? 1;
       const unitTitle = unitTitleById.get(act.moduleId) ?? `Unit ${unitIndex}`;
       for (const card of act.resourceProvenanceCards) {
+        if (removedSet.has(card.resourceVersionId)) continue;
         let entry = byResourceId.get(card.resourceVersionId);
         if (!entry) {
           entry = {
             card,
-            curriculaMap: new Map(),
+            syllabiMap: new Map(),
             usages: [],
           };
           byResourceId.set(card.resourceVersionId, entry);
         }
-        entry.curriculaMap.set(plan.curriculumId, {
-          curriculumId: plan.curriculumId,
-          curriculumTitle,
+        entry.syllabiMap.set(plan.syllabusId, {
+          syllabusId: plan.syllabusId,
+          syllabusTitle,
           domain: plan.domain,
         });
         const duplicateUsage = entry.usages.some(
-          (u) => u.curriculumId === plan.curriculumId && u.activityId === act.activityId,
+          (u) => u.syllabusId === plan.syllabusId && u.activityId === act.activityId,
         );
         if (!duplicateUsage) {
           const rawEntryForUrl =
@@ -224,8 +228,8 @@ export function buildAggregatedResourceRows(
               : baseUrl
             : null;
           entry.usages.push({
-            curriculumId: plan.curriculumId,
-            curriculumTitle,
+            syllabusId: plan.syllabusId,
+            syllabusTitle,
             moduleId: act.moduleId,
             unitIndex,
             unitTitle,
@@ -239,7 +243,52 @@ export function buildAggregatedResourceRows(
     }
   }
 
-  return Array.from(byResourceId.values()).map(({ card, curriculaMap, usages }) => {
+  for (const libId of extraLibraryIds) {
+    if (removedSet.has(libId) || byResourceId.has(libId)) continue;
+    const rawEntry = catalogResources[libId] ?? CANONICAL_JSON_BY_ID[libId];
+    if (!rawEntry) continue;
+    const accessModel = rawEntry.access?.model ?? "free";
+    const basis = rawEntry.ingestion_permissions?.basis ?? "link_and_metadata_only";
+    const certIncluded = Boolean(rawEntry.access?.certificate_included);
+    const syntheticCard: SourceCardView = {
+      resourceVersionId: libId,
+      role: "primary",
+      title: rawEntry.title ?? libId,
+      verifiedPublisher: rawEntry.provider?.display_name ?? "Library resource",
+      versionTimestamp: rawEntry.captured_at ?? "2026-10-30T00:00:00Z",
+      canonicalUrl: rawEntry.canonical_url ?? null,
+      accessModel,
+      rightsBadge: {
+        basis,
+        displayExcerptsAllowed: rawEntry.ingestion_permissions?.permissions?.display_excerpts === "allowed",
+        externalLinkOnly: basis === "link_and_metadata_only",
+        label: rawEntry.access?.rights_label ?? "External Link · Metadata Indexed",
+      },
+      optionalCertificationBadge: certIncluded
+        ? {
+            included: true,
+            relationship: "optional_preparation",
+            label: "Optional certification preparation (separate from core completion)",
+            rationale: rawEntry.description ?? "Optional certificate offered by provider.",
+            verifiedIssuerUrl: rawEntry.canonical_url ?? null,
+            isAccreditedQualificationGuarantee: false,
+          }
+        : null,
+      selectionRationale:
+        rawEntry.description ?? "Saved in your personal library — ready to link to any syllabus.",
+      verifiedSegments: (rawEntry.segments ?? [])
+        .map((s) => s.segment_id)
+        .filter((s): s is string => Boolean(s)),
+      omitsUnverifiedPrecision: true,
+    };
+    byResourceId.set(libId, {
+      card: syntheticCard,
+      syllabiMap: new Map(),
+      usages: [],
+    });
+  }
+
+  return Array.from(byResourceId.values()).map(({ card, syllabiMap, usages }) => {
     const rawEntry = catalogResources[card.resourceVersionId] ?? CANONICAL_JSON_BY_ID[card.resourceVersionId];
     const accessJson = resolveStructuredAccessJson(
       card.resourceVersionId,
@@ -255,23 +304,23 @@ export function buildAggregatedResourceRows(
 
     return {
       resourceVersionId: card.resourceVersionId,
-      title: card.title,
-      verifiedPublisher: card.verifiedPublisher,
-      versionTimestamp: card.versionTimestamp,
-      canonicalUrl: card.canonicalUrl,
-      accessModel: card.accessModel,
+      title: rawEntry?.title ?? card.title,
+      verifiedPublisher: rawEntry?.provider?.display_name ?? card.verifiedPublisher,
+      versionTimestamp: rawEntry?.captured_at ?? card.versionTimestamp,
+      canonicalUrl: rawEntry?.canonical_url ?? card.canonicalUrl,
+      accessModel: rawEntry?.access?.model ?? card.accessModel,
       accessJson,
       rightsBadge: card.rightsBadge,
       optionalCertificationBadge: card.optionalCertificationBadge,
       selectionRationale: card.selectionRationale,
       category: classifyResourceCategory(
         card.resourceVersionId,
-        card.title,
-        card.verifiedPublisher,
+        rawEntry?.title ?? card.title,
+        rawEntry?.provider?.display_name ?? card.verifiedPublisher,
         rawEntry?.category,
       ),
       segments,
-      curricula: Array.from(curriculaMap.values()),
+      syllabi: Array.from(syllabiMap.values()),
       usages,
     };
   });
@@ -279,12 +328,15 @@ export function buildAggregatedResourceRows(
 
 export interface ResourcesViewProps {
   readonly active: boolean;
-  readonly selectedPlan: ActiveCurriculum;
-  readonly allPlans: readonly ActiveCurriculum[];
+  readonly selectedPlan: ActiveSyllabus;
+  readonly allPlans: readonly ActiveSyllabus[];
   readonly proficiency: ProficiencyProfileFixture;
   readonly catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>>;
   readonly resourceScope: ResourceScope;
   readonly resourceCategory: ResourceCategory;
+  readonly userLibraryResourceIds?: readonly string[] | undefined;
+  readonly removedResourceIds?: readonly string[] | undefined;
+  readonly resourceNotice?: string | null | undefined;
 }
 
 export function ResourcesView({
@@ -295,9 +347,18 @@ export function ResourcesView({
   catalogResources,
   resourceScope,
   resourceCategory,
+  userLibraryResourceIds = [],
+  removedResourceIds = [],
+  resourceNotice = null,
 }: ResourcesViewProps): VNode {
   const scopedPlans = resourceScope === "all" ? allPlans : [selectedPlan];
-  const allScopedRows = buildAggregatedResourceRows(scopedPlans, proficiency, catalogResources);
+  const allScopedRows = buildAggregatedResourceRows(
+    scopedPlans,
+    proficiency,
+    catalogResources,
+    resourceScope === "all" ? userLibraryResourceIds : [],
+    removedResourceIds,
+  );
   const filteredRows =
     resourceCategory === "All"
       ? allScopedRows
@@ -306,8 +367,8 @@ export function ResourcesView({
   const countForCategory = (cat: ResourceCategory): number =>
     cat === "All" ? allScopedRows.length : allScopedRows.filter((row) => row.category === cat).length;
 
-  const selectedCurriculumTitle = goalTitleOf(selectedPlan.curriculum);
-  const selectValue = resourceScope === "all" ? "all" : selectedPlan.curriculumId;
+  const selectedSyllabusTitle = goalTitleOf(selectedPlan.syllabus);
+  const selectValue = resourceScope === "all" ? "all" : selectedPlan.syllabusId;
 
   return (
     <section
@@ -324,12 +385,12 @@ export function ResourcesView({
           <h1 class="page-title">Resources</h1>
           <p class="page-description">
             {resourceScope === "all"
-              ? `All study materials linked across your ${allPlans.length} personal curricula.`
-              : `Study materials linked to ${selectedCurriculumTitle}.`}
+              ? `All study materials across your ${allPlans.length} personal syllabi and saved library.`
+              : `Study materials linked to ${selectedSyllabusTitle}.`}
           </p>
         </div>
         <div class="plan-toolbar">
-          <div class="segmented" role="group" aria-label="Resource curriculum scope">
+          <div class="segmented" role="group" aria-label="Resource syllabus scope">
             <button
               type="button"
               class="seg-btn"
@@ -337,7 +398,7 @@ export function ResourcesView({
               data-resource-scope="selected"
               aria-pressed={resourceScope === "selected"}
             >
-              Current curriculum
+              Current syllabus
             </button>
             <button
               type="button"
@@ -346,33 +407,48 @@ export function ResourcesView({
               data-resource-scope="all"
               aria-pressed={resourceScope === "all"}
             >
-              All curricula ({allPlans.length})
+              All syllabi ({allPlans.length})
             </button>
           </div>
-          <label class="field field-inline" for="resources-curriculum-control">
-            <span class="st-sr">Curriculum</span>
+          <label class="field field-inline" for="resources-syllabus-control">
+            <span class="st-sr">Syllabus</span>
             <select
-              id="resources-curriculum-control"
-              name="resources-curriculum"
-              data-action="select-curriculum"
+              id="resources-syllabus-control"
+              name="resources-syllabus"
+              data-action="select-syllabus"
             >
               <option value="all" selected={selectValue === "all"}>
-                All active curricula ({allPlans.length})
+                All active syllabi ({allPlans.length})
               </option>
               {allPlans.map((plan) => (
                 <option
-                  key={plan.curriculumId}
-                  value={plan.curriculumId}
-                  selected={selectValue === plan.curriculumId}
+                  key={plan.syllabusId}
+                  value={plan.syllabusId}
+                  selected={selectValue === plan.syllabusId}
                 >
-                  {goalTitleOf(plan.curriculum)}
+                  {goalTitleOf(plan.syllabus)}
                   {plan.draft ? " · Draft" : ""}
                 </option>
               ))}
             </select>
           </label>
+          <button
+            type="button"
+            class="btn-primary"
+            data-action="open-resource-editor"
+            data-editor-mode="ingest"
+            data-syllabus-id={resourceScope === "all" ? "__library_only__" : selectedPlan.syllabusId}
+          >
+            + Add resource
+          </button>
         </div>
       </div>
+
+      {resourceNotice ? (
+        <p class="prose resource-status-notice" role="status">
+          {resourceNotice}
+        </p>
+      ) : null}
 
       <section class="resources-library-panel" aria-labelledby="resources-library-heading" data-opaque-surface="true">
         <h2 id="resources-library-heading" class="st-sr">Resource catalog</h2>
@@ -415,8 +491,8 @@ export function ResourcesView({
             <table class="resources-data-table">
               <caption id="resources-table-caption" class="st-sr">
                 {resourceScope === "all"
-                  ? `Curated resources across all ${allPlans.length} curricula`
-                  : `Curated resources for ${selectedCurriculumTitle}`}
+                  ? `Curated resources across all ${allPlans.length} syllabi`
+                  : `Curated resources for ${selectedSyllabusTitle}`}
               </caption>
               <thead>
                 <tr>
@@ -435,6 +511,18 @@ export function ResourcesView({
                       : row.accessJson.model === "freemium_optional_certificate"
                         ? "standby"
                         : "public";
+                  const linkedToSelected = row.syllabi.some((c) => c.syllabusId === selectedPlan.syllabusId);
+                  const editSyllabusId = linkedToSelected
+                    ? selectedPlan.syllabusId
+                    : (row.syllabi[0]?.syllabusId ?? "__library_only__");
+                  const unlinkSyllabusId =
+                    resourceScope === "selected"
+                      ? selectedPlan.syllabusId
+                      : row.syllabi.length === 1
+                        ? row.syllabi[0]!.syllabusId
+                        : linkedToSelected
+                          ? selectedPlan.syllabusId
+                          : null;
 
                   return (
                     <tr
@@ -473,44 +561,48 @@ export function ResourcesView({
                         </div>
                       </th>
                       <td class="resource-usage-cell">
-                        <ul class="resource-usage-list" aria-label={`Units using ${row.title}`}>
-                          {row.usages.map((usage) => {
-                            const href = usage.sourceUrl ?? row.canonicalUrl;
-                            return (
-                              <li key={`${usage.curriculumId}-${usage.activityId}`}>
-                                {href ? (
-                                  <a
-                                    href={href}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    class="resource-usage-chip"
-                                    data-curriculum-id={usage.curriculumId}
-                                    data-activity-id={usage.activityId}
-                                    data-module-id={usage.moduleId}
-                                  >
-                                    <span class="resource-usage-unit">U{usage.unitIndex}</span>
-                                    <span class="resource-usage-title">
-                                      <MathText text={usage.activityTitle} />
+                        {row.usages.length === 0 ? (
+                          <p class="row-meta resource-unlinked-note">Saved in library · Not linked yet</p>
+                        ) : (
+                          <ul class="resource-usage-list" aria-label={`Units using ${row.title}`}>
+                            {row.usages.map((usage) => {
+                              const href = usage.sourceUrl ?? row.canonicalUrl;
+                              return (
+                                <li key={`${usage.syllabusId}-${usage.activityId}`}>
+                                  {href ? (
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      class="resource-usage-chip"
+                                      data-syllabus-id={usage.syllabusId}
+                                      data-activity-id={usage.activityId}
+                                      data-module-id={usage.moduleId}
+                                    >
+                                      <span class="resource-usage-unit">U{usage.unitIndex}</span>
+                                      <span class="resource-usage-title">
+                                        <MathText text={usage.activityTitle} />
+                                      </span>
+                                      <span aria-hidden="true">↗</span>
+                                    </a>
+                                  ) : (
+                                    <span
+                                      class="resource-usage-chip"
+                                      data-syllabus-id={usage.syllabusId}
+                                      data-activity-id={usage.activityId}
+                                      data-module-id={usage.moduleId}
+                                    >
+                                      <span class="resource-usage-unit">U{usage.unitIndex}</span>
+                                      <span class="resource-usage-title">
+                                        <MathText text={usage.activityTitle} />
+                                      </span>
                                     </span>
-                                    <span aria-hidden="true">↗</span>
-                                  </a>
-                                ) : (
-                                  <span
-                                    class="resource-usage-chip"
-                                    data-curriculum-id={usage.curriculumId}
-                                    data-activity-id={usage.activityId}
-                                    data-module-id={usage.moduleId}
-                                  >
-                                    <span class="resource-usage-unit">U{usage.unitIndex}</span>
-                                    <span class="resource-usage-title">
-                                      <MathText text={usage.activityTitle} />
-                                    </span>
-                                  </span>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
                       </td>
                       <td class="resource-access-cell">
                         <div
@@ -531,18 +623,62 @@ export function ResourcesView({
                         </div>
                       </td>
                       <td class="resource-action-cell">
-                        {row.canonicalUrl ? (
-                          <a
-                            href={row.canonicalUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="btn-secondary"
+                        <div class="resource-row-actions">
+                          {row.canonicalUrl ? (
+                            <a
+                              href={row.canonicalUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              class="source-open-link"
+                            >
+                              Open
+                              <span aria-hidden="true">↗</span>
+                              <span class="st-sr"> {row.title} in a new tab</span>
+                            </a>
+                          ) : null}
+                          {!linkedToSelected ? (
+                            <button
+                              type="button"
+                              class="source-action-btn"
+                              data-action="open-resource-editor"
+                              data-editor-mode="link"
+                              data-resource-id={row.resourceVersionId}
+                              data-syllabus-id={selectedPlan.syllabusId}
+                            >
+                              Link
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            class="source-action-btn"
+                            data-action="open-resource-editor"
+                            data-editor-mode="edit"
+                            data-resource-id={row.resourceVersionId}
+                            data-syllabus-id={editSyllabusId}
                           >
-                            Open
-                            <span aria-hidden="true">↗</span>
-                            <span class="st-sr"> {row.title} in a new tab</span>
-                          </a>
-                        ) : null}
+                            Edit
+                          </button>
+                          {unlinkSyllabusId ? (
+                            <button
+                              type="button"
+                              class="source-action-btn source-action-danger"
+                              data-action="unlink-syllabus-resource"
+                              data-resource-id={row.resourceVersionId}
+                              data-syllabus-id={unlinkSyllabusId}
+                            >
+                              Remove
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              class="source-action-btn source-action-danger"
+                              data-action="delete-library-resource"
+                              data-resource-id={row.resourceVersionId}
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

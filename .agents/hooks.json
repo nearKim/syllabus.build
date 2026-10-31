@@ -3,7 +3,7 @@
     "Stop": [
       {
         "type": "command",
-        "command": "sh -c 'cd /Users/garfield/dev/curriculum.io && OUT=$(pnpm --filter @curriculum/web exec tsx ../../scripts/impeccable-gate.mjs 2>&1); CODE=$?; if [ $CODE -ne 0 ]; then printf \"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"Impeccable + Box-in-Box gate blocked stop: %s\\\"}\" \"$(echo \"$OUT\" | tr \"\\n\" \" \" | sed \"s/\\\"/\\\\\\\"/g\")\"; else printf \"{\\\"decision\\\":\\\"allow\\\"}\"; fi'",
+        "command": "sh -c 'cd .. && OUT=$(pnpm --filter @syllabus/web exec tsx ../../scripts/impeccable-gate.mjs 2>&1); CODE=$?; if [ $CODE -ne 0 ]; then printf \"{\\\"decision\\\":\\\"continue\\\",\\\"reason\\\":\\\"Impeccable + Box-in-Box gate blocked stop: %s\\\"}\" \"$(echo \"$OUT\" | tr \"\\n\" \" \" | sed \"s/\\\"/\\\\\\\"/g\")\"; else printf \"{\\\"decision\\\":\\\"allow\\\"}\"; fi'",
         "timeout": 20
       }
     ]

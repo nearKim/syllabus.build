@@ -2,10 +2,10 @@
         body::Body,
         http::{Request, StatusCode},
     };
-    use curriculum_application::SystemReadinessReport;
-    use curriculum_contracts::generated::CANONICAL_SPEC_SHA256;
-    use curriculum_domain::ObjectiveProficiencyState;
-    use curriculum_persistence::{
+    use syllabus_application::SystemReadinessReport;
+    use syllabus_contracts::generated::CANONICAL_SPEC_SHA256;
+    use syllabus_domain::ObjectiveProficiencyState;
+    use syllabus_persistence::{
         IdempotencyBeginOutcome, LearnerProficiencyProjection, ProgressEventReceiptRecord,
         ScheduleFeasibility, ScheduleRevisionRecord,
     };
@@ -165,7 +165,7 @@
                 "token `{token}` must be forbidden from reading Learner B proficiency"
             );
 
-            // 2. Cannot append progress events to Learner B's curriculum
+            // 2. Cannot append progress events to Learner B's syllabus
             let prog_resp = app
                 .clone()
                 .oneshot(
@@ -177,7 +177,7 @@
                         .body(Body::from(
                             serde_json::to_vec(&json!({
                                 "event_id": "evt-cross-tenant-1",
-                                "curriculum_id": "cur-learner-b-1",
+                                "syllabus_id": "cur-learner-b-1",
                                 "activity_id": "act-ds-1",
                                 "time_spent_minutes": 30
                             }))
@@ -268,7 +268,7 @@
         let state = ApiAppState::new(ReleaseFeatureGates::default());
         let app = build_router_with_state(state.clone());
 
-        // 1. PATCH /v1/schedules/{curriculum_id} without If-Match returns 428 Precondition Required
+        // 1. PATCH /v1/schedules/{syllabus_id} without If-Match returns 428 Precondition Required
         let missing_if_match = app
             .clone()
             .oneshot(
@@ -361,7 +361,7 @@
 
         let payload = json!({
             "event_id": "evt-offline-101",
-            "curriculum_id": "cur-learner-a-1",
+            "syllabus_id": "cur-learner-a-1",
             "activity_id": "act-video-1",
             "objective_id": "obj-la-1",
             "status": "self_reported_completed",
@@ -695,7 +695,7 @@
         let gen_body = read_body_json(gen_resp).await;
         let job_id = gen_body["job_id"].as_str().unwrap().to_string();
         assert_eq!(gen_body["status"], "succeeded");
-        let curriculum_id = gen_body["curriculum_id"].as_str().unwrap().to_string();
+        let syllabus_id = gen_body["syllabus_id"].as_str().unwrap().to_string();
         let revision_id = gen_body["revision_id"].as_str().unwrap().to_string();
 
         // Replay identical POST /v1/generations with same Idempotency-Key returns 202 + Idempotency-Replayed: true
@@ -746,16 +746,16 @@
         assert_eq!(poll_body["status"], "succeeded");
         assert_eq!(
             poll_body["candidate_sha256"],
-            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+            "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505"
         );
 
-        // 5. Inspect Curriculum Overview & Draft Revision (is_active == false prior to explicit activation)
+        // 5. Inspect Syllabus Overview & Draft Revision (is_active == false prior to explicit activation)
         let overview_resp = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/v1/curricula/{}", curriculum_id))
+                    .uri(format!("/v1/syllabi/{}", syllabus_id))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
                     .unwrap(),
@@ -778,8 +778,8 @@
                 Request::builder()
                     .method("GET")
                     .uri(format!(
-                        "/v1/curricula/{}/revisions/{}",
-                        curriculum_id, revision_id
+                        "/v1/syllabi/{}/revisions/{}",
+                        syllabus_id, revision_id
                     ))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
@@ -796,15 +796,15 @@
             6
         );
 
-        // 6. Activate Curriculum Revision with If-Match optimistic concurrency
+        // 6. Activate Syllabus Revision with If-Match optimistic concurrency
         let activate_missing_if_match = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
                     .uri(format!(
-                        "/v1/curricula/{}/revisions/{}/activate",
-                        curriculum_id, revision_id
+                        "/v1/syllabi/{}/revisions/{}/activate",
+                        syllabus_id, revision_id
                     ))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
@@ -823,8 +823,8 @@
                 Request::builder()
                     .method("POST")
                     .uri(format!(
-                        "/v1/curricula/{}/revisions/{}/activate",
-                        curriculum_id, revision_id
+                        "/v1/syllabi/{}/revisions/{}/activate",
+                        syllabus_id, revision_id
                     ))
                     .header("authorization", format!("Bearer {}", session_token))
                     .header("if-match", "\"cur-act-v0\"")
@@ -848,8 +848,8 @@
                 Request::builder()
                     .method("POST")
                     .uri(format!(
-                        "/v1/curricula/{}/revisions/{}/activate",
-                        curriculum_id, revision_id
+                        "/v1/syllabi/{}/revisions/{}/activate",
+                        syllabus_id, revision_id
                     ))
                     .header("authorization", format!("Bearer {}", session_token))
                     .header("if-match", "\"cur-act-v0\"")
@@ -868,7 +868,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/v1/schedules/{}", curriculum_id))
+                    .uri(format!("/v1/schedules/{}", syllabus_id))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
                     .unwrap(),
@@ -886,7 +886,7 @@
             .oneshot(
                 Request::builder()
                     .method("PATCH")
-                    .uri(format!("/v1/schedules/{}", curriculum_id))
+                    .uri(format!("/v1/schedules/{}", syllabus_id))
                     .header("authorization", format!("Bearer {}", session_token))
                     .header("if-match", "\"sched-v1\"")
                     .header("content-type", "application/json")
@@ -911,13 +911,13 @@
         assert_eq!(sched_patch_body["etag_version"], 2);
         assert_eq!(sched_patch_body["weekly_available_minutes"], 180);
 
-        // 8. Record Activity Completion (POST /v1/curricula/{curriculum_id}/progress-events) & Verify SelfReported Proficiency
+        // 8. Record Activity Completion (POST /v1/syllabi/{syllabus_id}/progress-events) & Verify SelfReported Proficiency
         let progress_resp = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri(format!("/v1/curricula/{}/progress-events", curriculum_id))
+                    .uri(format!("/v1/syllabi/{}/progress-events", syllabus_id))
                     .header("authorization", format!("Bearer {}", session_token))
                     .header("content-type", "application/json")
                     .body(Body::from(
@@ -991,7 +991,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri(format!("/v1/curricula/{}/resource-alerts", curriculum_id))
+                    .uri(format!("/v1/syllabi/{}/resource-alerts", syllabus_id))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
                     .unwrap(),
@@ -1014,8 +1014,8 @@
                 Request::builder()
                     .method("GET")
                     .uri(format!(
-                        "/v1/curricula/{}/revisions/{}",
-                        curriculum_id, revision_id
+                        "/v1/syllabi/{}/revisions/{}",
+                        syllabus_id, revision_id
                     ))
                     .header("authorization", format!("Bearer {}", session_token))
                     .body(Body::empty())
@@ -1027,7 +1027,7 @@
         let rev_after_body = read_body_json(rev_after_quarantine).await;
         assert_eq!(
             rev_after_body["candidate_sha256"],
-            "3e47ee0d4631041709e565f9b3de28e683199ef8cf8941ecc4503a849be523de"
+            "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505"
         );
     }
 
@@ -1117,7 +1117,7 @@
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/objectives/objective-vector-retrieval/prerequisite-gate")
+                    .uri("/v1/syllabi/cur-learner-a-1/objectives/objective-vector-retrieval/prerequisite-gate")
                     .header("authorization", learner_bearer)
                     .header("content-type", "application/json")
                     .body(Body::from(
@@ -1331,7 +1331,7 @@
                     .body(Body::from(
                         serde_json::to_vec(&json!({
                             "diagnostic_id": "diag-rag-1",
-                            "curriculum_id": "cur-learner-a-1",
+                            "syllabus_id": "cur-learner-a-1",
                             "topic_id": "rag-python",
                             "math_depth_preference": "intuitive"
                         }))
@@ -1407,7 +1407,7 @@
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/adaptations/preview")
+                    .uri("/v1/syllabi/cur-learner-a-1/adaptations/preview")
                     .header("authorization", learner_bearer)
                     .header("content-type", "application/json")
                     .body(Body::from(
@@ -1434,7 +1434,7 @@
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
+                    .uri("/v1/syllabi/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
                     .header("authorization", learner_bearer)
                     .header("idempotency-key", "idem-adapt-bad-sha")
                     .header("content-type", "application/json")
@@ -1458,7 +1458,7 @@
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
+                    .uri("/v1/syllabi/cur-learner-a-1/adaptation-proposals/adapt-prop-001/accept")
                     .header("authorization", learner_bearer)
                     .header("idempotency-key", "idem-adapt-ok")
                     .header("content-type", "application/json")
@@ -1475,7 +1475,7 @@
         assert_eq!(accept_resp.status(), StatusCode::OK);
         let accept_body = read_body_json(accept_resp).await;
         assert_eq!(accept_body["status"], "accepted");
-        assert!(accept_body["accepted_curriculum_revision_id"].is_string());
+        assert!(accept_body["accepted_syllabus_revision_id"].is_string());
         assert!(accept_body["accepted_schedule_revision_id"].is_string());
     }
 
@@ -1675,13 +1675,13 @@
             )
             .unwrap();
         match decision {
-            curriculum_domain::ReminderScheduleDecision::Scheduled {
+            syllabus_domain::ReminderScheduleDecision::Scheduled {
                 dst_resolution_policy,
                 ..
             } => {
                 assert_eq!(
                     dst_resolution_policy,
-                    curriculum_domain::DstResolutionPolicy::SpringForwardShifted
+                    syllabus_domain::DstResolutionPolicy::SpringForwardShifted
                 );
             }
             other => panic!("expected Scheduled decision, got {other:?}"),
@@ -1835,7 +1835,7 @@
         assert_eq!(bad_wh_resp.status(), StatusCode::UNAUTHORIZED);
 
         // Valid HMAC signature credits wallet (500 initial + 500 = 1000)
-        let valid_sig = curriculum_security::compute_webhook_hmac_sha256(
+        let valid_sig = syllabus_security::compute_webhook_hmac_sha256(
             DEFAULT_WEBHOOK_SIGNING_SECRET,
             &webhook_payload,
         );
@@ -2057,7 +2057,7 @@
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/publications/preview")
+                    .uri("/v1/syllabi/cur-learner-a-1/publications/preview")
                     .header("authorization", learner_a_bearer)
                     .header("content-type", "application/json")
                     .body(Body::from(
@@ -2180,7 +2180,7 @@
                     .body(Body::from(
                         serde_json::to_vec(&json!({
                             "selected_module_ids": ["public-module-vector-retrieval"],
-                            "new_curriculum_id": "cur-learner-b-adopted-1"
+                            "new_syllabus_id": "cur-learner-b-adopted-1"
                         }))
                         .unwrap(),
                     ))
@@ -2240,7 +2240,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/curricula/cur-learner-b-adopted-1")
+                    .uri("/v1/syllabi/cur-learner-b-adopted-1")
                     .header("authorization", learner_b_bearer)
                     .body(Body::empty())
                     .unwrap(),
@@ -2268,7 +2268,7 @@
                     .header("content-type", "application/json")
                     .body(Body::from(
                         serde_json::to_vec(&json!({
-                            "curriculum_id": "cur-learner-a-1",
+                            "syllabus_id": "cur-learner-a-1",
                             "activity_id": "act-tok-1",
                             "objective_id": "objective-tokenization",
                             "external_provider": "coursera",
@@ -2286,7 +2286,7 @@
         assert_eq!(ext_body["objective_proficiency_status"], "self_reported");
         assert_ne!(ext_body["objective_proficiency_status"], "demonstrated");
 
-        // 2. T09 (`OPS-001`, `@S37`): Export account data -> includes curricula_revisions, schedules, assessment_attempts, progress_events, ledger_entries, and never includes raw BYOK secrets
+        // 2. T09 (`OPS-001`, `@S37`): Export account data -> includes syllabi_revisions, schedules, assessment_attempts, progress_events, ledger_entries, and never includes raw BYOK secrets
         let exp_resp = app
             .clone()
             .oneshot(
@@ -2303,7 +2303,7 @@
             .unwrap();
         assert_eq!(exp_resp.status(), StatusCode::ACCEPTED);
         let exp_body = read_body_json(exp_resp).await;
-        assert!(exp_body["export_payload"]["curricula_revisions"].is_array());
+        assert!(exp_body["export_payload"]["syllabi_revisions"].is_array());
         assert!(exp_body["export_payload"]["schedules"].is_array());
         assert!(exp_body["export_payload"]["assessment_attempts"].is_array());
         assert!(exp_body["export_payload"]["progress_events"].is_array());
@@ -2339,7 +2339,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/curricula")
+                    .uri("/v1/syllabi")
                     .header("authorization", learner_a_bearer)
                     .body(Body::empty())
                     .unwrap(),
@@ -2351,7 +2351,7 @@
     }
 
     #[tokio::test]
-    async fn idempotent_validation_error_releases_lock_and_curriculum_proposal_route_verifies_curriculum_id(
+    async fn idempotent_validation_error_releases_lock_and_syllabus_proposal_route_verifies_syllabus_id(
     ) {
         let (_state, app) = test_app();
         let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
@@ -2388,14 +2388,14 @@
             );
         }
 
-        // 2. [P0-5]: GET /v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}
-        // enforces that proposal.curriculum_id matches the path curriculum_id.
+        // 2. [P0-5]: GET /v1/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}
+        // enforces that proposal.syllabus_id matches the path syllabus_id.
         let preview_resp = app
             .clone()
             .oneshot(
                 Request::builder()
                     .method("POST")
-                    .uri("/v1/curricula/cur-learner-a-1/adaptations/preview")
+                    .uri("/v1/syllabi/cur-learner-a-1/adaptations/preview")
                     .header("authorization", learner_a_bearer)
                     .header("content-type", "application/json")
                     .body(Body::from(
@@ -2416,7 +2416,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/curricula/cur-learner-a-1/adaptation-proposals/adapt-prop-check-cur")
+                    .uri("/v1/syllabi/cur-learner-a-1/adaptation-proposals/adapt-prop-check-cur")
                     .header("authorization", learner_a_bearer)
                     .body(Body::empty())
                     .unwrap(),
@@ -2429,7 +2429,7 @@
             .oneshot(
                 Request::builder()
                     .method("GET")
-                    .uri("/v1/curricula/cur-other-curriculum/adaptation-proposals/adapt-prop-check-cur")
+                    .uri("/v1/syllabi/cur-other-syllabus/adaptation-proposals/adapt-prop-check-cur")
                     .header("authorization", learner_a_bearer)
                     .body(Body::empty())
                     .unwrap(),
@@ -2612,4 +2612,146 @@
         assert!(usage_items
             .iter()
             .any(|item| item["model_id"] == json!("gpt-6-mini")));
+    }
+
+    #[tokio::test]
+    async fn oauth_pkce_and_email_signup_login_http_endpoints() {
+        let state = ApiAppState::new(ReleaseFeatureGates::default());
+        let app = build_router_with_state(state);
+
+        // 1. GET /v1/auth/providers lists Google and GitHub with dev sandbox readiness
+        let prov_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/auth/providers")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(prov_resp.status(), StatusCode::OK);
+        let prov_json = read_body_json(prov_resp).await;
+        let providers = prov_json["providers"].as_array().expect("providers array");
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0]["provider"], json!("google"));
+        assert_eq!(providers[1]["provider"], json!("github"));
+
+        // 2. POST /v1/auth/signup creates a hashed-password account and returns 201 + session token
+        let signup_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/signup")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "email": "maya@syllabus.io",
+                            "password": "MayaPassword2026!",
+                            "display_name": "Maya Lin"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(signup_resp.status(), StatusCode::CREATED);
+        let signup_json = read_body_json(signup_resp).await;
+        let maya_account_id = signup_json["account_id"].as_str().unwrap().to_string();
+        assert_eq!(signup_json["display_name"], json!("Maya Lin"));
+        assert_eq!(signup_json["is_new_account"], json!(true));
+
+        // 3. POST /v1/auth/login rejects wrong password (401) and accepts right password (200)
+        let bad_login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "email": "maya@syllabus.io",
+                            "password": "WrongPassword!"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(bad_login.status(), StatusCode::UNAUTHORIZED);
+
+        let ok_login = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/login")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "email": "maya@syllabus.io",
+                            "password": "MayaPassword2026!"
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(ok_login.status(), StatusCode::OK);
+
+        // 4. GET /v1/auth/oauth/google/authorize builds RFC 7636 S256 URL, and POST callback verifies PKCE & links Maya
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
+        let authz_resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/auth/oauth/google/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fauth%2Foauth%2Fgoogle%2Fcallback&state=st123&code_verifier={verifier}"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(authz_resp.status(), StatusCode::OK);
+        let authz_json = read_body_json(authz_resp).await;
+        assert!(authz_json["authorize_url"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("code_challenge={expected_challenge}")));
+
+        let cb_resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/oauth/google/callback")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&json!({
+                            "provider_subject": "google-uid-777",
+                            "email": "maya@syllabus.io",
+                            "email_verified": true,
+                            "display_name": "Maya Lin",
+                            "code_verifier": verifier,
+                            "expected_code_challenge": expected_challenge
+                        }))
+                        .unwrap(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(cb_resp.status(), StatusCode::OK);
+        let cb_json = read_body_json(cb_resp).await;
+        assert_eq!(cb_json["account_id"], json!(maya_account_id));
+        assert_eq!(cb_json["auth_provider"], json!("google"));
+        assert_eq!(cb_json["is_new_account"], json!(false));
     }

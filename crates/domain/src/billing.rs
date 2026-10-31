@@ -354,7 +354,7 @@ pub enum AmbiguousProviderOutcome {
 }
 
 /// Evaluates whether an ambiguous/timed-out reservation should be released or settled.
-/// Invariant (`BILL-008`, `@S43`, `@S68`): Never settle a charge unless the committed curriculum/revision
+/// Invariant (`BILL-008`, `@S43`, `@S68`): Never settle a charge unless the committed syllabus/revision
 /// artifact was durably persisted AND the provider confirmed completion.
 pub fn evaluate_ambiguous_timeout_reconciliation(
     reserved_minor_units: i64,

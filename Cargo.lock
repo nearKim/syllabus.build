@@ -276,120 +276,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "curriculum-api"
-version = "0.1.0"
-dependencies = [
- "axum",
- "curriculum-application",
- "curriculum-contracts",
- "curriculum-domain",
- "curriculum-jobs",
- "curriculum-persistence",
- "curriculum-security",
- "serde",
- "serde_json",
- "tokio",
- "tower",
-]
-
-[[package]]
-name = "curriculum-application"
-version = "0.1.0"
-dependencies = [
- "curriculum-contracts",
- "curriculum-domain",
- "curriculum-persistence",
- "curriculum-providers",
- "curriculum-security",
- "serde",
-]
-
-[[package]]
-name = "curriculum-contracts"
-version = "0.1.0"
-dependencies = [
- "hex",
- "jsonschema",
- "serde_json",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "curriculum-domain"
-version = "0.1.0"
-dependencies = [
- "bm25",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "curriculum-jobs"
-version = "0.1.0"
-dependencies = [
- "curriculum-persistence",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
-]
-
-[[package]]
-name = "curriculum-persistence"
-version = "0.1.0"
-dependencies = [
- "curriculum-contracts",
- "curriculum-domain",
- "curriculum-security",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "curriculum-providers"
-version = "0.1.0"
-dependencies = [
- "curriculum-contracts",
- "curriculum-domain",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "curriculum-security"
-version = "0.1.0"
-dependencies = [
- "hex",
- "serde",
- "sha2",
- "thiserror",
-]
-
-[[package]]
-name = "curriculum-test-support"
-version = "0.1.0"
-dependencies = [
- "curriculum-contracts",
- "serde_json",
-]
-
-[[package]]
-name = "curriculum-worker"
-version = "0.1.0"
-dependencies = [
- "curriculum-contracts",
- "curriculum-jobs",
- "curriculum-persistence",
- "curriculum-providers",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "darling"
 version = "0.20.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1541,6 +1427,122 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "syllabus-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "serde_json",
+ "syllabus-application",
+ "syllabus-contracts",
+ "syllabus-domain",
+ "syllabus-jobs",
+ "syllabus-persistence",
+ "syllabus-security",
+ "tokio",
+ "tower",
+]
+
+[[package]]
+name = "syllabus-application"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "syllabus-contracts",
+ "syllabus-domain",
+ "syllabus-persistence",
+ "syllabus-providers",
+ "syllabus-security",
+]
+
+[[package]]
+name = "syllabus-contracts"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "jsonschema",
+ "serde_json",
+ "sha2",
+ "thiserror",
+]
+
+[[package]]
+name = "syllabus-domain"
+version = "0.1.0"
+dependencies = [
+ "bm25",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "syllabus-jobs"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "syllabus-persistence",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
+name = "syllabus-persistence"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "syllabus-contracts",
+ "syllabus-domain",
+ "syllabus-security",
+ "thiserror",
+]
+
+[[package]]
+name = "syllabus-providers"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "syllabus-contracts",
+ "syllabus-domain",
+ "thiserror",
+]
+
+[[package]]
+name = "syllabus-security"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "hex",
+ "serde",
+ "sha2",
+ "thiserror",
+ "url",
+]
+
+[[package]]
+name = "syllabus-test-support"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syllabus-contracts",
+]
+
+[[package]]
+name = "syllabus-worker"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "syllabus-contracts",
+ "syllabus-jobs",
+ "syllabus-persistence",
+ "syllabus-providers",
+ "tokio",
+]
 
 [[package]]
 name = "syn"

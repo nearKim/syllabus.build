@@ -23,7 +23,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Python validation dependencies
-        run: python3 -m pip install --upgrade pip jsonschema pyyaml referencing
+        run: python3 -m pip install --upgrade pip jsonschema openapi-spec-validator pyyaml referencing
 
       - name: Verify embedded spec extraction parity
         run: python3 scripts/extract_spec.py --check specs/product.md .
@@ -47,18 +47,18 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: curriculum
-          POSTGRES_PASSWORD: curriculum
-          POSTGRES_DB: curriculum_test
+          POSTGRES_USER: syllabus
+          POSTGRES_PASSWORD: syllabus
+          POSTGRES_DB: syllabus_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U curriculum -d curriculum_test"
+          --health-cmd "pg_isready -U syllabus -d syllabus_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://curriculum:curriculum@127.0.0.1:5432/curriculum_test
+      DATABASE_URL: postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_test
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
       - name: Cache Cargo registry and build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Apply PostgreSQL 16 migrations (0000..0007)
+      - name: Apply PostgreSQL 16 migrations (0000..0008)
         run: ./scripts/apply_migrations.sh
 
       - name: Run Rust workspace test suite

@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MIGRATIONS_DIR="${REPO_ROOT}/crates/persistence/migrations"
-DATABASE_URL="${DATABASE_URL:-postgres://curriculum:curriculum@127.0.0.1:5432/curriculum_dev}"
+DATABASE_URL="${DATABASE_URL:-postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_dev}"
 
 if ! command -v psql >/dev/null 2>&1; then
   echo "error: psql client is required to apply migrations" >&2
@@ -38,7 +38,7 @@ EXPECTED_TABLES=(
   "accounts"
   "auth_sessions"
   "learner_profiles"
-  "curriculum_revisions"
+  "syllabus_revisions"
   "public_template_revisions"
   "schedule_revisions"
   "progress_events"
@@ -80,6 +80,8 @@ EXPECTED_TABLES=(
   "catalog_resource_tfidf_terms"
   "catalog_resource_segments"
   "catalog_changes"
+  "oauth_identities"
+  "oauth_authorization_states"
 )
 
 echo "==> Verifying schema tables in PostgreSQL"

@@ -238,14 +238,14 @@ export const MANUAL_WCAG_22_AA_EVALUATION_MATRIX: ManualWcagEvaluationMatrixSpec
     {
       partNumber: 8,
       id: "map_outline_equivalence",
-      title: "Curriculum Map & Accessible Outline Tree Functional Equivalence",
+      title: "Syllabus Map & Accessible Outline Tree Functional Equivalence",
       wcagCriteria: ["1.1.1", "2.1.1", "2.4.6", "4.1.2"],
       requiredAssistiveTechOrEnvironment: ["Keyboard + Screen Reader on Plan Map / Outline toggle"],
       verificationSteps: [
-        "Compare every node inspection, prerequisite traversal, and module launch action available in the spatial Curriculum Map against the Outline Tree.",
+        "Compare every node inspection, prerequisite traversal, and module launch action available in the spatial Syllabus Map against the Outline Tree.",
         "Confirm narrow viewports (< 600 CSS px) default to the accessible Outline Tree and preserve selection state when switching views.",
       ],
-      passCondition: "100% of Curriculum Map information and actions are achievable through the semantic Outline Tree view.",
+      passCondition: "100% of Syllabus Map information and actions are achievable through the semantic Outline Tree view.",
     },
   ],
 };

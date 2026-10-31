@@ -7,11 +7,11 @@ use axum::{
     response::IntoResponse,
     Json,
 };
-use curriculum_domain::{
+use syllabus_domain::{
     AssistanceLevel, DiagnosticStopReason, LearnerGateDecision, MathDepthPreference,
 };
-use curriculum_persistence::PersistenceError;
-use curriculum_security::AuthenticatedPrincipal;
+use syllabus_persistence::PersistenceError;
+use syllabus_security::AuthenticatedPrincipal;
 use serde_json::{json, Value};
 
 use crate::{
@@ -224,7 +224,7 @@ fn parse_learner_gate_decision(raw: Option<&str>) -> Option<LearnerGateDecision>
 pub(crate) async fn evaluate_prerequisite_gate_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path((curriculum_id, objective_id)): Path<(String, String)>,
+    Path((syllabus_id, objective_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let prereq_ids = json_string_vec(&payload, "prerequisite_objective_ids");
@@ -233,7 +233,7 @@ pub(crate) async fn evaluate_prerequisite_gate_handler(
 
     let eval = state.store.evaluate_and_record_prerequisite_gate(
         &principal,
-        &curriculum_id,
+        &syllabus_id,
         &objective_id,
         &prereq_ids,
         is_mastery_gated,
@@ -252,7 +252,7 @@ pub(crate) async fn start_diagnostic_handler(
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let diagnostic_id = json_str(&payload, &["diagnostic_id"]).unwrap_or(DEFAULT_DIAGNOSTIC_ID);
-    let curriculum_id = json_str(&payload, &["curriculum_id"]).map(str::to_string);
+    let syllabus_id = json_str(&payload, &["syllabus_id"]).map(str::to_string);
     let topic_id = json_str(&payload, &["topic_id", "topic"]).unwrap_or(DEFAULT_TOPIC_ID);
     let candidate_objectives = json_string_vec(&payload, "objective_ids");
     let math_depth = json_str(&payload, &["math_depth_preference", "math_depth"])
@@ -262,7 +262,7 @@ pub(crate) async fn start_diagnostic_handler(
     let rec = state.store.start_diagnostic_session(
         &principal,
         diagnostic_id,
-        curriculum_id,
+        syllabus_id,
         topic_id,
         candidate_objectives,
         math_depth,
@@ -331,7 +331,7 @@ pub(crate) async fn stop_diagnostic_handler(
 pub(crate) async fn preview_adaptation_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     payload: Option<Json<Value>>,
 ) -> ApiResult {
     let body = payload.map_or_else(|| json!({}), |Json(v)| v);
@@ -340,7 +340,7 @@ pub(crate) async fn preview_adaptation_handler(
 
     let rec = state.store.create_adaptation_proposal(
         &principal,
-        &curriculum_id,
+        &syllabus_id,
         proposal_id,
         trigger_kind,
     )?;
@@ -358,15 +358,15 @@ pub(crate) async fn get_adaptation_proposal_handler(
     Ok((StatusCode::OK, Json(rec.payload)).into_response())
 }
 
-pub(crate) async fn get_curriculum_adaptation_proposal_handler(
+pub(crate) async fn get_syllabus_adaptation_proposal_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
-    Path((curriculum_id, proposal_id)): Path<(String, String)>,
+    Path((syllabus_id, proposal_id)): Path<(String, String)>,
 ) -> ApiResult {
     let rec = state
         .store
         .get_adaptation_proposal(&principal, &proposal_id)?;
-    if rec.curriculum_id != curriculum_id {
+    if rec.syllabus_id != syllabus_id {
         return Err(PersistenceError::NotFound {
             resource_type: "adaptation_proposal",
             resource_id: proposal_id,
@@ -380,7 +380,7 @@ pub(crate) async fn accept_adaptation_body_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
-    Path(curriculum_id): Path<String>,
+    Path(syllabus_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let proposal_id =
@@ -389,7 +389,7 @@ pub(crate) async fn accept_adaptation_body_handler(
         &state,
         &principal,
         &headers,
-        &curriculum_id,
+        &syllabus_id,
         proposal_id,
         &payload,
     )
@@ -399,14 +399,14 @@ pub(crate) async fn accept_adaptation_path_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
     headers: HeaderMap,
-    Path((curriculum_id, proposal_id)): Path<(String, String)>,
+    Path((syllabus_id, proposal_id)): Path<(String, String)>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
     accept_adaptation_inner(
         &state,
         &principal,
         &headers,
-        &curriculum_id,
+        &syllabus_id,
         &proposal_id,
         &payload,
     )
@@ -416,7 +416,7 @@ fn accept_adaptation_inner(
     state: &ApiAppState,
     principal: &AuthenticatedPrincipal,
     headers: &HeaderMap,
-    curriculum_id: &str,
+    syllabus_id: &str,
     proposal_id: &str,
     payload: &Value,
 ) -> ApiResult {
@@ -432,12 +432,12 @@ fn accept_adaptation_inner(
         |_key_str| {
             let expected_sha =
                 json_str(payload, &["expected_proposal_sha256", "proposal_sha256"]).unwrap_or("");
-            let base_cur = json_str(payload, &["base_curriculum_revision_id"]);
+            let base_cur = json_str(payload, &["base_syllabus_revision_id"]);
             let base_sched = json_str(payload, &["base_schedule_revision_id"]);
 
             let rec = state.store.accept_adaptation_proposal(
                 principal,
-                curriculum_id,
+                syllabus_id,
                 proposal_id,
                 expected_sha,
                 base_cur,

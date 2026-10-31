@@ -9,9 +9,9 @@ use axum::{
     response::{IntoResponse, Response},
     Router,
 };
-use curriculum_api::build_router;
-use curriculum_persistence::MIGRATIONS;
-use curriculum_security::ReleaseFeatureGates;
+use syllabus_api::build_router;
+use syllabus_persistence::MIGRATIONS;
+use syllabus_security::ReleaseFeatureGates;
 
 const DEFAULT_BIND_ADDR: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
 const ALLOW_METHODS: &str = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
@@ -74,7 +74,7 @@ async fn main() -> std::io::Result<()> {
     let listener = tokio::net::TcpListener::bind(addr).await?;
     let local_addr = listener.local_addr().unwrap_or(addr);
     println!(
-        "curriculum-api listening on http://{local_addr} (migrations_embedded={}, release_stage=private_alpha)",
+        "syllabus-api listening on http://{local_addr} (migrations_embedded={}, release_stage=private_alpha)",
         MIGRATIONS.len()
     );
     axum::serve(listener, app).await
@@ -93,7 +93,7 @@ mod tests {
 
         let preflight_req = Request::builder()
             .method(Method::OPTIONS)
-            .uri("/v1/curricula")
+            .uri("/v1/syllabi")
             .header(header::ORIGIN, "http://localhost:5173")
             .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
             .body(Body::empty())

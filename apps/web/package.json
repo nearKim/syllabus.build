@@ -1,5 +1,5 @@
 {
-  "name": "@curriculum/web",
+  "name": "@syllabus/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,10 @@
     "test": "node --import tsx --test test/*.test.mjs"
   },
   "dependencies": {
-    "@curriculum/api-client": "workspace:*",
-    "@curriculum/ui": "workspace:*",
+    "@syllabus/api-client": "workspace:*",
+    "@syllabus/ui": "workspace:*",
     "@preact/signals": "^2.11.3",
+    "@simplewebauthn/server": "^14.0.3",
     "cropperjs": "^1.7.0",
     "esbuild": "^0.28.2",
     "flatpickr": "^4.6.13",
@@ -19,6 +20,7 @@
     "preact": "^11.0.1",
     "preact-render-to-string": "^6.8.1",
     "tom-select": "^2.6.2",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "webauthn-polyfills": "^0.1.7"
   }
 }

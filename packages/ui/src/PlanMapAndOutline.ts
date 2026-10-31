@@ -300,6 +300,8 @@ export interface CatalogResourceMetadataInput {
   readonly captured_at?: string | undefined;
   readonly category?: "Book" | "Course" | "YouTube" | "Code Lab" | "Problem Set" | string | undefined;
   readonly subject?: string | undefined;
+  readonly description?: string | undefined;
+  readonly topics?: readonly string[] | undefined;
   readonly provider?: { readonly provider_id?: string | undefined; readonly display_name?: string | undefined } | undefined;
   readonly access?: {
     readonly model?: string | undefined;
@@ -323,7 +325,7 @@ export interface CatalogResourceMetadataInput {
 }
 
 export interface PlanMapAndOutlineBuildOptions {
-  readonly curriculum?: Record<string, unknown>;
+  readonly syllabus?: Record<string, unknown>;
   readonly proficiency?: Record<string, unknown> | null;
   readonly activityStates?: Readonly<Record<string, ActivityExecutionStatus | string>>;
   readonly catalogResources?: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[];
@@ -339,7 +341,7 @@ export interface PlanMapAndOutlineBuildOptions {
 }
 
 export interface PlanMapAndOutlineModel {
-  readonly curriculumId: string;
+  readonly syllabusId: string;
   readonly revisionId: string;
   readonly schemaVersion: string;
   readonly goal: {
@@ -457,7 +459,7 @@ function computeComponentDurationSum(bounds: Record<string, unknown>): {
 export function computeActivityDurationTriplet(
   rawDurationEstimate: unknown,
   playbackSpeed: number,
-  curriculumHasMediaMinutes = false,
+  syllabusHasMediaMinutes = false,
 ): DurationTripletView {
   const safeSpeed =
     typeof playbackSpeed === "number" && Number.isFinite(playbackSpeed) && playbackSpeed > 0
@@ -469,7 +471,7 @@ export function computeActivityDurationTriplet(
   const upperParts = computeComponentDurationSum(est["upper_bounds"] ? asObj(est["upper_bounds"]) : est);
 
   const scale = (parts: { media: number; nonMedia: number; totalAt1x: number }) => {
-    if (curriculumHasMediaMinutes || pointParts.media > 0) return Math.ceil(parts.media / safeSpeed) + parts.nonMedia;
+    if (syllabusHasMediaMinutes || pointParts.media > 0) return Math.ceil(parts.media / safeSpeed) + parts.nonMedia;
     return safeSpeed !== 1 ? Math.ceil(parts.totalAt1x / safeSpeed) : parts.totalAt1x;
   };
 
@@ -555,16 +557,16 @@ function normalizeArgs(
   secondArg?: Record<string, unknown> | PlanMapAndOutlineBuildOptions | null,
   thirdArg?: Readonly<Record<string, ActivityExecutionStatus | string>>,
   fourthArg?: Partial<PlanMapAndOutlineBuildOptions>,
-): { readonly curriculum: Record<string, unknown>; readonly options: PlanMapAndOutlineBuildOptions } {
+): { readonly syllabus: Record<string, unknown>; readonly options: PlanMapAndOutlineBuildOptions } {
   if (
-    firstArg && typeof firstArg === "object" && "curriculum" in firstArg &&
-    firstArg["curriculum"] && typeof firstArg["curriculum"] === "object" &&
+    firstArg && typeof firstArg === "object" && "syllabus" in firstArg &&
+    firstArg["syllabus"] && typeof firstArg["syllabus"] === "object" &&
     !("schema_version" in firstArg && "modules" in firstArg)
   ) {
     const opts = firstArg as PlanMapAndOutlineBuildOptions;
-    return { curriculum: opts.curriculum ?? {}, options: opts };
+    return { syllabus: opts.syllabus ?? {}, options: opts };
   }
-  const curriculum = (firstArg as Record<string, unknown>) ?? {};
+  const syllabus = (firstArg as Record<string, unknown>) ?? {};
   const isOptionsObj =
     secondArg && typeof secondArg === "object" &&
     ["activityStates", "playbackSpeed", "viewportWidthPx", "selectedModuleId", "selectedActivityId", "proficiency", "catalogResources", "zoom"]
@@ -572,12 +574,12 @@ function normalizeArgs(
 
   if (isOptionsObj) {
     return {
-      curriculum,
+      syllabus,
       options: { ...(secondArg as PlanMapAndOutlineBuildOptions), ...(thirdArg ? { activityStates: thirdArg } : {}), ...(fourthArg ?? {}) },
     };
   }
   return {
-    curriculum,
+    syllabus,
     options: {
       proficiency: (secondArg as Record<string, unknown> | null | undefined) ?? null,
       ...(thirdArg ? { activityStates: thirdArg } : {}),
@@ -606,27 +608,27 @@ function buildResourceLookup(
 }
 
 export function buildPlanMapAndOutlineModel(
-  curriculumOrOptions: Record<string, unknown> | PlanMapAndOutlineBuildOptions,
+  syllabusOrOptions: Record<string, unknown> | PlanMapAndOutlineBuildOptions,
   proficiencyOrOptions?: Record<string, unknown> | PlanMapAndOutlineBuildOptions | null,
   activityStatesArg?: Readonly<Record<string, ActivityExecutionStatus | string>>,
   extraOptionsArg?: Partial<PlanMapAndOutlineBuildOptions>,
 ): PlanMapAndOutlineModel {
-  const { curriculum, options } = normalizeArgs(curriculumOrOptions, proficiencyOrOptions, activityStatesArg, extraOptionsArg);
-  const schemaVersion = sanitizeText(curriculum["schema_version"], "0.2.0");
-  const curriculumId = sanitizeText(curriculum["curriculum_id"], "curriculum-default");
-  const revisionId = sanitizeText(curriculum["revision_id"], "revision-default");
-  const createdAt = sanitizeText(curriculum["created_at"], "2026-10-20T16:00:00Z");
+  const { syllabus, options } = normalizeArgs(syllabusOrOptions, proficiencyOrOptions, activityStatesArg, extraOptionsArg);
+  const schemaVersion = sanitizeText(syllabus["schema_version"], "0.2.0");
+  const syllabusId = sanitizeText(syllabus["syllabus_id"], "syllabus-default");
+  const revisionId = sanitizeText(syllabus["revision_id"], "revision-default");
+  const createdAt = sanitizeText(syllabus["created_at"], "2026-10-20T16:00:00Z");
 
-  const rawGoal = asObj(curriculum["goal"]);
+  const rawGoal = asObj(syllabus["goal"]);
   const goal = {
-    title: sanitizeText(rawGoal["title"], "Curriculum Plan"),
+    title: sanitizeText(rawGoal["title"], "Syllabus Plan"),
     summary: sanitizeText(rawGoal["summary"], ""),
     includedTopics: asStringArray(rawGoal["included_topics"]),
     excludedTopics: asStringArray(rawGoal["excluded_topics"]),
     scopeNote: sanitizeText(rawGoal["scope_note"], ""),
   };
 
-  const rawDurationPolicy = asObj(curriculum["duration_policy"]);
+  const rawDurationPolicy = asObj(syllabus["duration_policy"]);
   const defaultSpeed = typeof rawDurationPolicy["playback_speed"] === "number" ? rawDurationPolicy["playback_speed"] : 1;
   const playbackSpeed =
     typeof options.playbackSpeed === "number" && options.playbackSpeed > 0
@@ -639,10 +641,10 @@ export function buildPlanMapAndOutlineModel(
     policyVersion: sanitizeText(rawDurationPolicy["policy_version"], "synthetic-duration-policy"),
   };
 
-  const waiverRefSet = new Set<string>(asStringArray(asObj(curriculum["adaptation_context"])["waiver_refs"]));
+  const waiverRefSet = new Set<string>(asStringArray(asObj(syllabus["adaptation_context"])["waiver_refs"]));
 
   const certificationByResourceVersionId = new Map<string, { readonly rationale: string; readonly mappedObjectiveIds: readonly string[] }>();
-  for (const rawCert of Array.isArray(curriculum["certification_options"]) ? curriculum["certification_options"] : []) {
+  for (const rawCert of Array.isArray(syllabus["certification_options"]) ? syllabus["certification_options"] : []) {
     const cert = asObj(rawCert);
     const rvId = sanitizeText(cert["resource_version_id"]);
     if (rvId) {
@@ -654,7 +656,7 @@ export function buildPlanMapAndOutlineModel(
   }
 
   const coverageLimitationByObjectiveId = new Map<string, { readonly missingRequirement: string; readonly explanation: string }>();
-  for (const rawLim of Array.isArray(curriculum["coverage_limitations"]) ? curriculum["coverage_limitations"] : []) {
+  for (const rawLim of Array.isArray(syllabus["coverage_limitations"]) ? syllabus["coverage_limitations"] : []) {
     const lim = asObj(rawLim);
     const objId = sanitizeText(lim["objective_id"]);
     if (objId) {
@@ -698,8 +700,8 @@ export function buildPlanMapAndOutlineModel(
     if (objectiveVersionId) evidenceByObjectiveId.set(objectiveVersionId, parsed);
   }
 
-  const rawActivities = Array.isArray(curriculum["activities"]) ? curriculum["activities"] : [];
-  const curriculumHasMediaMinutes = rawActivities.some((rawAct) => {
+  const rawActivities = Array.isArray(syllabus["activities"]) ? syllabus["activities"] : [];
+  const syllabusHasMediaMinutes = rawActivities.some((rawAct) => {
     const media = asObj(asObj(rawAct)["duration_estimate"])["media_minutes"];
     return typeof media === "number" && media > 0;
   });
@@ -708,7 +710,7 @@ export function buildPlanMapAndOutlineModel(
   const studyAheadSet = new Set<string>(options.studyAheadActivityIds ?? []);
   const catalogLookup = buildResourceLookup(options.catalogResources);
 
-  const rawModules = Array.isArray(curriculum["modules"]) ? curriculum["modules"] : [];
+  const rawModules = Array.isArray(syllabus["modules"]) ? syllabus["modules"] : [];
   const moduleIdByObjectiveId = new Map<string, string>();
   const moduleIdByActivityId = new Map<string, string>();
 
@@ -724,7 +726,7 @@ export function buildPlanMapAndOutlineModel(
   }
 
   const objectiveEdges: { readonly from: string; readonly to: string }[] = [];
-  for (const rawEdge of Array.isArray(curriculum["prerequisite_edges"]) ? curriculum["prerequisite_edges"] : []) {
+  for (const rawEdge of Array.isArray(syllabus["prerequisite_edges"]) ? syllabus["prerequisite_edges"] : []) {
     const e = asObj(rawEdge);
     const from = sanitizeText(e["from_objective_id"] ?? e["from"]);
     const to = sanitizeText(e["to_objective_id"] ?? e["to"]);
@@ -733,7 +735,7 @@ export function buildPlanMapAndOutlineModel(
 
   const objectiveIdsInOrder: string[] = [];
   const rawObjectiveById = new Map<string, Record<string, unknown>>();
-  for (const rawObj of Array.isArray(curriculum["objectives"]) ? curriculum["objectives"] : []) {
+  for (const rawObj of Array.isArray(syllabus["objectives"]) ? syllabus["objectives"] : []) {
     const obj = asObj(rawObj);
     const objId = sanitizeText(obj["objective_id"] ?? obj["id"]);
     if (objId && !rawObjectiveById.has(objId)) {
@@ -904,7 +906,7 @@ export function buildPlanMapAndOutlineModel(
       };
     });
 
-    const durationTriplet = computeActivityDurationTriplet(rawAct["duration_estimate"], playbackSpeed, curriculumHasMediaMinutes);
+    const durationTriplet = computeActivityDurationTriplet(rawAct["duration_estimate"], playbackSpeed, syllabusHasMediaMinutes);
 
     const rawAssignments = Array.isArray(rawAct["resource_assignments"]) ? rawAct["resource_assignments"] : [];
     const resourceProvenanceCards: ResourceProvenanceCardView[] = rawAssignments
@@ -1327,7 +1329,7 @@ export function buildPlanMapAndOutlineModel(
   const panY = typeof options.panY === "number" && Number.isFinite(options.panY) ? options.panY : 0;
 
   const rebuildWith = (nextPatch: Partial<PlanMapAndOutlineBuildOptions>): PlanMapAndOutlineModel =>
-    buildPlanMapAndOutlineModel({ ...options, curriculum, ...nextPatch });
+    buildPlanMapAndOutlineModel({ ...options, syllabus, ...nextPatch });
 
   const controls = {
     zoomIn: () => rebuildWith({ zoom: Math.min(2.5, Number((zoom + 0.25).toFixed(2))) }),
@@ -1415,7 +1417,7 @@ export function buildPlanMapAndOutlineModel(
   const everyActionEquivalent = mapNodes.every((n) => n.availableActions.join(",") === SYNCHRONIZED_NODE_ACTIONS.join(","));
 
   return {
-    curriculumId,
+    syllabusId,
     revisionId,
     schemaVersion,
     goal,

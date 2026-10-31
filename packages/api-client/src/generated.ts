@@ -1,7 +1,7 @@
 // GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
-// Canonical Specification SHA-256: fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9
+// Canonical Specification SHA-256: 966a2e4a3556340f3bb4ccd44fa1f97496f6e8bdbc38652f322513e8071d9b0f
 
-export const CANONICAL_SPEC_SHA256 = "fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9" as const;
+export const CANONICAL_SPEC_SHA256 = "966a2e4a3556340f3bb4ccd44fa1f97496f6e8bdbc38652f322513e8071d9b0f" as const;
 
 export type ContractSource = "core" | "companion";
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -31,27 +31,25 @@ export type OperationId =
   | "importExternalProviderCompletion"
   | "listApprovedResourceVersions"
   | "listCatalogProposals"
-  | "listCurriculumResourceAlerts"
   | "listModerationReports"
-  | "listMyCurricula"
+  | "listMySyllabi"
+  | "listSyllabusResourceAlerts"
   | "recordAssessmentAssistanceEvent"
   | "registerPushSubscription"
   | "reportDefectiveAssessmentItem"
   | "snoozeReminderOccurrence"
   | "acceptAdaptation"
-  | "activateCurriculumRevision"
-  | "adoptCurriculum"
+  | "activateSyllabusRevision"
+  | "adoptSyllabus"
   | "appendProgressEvent"
   | "cancelGeneration"
   | "createCredential"
   | "createGenerationQuote"
-  | "discoverCurricula"
+  | "discoverSyllabi"
   | "getAdaptationProposal"
   | "getAssessment"
   | "getAssessmentAttempt"
   | "getCredentialMetadata"
-  | "getCurriculumOverview"
-  | "getCurriculumRevision"
   | "getDiagnostic"
   | "getGeneration"
   | "getLedger"
@@ -63,6 +61,8 @@ export type OperationId =
   | "getPublication"
   | "getPublishedRevision"
   | "getSchedule"
+  | "getSyllabusOverview"
+  | "getSyllabusRevision"
   | "getUsage"
   | "listCredentialMetadata"
   | "listOwnedPublicationRevisions"
@@ -71,9 +71,9 @@ export type OperationId =
   | "patchSchedule"
   | "previewAdaptation"
   | "previewPublication"
-  | "publishCurriculum"
   | "publishRevision"
-  | "regenerateCurriculum"
+  | "publishSyllabus"
+  | "regenerateSyllabus"
   | "removeMyUpvote"
   | "reportPublication"
   | "reserveInferenceBudget"
@@ -86,7 +86,7 @@ export type OperationId =
   | "stopDiagnostic"
   | "submitAssessmentAttempt"
   | "submitDiagnosticAttempt"
-  | "unpublishCurriculum"
+  | "unpublishSyllabus"
   | "updateNotificationPreferences";
 
 export type CoreComponentSchemaName =
@@ -104,8 +104,6 @@ export type CoreComponentSchemaName =
   | "CredentialCreate"
   | "CredentialMetadata"
   | "CredentialRotate"
-  | "Curriculum"
-  | "CurriculumOverview"
   | "DiagnosticAttemptRequest"
   | "DiagnosticSession"
   | "DiagnosticStartRequest"
@@ -129,7 +127,7 @@ export type CoreComponentSchemaName =
   | "ProgressEventReceipt"
   | "ProgressEventRequest"
   | "ProgressProjection"
-  | "PublicCurriculum"
+  | "PublicSyllabus"
   | "PublicationConfirmRequest"
   | "PublicationManagement"
   | "PublicationPage"
@@ -145,6 +143,8 @@ export type CoreComponentSchemaName =
   | "ReviewScheduleItem"
   | "Schedule"
   | "SchedulePatch"
+  | "Syllabus"
+  | "SyllabusOverview"
   | "UsagePage"
   | "UsageQuote"
   | "UsageRecord"
@@ -163,7 +163,6 @@ export type CompanionComponentSchemaName =
   | "CheckoutSessionResponse"
   | "CreateCheckoutSessionRequest"
   | "CreateSessionRequest"
-  | "CurriculumListResponse"
   | "ExternalCompletionImportRequest"
   | "GoalInterpretationRequest"
   | "GoalInterpretationResponse"
@@ -174,7 +173,8 @@ export type CompanionComponentSchemaName =
   | "ReminderSnoozeRequest"
   | "ResourceAlertListResponse"
   | "ResourceVersionListResponse"
-  | "SessionResponse";
+  | "SessionResponse"
+  | "SyllabusListResponse";
 
 export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = {
   applyAssessmentKeyCorrection: {
@@ -200,7 +200,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     operationId: "createAccountExportJob",
     method: "POST",
     path: "/me/exports",
-    summary: "Request an export of private curricula, schedules, and learning evidence without secrets or restricted content (PROG-005, OPS-004)",
+    summary: "Request an export of private syllabi, schedules, and learning evidence without secrets or restricted content (PROG-005, OPS-004)",
     requiresIdempotencyKey: true,
     requiresIfMatch: false,
   },
@@ -226,7 +226,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "companion",
     operationId: "createGoalInterpretation",
     method: "POST",
-    path: "/curricula/goal-interpretations",
+    path: "/syllabi/goal-interpretations",
     summary: "Propose editable target capabilities, prerequisites, depth, and exclusions before generation (GOAL-001, GOAL-004)",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
@@ -303,15 +303,6 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
-  listCurriculumResourceAlerts: {
-    contract: "companion",
-    operationId: "listCurriculumResourceAlerts",
-    method: "GET",
-    path: "/curricula/{curriculum_id}/resource-alerts",
-    summary: "List stale, quarantined, or revoked resource alerts and replacement paths for a curriculum (CAT-007)",
-    requiresIdempotencyKey: false,
-    requiresIfMatch: false,
-  },
   listModerationReports: {
     contract: "companion",
     operationId: "listModerationReports",
@@ -321,12 +312,21 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
-  listMyCurricula: {
+  listMySyllabi: {
     contract: "companion",
-    operationId: "listMyCurricula",
+    operationId: "listMySyllabi",
     method: "GET",
-    path: "/me/curricula",
-    summary: "List private curricula owned by the authenticated learner",
+    path: "/me/syllabi",
+    summary: "List private syllabi owned by the authenticated learner",
+    requiresIdempotencyKey: false,
+    requiresIfMatch: false,
+  },
+  listSyllabusResourceAlerts: {
+    contract: "companion",
+    operationId: "listSyllabusResourceAlerts",
+    method: "GET",
+    path: "/syllabi/{syllabus_id}/resource-alerts",
+    summary: "List stale, quarantined, or revoked resource alerts and replacement paths for a syllabus (CAT-007)",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
@@ -370,23 +370,23 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "acceptAdaptation",
     method: "POST",
-    path: "/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}/accept",
+    path: "/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}/accept",
     summary: "Activate an accepted adaptation",
     requiresIdempotencyKey: true,
     requiresIfMatch: false,
   },
-  activateCurriculumRevision: {
+  activateSyllabusRevision: {
     contract: "core",
-    operationId: "activateCurriculumRevision",
+    operationId: "activateSyllabusRevision",
     method: "PUT",
-    path: "/curricula/{curriculum_id}/active-revision",
+    path: "/syllabi/{syllabus_id}/active-revision",
     summary: "Activate an existing revision",
     requiresIdempotencyKey: false,
     requiresIfMatch: true,
   },
-  adoptCurriculum: {
+  adoptSyllabus: {
     contract: "core",
-    operationId: "adoptCurriculum",
+    operationId: "adoptSyllabus",
     method: "POST",
     path: "/publications/{publication_id}/revisions/{publication_revision_id}/adoptions",
     summary: "Create a private adapted draft",
@@ -397,7 +397,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "appendProgressEvent",
     method: "POST",
-    path: "/curricula/{curriculum_id}/progress-events",
+    path: "/syllabi/{syllabus_id}/progress-events",
     summary: "Append learner-authored progress evidence",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
@@ -429,12 +429,12 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
-  discoverCurricula: {
+  discoverSyllabi: {
     contract: "core",
-    operationId: "discoverCurricula",
+    operationId: "discoverSyllabi",
     method: "GET",
     path: "/publications",
-    summary: "Discover public curriculum versions",
+    summary: "Discover public syllabus versions",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
@@ -442,7 +442,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "getAdaptationProposal",
     method: "GET",
-    path: "/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}",
+    path: "/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}",
     summary: "Read a private adaptation proposal",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
@@ -471,24 +471,6 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     method: "GET",
     path: "/me/credentials/{credential_ref}",
     summary: "Read safe credential metadata and its concurrency token",
-    requiresIdempotencyKey: false,
-    requiresIfMatch: false,
-  },
-  getCurriculumOverview: {
-    contract: "core",
-    operationId: "getCurriculumOverview",
-    method: "GET",
-    path: "/curricula/{curriculum_id}",
-    summary: "Read current revision pointers",
-    requiresIdempotencyKey: false,
-    requiresIfMatch: false,
-  },
-  getCurriculumRevision: {
-    contract: "core",
-    operationId: "getCurriculumRevision",
-    method: "GET",
-    path: "/curricula/{curriculum_id}/revisions/{revision_id}",
-    summary: "Read an immutable curriculum revision",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
@@ -559,7 +541,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "getProgress",
     method: "GET",
-    path: "/curricula/{curriculum_id}/progress",
+    path: "/syllabi/{syllabus_id}/progress",
     summary: "Read derived completion and evidence state",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
@@ -586,8 +568,26 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "getSchedule",
     method: "GET",
-    path: "/curricula/{curriculum_id}/schedule",
+    path: "/syllabi/{syllabus_id}/schedule",
     summary: "Read the current schedule revision",
+    requiresIdempotencyKey: false,
+    requiresIfMatch: false,
+  },
+  getSyllabusOverview: {
+    contract: "core",
+    operationId: "getSyllabusOverview",
+    method: "GET",
+    path: "/syllabi/{syllabus_id}",
+    summary: "Read current revision pointers",
+    requiresIdempotencyKey: false,
+    requiresIfMatch: false,
+  },
+  getSyllabusRevision: {
+    contract: "core",
+    operationId: "getSyllabusRevision",
+    method: "GET",
+    path: "/syllabi/{syllabus_id}/revisions/{revision_id}",
+    summary: "Read an immutable syllabus revision",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
@@ -640,7 +640,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "patchSchedule",
     method: "PATCH",
-    path: "/curricula/{curriculum_id}/schedule",
+    path: "/syllabi/{syllabus_id}/schedule",
     summary: "Request schedule changes with optimistic concurrency",
     requiresIdempotencyKey: false,
     requiresIfMatch: true,
@@ -649,8 +649,8 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     contract: "core",
     operationId: "previewAdaptation",
     method: "POST",
-    path: "/curricula/{curriculum_id}/adaptation-proposals",
-    summary: "Preview evidence-based curriculum changes",
+    path: "/syllabi/{syllabus_id}/adaptation-proposals",
+    summary: "Preview evidence-based syllabus changes",
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
@@ -663,15 +663,6 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
-  publishCurriculum: {
-    contract: "core",
-    operationId: "publishCurriculum",
-    method: "POST",
-    path: "/publications",
-    summary: "Publish a new curriculum template",
-    requiresIdempotencyKey: true,
-    requiresIfMatch: false,
-  },
   publishRevision: {
     contract: "core",
     operationId: "publishRevision",
@@ -681,12 +672,21 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: true,
     requiresIfMatch: false,
   },
-  regenerateCurriculum: {
+  publishSyllabus: {
     contract: "core",
-    operationId: "regenerateCurriculum",
+    operationId: "publishSyllabus",
     method: "POST",
-    path: "/curricula/{curriculum_id}/regenerations",
-    summary: "Generate a successor curriculum revision",
+    path: "/publications",
+    summary: "Publish a new syllabus template",
+    requiresIdempotencyKey: true,
+    requiresIfMatch: false,
+  },
+  regenerateSyllabus: {
+    contract: "core",
+    operationId: "regenerateSyllabus",
+    method: "POST",
+    path: "/syllabi/{syllabus_id}/regenerations",
+    summary: "Generate a successor syllabus revision",
     requiresIdempotencyKey: true,
     requiresIfMatch: false,
   },
@@ -767,7 +767,7 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     operationId: "startGeneration",
     method: "POST",
     path: "/generations",
-    summary: "Start asynchronous curriculum generation",
+    summary: "Start asynchronous syllabus generation",
     requiresIdempotencyKey: true,
     requiresIfMatch: false,
   },
@@ -798,9 +798,9 @@ export const OPENAPI_OPERATIONS: Readonly<Record<OperationId, OperationSpec>> = 
     requiresIdempotencyKey: false,
     requiresIfMatch: false,
   },
-  unpublishCurriculum: {
+  unpublishSyllabus: {
     contract: "core",
-    operationId: "unpublishCurriculum",
+    operationId: "unpublishSyllabus",
     method: "DELETE",
     path: "/me/publications/{publication_id}",
     summary: "Withdraw every revision from app-controlled public access",

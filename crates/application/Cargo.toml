@@ -1,5 +1,5 @@
 [package]
-name = "curriculum-application"
+name = "syllabus-application"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,9 +7,9 @@ license-file.workspace = true
 publish.workspace = true
 
 [dependencies]
-curriculum-domain.workspace = true
-curriculum-contracts.workspace = true
-curriculum-persistence.workspace = true
-curriculum-providers.workspace = true
-curriculum-security.workspace = true
+syllabus-domain.workspace = true
+syllabus-contracts.workspace = true
+syllabus-persistence.workspace = true
+syllabus-providers.workspace = true
+syllabus-security.workspace = true
 serde.workspace = true

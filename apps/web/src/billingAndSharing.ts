@@ -46,7 +46,7 @@ export interface LedgerEntrySnapshot {
 
 export interface UsageItemSnapshot {
   readonly usage_id: string;
-  readonly operation_kind: "curriculum_generation" | "plan_adaptation" | "diagnostic_generation" | "generative_adoption";
+  readonly operation_kind: "syllabus_generation" | "plan_adaptation" | "diagnostic_generation" | "generative_adoption";
   readonly inference_mode: "hosted" | "byok"; readonly quote_id: string | null; readonly reservation_id: string | null;
   readonly reserved_minor: number; readonly settled_minor: number; readonly released_minor: number; readonly occurred_at: string;
 }
@@ -230,7 +230,7 @@ export function createHostedBillingController(initial: {
         summary: `Settled ${formatMinorCurrency(options.actualSettledMinor, wallet.currency)}; released ${formatMinorCurrency(releasedMinor, wallet.currency)} unused hold`,
       });
       usage.push({
-        usage_id: `usage-${updated.reservation_id}`, operation_kind: options.operationKind ?? "curriculum_generation",
+        usage_id: `usage-${updated.reservation_id}`, operation_kind: options.operationKind ?? "syllabus_generation",
         inference_mode: "hosted", quote_id: updated.quote_id, reservation_id: updated.reservation_id,
         reserved_minor: updated.reserved_minor, settled_minor: updated.settled_minor, released_minor: updated.released_minor, occurred_at: occurredAt,
       });
@@ -328,17 +328,17 @@ export interface PublicModuleNode {
   readonly objective_ids?: readonly string[]; readonly activity_ids?: readonly string[]; readonly prerequisite_module_ids?: readonly string[];
 }
 
-export interface PublicCurriculumContentBlock {
+export interface PublicSyllabusContentBlock {
   readonly title: string; readonly summary: string; readonly objectives?: readonly PublicObjectiveNode[];
   readonly prerequisite_edges?: readonly PublicPrerequisiteEdge[]; readonly modules: readonly PublicModuleNode[];
   readonly [key: string]: unknown;
 }
 
-export interface PublicCurriculumPayload {
+export interface PublicSyllabusPayload {
   readonly schema_version: string; readonly publication_id: string; readonly publication_revision_id: string;
   readonly revision_number: number; readonly supersedes_publication_revision_id?: string | null;
   readonly visibility?: "public" | "unlisted"; readonly published_at: string; readonly content_sha256: string;
-  readonly content: PublicCurriculumContentBlock; readonly upvote_count?: number | null; readonly viewer_has_upvoted?: boolean;
+  readonly content: PublicSyllabusContentBlock; readonly upvote_count?: number | null; readonly viewer_has_upvoted?: boolean;
   readonly publisher: { readonly public_author_id: string; readonly display_name: string };
   readonly publication_terms: {
     readonly policy_id: string; readonly content_license_id: string; readonly rights_scope: string;
@@ -352,7 +352,7 @@ export interface PublicationPreviewPayload {
   readonly visibility: "public" | "unlisted"; readonly content_sha256: string; readonly preview_sha256: string;
   readonly expires_at: string; readonly publication_terms_policy_id: string;
   readonly excluded_private_fields?: readonly string[]; readonly warnings?: readonly string[];
-  readonly public_content: PublicCurriculumContentBlock;
+  readonly public_content: PublicSyllabusContentBlock;
   readonly publisher: { readonly public_author_id: string; readonly display_name: string };
   readonly publication_terms: {
     readonly policy_id: string; readonly content_license_id: string; readonly rights_scope: string;
@@ -414,7 +414,7 @@ export function createPublicationLifecycleController(initial: {
     revisionVotes: Array.from(voteMap.values()),
   });
 
-  function buildPublishCurriculumRequest(options: {
+  function buildPublishSyllabusRequest(options: {
     readonly idempotencyKey: string; readonly sourcePlanId?: string; readonly sourcePlanVersionId?: string; readonly nowIso?: string;
   }) {
     if (!currentPreview) throw new Error("A publication preview must be generated before publishing.");
@@ -428,8 +428,8 @@ export function createPublicationLifecycleController(initial: {
       throw new Error("PREVIEW_EXPIRED: Publication preview has expired.");
     }
     return {
-      operationId: "publishCurriculum" as const, method: "POST" as const, path: "/publications",
-      headers: buildOperationHeaders("publishCurriculum", { idempotencyKey: options.idempotencyKey }),
+      operationId: "publishSyllabus" as const, method: "POST" as const, path: "/publications",
+      headers: buildOperationHeaders("publishSyllabus", { idempotencyKey: options.idempotencyKey }),
       body: {
         preview_id: currentPreview.preview_id,
         source_plan_id: options.sourcePlanId ?? currentPreview.source_plan_id ?? "plan-synthetic-001",
@@ -471,9 +471,9 @@ export function createPublicationLifecycleController(initial: {
       if (isPreviewStale) throw new Error("Cannot accept terms on a stale publication preview; generate a fresh preview first.");
       termsAccepted = accepted;
     },
-    buildPublishCurriculumRequest,
+    buildPublishSyllabusRequest,
     buildPublishRevisionRequest(options: { readonly publicationId: string; readonly idempotencyKey: string }) {
-      const base = buildPublishCurriculumRequest({ idempotencyKey: options.idempotencyKey });
+      const base = buildPublishSyllabusRequest({ idempotencyKey: options.idempotencyKey });
       return {
         operationId: "publishRevision" as const, method: "POST" as const,
         path: `/me/publications/${options.publicationId}/revisions`,
@@ -481,16 +481,16 @@ export function createPublicationLifecycleController(initial: {
         body: base.body,
       };
     },
-    buildUnpublishCurriculumRequest(options: { readonly publicationId: string; readonly confirmUnpublish: boolean }) {
+    buildUnpublishSyllabusRequest(options: { readonly publicationId: string; readonly confirmUnpublish: boolean }) {
       if (!options.confirmUnpublish) {
         throw new Error("Unpublishing requires explicit destructive confirmation (confirmUnpublish: true).");
       }
       const owned = ownedPublications.find((item) => item.publication_id === options.publicationId);
       if (!owned) throw new Error(`Owned publication '${options.publicationId}' not found.`);
       return {
-        operationId: "unpublishCurriculum" as const, method: "DELETE" as const,
+        operationId: "unpublishSyllabus" as const, method: "DELETE" as const,
         path: `/me/publications/${options.publicationId}`,
-        headers: buildOperationHeaders("unpublishCurriculum", { ifMatch: owned.management_version_id }),
+        headers: buildOperationHeaders("unpublishSyllabus", { ifMatch: owned.management_version_id }),
         adopterImpactDisclosure:
           "Withdrawing this publication removes all revisions from app-controlled public discovery immediately. Previously adopted private learner plans remain intact.",
       };
@@ -535,12 +535,12 @@ export function createPublicationLifecycleController(initial: {
 export type OwnedPublicationViewCard = ReturnType<ReturnType<typeof createPublicationLifecycleController>["getState"]>["ownedPublicationCards"][number];
 
 export function resolveTransitiveAdoptionScope(
-  curriculum: PublicCurriculumPayload,
+  syllabus: PublicSyllabusPayload,
   selectedModuleIds?: readonly string[],
 ) {
-  const modules = curriculum.content.modules;
-  const objectives = curriculum.content.objectives ?? [];
-  const edges = curriculum.content.prerequisite_edges ?? [];
+  const modules = syllabus.content.modules;
+  const objectives = syllabus.content.objectives ?? [];
+  const edges = syllabus.content.prerequisite_edges ?? [];
 
   const moduleById = new Map<string, PublicModuleNode>();
   const moduleByObjectiveId = new Map<string, string>();
@@ -603,7 +603,7 @@ export function resolveTransitiveAdoptionScope(
 }
 export type TransitivePrerequisiteResolution = ReturnType<typeof resolveTransitiveAdoptionScope>;
 
-export function createPublicAdoptionController(curriculum: PublicCurriculumPayload) {
+export function createPublicAdoptionController(syllabus: PublicSyllabusPayload) {
   function buildAdoptionRequest(options: {
     readonly idempotencyKey: string; readonly selectedModuleIds?: readonly string[];
     readonly basePlanningOrRequest: Record<string, unknown>;
@@ -620,22 +620,22 @@ export function createPublicAdoptionController(curriculum: PublicCurriculumPaylo
           readonly inferenceBudget: { readonly currency: string; readonly max_minor_units: number };
         };
   }) {
-    const scope = resolveTransitiveAdoptionScope(curriculum, options.selectedModuleIds);
-    const headers = buildOperationHeaders("adoptCurriculum", { idempotencyKey: options.idempotencyKey });
+    const scope = resolveTransitiveAdoptionScope(syllabus, options.selectedModuleIds);
+    const headers = buildOperationHeaders("adoptSyllabus", { idempotencyKey: options.idempotencyKey });
     const templateOrigin = {
-      publication_id: curriculum.publication_id, publication_revision_id: curriculum.publication_revision_id,
-      expected_content_sha256: curriculum.content_sha256,
+      publication_id: syllabus.publication_id, publication_revision_id: syllabus.publication_revision_id,
+      expected_content_sha256: syllabus.content_sha256,
       ...(options.selectedModuleIds && options.selectedModuleIds.length > 0 ? { selected_module_ids: scope.resolvedModuleIds } : {}),
     };
-    const path = `/publications/${curriculum.publication_id}/revisions/${curriculum.publication_revision_id}/adoptions`;
+    const path = `/publications/${syllabus.publication_id}/revisions/${syllabus.publication_revision_id}/adoptions`;
     const baseBudgets = (options.basePlanningOrRequest.budgets ?? {}) as Record<string, unknown>;
-    const envelope = { operationId: "adoptCurriculum" as const, method: "POST" as const, path, headers, resolvedScope: scope };
+    const envelope = { operationId: "adoptSyllabus" as const, method: "POST" as const, path, headers, resolvedScope: scope };
 
     if (options.execution.mode === "deterministic") {
       return {
         ...envelope, requiresAiCredentials: false, requiresCreditReservation: false,
         body: {
-          expected_content_sha256: curriculum.content_sha256, execution: "deterministic" as const,
+          expected_content_sha256: syllabus.content_sha256, execution: "deterministic" as const,
           planning: {
             ...options.basePlanningOrRequest,
             budgets: { materials: baseBudgets.materials, compute: baseBudgets.compute },
@@ -652,7 +652,7 @@ export function createPublicAdoptionController(curriculum: PublicCurriculumPaylo
       return {
         ...envelope, requiresAiCredentials: false, requiresCreditReservation: true,
         body: {
-          expected_content_sha256: curriculum.content_sha256, execution: "generate" as const,
+          expected_content_sha256: syllabus.content_sha256, execution: "generate" as const,
           request: {
             ...options.basePlanningOrRequest,
             budgets: { materials: baseBudgets.materials, compute: baseBudgets.compute, inference: options.execution.inferenceBudget },
@@ -671,7 +671,7 @@ export function createPublicAdoptionController(curriculum: PublicCurriculumPaylo
     return {
       ...envelope, requiresAiCredentials: true, requiresCreditReservation: false,
       body: {
-        expected_content_sha256: curriculum.content_sha256, execution: "generate" as const,
+        expected_content_sha256: syllabus.content_sha256, execution: "generate" as const,
         request: {
           ...options.basePlanningOrRequest,
           budgets: { materials: baseBudgets.materials, compute: baseBudgets.compute, inference: options.execution.inferenceBudget },
@@ -687,7 +687,7 @@ export function createPublicAdoptionController(curriculum: PublicCurriculumPaylo
   }
 
   return {
-    resolveScope: (selectedModuleIds?: readonly string[]) => resolveTransitiveAdoptionScope(curriculum, selectedModuleIds),
+    resolveScope: (selectedModuleIds?: readonly string[]) => resolveTransitiveAdoptionScope(syllabus, selectedModuleIds),
     buildAdoptionRequest,
   };
 }

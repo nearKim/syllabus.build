@@ -1,0 +1,380 @@
+{
+  "schema_version": "0.2.0",
+  "syllabus_id": "synthetic-syllabus-1",
+  "revision_id": "synthetic-revision-1",
+  "revision_number": 1,
+  "predecessor_revision_id": null,
+  "account_id": "synthetic-account",
+  "created_at": "2026-10-20T16:00:00Z",
+  "revision_reason": "initial_generation",
+  "goal": {
+    "title": "Synthetic tokenization mini-syllabus",
+    "summary": "Contract fixture demonstrating a focused learning plan.",
+    "included_topics": [
+      "tokenization tradeoffs"
+    ],
+    "excluded_topics": [
+      "full model training"
+    ],
+    "scope_note": "Fixture only; this is not an educational recommendation or validated assessment."
+  },
+  "language": "en",
+  "sequence_preference_applied": "balanced",
+  "objectives": [
+    {
+      "objective_id": "objective-tokenization",
+      "title": "Explain a tokenization tradeoff",
+      "description": "Explain how a representation choice affects the resulting token sequence.",
+      "success_criterion": "Give a correct explanation for two previously unseen short examples.",
+      "level": "introductory",
+      "requirement_level": "required",
+      "assessment_activity_ids": [
+        "activity-quiz",
+        "activity-review"
+      ],
+      "prior_evidence_refs": [],
+      "topic_id": "topic-tokenization",
+      "objective_version_id": "objective-tokenization-v1"
+    }
+  ],
+  "prerequisite_edges": [],
+  "modules": [
+    {
+      "module_id": "module-tokenization",
+      "title": "Tokenization foundations",
+      "summary": "Synthetic module.",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "activity_ids": [
+        "activity-theory",
+        "activity-example",
+        "activity-coding",
+        "activity-quiz",
+        "activity-review",
+        "activity-reflection"
+      ]
+    }
+  ],
+  "activities": [
+    {
+      "activity_id": "activity-theory",
+      "type": "theory",
+      "title": "Read the synthetic concept outline",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [],
+      "resource_assignments": [
+        {
+          "resource_version_id": "synthetic-resource-tokenization-v1",
+          "role": "primary",
+          "segment_ids": [],
+          "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+        }
+      ],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 10,
+        "practice_minutes": 0,
+        "assessment_minutes": 0,
+        "review_minutes": 0,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 8,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 16,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "study_prompt": "Fixture only: inspect how a tokenization tradeoff would be introduced."
+      }
+    },
+    {
+      "activity_id": "activity-example",
+      "type": "worked_example",
+      "title": "Inspect a guided example",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [
+        "activity-theory"
+      ],
+      "resource_assignments": [
+        {
+          "resource_version_id": "synthetic-resource-tokenization-v1",
+          "role": "primary",
+          "segment_ids": [],
+          "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+        }
+      ],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 5,
+        "practice_minutes": 5,
+        "assessment_minutes": 0,
+        "review_minutes": 0,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 4,
+          "practice_minutes": 4,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 8,
+          "practice_minutes": 8,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "example_prompt": "Fixture only: compare two hypothetical token boundary representations.",
+        "guidance_level": "full"
+      }
+    },
+    {
+      "activity_id": "activity-coding",
+      "type": "coding",
+      "title": "Inspect token boundaries locally",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [
+        "activity-example"
+      ],
+      "resource_assignments": [
+        {
+          "resource_version_id": "synthetic-resource-tokenization-v1",
+          "role": "primary",
+          "segment_ids": [],
+          "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+        }
+      ],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 0,
+        "practice_minutes": 15,
+        "assessment_minutes": 0,
+        "review_minutes": 0,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 12,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 24,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "task_prompt": "Fixture only: write a local script that prints illustrative token boundaries.",
+        "deliverable_description": "A short script and one paragraph describing its output.",
+        "assessment_ref": null,
+        "execution_mode": "external"
+      }
+    },
+    {
+      "activity_id": "activity-quiz",
+      "type": "quiz",
+      "title": "Explain a tradeoff",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [
+        "activity-coding"
+      ],
+      "resource_assignments": [
+        {
+          "resource_version_id": "synthetic-resource-tokenization-v1",
+          "role": "primary",
+          "segment_ids": [],
+          "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+        }
+      ],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 0,
+        "practice_minutes": 0,
+        "assessment_minutes": 5,
+        "review_minutes": 0,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 4,
+          "review_minutes": 0
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 8,
+          "review_minutes": 0
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "assessment_ref": "synthetic-assessment-1",
+        "attempt_policy_ref": "synthetic-attempt-policy"
+      }
+    },
+    {
+      "activity_id": "activity-review",
+      "type": "review",
+      "title": "Recall the tradeoff later",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [
+        "activity-quiz"
+      ],
+      "resource_assignments": [
+        {
+          "resource_version_id": "synthetic-resource-tokenization-v1",
+          "role": "primary",
+          "segment_ids": [],
+          "selection_rationale": "Synthetic resource used only to demonstrate reference integrity."
+        }
+      ],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 0,
+        "practice_minutes": 0,
+        "assessment_minutes": 0,
+        "review_minutes": 5,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 4
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 0,
+          "assessment_minutes": 0,
+          "review_minutes": 8
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "recall_prompt": "Fixture only: explain the earlier tradeoff before reopening the notes.",
+        "assessment_ref": "synthetic-assessment-review"
+      }
+    },
+    {
+      "activity_id": "activity-reflection",
+      "type": "reflection",
+      "title": "Record a remaining question",
+      "requirement_level": "required",
+      "objective_ids": [
+        "objective-tokenization"
+      ],
+      "prerequisite_activity_ids": [
+        "activity-review"
+      ],
+      "resource_assignments": [],
+      "duration_estimate": {
+        "media_minutes": 0,
+        "reading_minutes": 0,
+        "practice_minutes": 3,
+        "assessment_minutes": 0,
+        "review_minutes": 0,
+        "estimate_basis": "model",
+        "uncertainty": "high",
+        "lower_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 2,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "upper_bounds": {
+          "media_minutes": 0,
+          "reading_minutes": 0,
+          "practice_minutes": 4,
+          "assessment_minutes": 0,
+          "review_minutes": 0
+        },
+        "range_interpretation": "planning_bounds_not_confidence_interval"
+      },
+      "content": {
+        "reflection_prompt": "What remains unclear, and what evidence would help answer it?"
+      }
+    }
+  ],
+  "certification_options": [],
+  "coverage_limitations": [],
+  "duration_policy": {
+    "playback_speed": 1,
+    "rounding": "ceil_per_activity",
+    "policy_version": "synthetic-duration-policy"
+  },
+  "total_estimated_minutes": 48,
+  "total_estimate_range_minutes": {
+    "lower": 38,
+    "upper": 76
+  },
+  "coverage_status": "complete",
+  "provenance": {
+    "generation_job_id": "synthetic-generation-1",
+    "catalog_snapshot_id": "synthetic-catalog-1",
+    "request_snapshot_id": "synthetic-request-snapshot",
+    "retrieval_policy_version": "synthetic-retrieval-policy",
+    "source_resource_version_ids": [
+      "synthetic-resource-tokenization-v1"
+    ],
+    "pedagogy_policy_version": "synthetic-pedagogy-policy",
+    "generator_policy_version": "synthetic-generator-policy",
+    "prompt_template_version": "synthetic-prompt-template",
+    "provider_id": "synthetic-provider",
+    "model_id": "synthetic-model",
+    "candidate_sha256": "435f6b3a8297063ab07cf807eaa001a3ad37747efc0b8219f2e69d093ca4e505",
+    "validation_policy_version": "synthetic-validation-policy"
+  },
+  "instruction_preferences_applied": {
+    "math_depth": "applied",
+    "topic_math_depth_overrides": [],
+    "known_material_review": "condensed"
+  },
+  "adaptation_context": {
+    "proficiency_snapshot_ref": null,
+    "adaptation_policy_version": "adaptation-policy-001",
+    "waiver_refs": [],
+    "origin_publication_revision_id": null
+  }
+}

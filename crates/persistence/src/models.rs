@@ -2,8 +2,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use curriculum_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
-use curriculum_security::{PrincipalRole, SecurityError};
+use syllabus_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
+use syllabus_security::{PrincipalRole, SecurityError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use thiserror::Error;
@@ -106,7 +106,9 @@ impl PersistenceError {
     pub fn http_status_code(&self) -> u16 {
         match self {
             PersistenceError::Security(
-                SecurityError::Unauthenticated | SecurityError::InvalidWebhookSignature(_),
+                SecurityError::Unauthenticated
+                | SecurityError::InvalidWebhookSignature(_)
+                | SecurityError::InvalidOAuthGrant(_),
             ) => 401,
             PersistenceError::PaymentRequired { .. } => 402,
             PersistenceError::Security(
@@ -146,6 +148,9 @@ impl PersistenceError {
             PersistenceError::Security(SecurityError::Unauthenticated) => "unauthenticated",
             PersistenceError::Security(SecurityError::InvalidWebhookSignature(_)) => {
                 "invalid_webhook_signature"
+            }
+            PersistenceError::Security(SecurityError::InvalidOAuthGrant(_)) => {
+                "invalid_oauth_grant"
             }
             PersistenceError::PaymentRequired { code, .. } => code,
             PersistenceError::Security(SecurityError::CrossTenantAccessDenied { .. }) => {
@@ -264,7 +269,33 @@ pub struct AccountRecord {
     pub email: String,
     pub email_verified: bool,
     pub roles: Vec<PrincipalRole>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar_url: Option<String>,
+    #[serde(default, skip_serializing)]
+    pub password_hash: Option<String>,
     pub deleted_at_ms: Option<u64>,
+}
+
+/// Federated OAuth 2.0 / OIDC identity linked to a local `AccountRecord`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OAuthIdentityRecord {
+    pub provider: syllabus_security::OAuthProvider,
+    pub provider_subject: String,
+    pub account_id: String,
+    pub email: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+}
+
+/// Outcome of an OAuth 2.0 callback exchange (`login` or automatic `signup` + account linking).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OAuthLoginOutcome {
+    pub account: AccountRecord,
+    pub session: AuthSessionRecord,
+    pub is_new_account: bool,
+    pub provider: syllabus_security::OAuthProvider,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,12 +309,12 @@ pub struct AuthSessionRecord {
     pub revoked: bool,
 }
 
-/// Private learner curriculum revision (`SHARE-001`, `SHARE-002`, `NFR-007`).
+/// Private learner syllabus revision (`SHARE-001`, `SHARE-002`, `NFR-007`).
 /// Stored in a strictly separate identifier and table space from `PublicTemplateRevisionRecord`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumRevisionRecord {
+pub struct SyllabusRevisionRecord {
     pub revision_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub owner_account_id: String,
     pub revision_number: u32,
     pub candidate_sha256: String,
@@ -332,9 +363,9 @@ pub struct ScheduledSessionItem {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ScheduleRevisionRecord {
     pub schedule_revision_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub owner_account_id: String,
-    pub curriculum_revision_id: String,
+    pub syllabus_revision_id: String,
     pub etag_version: u64,
     pub etag: String,
     pub timezone: String,
@@ -359,7 +390,7 @@ pub struct SchedulePatchInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProgressEventInput {
     pub event_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub activity_id: String,
     pub objective_id: Option<String>,
     pub status: ActivityExecutionStatus,
@@ -370,7 +401,7 @@ pub struct ProgressEventInput {
 pub struct StoredProgressEvent {
     pub account_id: String,
     pub event_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub activity_id: String,
     pub objective_id: String,
     pub status: ActivityExecutionStatus,
@@ -382,7 +413,7 @@ pub struct StoredProgressEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProgressEventReceiptRecord {
     pub event_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub activity_id: String,
     pub status: ActivityExecutionStatus,
     pub time_spent_minutes: u32,
@@ -546,7 +577,7 @@ pub struct CatalogResourceVersionRecord {
 
 impl CatalogResourceVersionRecord {
     /// Projects this catalog resource version into a JSON object conforming to
-    /// `specs/001-curriculum-platform/contracts/resource.schema.json`.
+    /// `specs/001-syllabus-platform/contracts/resource.schema.json`.
     #[must_use]
     pub fn to_contract_json(&self) -> Value {
         let access_model_str = match self.access_model {
@@ -726,7 +757,7 @@ impl CatalogResourceVersionRecord {
 
 /// Non-destructive quarantine overlay (`CAT-004`, `@S07`, `@S09`, `@S63`).
 /// Blocks a resource version from future generation/retrieval while keeping historical
-/// curriculum revisions byte-for-byte immutable.
+/// syllabus revisions byte-for-byte immutable.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceQuarantineOverlayRecord {
     pub overlay_id: String,
@@ -738,12 +769,12 @@ pub struct ResourceQuarantineOverlayRecord {
     pub lifted_at: Option<String>,
 }
 
-/// Non-destructive resource alert surfaced on existing curricula when a referenced resource
+/// Non-destructive resource alert surfaced on existing syllabi when a referenced resource
 /// is quarantined or degraded (`CAT-004`, `@S07`, `@S63`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceAlertRecord {
     pub alert_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub revision_id: String,
     pub resource_version_id: String,
     pub alert_type: String,
@@ -795,10 +826,10 @@ pub struct CatalogFilterOutcome {
     pub requires_paid_fallback_notice: bool,
 }
 
-/// Summary item returned when listing a learner's private curricula (`T04`).
+/// Summary item returned when listing a learner's private syllabi (`T04`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumSummaryItem {
-    pub curriculum_id: String,
+pub struct SyllabusSummaryItem {
+    pub syllabus_id: String,
     pub title: String,
     pub active_revision_id: Option<String>,
     pub latest_revision_id: String,
@@ -806,15 +837,15 @@ pub struct CurriculumSummaryItem {
     pub etag: String,
 }
 
-/// Curriculum overview projection (`T04`).
+/// Syllabus overview projection (`T04`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CurriculumOverviewRecord {
-    pub curriculum_id: String,
+pub struct SyllabusOverviewRecord {
+    pub syllabus_id: String,
     pub owner_account_id: String,
     pub title: String,
     pub active_revision_id: Option<String>,
     pub latest_revision_id: String,
-    pub revisions: Vec<CurriculumRevisionRecord>,
+    pub revisions: Vec<SyllabusRevisionRecord>,
     pub resource_alerts: Vec<ResourceAlertRecord>,
     pub activation_version: u64,
     pub etag: String,
@@ -824,7 +855,7 @@ pub struct CurriculumOverviewRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CandidateArchiveRecord {
     pub archive_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub revision_id: Option<String>,
     pub provider_id: String,
     pub raw_utf8_payload: String,
@@ -840,7 +871,7 @@ pub struct GenerationJobRecord {
     pub owner_account_id: String,
     pub status: String,
     pub stage_history: Vec<String>,
-    pub curriculum_id: Option<String>,
+    pub syllabus_id: Option<String>,
     pub revision_id: Option<String>,
     pub candidate_sha256: Option<String>,
     pub provider_id: String,
@@ -961,7 +992,7 @@ pub struct AssessmentKeyCorrectionRecord {
 pub struct PrerequisiteDecisionAuditRecord {
     pub audit_event_id: String,
     pub account_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub target_objective_id: String,
     pub missing_prerequisite_objective_ids: Vec<String>,
     pub decision_kind: String,
@@ -972,7 +1003,7 @@ pub struct PrerequisiteDecisionAuditRecord {
 pub struct DiagnosticSessionRecord {
     pub diagnostic_id: String,
     pub account_id: String,
-    pub curriculum_id: Option<String>,
+    pub syllabus_id: Option<String>,
     pub topic_id: String,
     pub status: String,
     pub stop_reason: Option<DiagnosticStopReason>,
@@ -1001,12 +1032,12 @@ pub struct ObjectiveWaiverRecord {
 pub struct AdaptationProposalRecord {
     pub proposal_id: String,
     pub account_id: String,
-    pub curriculum_id: String,
-    pub base_curriculum_revision_id: String,
+    pub syllabus_id: String,
+    pub base_syllabus_revision_id: String,
     pub base_schedule_revision_id: String,
     pub status: String,
     pub proposal_sha256: String,
-    pub accepted_curriculum_revision_id: Option<String>,
+    pub accepted_syllabus_revision_id: Option<String>,
     pub accepted_schedule_revision_id: Option<String>,
     pub payload: Value,
 }
@@ -1061,7 +1092,7 @@ pub struct PushSubscriptionRecord {
 pub struct ReminderOccurrenceRecord {
     pub occurrence_id: String,
     pub account_id: String,
-    pub curriculum_id: Option<String>,
+    pub syllabus_id: Option<String>,
     pub scheduled_local_date: String,
     pub scheduled_utc_iso: String,
     pub scheduled_utc_epoch: i64,
@@ -1139,7 +1170,7 @@ pub struct PaymentWebhookReceiptRecord {
 pub struct PublicationPreviewRecord {
     pub preview_id: String,
     pub account_id: String,
-    pub curriculum_id: String,
+    pub syllabus_id: String,
     pub source_revision_id: String,
     pub visibility: ModerationVisibilityState,
     pub publisher_display_name: String,
@@ -1159,7 +1190,7 @@ pub struct PublicationPreviewRecord {
 pub struct PublicationRecord {
     pub publication_id: String,
     pub owner_account_id: Option<String>,
-    pub source_curriculum_id: String,
+    pub source_syllabus_id: String,
     pub public_author_id: String,
     pub publisher_display_name: String,
     pub visibility: ModerationVisibilityState,
@@ -1179,7 +1210,7 @@ pub struct PublicationRevisionRecord {
     pub publication_id: String,
     pub revision_number: u32,
     pub supersedes_publication_revision_id: Option<String>,
-    pub source_curriculum_revision_id: String,
+    pub source_syllabus_revision_id: String,
     pub preview_sha256: String,
     pub content_sha256: String,
     pub upvote_count: u64,
@@ -1211,7 +1242,7 @@ impl PublicationViewRecord {
         let content = &rev.snapshot["content"];
         let title = content["title"]
             .as_str()
-            .unwrap_or("Published Curriculum")
+            .unwrap_or("Published Syllabus")
             .to_string();
         let summary = content["summary"].as_str().unwrap_or("").to_string();
         let topic_id = content["topic_ids"]
@@ -1241,7 +1272,7 @@ impl PublicationViewRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnedPublicationSummaryRecord {
     pub publication_id: String,
-    pub source_curriculum_id: String,
+    pub source_syllabus_id: String,
     pub current_revision_id: String,
     pub latest_revision_number: u32,
     pub visibility: String,
@@ -1254,7 +1285,7 @@ pub struct OwnedPublicationSummaryRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OwnedPublicationManagementRecord {
     pub publication_id: String,
-    pub source_curriculum_id: String,
+    pub source_syllabus_id: String,
     pub current_revision_id: String,
     pub latest_revision_number: u32,
     pub visibility: String,
@@ -1272,7 +1303,7 @@ pub struct OwnedPublicationRevisionItem {
     pub publication_revision_id: String,
     pub publication_id: String,
     pub revision_number: u32,
-    pub source_curriculum_revision_id: String,
+    pub source_syllabus_revision_id: String,
     pub content_sha256: String,
     pub public_readability: bool,
     pub upvote_count: Option<u64>,
@@ -1314,8 +1345,8 @@ pub struct ModerationActionRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AdoptedCurriculumRecord {
-    pub curriculum_id: String,
+pub struct AdoptedSyllabusRecord {
+    pub syllabus_id: String,
     pub revision_id: String,
     pub schedule_revision_id: String,
     pub adopter_account_id: String,
@@ -1346,6 +1377,80 @@ pub struct AccountDeletionReceiptRecord {
     pub status: String,
     pub tombstoned_entities_count: usize,
     pub withdrawn_publication_ids: Vec<String>,
-    pub preserved_adopter_curriculum_ids: Vec<String>,
+    pub preserved_adopter_syllabus_ids: Vec<String>,
     pub completed_at: String,
+}
+
+/// Partial update payload for editing an existing catalog/library resource version
+/// and automatically re-indexing it in the TF-IDF corpus.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogResourcePatchInput {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub canonical_url: Option<String>,
+    #[serde(default)]
+    pub provider_display_name: Option<String>,
+    #[serde(default)]
+    pub resource_type: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub topics: Option<Vec<String>>,
+    #[serde(default)]
+    pub level: Option<String>,
+    #[serde(default)]
+    pub access_model: Option<CatalogAccessModel>,
+    #[serde(default)]
+    pub price_minor_units: Option<Option<u64>>,
+}
+
+/// Request payload for adding or editing a resource binding within a learner's syllabus.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyllabusResourceBindingInput {
+    pub resource_version_id: String,
+    #[serde(default)]
+    pub module_id: Option<String>,
+    #[serde(default)]
+    pub activity_id: Option<String>,
+    #[serde(default)]
+    pub activity_title: Option<String>,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub requirement_level: Option<String>,
+    #[serde(default)]
+    pub segment_ids: Vec<String>,
+    #[serde(default)]
+    pub selection_rationale: Option<String>,
+}
+
+/// Receipt returned when adding, updating, or removing a resource binding on a syllabus.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyllabusResourceMutationReceipt {
+    pub syllabus_id: String,
+    pub revision_id: String,
+    pub resource_version_id: String,
+    pub module_id: Option<String>,
+    pub activity_id: Option<String>,
+    pub action: String,
+    pub etag: String,
+}
+
+/// Validates a learner-provided manual resource URL against SSRF, loopback, private-IP,
+/// link-local, metadata-IP, and userinfo rules while permitting public HTTPS domains.
+pub fn validate_manual_resource_egress_url(url: &str) -> Result<String, PersistenceError> {
+    let host = validate_outbound_egress_url(url, &[]).map_err(|err| match err {
+        DomainError::UnsafeEgressUrl { url, reason } => {
+            PersistenceError::UnsafeEgressUrlRejected { url, reason }
+        }
+        other => PersistenceError::Validation(other.to_string()),
+    })?;
+    if !host.contains('.') || host.ends_with(".invalid") {
+        return Err(PersistenceError::UnsafeEgressUrlRejected {
+            url: url.to_string(),
+            reason: format!("host `{host}` must be a routable public domain"),
+        });
+    }
+    Ok(host)
 }

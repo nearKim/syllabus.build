@@ -2,7 +2,7 @@
 //! state separation (`ActivityExecutionState`, `Proficiency`, `ReviewScheduleItem`).
 //!
 //! Architectural invariant (`D12`): No HTTP, database, or AI provider SDK types
-//! are permitted in `curriculum-domain`.
+//! are permitted in `syllabus-domain`.
 
 use thiserror::Error;
 
@@ -60,14 +60,14 @@ pub enum DomainError {
 pub mod adaptation;
 pub mod billing;
 pub mod catalog;
-pub mod curriculum;
+pub mod syllabus;
 pub mod operations;
 pub mod sharing;
 
 pub use adaptation::*;
 pub use billing::*;
 pub use catalog::*;
-pub use curriculum::*;
+pub use syllabus::*;
 pub use operations::*;
 pub use sharing::*;
 
@@ -444,7 +444,7 @@ mod tests {
         let quote = UsageQuote {
             quote_id: "quote-001".to_string(),
             account_id: "acct-1".to_string(),
-            operation_kind: "curriculum_generation".to_string(),
+            operation_kind: "syllabus_generation".to_string(),
             billing_mode: BillingModeKind::HostedCredits,
             provider_id: "openai".to_string(),
             model_id: "gpt-4.1-mini".to_string(),
@@ -572,16 +572,16 @@ mod tests {
         .unwrap();
         assert!(retrieval.passed);
 
-        let rubric = evaluate_curriculum_expert_rubric(
+        let rubric = evaluate_syllabus_expert_rubric(
             &[
-                CurriculumExpertRubricScore {
+                SyllabusExpertRubricScore {
                     rater_id: "sme-1".to_string(),
                     prerequisite_coherence_bp: 9_000,
                     workload_realism_bp: 8_800,
                     pedagogical_triad_bp: 9_200,
                     citation_grounding_bp: 9_000,
                 },
-                CurriculumExpertRubricScore {
+                SyllabusExpertRubricScore {
                     rater_id: "sme-2".to_string(),
                     prerequisite_coherence_bp: 8_800,
                     workload_realism_bp: 8_600,

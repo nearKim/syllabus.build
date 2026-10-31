@@ -1,5 +1,5 @@
 [package]
-name = "curriculum-api"
+name = "syllabus-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -8,15 +8,15 @@ publish.workspace = true
 
 [dependencies]
 axum.workspace = true
-curriculum-application.workspace = true
-curriculum-domain.workspace = true
-curriculum-jobs.workspace = true
-curriculum-persistence.workspace = true
-curriculum-security.workspace = true
+syllabus-application.workspace = true
+syllabus-domain.workspace = true
+syllabus-jobs.workspace = true
+syllabus-persistence.workspace = true
+syllabus-security.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-curriculum-contracts.workspace = true
+syllabus-contracts.workspace = true
 tower.workspace = true

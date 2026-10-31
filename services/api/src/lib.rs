@@ -1,5 +1,5 @@
 //! HTTP API service router (`T00`–`T04` identity, tenant isolation, HTTP concurrency, outbox wiring,
-//! reviewed catalog filtering/reviews, goal intake, deterministic generation, and curriculum overview/activation).
+//! reviewed catalog filtering/reviews, goal intake, deterministic generation, and syllabus overview/activation).
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -10,14 +10,14 @@ use axum::{
     routing::{delete, get, patch, post, put},
     Json, Router,
 };
-use curriculum_application::build_readiness_report;
-use curriculum_domain::DomainError;
-use curriculum_jobs::{OutboxJobQueue, OutboxQueueConfig};
-use curriculum_persistence::{
+use syllabus_application::build_readiness_report;
+use syllabus_domain::DomainError;
+use syllabus_jobs::{OutboxJobQueue, OutboxQueueConfig};
+use syllabus_persistence::{
     IdempotencyBeginOutcome, InMemoryTransactionalStore, PersistenceError,
     StoredIdempotentResponse,
 };
-use curriculum_security::{
+use syllabus_security::{
     AppEnvironment, AuthVerifier, AuthenticatedPrincipal, DevFixedIdentityAuthVerifier,
     ReleaseFeatureGates, SecurityError,
 };
@@ -39,33 +39,37 @@ use self::{
         import_external_completion_handler, list_moderation_reports_handler,
         list_owned_publication_revisions_handler, list_owned_publications_handler,
         moderate_publication_handler, preview_body_publication_handler,
-        preview_curriculum_publication_handler, process_payment_webhook_handler,
-        publish_curriculum_handler, publish_publication_revision_handler,
+        preview_syllabus_publication_handler, process_payment_webhook_handler,
+        publish_syllabus_handler, publish_publication_revision_handler,
         put_my_publication_vote_handler, reconcile_ambiguous_timeout_handler,
         release_credit_reservation_handler, report_publication_handler,
         request_account_deletion_handler, settle_credit_reservation_handler,
         unpublish_publication_handler,
     },
     handlers_core::{
-        activate_curriculum_revision_handler, cancel_generation_job_handler,
-        create_auth_session_handler, create_credential_handler, create_export_job_handler,
-        delete_auth_session_handler, get_auth_session_handler, get_credential_metadata_handler,
-        get_curriculum_overview_handler, get_curriculum_resource_alerts_handler,
-        get_curriculum_revision_handler, get_generation_job_handler, get_my_proficiency_handler,
-        get_my_usage_handler, get_schedule_handler, interpret_goal_handler,
-        list_credentials_handler, list_my_curricula_handler,
-        list_or_filter_catalog_resources_handler, patch_schedule_handler,
-        post_curriculum_progress_event_handler, post_progress_event_handler,
+        activate_syllabus_revision_handler, add_syllabus_resource_handler,
+        cancel_generation_job_handler, create_auth_session_handler, create_credential_handler,
+        create_export_job_handler, delete_auth_session_handler, delete_catalog_resource_handler,
+        delete_syllabus_resource_handler, get_auth_session_handler,
+        get_credential_metadata_handler, get_syllabus_overview_handler,
+        get_syllabus_resource_alerts_handler, get_syllabus_revision_handler,
+        get_generation_job_handler, get_my_proficiency_handler, get_my_usage_handler,
+        get_schedule_handler, ingest_manual_catalog_resource_handler, interpret_goal_handler,
+        list_auth_providers_handler, list_credentials_handler, list_my_syllabi_handler,
+        list_or_filter_catalog_resources_handler, login_email_handler,
+        oauth_authorize_url_handler, oauth_callback_exchange_handler,
+        patch_catalog_resource_handler, patch_syllabus_resource_handler, patch_schedule_handler,
+        post_syllabus_progress_event_handler, post_progress_event_handler,
         put_active_revision_handler, quarantine_catalog_resource_handler,
         review_catalog_resource_handler, revoke_credential_handler, rotate_credential_handler,
-        search_and_index_catalog_handler, start_generation_handler,
+        search_and_index_catalog_handler, signup_email_handler, start_generation_handler,
     },
     handlers_learning::{
         accept_adaptation_body_handler, accept_adaptation_path_handler,
         apply_key_correction_handler, delete_default_push_subscription_handler,
         delete_push_subscription_handler, evaluate_prerequisite_gate_handler,
         get_adaptation_proposal_handler, get_assessment_attempt_handler, get_assessment_handler,
-        get_curriculum_adaptation_proposal_handler, get_diagnostic_handler,
+        get_syllabus_adaptation_proposal_handler, get_diagnostic_handler,
         get_notification_preferences_handler, post_push_subscription_handler,
         preview_adaptation_handler, put_notification_preferences_handler,
         record_assessment_assistance_handler, record_attempt_assistance_handler,
@@ -76,7 +80,7 @@ use self::{
 };
 
 pub(crate) const DEFAULT_DEV_ACCOUNT_ID: &str = "00000000-0000-4000-8000-000000000001";
-pub(crate) const DEFAULT_CURRICULUM_ID: &str = "cur-learner-a-1";
+pub(crate) const DEFAULT_SYLLABUS_ID: &str = "cur-learner-a-1";
 pub(crate) const HEADER_IDEMPOTENCY_KEY: &str = "idempotency-key";
 pub(crate) const HEADER_IDEMPOTENCY_REPLAYED: &str = "Idempotency-Replayed";
 pub(crate) const DEFAULT_NOW_EPOCH_MS: u64 = 10_000;
@@ -325,12 +329,23 @@ pub(crate) fn build_v1_routes() -> Router<ApiAppState> {
         .merge(assessment_and_adaptation_routes())
         .merge(notification_and_lifecycle_routes())
         .merge(publication_and_moderation_routes())
-        .merge(catalog_generation_and_curriculum_routes())
+        .merge(catalog_generation_and_syllabus_routes())
 }
 
 fn auth_and_core_routes() -> Router<ApiAppState> {
     Router::new()
-        // Companion auth session routes (supporting both /v1/auth/session and /v1/auth/sessions*)
+        // Companion auth session, email signup/login, and OAuth 2.0 + PKCE routes
+        .route("/v1/auth/providers", get(list_auth_providers_handler))
+        .route("/v1/auth/signup", post(signup_email_handler))
+        .route("/v1/auth/login", post(login_email_handler))
+        .route(
+            "/v1/auth/oauth/{provider}/authorize",
+            get(oauth_authorize_url_handler),
+        )
+        .route(
+            "/v1/auth/oauth/{provider}/callback",
+            post(oauth_callback_exchange_handler),
+        )
         .route("/v1/auth/session", post(create_auth_session_handler))
         .route("/v1/auth/session", get(get_auth_session_handler))
         .route("/v1/auth/session", delete(delete_auth_session_handler))
@@ -344,21 +359,21 @@ fn auth_and_core_routes() -> Router<ApiAppState> {
         .route("/v1/me/proficiency", get(get_my_proficiency_handler))
         .route("/v1/progress-events", post(post_progress_event_handler))
         .route(
-            "/v1/curricula/{curriculum_id}/progress-events",
-            post(post_curriculum_progress_event_handler),
+            "/v1/syllabi/{syllabus_id}/progress-events",
+            post(post_syllabus_progress_event_handler),
         )
         // Schedule routes with If-Match optimistic concurrency
-        .route("/v1/schedules/{curriculum_id}", get(get_schedule_handler))
+        .route("/v1/schedules/{syllabus_id}", get(get_schedule_handler))
         .route(
-            "/v1/schedules/{curriculum_id}",
+            "/v1/schedules/{syllabus_id}",
             patch(patch_schedule_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/schedule",
+            "/v1/syllabi/{syllabus_id}/schedule",
             get(get_schedule_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/schedule",
+            "/v1/syllabi/{syllabus_id}/schedule",
             patch(patch_schedule_handler),
         )
 }
@@ -476,7 +491,7 @@ fn assessment_and_adaptation_routes() -> Router<ApiAppState> {
             post(apply_key_correction_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/objectives/{objective_id}/prerequisite-gate",
+            "/v1/syllabi/{syllabus_id}/objectives/{objective_id}/prerequisite-gate",
             post(evaluate_prerequisite_gate_handler),
         )
         // T12: Objective diagnostics, waivers & adaptation proposals
@@ -507,11 +522,11 @@ fn assessment_and_adaptation_routes() -> Router<ApiAppState> {
             post(stop_diagnostic_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/adaptations/preview",
+            "/v1/syllabi/{syllabus_id}/adaptations/preview",
             post(preview_adaptation_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/adaptation-proposals",
+            "/v1/syllabi/{syllabus_id}/adaptation-proposals",
             post(preview_adaptation_handler),
         )
         .route(
@@ -519,15 +534,15 @@ fn assessment_and_adaptation_routes() -> Router<ApiAppState> {
             get(get_adaptation_proposal_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}",
-            get(get_curriculum_adaptation_proposal_handler),
+            "/v1/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}",
+            get(get_syllabus_adaptation_proposal_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/adaptations/accept",
+            "/v1/syllabi/{syllabus_id}/adaptations/accept",
             post(accept_adaptation_body_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/adaptation-proposals/{proposal_id}/accept",
+            "/v1/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}/accept",
             post(accept_adaptation_path_handler),
         )
 }
@@ -576,14 +591,14 @@ fn publication_and_moderation_routes() -> Router<ApiAppState> {
     Router::new()
         // T13: Public templates, preview sanitization, discovery, upvotes, moderation & partial adoption
         .route(
-            "/v1/curricula/{curriculum_id}/publications/preview",
-            post(preview_curriculum_publication_handler),
+            "/v1/syllabi/{syllabus_id}/publications/preview",
+            post(preview_syllabus_publication_handler),
         )
         .route(
             "/v1/publication-previews",
             post(preview_body_publication_handler),
         )
-        .route("/v1/publications", post(publish_curriculum_handler))
+        .route("/v1/publications", post(publish_syllabus_handler))
         .route("/v1/publications", get(discover_publications_handler))
         .route(
             "/v1/publications/{publication_id}",
@@ -660,7 +675,7 @@ fn publication_and_moderation_routes() -> Router<ApiAppState> {
         )
 }
 
-fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
+fn catalog_generation_and_syllabus_routes() -> Router<ApiAppState> {
     Router::new()
         // T02: Reviewed catalog filtering, curator review & quarantine routes
         .route(
@@ -670,6 +685,14 @@ fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
         .route(
             "/v1/catalog/resources",
             get(list_or_filter_catalog_resources_handler),
+        )
+        .route(
+            "/v1/catalog/resources/manual",
+            post(ingest_manual_catalog_resource_handler),
+        )
+        .route(
+            "/v1/catalog/resources/{resource_version_id}",
+            patch(patch_catalog_resource_handler).delete(delete_catalog_resource_handler),
         )
         .route(
             "/v1/catalog/resources/{resource_version_id}/reviews",
@@ -691,15 +714,15 @@ fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
             "/v1/catalog/index",
             post(search_and_index_catalog_handler),
         )
-        // T03: Goal intake & async curriculum generation routes
+        // T03: Goal intake & async syllabus generation routes
         .route("/v1/goals/interpret", post(interpret_goal_handler))
         .route(
-            "/v1/curricula/goal-interpretations",
+            "/v1/syllabi/goal-interpretations",
             post(interpret_goal_handler),
         )
         .route("/v1/generations", post(start_generation_handler))
         .route(
-            "/v1/curricula/generation-jobs",
+            "/v1/syllabi/generation-jobs",
             post(start_generation_handler),
         )
         .route(
@@ -711,7 +734,7 @@ fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
             get(get_generation_job_handler),
         )
         .route(
-            "/v1/curricula/generation-jobs/{job_id}",
+            "/v1/syllabi/generation-jobs/{job_id}",
             get(get_generation_job_handler),
         )
         .route(
@@ -722,28 +745,36 @@ fn catalog_generation_and_curriculum_routes() -> Router<ApiAppState> {
             "/v1/generation-jobs/{job_id}/cancel",
             post(cancel_generation_job_handler),
         )
-        // T04: Curricula list, overview, revision inspection, activation & resource alerts
-        .route("/v1/curricula", get(list_my_curricula_handler))
-        .route("/v1/me/curricula", get(list_my_curricula_handler))
+        // T04: Syllabi list, overview, revision inspection, activation & resource alerts
+        .route("/v1/syllabi", get(list_my_syllabi_handler))
+        .route("/v1/me/syllabi", get(list_my_syllabi_handler))
         .route(
-            "/v1/curricula/{curriculum_id}",
-            get(get_curriculum_overview_handler),
+            "/v1/syllabi/{syllabus_id}",
+            get(get_syllabus_overview_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/revisions/{revision_id}",
-            get(get_curriculum_revision_handler),
+            "/v1/syllabi/{syllabus_id}/revisions/{revision_id}",
+            get(get_syllabus_revision_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/revisions/{revision_id}/activate",
-            post(activate_curriculum_revision_handler),
+            "/v1/syllabi/{syllabus_id}/revisions/{revision_id}/activate",
+            post(activate_syllabus_revision_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/active-revision",
+            "/v1/syllabi/{syllabus_id}/active-revision",
             put(put_active_revision_handler),
         )
         .route(
-            "/v1/curricula/{curriculum_id}/resource-alerts",
-            get(get_curriculum_resource_alerts_handler),
+            "/v1/syllabi/{syllabus_id}/resource-alerts",
+            get(get_syllabus_resource_alerts_handler),
+        )
+        .route(
+            "/v1/syllabi/{syllabus_id}/resources",
+            post(add_syllabus_resource_handler),
+        )
+        .route(
+            "/v1/syllabi/{syllabus_id}/resources/{resource_version_id}",
+            patch(patch_syllabus_resource_handler).delete(delete_syllabus_resource_handler),
         )
 }
 

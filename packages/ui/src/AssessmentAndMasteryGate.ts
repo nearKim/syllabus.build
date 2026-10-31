@@ -185,7 +185,7 @@ export interface SubmitAssessmentAttemptRequestDescriptor {
   readonly body: {
     readonly attempt_id: string;
     readonly assessment_version_id: string;
-    readonly curriculum_revision_id: string;
+    readonly syllabus_revision_id: string;
     readonly activity_id: string;
     readonly answers: readonly AssessmentSelectedAnswer[];
     readonly declared_assistance: DeclaredAssistanceKind;
@@ -235,7 +235,7 @@ export interface KeyCorrectionProjectionOutcome {
   readonly resultingAttemptStatus: "invalidated" | "corrected";
   readonly recomputedProficiencyStatus: ObjectiveProficiencyBadgeStatus;
   readonly dependentWaiversInvalidated: boolean;
-  readonly activeCurriculumSilentlyReplaced: false;
+  readonly activeSyllabusSilentlyReplaced: false;
   readonly explanation: string;
   readonly request: {
     readonly operationId: "applyAssessmentKeyCorrection";
@@ -254,7 +254,7 @@ export interface AssessmentSessionModel {
   readonly sessionId: string;
   readonly assessmentId: string;
   readonly assessmentVersionId: string;
-  readonly curriculumRevisionId: string;
+  readonly syllabusRevisionId: string;
   readonly activityId: string;
   readonly title: string;
   readonly purpose: AssessmentPurpose;
@@ -297,8 +297,8 @@ export interface AssessmentSessionControllerOptions {
   readonly assessmentId?: string;
   readonly assessment_version_id?: string;
   readonly assessmentVersionId?: string;
-  readonly curriculum_revision_id?: string;
-  readonly curriculumRevisionId?: string;
+  readonly syllabus_revision_id?: string;
+  readonly syllabusRevisionId?: string;
   readonly activity_id?: string;
   readonly activityId?: string;
   readonly title?: string;
@@ -377,7 +377,7 @@ export function createAssessmentSessionController(
   const sessionId = clean(options.sessionId, "assessment-session-1");
   const assessmentId = clean(options.assessmentId ?? options.assessment_id, "synthetic-assessment-1");
   const assessmentVersionId = clean(options.assessmentVersionId ?? options.assessment_version_id, `${assessmentId}-v1`);
-  const curriculumRevisionId = clean(options.curriculumRevisionId ?? options.curriculum_revision_id, "synthetic-revision-1");
+  const syllabusRevisionId = clean(options.syllabusRevisionId ?? options.syllabus_revision_id, "synthetic-revision-1");
   const activityId = clean(options.activityId ?? options.activity_id, "activity-quiz");
   const title = clean(options.title, "Explain a tradeoff");
   const purpose: AssessmentPurpose = options.purpose ?? "independent_probe";
@@ -463,7 +463,7 @@ export function createAssessmentSessionController(
     sessionId,
     assessmentId,
     assessmentVersionId,
-    curriculumRevisionId,
+    syllabusRevisionId,
     activityId,
     title,
     purpose,
@@ -706,7 +706,7 @@ export function createAssessmentSessionController(
       body: {
         attempt_id: attemptId,
         assessment_version_id: assessmentVersionId,
-        curriculum_revision_id: curriculumRevisionId,
+        syllabus_revision_id: syllabusRevisionId,
         activity_id: activityId,
         answers: answersList,
         declared_assistance: declaredAssistance,
@@ -876,7 +876,7 @@ export function createAssessmentSessionController(
       resultingAttemptStatus: newStatus,
       recomputedProficiencyStatus,
       dependentWaiversInvalidated: invalidatePrior,
-      activeCurriculumSilentlyReplaced: false,
+      activeSyllabusSilentlyReplaced: false,
       explanation: `Answer-key correction applied (${correctionReason}). Original attempt and evaluation ${prevEvalId} remain inspectable; dependent proficiency and waivers were recomputed without silently replacing the active plan (@S46, @S55).`,
       request: {
         operationId: "applyAssessmentKeyCorrection",
@@ -940,7 +940,7 @@ export interface AuditableGateDecisionProgressEventRequest {
   readonly headers: Record<string, string>;
   readonly body: {
     readonly event_id: string;
-    readonly curriculum_revision_id: string;
+    readonly syllabus_revision_id: string;
     readonly activity_id: string;
     readonly type: AuditableGateEventType;
     readonly occurred_at: string;
@@ -951,10 +951,10 @@ export interface AuditableGateDecisionProgressEventRequest {
 }
 
 export interface MasteryGateEvaluationInput {
-  readonly curriculumId?: string;
-  readonly curriculum_id?: string;
-  readonly curriculumRevisionId?: string;
-  readonly curriculum_revision_id?: string;
+  readonly syllabusId?: string;
+  readonly syllabus_id?: string;
+  readonly syllabusRevisionId?: string;
+  readonly syllabus_revision_id?: string;
   readonly activityId?: string;
   readonly activity_id?: string;
   readonly activityTitle?: string;
@@ -1020,8 +1020,8 @@ export interface MasteryGateModalState {
 }
 
 export function evaluateMasteryGateInterstitial(input: MasteryGateEvaluationInput): MasteryGateModalState {
-  const curriculumId = clean(input.curriculumId ?? input.curriculum_id, "synthetic-curriculum-1");
-  const curriculumRevisionId = clean(input.curriculumRevisionId ?? input.curriculum_revision_id, "synthetic-revision-1");
+  const syllabusId = clean(input.syllabusId ?? input.syllabus_id, "synthetic-syllabus-1");
+  const syllabusRevisionId = clean(input.syllabusRevisionId ?? input.syllabus_revision_id, "synthetic-revision-1");
   const activityId = clean(input.activityId ?? input.activity_id, "activity-quiz");
   const activityTitle = clean(input.activityTitle, activityId);
   const masteryGated = Boolean(input.masteryGated ?? input.mastery_gated);
@@ -1057,11 +1057,11 @@ export function evaluateMasteryGateInterstitial(input: MasteryGateEvaluationInpu
   const buildAuditRequest = (type: AuditableGateEventType, note: string): AuditableGateDecisionProgressEventRequest => ({
     operationId: "appendProgressEvent",
     method: "POST",
-    path: `/curricula/${curriculumId}/progress-events`,
+    path: `/syllabi/${syllabusId}/progress-events`,
     headers: buildOperationHeaders("appendProgressEvent"),
     body: {
       event_id: eventId,
-      curriculum_revision_id: curriculumRevisionId,
+      syllabus_revision_id: syllabusRevisionId,
       activity_id: activityId,
       type,
       occurred_at: occurredAt,

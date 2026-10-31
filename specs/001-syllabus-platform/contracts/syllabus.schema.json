@@ -1,0 +1,1702 @@
+{
+  "$comment": "GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://syllabus.example.invalid/schemas/v0.2/syllabus.schema.json",
+  "title": "Syllabus revision — draft contract v0.2",
+  "description": "An immutable, server-validated learner-facing plan. Schedule dates, current activation, learning evidence, mastery state, secrets, prices and provider URLs are deliberately stored elsewhere.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "0.2.0",
+      "readOnly": true
+    },
+    "syllabus_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$",
+      "readOnly": true
+    },
+    "revision_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$",
+      "readOnly": true
+    },
+    "revision_number": {
+      "type": "integer",
+      "minimum": 1,
+      "readOnly": true
+    },
+    "predecessor_revision_id": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "readOnly": true
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$",
+      "readOnly": true
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 40,
+      "format": "date-time",
+      "readOnly": true
+    },
+    "revision_reason": {
+      "type": "string",
+      "enum": [
+        "initial_generation",
+        "regeneration",
+        "manual_edit",
+        "catalog_repair"
+      ],
+      "readOnly": true
+    },
+    "goal": {
+      "$ref": "#/$defs/goal"
+    },
+    "language": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 35,
+      "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+    },
+    "sequence_preference_applied": {
+      "type": "string",
+      "enum": [
+        "theory_first",
+        "application_first",
+        "balanced"
+      ]
+    },
+    "objectives": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/objective"
+      },
+      "minItems": 1,
+      "maxItems": 200
+    },
+    "prerequisite_edges": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prerequisiteEdge"
+      },
+      "minItems": 0,
+      "maxItems": 800
+    },
+    "modules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/module"
+      },
+      "minItems": 1,
+      "maxItems": 60
+    },
+    "activities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/activity"
+      },
+      "minItems": 1,
+      "maxItems": 600
+    },
+    "certification_options": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/certificationOption"
+      },
+      "minItems": 0,
+      "maxItems": 10
+    },
+    "coverage_limitations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "objective_id": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "missing_requirement": {
+            "type": "string",
+            "enum": [
+              "instruction",
+              "practice",
+              "assessment",
+              "source_coverage"
+            ]
+          },
+          "explanation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "objective_id",
+          "missing_requirement",
+          "explanation"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 200
+    },
+    "duration_policy": {
+      "type": "object",
+      "properties": {
+        "playback_speed": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 3
+        },
+        "rounding": {
+          "const": "ceil_per_activity"
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      },
+      "required": [
+        "playback_speed",
+        "rounding",
+        "policy_version"
+      ],
+      "additionalProperties": false,
+      "readOnly": true
+    },
+    "total_estimated_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000000,
+      "readOnly": true
+    },
+    "total_estimate_range_minutes": {
+      "type": "object",
+      "properties": {
+        "lower": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000000
+        },
+        "upper": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        }
+      },
+      "required": [
+        "lower",
+        "upper"
+      ],
+      "additionalProperties": false,
+      "readOnly": true
+    },
+    "coverage_status": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "partial"
+      ],
+      "readOnly": true
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "generation_job_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "catalog_snapshot_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "request_snapshot_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "retrieval_policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "source_resource_version_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 1,
+          "maxItems": 400,
+          "uniqueItems": true
+        },
+        "pedagogy_policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "generator_policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "prompt_template_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "provider_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "model_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "candidate_sha256": {
+          "type": "string",
+          "minLength": 64,
+          "maxLength": 64,
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "validation_policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      },
+      "required": [
+        "generation_job_id",
+        "catalog_snapshot_id",
+        "request_snapshot_id",
+        "retrieval_policy_version",
+        "source_resource_version_ids",
+        "pedagogy_policy_version",
+        "generator_policy_version",
+        "prompt_template_version",
+        "provider_id",
+        "model_id",
+        "candidate_sha256",
+        "validation_policy_version"
+      ],
+      "additionalProperties": false,
+      "readOnly": true
+    },
+    "instruction_preferences_applied": {
+      "$ref": "./generation-request.schema.json#/$defs/instructionPreferences"
+    },
+    "adaptation_context": {
+      "type": "object",
+      "properties": {
+        "proficiency_snapshot_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "adaptation_policy_version": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "waiver_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 0,
+          "maxItems": 200,
+          "uniqueItems": true
+        },
+        "origin_publication_revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "proficiency_snapshot_ref",
+        "adaptation_policy_version",
+        "waiver_refs",
+        "origin_publication_revision_id"
+      ],
+      "additionalProperties": false,
+      "readOnly": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "syllabus_id",
+    "revision_id",
+    "revision_number",
+    "predecessor_revision_id",
+    "account_id",
+    "created_at",
+    "revision_reason",
+    "goal",
+    "language",
+    "sequence_preference_applied",
+    "objectives",
+    "prerequisite_edges",
+    "modules",
+    "activities",
+    "certification_options",
+    "coverage_limitations",
+    "duration_policy",
+    "total_estimated_minutes",
+    "total_estimate_range_minutes",
+    "coverage_status",
+    "provenance",
+    "instruction_preferences_applied",
+    "adaptation_context"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+    },
+    "durationEstimate": {
+      "type": "object",
+      "properties": {
+        "media_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "reading_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "practice_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "assessment_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "review_minutes": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "estimate_basis": {
+          "type": "string",
+          "enum": [
+            "curator",
+            "model",
+            "observed",
+            "mixed"
+          ]
+        },
+        "uncertainty": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "lower_bounds": {
+          "type": "object",
+          "properties": {
+            "media_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "reading_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "practice_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "assessment_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "review_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "media_minutes",
+            "reading_minutes",
+            "practice_minutes",
+            "assessment_minutes",
+            "review_minutes"
+          ],
+          "additionalProperties": false
+        },
+        "upper_bounds": {
+          "type": "object",
+          "properties": {
+            "media_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "reading_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "practice_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "assessment_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            },
+            "review_minutes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000
+            }
+          },
+          "required": [
+            "media_minutes",
+            "reading_minutes",
+            "practice_minutes",
+            "assessment_minutes",
+            "review_minutes"
+          ],
+          "additionalProperties": false
+        },
+        "range_interpretation": {
+          "const": "planning_bounds_not_confidence_interval"
+        }
+      },
+      "required": [
+        "media_minutes",
+        "reading_minutes",
+        "practice_minutes",
+        "assessment_minutes",
+        "review_minutes",
+        "estimate_basis",
+        "uncertainty",
+        "lower_bounds",
+        "upper_bounds",
+        "range_interpretation"
+      ],
+      "additionalProperties": false,
+      "description": "Non-overlapping estimated components at 1x media playback. Practice includes setup, installation, implementation and exercises. Reading, practice, assessment and review are never divided by playback speed. Each lower bound must be at or below the point estimate, and each upper bound at or above it. Bounds are planning estimates, not statistical confidence intervals or guarantees. Observed means prior aggregate estimates, not this learner’s claimed progress."
+    },
+    "resourceAssignment": {
+      "type": "object",
+      "properties": {
+        "resource_version_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "primary",
+            "supplemental"
+          ]
+        },
+        "segment_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 0,
+          "maxItems": 30,
+          "uniqueItems": true
+        },
+        "selection_rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1200
+        }
+      },
+      "required": [
+        "resource_version_id",
+        "role",
+        "segment_ids",
+        "selection_rationale"
+      ],
+      "additionalProperties": false,
+      "description": "Only identifiers from the request’s approved catalog snapshot are allowed. Segment identifiers must also exist in that version. This object contains no resource URL, price or provider credentials."
+    },
+    "objective": {
+      "type": "object",
+      "properties": {
+        "objective_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1600
+        },
+        "success_criterion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1600
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "introductory",
+            "applied",
+            "advanced"
+          ]
+        },
+        "requirement_level": {
+          "type": "string",
+          "enum": [
+            "required",
+            "optional"
+          ]
+        },
+        "assessment_activity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 0,
+          "maxItems": 30,
+          "uniqueItems": true
+        },
+        "prior_evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 0,
+          "maxItems": 30,
+          "uniqueItems": true,
+          "description": "References may only identify authenticated learner evidence explicitly supplied in context and revalidated by server. Proposing a reference never awards proficiency or a waiver."
+        },
+        "topic_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "objective_version_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      },
+      "required": [
+        "objective_id",
+        "title",
+        "description",
+        "success_criterion",
+        "level",
+        "requirement_level",
+        "assessment_activity_ids",
+        "prior_evidence_refs",
+        "topic_id",
+        "objective_version_id"
+      ],
+      "additionalProperties": false
+    },
+    "prerequisiteEdge": {
+      "type": "object",
+      "properties": {
+        "from_objective_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "to_objective_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        }
+      },
+      "required": [
+        "from_objective_id",
+        "to_objective_id"
+      ],
+      "additionalProperties": false,
+      "description": "The source objective is a prerequisite of the target. All references must resolve and the graph must be acyclic."
+    },
+    "module": {
+      "type": "object",
+      "properties": {
+        "module_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "objective_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "activity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 1,
+          "maxItems": 100,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "module_id",
+        "title",
+        "summary",
+        "objective_ids",
+        "activity_ids"
+      ],
+      "additionalProperties": false
+    },
+    "goal": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 180
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "included_topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "minItems": 1,
+          "maxItems": 60,
+          "uniqueItems": true
+        },
+        "excluded_topics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "minItems": 0,
+          "maxItems": 60,
+          "uniqueItems": true
+        },
+        "scope_note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1600
+        }
+      },
+      "required": [
+        "title",
+        "summary",
+        "included_topics",
+        "excluded_topics",
+        "scope_note"
+      ],
+      "additionalProperties": false
+    },
+    "certificationOption": {
+      "type": "object",
+      "properties": {
+        "resource_version_id": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+        },
+        "mapped_objective_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+          },
+          "minItems": 1,
+          "maxItems": 50,
+          "uniqueItems": true
+        },
+        "relationship": {
+          "const": "optional_preparation"
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        }
+      },
+      "required": [
+        "resource_version_id",
+        "mapped_objective_ids",
+        "relationship",
+        "rationale"
+      ],
+      "additionalProperties": false,
+      "description": "The resource must be a vetted certification entry. This is a preparation reference, never an issuer endorsement or a promise of exam eligibility or success."
+    },
+    "activity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "theory"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "study_prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                }
+              },
+              "required": [
+                "study_prompt"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "worked_example"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "example_prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 4000
+                },
+                "guidance_level": {
+                  "type": "string",
+                  "enum": [
+                    "full",
+                    "faded"
+                  ]
+                }
+              },
+              "required": [
+                "example_prompt",
+                "guidance_level"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "coding"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "task_prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 6000
+                },
+                "deliverable_description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "assessment_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "execution_mode": {
+                  "const": "external"
+                }
+              },
+              "required": [
+                "task_prompt",
+                "deliverable_description",
+                "assessment_ref",
+                "execution_mode"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "quiz"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "assessment_ref": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+                },
+                "attempt_policy_ref": {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 128,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+                }
+              },
+              "required": [
+                "assessment_ref",
+                "attempt_policy_ref"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "review"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "recall_prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                },
+                "assessment_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "recall_prompt",
+                "assessment_ref"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "reflection"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "reflection_prompt": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                }
+              },
+              "required": [
+                "reflection_prompt"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "activity_id": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+            },
+            "type": {
+              "const": "project"
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 180
+            },
+            "requirement_level": {
+              "type": "string",
+              "enum": [
+                "required",
+                "optional"
+              ]
+            },
+            "objective_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 1,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "prerequisite_activity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "minItems": 0,
+              "maxItems": 30,
+              "uniqueItems": true
+            },
+            "resource_assignments": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/resourceAssignment"
+              },
+              "minItems": 0,
+              "maxItems": 12
+            },
+            "duration_estimate": {
+              "$ref": "#/$defs/durationEstimate"
+            },
+            "content": {
+              "type": "object",
+              "properties": {
+                "brief": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 6000
+                },
+                "deliverables": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  },
+                  "minItems": 1,
+                  "maxItems": 10
+                },
+                "assessment_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 3,
+                      "maxLength": 128,
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "execution_mode": {
+                  "const": "external"
+                }
+              },
+              "required": [
+                "brief",
+                "deliverables",
+                "assessment_ref",
+                "execution_mode"
+              ],
+              "additionalProperties": false
+            },
+            "mastery_gated": {
+              "type": "boolean",
+              "description": "When true, requires demonstrated prerequisite proficiency or an explicit auditable override/acknowledgement before advancement."
+            }
+          },
+          "required": [
+            "activity_id",
+            "type",
+            "title",
+            "requirement_level",
+            "objective_ids",
+            "prerequisite_activity_ids",
+            "resource_assignments",
+            "duration_estimate",
+            "content"
+          ],
+          "additionalProperties": false
+        }
+      ],
+      "description": "Render only these known types with escaped text. Assessment identifiers refer to separately authorized private assessment records; no answer keys, hidden tests or grading rubrics belong in this payload."
+    },
+    "modelCandidate": {
+      "type": "object",
+      "properties": {
+        "candidate_schema_version": {
+          "const": "0.2.0"
+        },
+        "goal": {
+          "$ref": "#/$defs/goal"
+        },
+        "language": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 35,
+          "pattern": "^[A-Za-z]{2,8}(-[A-Za-z0-9]{1,8})*$"
+        },
+        "sequence_preference_applied": {
+          "type": "string",
+          "enum": [
+            "theory_first",
+            "application_first",
+            "balanced"
+          ]
+        },
+        "objectives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/objective"
+          },
+          "minItems": 1,
+          "maxItems": 200
+        },
+        "prerequisite_edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prerequisiteEdge"
+          },
+          "minItems": 0,
+          "maxItems": 800
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/module"
+          },
+          "minItems": 1,
+          "maxItems": 60
+        },
+        "activities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/activity"
+          },
+          "minItems": 1,
+          "maxItems": 600
+        },
+        "certification_options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/certificationOption"
+          },
+          "minItems": 0,
+          "maxItems": 10
+        },
+        "coverage_limitations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "objective_id": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"
+              },
+              "missing_requirement": {
+                "type": "string",
+                "enum": [
+                  "instruction",
+                  "practice",
+                  "assessment",
+                  "source_coverage"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "objective_id",
+              "missing_requirement",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 0,
+          "maxItems": 200
+        },
+        "instruction_preferences_applied": {
+          "$ref": "./generation-request.schema.json#/$defs/instructionPreferences"
+        }
+      },
+      "required": [
+        "candidate_schema_version",
+        "goal",
+        "language",
+        "sequence_preference_applied",
+        "objectives",
+        "prerequisite_edges",
+        "modules",
+        "activities",
+        "certification_options",
+        "coverage_limitations",
+        "instruction_preferences_applied"
+      ],
+      "additionalProperties": false,
+      "title": "Untrusted syllabus candidate",
+      "description": "The only syllabus-plan fields the model may propose. Provider-specific structured-output schemas may be stricter adapters. Backend validation and server stamping are mandatory before a canonical syllabus revision exists."
+    }
+  }
+}

@@ -13,30 +13,30 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../../..");
 
-const canonicalCurriculum = JSON.parse(
+const canonicalSyllabus = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/curriculum.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/syllabus.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalProficiency = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/proficiency.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/proficiency.synthetic.json"),
     "utf-8"
   )
 );
 
 const canonicalResource = JSON.parse(
   fs.readFileSync(
-    path.join(rootDir, "specs/001-curriculum-platform/examples/resource.synthetic.json"),
+    path.join(rootDir, "specs/001-syllabus-platform/examples/resource.synthetic.json"),
     "utf-8"
   )
 );
 
-test("buildPlanMapAndOutlineModel renders curriculum.synthetic.json + proficiency.synthetic.json with honest two-layer status badges (@S17, @S23)", () => {
+test("buildPlanMapAndOutlineModel renders syllabus.synthetic.json + proficiency.synthetic.json with honest two-layer status badges (@S17, @S23)", () => {
   const model = buildPlanMapAndOutlineModel(
-    canonicalCurriculum,
+    canonicalSyllabus,
     canonicalProficiency,
     {
       "activity-theory": "self_reported_completed",
@@ -47,7 +47,7 @@ test("buildPlanMapAndOutlineModel renders curriculum.synthetic.json + proficienc
     }
   );
 
-  assert.equal(model.curriculumId, "synthetic-curriculum-1");
+  assert.equal(model.syllabusId, "synthetic-syllabus-1");
   assert.equal(model.revisionId, "synthetic-revision-1");
   assert.equal(model.outlineModules.length, 1);
   assert.equal(model.outlineActivities.length, 6);
@@ -92,10 +92,10 @@ test("buildPlanMapAndOutlineModel renders curriculum.synthetic.json + proficienc
 });
 
 test("buildPlanMapAndOutlineModel enforces 100% Map <-> Outline equivalence, DAG topological order, keyboard navigation, and non-dragging controls (@S25, @S75)", () => {
-  const multiModuleCurriculum = {
-    ...canonicalCurriculum,
+  const multiModuleSyllabus = {
+    ...canonicalSyllabus,
     objectives: [
-      ...canonicalCurriculum.objectives,
+      ...canonicalSyllabus.objectives,
       {
         objective_id: "objective-attention",
         title: "Derive scaled dot-product attention",
@@ -133,7 +133,7 @@ test("buildPlanMapAndOutlineModel enforces 100% Map <-> Outline equivalence, DAG
     ],
   };
 
-  const model = buildPlanMapAndOutlineModel(multiModuleCurriculum, canonicalProficiency);
+  const model = buildPlanMapAndOutlineModel(multiModuleSyllabus, canonicalProficiency);
 
   // Topological sort places module-tokenization (layer 0) before module-attention (layer 1)
   assert.equal(model.outlineModules[0].moduleId, "module-tokenization");
@@ -190,16 +190,16 @@ test("buildPlanMapAndOutlineModel enforces 100% Map <-> Outline equivalence, DAG
 });
 
 test("buildPlanMapAndOutlineModel supports compact mobile neighborhood mode (< 768px), mastery_gated flags, and playback speed ceiling duration scaling (UI-002, UI-003, @S20, @S75, @S76)", () => {
-  const gatedCurriculum = {
-    ...canonicalCurriculum,
-    activities: canonicalCurriculum.activities.map((act) =>
+  const gatedSyllabus = {
+    ...canonicalSyllabus,
+    activities: canonicalSyllabus.activities.map((act) =>
       act.activity_id === "activity-quiz"
         ? { ...act, mastery_gated: true }
         : act
     ),
   };
 
-  const compactModel = buildPlanMapAndOutlineModel(gatedCurriculum, {
+  const compactModel = buildPlanMapAndOutlineModel(gatedSyllabus, {
     viewportWidthPx: 375,
     playbackSpeed: 2,
     studyAheadActivityIds: ["activity-example"],
@@ -228,13 +228,13 @@ test("buildPlanMapAndOutlineModel supports compact mobile neighborhood mode (< 7
   assert.ok(quizAct.prerequisiteBridgeRecommendation);
   assert.equal(quizAct.prerequisiteBridgeRecommendation.blocking, true);
 
-  // Playback speed ceiling math on curriculum.synthetic.json (`ceil_per_activity`)
-  const model1x = buildPlanMapAndOutlineModel(canonicalCurriculum, { playbackSpeed: 1 });
+  // Playback speed ceiling math on syllabus.synthetic.json (`ceil_per_activity`)
+  const model1x = buildPlanMapAndOutlineModel(canonicalSyllabus, { playbackSpeed: 1 });
   assert.equal(model1x.totalDurationTriplet.min, 38);
   assert.equal(model1x.totalDurationTriplet.point, 48);
   assert.equal(model1x.totalDurationTriplet.max, 76);
 
-  const model15x = buildPlanMapAndOutlineModel(canonicalCurriculum, { playbackSpeed: 1.5 });
+  const model15x = buildPlanMapAndOutlineModel(canonicalSyllabus, { playbackSpeed: 1.5 });
   // Ceiling per activity at 1.5x:
   // theory: ceil(10/1.5)=7, example: ceil(10/1.5)=7, coding: ceil(15/1.5)=10,
   // quiz: ceil(5/1.5)=4, review: ceil(5/1.5)=4, reflection: ceil(3/1.5)=2 -> total point = 34

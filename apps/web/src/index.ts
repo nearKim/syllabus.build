@@ -188,13 +188,13 @@ export type SkipActivityActionOutcome = ReturnType<PlanViewController["skipActiv
 
 export interface NavigationRouteContext {
   readonly topLevel: TopLevelDestination; readonly learnSubDestination: LearnSubDestination;
-  readonly planView: PlanSynchronizedView; readonly selectedCurriculumId: string | null;
+  readonly planView: PlanSynchronizedView; readonly selectedSyllabusId: string | null;
   readonly selectedRevisionId: string | null; readonly selectedModuleId: string | null;
   readonly selectedActivityId: string | null;
 }
 
 export function createNavigationShellController(options?: {
-  readonly initialAccountId?: string | null; readonly initialCurriculumId?: string | null;
+  readonly initialAccountId?: string | null; readonly initialSyllabusId?: string | null;
   readonly initialViewportWidthPx?: number; readonly initialTextScalePercent?: number;
   readonly initialAppearance?: AppearancePreferences; readonly planModules?: readonly PlanModuleDescriptor[];
 }) {
@@ -202,7 +202,7 @@ export function createNavigationShellController(options?: {
   let accountId: string | null = options?.initialAccountId ?? "learner-default";
   let current: NavigationRouteContext = {
     topLevel: "Learn", learnSubDestination: "Today", planView: planController.getState().activeView,
-    selectedCurriculumId: options?.initialCurriculumId ?? "curriculum-default", selectedRevisionId: null,
+    selectedSyllabusId: options?.initialSyllabusId ?? "syllabus-default", selectedRevisionId: null,
     selectedModuleId: planController.getState().selectedModuleId, selectedActivityId: planController.getState().selectedActivityId,
   };
   const historyStack: NavigationRouteContext[] = [];
@@ -356,7 +356,7 @@ export type WebShellBootstrapSummary = ReturnType<typeof getWebShellBootstrapSum
 
 export {
   buildPlanMapAndOutlineModel, computeActivityDurationTriplet, createAssessmentSessionController,
-  createThemeController, evaluateMasteryGateInterstitial, evaluateSafeCurriculumRender,
+  createThemeController, evaluateMasteryGateInterstitial, evaluateSafeSyllabusRender,
   isSafeResourceUrl, renderAccessibleMathFormula, renderUntrustedCatalogText,
   resolveDeterministicStepIndicator, resolveMotionPolicy, resolveSurfaceStyle,
   resolveThemeMode, resolveThemePalette, UI_TOKENS,

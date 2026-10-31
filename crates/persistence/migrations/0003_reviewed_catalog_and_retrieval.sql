@@ -127,7 +127,7 @@ CREATE INDEX IF NOT EXISTS idx_objective_catalog_anchors_objective
     ON objective_catalog_anchors (objective_id, is_primary);
 
 -- Active quarantine and rights-revocation overlays that override stale search indexes or snapshots
--- without mutating historical CurriculumRevision records (CAT-006, CAT-007, CTRL-014, CTRL-024, @S07, @S09, @S63)
+-- without mutating historical SyllabusRevision records (CAT-006, CAT-007, CTRL-014, CTRL-024, @S07, @S09, @S63)
 CREATE TABLE IF NOT EXISTS resource_quarantine_overlays (
     overlay_id TEXT PRIMARY KEY CHECK (length(overlay_id) BETWEEN 3 AND 128),
     resource_version_id TEXT NOT NULL UNIQUE REFERENCES resource_versions(resource_version_id) ON DELETE RESTRICT,

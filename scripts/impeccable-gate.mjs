@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { mountCurriculumWebApp } from "../apps/web/src/browserApp.ts";
+import { mountSyllabusWebApp } from "../apps/web/src/browserApp.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
@@ -137,12 +137,12 @@ function runLineAndHierarchyAudit(rawCss, views) {
   const bannedHorizontalLineSelectors = [
     ".surface-panel",
     ".settings-section",
-    ".sidebar-curricula",
+    ".sidebar-syllabi",
     ".matrix-table tbody tr + tr > *",
     ".today-unified-header",
-    ".today-curriculum-brief",
+    ".today-syllabus-brief",
     ".study-guide-prompt",
-    ".today-curriculum-overview",
+    ".today-syllabus-overview",
     ".progress-overview-strip",
     ".progress-unit-row",
     ".progress-capability-row",
@@ -187,8 +187,8 @@ function runLineAndHierarchyAudit(rawCss, views) {
     ".page-description",
     ".section-lede",
     ".plan-goal",
-    ".today-curriculum-brief .plan-goal",
-    ".today-curriculum-brief .plan-scope-list",
+    ".today-syllabus-brief .plan-goal",
+    ".today-syllabus-brief .plan-scope-list",
     ".progress-cap-description",
     ".resource-row-rationale"
   ];
@@ -225,6 +225,28 @@ function runLineAndHierarchyAudit(rawCss, views) {
     );
   }
 
+  // 4. Zero-specificity base form resets so component inputs with leading/trailing icons never get clobbered
+  if (/^input\[type="(?:text|email|search|password)"\]\s*,/m.test(rawCss)) {
+    violations.push(
+      "[cascade-collision] Top-level base 'input[type=\"...\"]' rules must be wrapped in ':where(...)' so zero-specificity defaults cannot override component input padding/backgrounds."
+    );
+  }
+  const authInputBlock = extractCssBlock(rawCss, ".auth-input-wrap input");
+  const authPassBlock = extractCssBlock(rawCss, ".auth-password-wrap input");
+  if (!/padding-inline-start\s*:\s*(?:4[0-9]|5[0-9])px/m.test(authInputBlock)) {
+    violations.push(
+      "[cascade-collision] '.auth-input-wrap input' must keep >= 40px 'padding-inline-start' to clear its leading icon."
+    );
+  }
+  if (
+    !/padding-inline-start\s*:\s*(?:4[0-9]|5[0-9])px/m.test(authPassBlock) ||
+    !/padding-inline-end\s*:\s*(?:4[4-9]|5[0-9])px/m.test(authPassBlock)
+  ) {
+    violations.push(
+      "[cascade-collision] '.auth-password-wrap input' must keep >= 40px 'padding-inline-start' and >= 44px 'padding-inline-end' to clear its leading lock icon and trailing visibility button."
+    );
+  }
+
   return violations;
 }
 
@@ -233,7 +255,7 @@ function main() {
   const resolvedCss = resolveCssVariables(rawCss);
 
   const root = { innerHTML: "" };
-  const app = mountCurriculumWebApp(root);
+  const app = mountSyllabusWebApp(root);
 
   app.navigateTopLevel("Learn");
   app.navigateLearnSubDestination("Today");
@@ -263,7 +285,7 @@ function main() {
     admin: adminHtml
   };
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "curriculum-impeccable-gate-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "syllabus-impeccable-gate-"));
   try {
     const htmlFiles = [];
     for (const [name, bodyHtml] of Object.entries(views)) {

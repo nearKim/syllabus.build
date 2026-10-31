@@ -1,5 +1,5 @@
 // GENERATED FILE — DO NOT EDIT MANUALLY. Source of truth: specs/product.md
-// Canonical Specification SHA-256: fcdef140fca3560d176df03a07a6233a98962eb988b0d5f3a56096f8dd6084e9
+// Canonical Specification SHA-256: 966a2e4a3556340f3bb4ccd44fa1f97496f6e8bdbc38652f322513e8071d9b0f
 
 export const UI_TOKENS = {
   "$comment": "GENERATED FILE \u2014 DO NOT EDIT MANUALLY. Source of truth: specs/product.md",

@@ -18,12 +18,12 @@ use super::*;
         };
 
         let out = provider
-            .generate_curriculum_candidate(&req)
+            .generate_syllabus_candidate(&req)
             .expect("valid generation");
         assert_eq!(out.usage.hosted_credits_charged_minor_units, 0);
 
-        let canonical_path = curriculum_contracts::workspace_root()
-            .join("specs/001-curriculum-platform/examples/curriculum.synthetic.json");
+        let canonical_path = syllabus_contracts::workspace_root()
+            .join("specs/001-syllabus-platform/examples/syllabus.synthetic.json");
         let canonical: Value =
             serde_json::from_str(&std::fs::read_to_string(canonical_path).unwrap()).unwrap();
         assert_eq!(
@@ -51,7 +51,7 @@ use super::*;
             max_output_tokens: 4_096,
         };
         assert_eq!(
-            provider.generate_curriculum_candidate(&bad_req).unwrap_err(),
+            provider.generate_syllabus_candidate(&bad_req).unwrap_err(),
             ProviderError::ForbiddenHostedFallback
         );
 
@@ -61,7 +61,7 @@ use super::*;
             ..bad_req
         };
         let err = provider
-            .generate_curriculum_candidate(&valid_byok_req)
+            .generate_syllabus_candidate(&valid_byok_req)
             .unwrap_err();
         assert!(matches!(err, ProviderError::AuthenticationFailure { .. }));
     }
@@ -72,7 +72,7 @@ use super::*;
             account_id: "00000000-0000-4000-8000-000000000001".to_string(),
             credential_id: "cred-openai-1".to_string(),
             credential_version: 2,
-            status: curriculum_domain::CredentialStatus::Active,
+            status: syllabus_domain::CredentialStatus::Active,
             allow_hosted_fallback: false,
         };
 
@@ -129,7 +129,7 @@ use super::*;
         };
 
         let out = provider
-            .generate_curriculum_candidate(&req)
+            .generate_syllabus_candidate(&req)
             .expect("pinned BYOK request succeeds");
         assert_eq!(out.usage.input_tokens, 1500);
         assert_eq!(out.usage.output_tokens, 1100);
@@ -145,7 +145,7 @@ use super::*;
         };
         assert!(matches!(
             provider
-                .generate_curriculum_candidate(&stale_req)
+                .generate_syllabus_candidate(&stale_req)
                 .unwrap_err(),
             ProviderError::CredentialBindingInvalid { .. }
         ));
@@ -155,7 +155,7 @@ use super::*;
             OPENAI_CHAT_COMPLETIONS_URL,
             "gpt-4o-2024-08-06",
             PinnedByokBinding {
-                status: curriculum_domain::CredentialStatus::Revoked,
+                status: syllabus_domain::CredentialStatus::Revoked,
                 ..binding
             },
             OpenAiTransportMode::Simulated200Ok {
@@ -166,7 +166,7 @@ use super::*;
         .unwrap();
         assert!(matches!(
             revoked_provider
-                .generate_curriculum_candidate(&req)
+                .generate_syllabus_candidate(&req)
                 .unwrap_err(),
             ProviderError::AuthenticationFailure { .. }
         ));
@@ -179,7 +179,7 @@ use super::*;
             account_id: "00000000-0000-4000-8000-000000000001".to_string(),
             credential_id: "cred-anthropic-1".to_string(),
             credential_version: 1,
-            status: curriculum_domain::CredentialStatus::Active,
+            status: syllabus_domain::CredentialStatus::Active,
             allow_hosted_fallback: false,
         };
 
@@ -229,10 +229,10 @@ use super::*;
         let anthropic_body = anthropic.build_anthropic_request_body(&anthropic_req);
         assert_eq!(
             anthropic_body["tool_choice"]["name"].as_str(),
-            Some("curriculum_candidate")
+            Some("syllabus_candidate")
         );
         let anthropic_out = anthropic
-            .generate_curriculum_candidate(&anthropic_req)
+            .generate_syllabus_candidate(&anthropic_req)
             .expect("Anthropic generation succeeds");
         assert_eq!(anthropic_out.usage.input_tokens, 1200);
         assert_eq!(anthropic_out.usage.output_tokens, 900);
@@ -243,7 +243,7 @@ use super::*;
             account_id: "00000000-0000-4000-8000-000000000001".to_string(),
             credential_id: "cred-gemini-1".to_string(),
             credential_version: 3,
-            status: curriculum_domain::CredentialStatus::Active,
+            status: syllabus_domain::CredentialStatus::Active,
             allow_hosted_fallback: false,
         };
         assert!(GeminiHttpProvider::new(
@@ -291,7 +291,7 @@ use super::*;
             Some("application/json")
         );
         let gemini_out = gemini
-            .generate_curriculum_candidate(&gemini_req)
+            .generate_syllabus_candidate(&gemini_req)
             .expect("Gemini generation succeeds");
         assert_eq!(gemini_out.usage.input_tokens, 1800);
         assert_eq!(gemini_out.usage.output_tokens, 1000);
@@ -317,7 +317,7 @@ use super::*;
             account_id: "00000000-0000-4000-8000-000000000001".to_string(),
             credential_id: "cred-cheap-1".to_string(),
             credential_version: 1,
-            status: curriculum_domain::CredentialStatus::Active,
+            status: syllabus_domain::CredentialStatus::Active,
             allow_hosted_fallback: false,
         };
         let mode = OpenAiTransportMode::Simulated200Ok {

@@ -187,9 +187,9 @@ export function resolveMotionPolicy(
 
 const DETERMINISTIC_JOB_LABELS: Readonly<Record<AuthoritativeJobStatus, string>> = {
   queued: "Step 1 of 3: Queued — waiting for worker capacity",
-  running: "Step 2 of 3: Running — generating structured curriculum draft",
+  running: "Step 2 of 3: Running — generating structured syllabus draft",
   validating: "Step 3 of 3: Validating — verifying schema, prerequisites, and catalog rights",
-  succeeded: "Completed: Validated curriculum draft ready for review",
+  succeeded: "Completed: Validated syllabus draft ready for review",
   failed: "Failed: Generation stopped with an actionable error",
   cancel_requested: "Cancellation requested — awaiting worker confirmation",
   cancelled: "Cancelled: Job terminated without activating a plan",

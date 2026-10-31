@@ -3,12 +3,12 @@
 //! (`Idempotency-Key`, `If-Match`, append-only event deduplication), and post-restore
 //! deletion tombstone replay (`T01`, `CTRL-002`, `CTRL-030`, `CTRL-070`, `NFR-001`, `NFR-006`, `NFR-007`).
 
-pub use curriculum_domain::{
+pub use syllabus_domain::{
     advance_spaced_review_item, authorize_credit_reservation, compute_next_reminder_utc,
     compute_partial_adoption_closure, compute_reservation_settlement,
     derive_proficiency_transition, evaluate_account_deletion_impact,
     evaluate_ambiguous_timeout_reconciliation, evaluate_anchor_item_psychometrics,
-    evaluate_assessment_attempt, evaluate_curriculum_expert_rubric,
+    evaluate_assessment_attempt, evaluate_syllabus_expert_rubric,
     evaluate_delayed_retention_and_transfer_study, evaluate_prerequisite_gate,
     evaluate_retrieval_benchmark, format_epoch_utc_iso, partition_diagnostic_objectives,
     recalculate_attempts_for_key_correction, recalculate_schedule_plan,
@@ -20,7 +20,7 @@ pub use curriculum_domain::{
     AnchorAssessmentPsychometricEvaluation, AnchorAssessmentPsychometricInput, AssessmentKind,
     AssessmentReviewStatus, AssistanceLevel, BillingModeKind, CatalogAccessModel,
     ClientRuntimeKind, CostBucketKind, CreditReservation, CredentialStatus,
-    CurriculumExpertRubricEvaluation, CurriculumExpertRubricScore,
+    SyllabusExpertRubricEvaluation, SyllabusExpertRubricScore,
     DelayedRetentionStudyEvaluation, DelayedRetentionTransferCohortMetrics, DiagnosticStopReason,
     DomainError, DstResolutionPolicy, EffortTriplet, EvaluatedAssessmentAttempt, EvidenceOrigin,
     FourCostBucketBreakdown, GoalSpecification, HistoricalAttemptForKeyCorrection,
@@ -41,6 +41,7 @@ pub mod models;
 pub mod store;
 mod store_billing;
 mod store_learning;
+mod store_manual_resources;
 mod store_sharing;
 
 pub use migrations::*;

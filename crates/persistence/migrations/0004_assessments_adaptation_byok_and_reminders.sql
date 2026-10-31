@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS assessment_key_corrections (
 CREATE TABLE IF NOT EXISTS prerequisite_decision_audit_events (
     audit_event_id TEXT PRIMARY KEY CHECK (length(audit_event_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
     target_objective_id TEXT NOT NULL CHECK (length(target_objective_id) BETWEEN 3 AND 128),
     missing_prerequisite_objective_ids TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
     decision_kind TEXT NOT NULL CHECK (
@@ -125,21 +125,21 @@ CREATE TABLE IF NOT EXISTS prerequisite_decision_audit_events (
 CREATE TABLE IF NOT EXISTS schedule_revisions (
     schedule_revision_id TEXT PRIMARY KEY CHECK (length(schedule_revision_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
-    curriculum_revision_id TEXT NOT NULL CHECK (length(curriculum_revision_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
+    syllabus_revision_id TEXT NOT NULL CHECK (length(syllabus_revision_id) BETWEEN 3 AND 128),
     revision_number BIGINT NOT NULL CHECK (revision_number >= 1),
     weekly_hours NUMERIC(5,2) NOT NULL CHECK (weekly_hours > 0),
     preferred_playback_speed NUMERIC(4,2) NOT NULL DEFAULT 1.00 CHECK (preferred_playback_speed BETWEEN 0.50 AND 3.00),
     etag TEXT NOT NULL,
     payload_json JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (account_id, curriculum_id, revision_number)
+    UNIQUE (account_id, syllabus_id, revision_number)
 );
 
 CREATE TABLE IF NOT EXISTS review_schedule_items (
     review_item_id TEXT PRIMARY KEY CHECK (length(review_item_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
     objective_id TEXT NOT NULL CHECK (length(objective_id) BETWEEN 3 AND 128),
     source_session_id TEXT NOT NULL CHECK (length(source_session_id) BETWEEN 3 AND 128),
     scheduled_session_id TEXT NOT NULL CHECK (
@@ -157,7 +157,7 @@ CREATE TABLE IF NOT EXISTS review_schedule_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_review_schedule_items_account_status
-    ON review_schedule_items (account_id, curriculum_id, status, due_at);
+    ON review_schedule_items (account_id, syllabus_id, status, due_at);
 
 -- =============================================================================
 -- T12: Objective Diagnostics, Waivers, and Adaptation Proposals
@@ -166,7 +166,7 @@ CREATE INDEX IF NOT EXISTS idx_review_schedule_items_account_status
 CREATE TABLE IF NOT EXISTS diagnostic_sessions (
     diagnostic_id TEXT PRIMARY KEY CHECK (length(diagnostic_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NULL,
+    syllabus_id TEXT NULL,
     topic_id TEXT NOT NULL CHECK (length(topic_id) BETWEEN 3 AND 128),
     status TEXT NOT NULL CHECK (
         status IN ('in_progress', 'completed', 'stopped_by_learner', 'uncertainty_bound_reached')
@@ -200,22 +200,22 @@ CREATE TABLE IF NOT EXISTS objective_waivers (
 CREATE TABLE IF NOT EXISTS adaptation_proposals (
     proposal_id TEXT PRIMARY KEY CHECK (length(proposal_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
-    base_curriculum_revision_id TEXT NOT NULL CHECK (length(base_curriculum_revision_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
+    base_syllabus_revision_id TEXT NOT NULL CHECK (length(base_syllabus_revision_id) BETWEEN 3 AND 128),
     base_schedule_revision_id TEXT NOT NULL CHECK (length(base_schedule_revision_id) BETWEEN 3 AND 128),
     status TEXT NOT NULL CHECK (
         status IN ('pending_confirmation', 'accepted', 'rejected', 'superseded', 'expired')
     ),
     proposal_sha256 TEXT NOT NULL CHECK (length(proposal_sha256) = 64),
-    accepted_curriculum_revision_id TEXT NULL,
+    accepted_syllabus_revision_id TEXT NULL,
     accepted_schedule_revision_id TEXT NULL,
     payload_json JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     accepted_at TIMESTAMPTZ NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_adaptation_proposals_curriculum
-    ON adaptation_proposals (account_id, curriculum_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_adaptation_proposals_syllabus
+    ON adaptation_proposals (account_id, syllabus_id, created_at DESC);
 
 -- =============================================================================
 -- T07A: Encrypted BYOK Credential Vault & Inference Usage Records
@@ -304,7 +304,7 @@ CREATE INDEX IF NOT EXISTS idx_push_subscriptions_account
 CREATE TABLE IF NOT EXISTS reminder_occurrences (
     occurrence_id TEXT PRIMARY KEY CHECK (length(occurrence_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NULL,
+    syllabus_id TEXT NULL,
     scheduled_local_date TEXT NOT NULL CHECK (length(scheduled_local_date) = 10),
     scheduled_utc TIMESTAMPTZ NOT NULL,
     expires_utc TIMESTAMPTZ NOT NULL,

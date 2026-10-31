@@ -1,4 +1,4 @@
-/* Curriculum.io canonical stylesheet (Section 9, UI-001..UI-024). */
+/* Syllabus.io canonical stylesheet (Section 9, UI-001..UI-024). */
 /* Calm reading surfaces. Type, space, and tone carry the hierarchy; diagrams carry the plan. */
 
 :root,
@@ -7,6 +7,7 @@
   --color-accent-surface: #EAF0FF;
   --color-action-fill: #17191C;
   --color-action-text: #FFFFFF;
+  --brand-mark-apex: #8FB3FF;
   --color-border-control: #7D8794;
   --color-border-subtle: #D5DAE0;
   --color-canvas: #F7F8FA;
@@ -51,6 +52,7 @@
   --tint-4: color-mix(in srgb, var(--color-text-primary) 4%, transparent);
   --tint-8: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
   --tint-12: color-mix(in srgb, var(--color-text-primary) 12%, transparent);
+  --tint-18: color-mix(in srgb, var(--color-text-primary) 18%, transparent);
   --selected-row: color-mix(in srgb, var(--color-accent) 5%, transparent);
   --scrim: rgb(16 18 22 / 0.28);
   --shadow-sheet: 0 1px 2px rgb(23 25 28 / 0.06), 0 12px 24px -8px rgb(23 25 28 / 0.18);
@@ -66,6 +68,7 @@
   --color-accent-surface: #1B2C4D;
   --color-action-fill: #F4F6F8;
   --color-action-text: #17191C;
+  --brand-mark-apex: #2259D4;
   --color-border-control: #8793A5;
   --color-border-subtle: #3D4654;
   --color-canvas: #101216;
@@ -131,7 +134,7 @@ body {
   color-scheme: dark;
 }
 
-.curriculum-app-shell {
+.syllabus-app-shell {
   min-height: 100vh;
   max-width: 100%;
   overflow-x: clip;
@@ -334,12 +337,18 @@ section[id] {
 .brand-mark {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 8px;
   background: var(--color-action-fill);
   color: var(--color-action-text);
+}
+
+.brand-mark-svg {
+  display: block;
+  width: 19px;
+  height: 19px;
 }
 
 .brand-title {
@@ -391,9 +400,11 @@ section[id] {
 .navbar-avatar-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 5px;
+  min-width: var(--layout-touch-target-min);
   min-height: var(--layout-touch-target-min);
-  padding: 4px 10px 4px 6px;
+  padding: 6px 8px 6px 6px;
   border-radius: 999px;
   background: transparent;
   color: var(--color-text-primary);
@@ -544,21 +555,34 @@ section[id] {
 .navbar-guest-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+}
+
+/* Both guest buttons draw at 36px. The ::after hit area reaches the 44px touch target without touching its neighbor. */
+.navbar-guest-actions :is(.header-login-btn, .header-btn) {
+  position: relative;
+  min-width: 0;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.navbar-guest-actions :is(.header-login-btn, .header-btn)::after {
+  content: "";
+  position: absolute;
+  inset: -4px -2px;
+  border-radius: inherit;
 }
 
 .header-login-btn {
-  min-width: 0;
-  min-height: var(--layout-touch-target-min);
-  padding: 0 12px;
   border: 0;
-  border-radius: 999px;
   background: transparent;
   color: var(--color-text-primary);
-  font-size: 13.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -567,137 +591,719 @@ section[id] {
   }
 }
 
-.header-btn {
-  min-width: 0;
-  min-height: var(--layout-touch-target-min);
-  padding: 0 16px;
-  border-radius: 999px;
-  font-size: 13.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
 .session-banner {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--layout-gutter-wide);
+  gap: var(--space-2) var(--space-4);
+  padding: 10px var(--layout-gutter-wide);
   background: var(--color-warning-surface);
   color: var(--color-warning-text);
+  font-size: 14px;
+  line-height: 1.45;
 }
 
 .session-banner p {
   margin: 0;
 }
 
-/* Login Funnel Dialog */
+.session-banner .session-banner-btn {
+  position: relative;
+  min-width: 0;
+  min-height: 36px;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.session-banner-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+  border-radius: inherit;
+}
+
+/* Authentication dialog. Centered emblem and headline, email + password first, primary CTA, then federated/passkey alternatives. */
 #dialog-auth {
-  max-width: min(26rem, calc(100vw - 32px));
+  max-width: min(24.5rem, calc(100vw - 32px));
+  padding: 32px 32px 22px;
+  border-radius: 22px;
+  transition: opacity 200ms var(--ease-out), translate 280ms var(--ease-out), scale 280ms var(--ease-out);
+}
+
+#dialog-auth::backdrop {
+  transition: background-color 200ms var(--ease-out);
+}
+
+@starting-style {
+  #dialog-auth[open]:not([data-instant]) {
+    opacity: 0;
+    translate: 0 12px;
+    scale: 0.98;
+  }
+
+  #dialog-auth[open]:not([data-instant])::backdrop {
+    background-color: transparent;
+  }
 }
 
 .auth-surface {
+  position: relative;
+  display: grid;
   width: 100%;
   max-width: none;
+}
+
+.auth-head {
   display: grid;
-  gap: var(--space-4);
-}
-
-.auth-surface > .dialog-header {
-  align-items: flex-start;
-}
-
-.auth-funnel-title-group {
-  display: grid;
-  gap: 4px;
-}
-
-.auth-funnel-subtitle {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--color-text-secondary);
-}
-
-.auth-return {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-control);
-  background: var(--color-accent-surface);
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.auth-current-profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: var(--radius-control);
-  background: var(--color-swimlane);
-}
-
-.auth-current-profile-meta {
-  display: grid;
-  gap: 2px;
-  flex: 1 1 auto;
-  min-inline-size: 0;
-}
-
-.auth-current-profile-name {
-  font-size: 14.5px;
-  font-weight: 600;
-  color: var(--color-text-primary);
-}
-
-.auth-current-profile-email {
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-.auth-signout-inline {
-  padding: 6px 12px;
-  font-size: 13px;
-}
-
-.auth-funnel-stack {
-  display: grid;
-  gap: var(--space-3);
-}
-
-.auth-funnel-stack .field {
-  margin: 0;
-}
-
-.auth-passkey-btn {
-  width: 100%;
-  justify-content: center;
-  font-size: 14.5px;
-  font-weight: 600;
-}
-
-.auth-funnel-divider-label {
-  margin: 2px 0;
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--color-text-secondary);
+  justify-items: center;
   text-align: center;
 }
 
-.auth-submit-btn {
-  width: 100%;
-  justify-content: center;
-  margin-top: 2px;
-  font-size: 15px;
+.auth-head .brand-cluster {
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.auth-head .brand-mark {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+  border-radius: 9px;
+}
+
+.auth-head .brand-mark-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.auth-head .brand-title {
+  font-size: 16px;
+}
+
+.auth-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  color: var(--color-text-primary);
+  text-wrap: balance;
+}
+
+.auth-return {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  text-wrap: pretty;
+}
+
+.auth-return strong {
+  color: var(--color-text-primary);
   font-weight: 600;
 }
 
+.auth-fields {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+}
+
+.auth-field {
+  display: grid;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+.auth-label {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+}
+
+.auth-input-wrap,
+.auth-password-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.auth-field-icon {
+  position: absolute;
+  inset-inline-start: 14px;
+  pointer-events: none;
+  color: var(--color-text-secondary);
+  transition: color 140ms ease;
+}
+
+.auth-input-wrap:focus-within .auth-field-icon,
+.auth-password-wrap:focus-within .auth-field-icon {
+  color: var(--color-text-primary);
+}
+
+.auth-field input {
+  width: 100%;
+  max-width: none;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-swimlane);
+  color: var(--color-text-primary);
+  font: inherit;
+  font-size: 16px;
+  caret-color: var(--color-accent);
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+[data-theme="dark"] .auth-field input {
+  background: var(--color-surface-secondary);
+}
+
+.auth-input-wrap input {
+  padding-inline-start: 42px;
+}
+
+.auth-password-wrap input {
+  padding-inline-start: 42px;
+  padding-inline-end: 46px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-field input {
+    font-size: 15px;
+  }
+
+  .auth-field input:hover:not(:focus) {
+    border-color: var(--color-border-control);
+  }
+}
+
+.auth-field input::placeholder {
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+
+.auth-field input:focus {
+  outline: none;
+  background: var(--color-surface);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+.auth-field input:autofill {
+  -webkit-text-fill-color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 100px var(--color-accent-surface);
+}
+
+.auth-field input:autofill:focus {
+  box-shadow: inset 0 0 0 100px var(--color-accent-surface), 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
+}
+
+/* After user interaction or a failed submit, each invalid field takes the error state until valid. */
+.auth-field input:user-invalid,
+.auth-surface[data-submitted] .auth-field input:invalid {
+  border-color: var(--color-danger-text);
+}
+
+.auth-field input:user-invalid:focus,
+.auth-surface[data-submitted] .auth-field input:invalid:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger-text) 16%, transparent);
+}
+
+.auth-password-eye {
+  position: absolute;
+  top: 0;
+  inset-inline-end: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 46px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0 var(--radius-control) var(--radius-control) 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.auth-password-eye:focus-visible {
+  outline-offset: -6px;
+  border-radius: 10px;
+}
+
+.auth-password-eye[aria-pressed="false"] .auth-eye-hide,
+.auth-password-eye[aria-pressed="true"] .auth-eye-show {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-password-eye:hover {
+    color: var(--color-text-primary);
+  }
+}
+
 .field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0;
   font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
   color: var(--color-danger-text);
+  text-wrap: pretty;
+}
+
+.field-error::before {
+  content: "";
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9.5'/%3E%3Cpath d='M12 7.5v5.25M12 16.25v.25'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.auth-surface .field-error {
+  margin-top: 14px;
+  animation: auth-notice-in 240ms var(--ease-out);
+}
+
+@keyframes auth-notice-in {
+  from {
+    opacity: 0;
+    translate: 0 -4px;
+  }
+}
+
+.auth-actions {
+  display: grid;
+  margin-top: 18px;
+}
+
+.auth-submit-btn {
+  position: relative;
+  width: 100%;
+  min-height: 46px;
+  border-radius: var(--radius-control);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth-alt-block {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.auth-alt-label {
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-secondary);
+}
+
+.auth-alt-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.auth-oauth-btn {
+  position: relative;
+  display: inline-flex;
+  flex: 1 1 5.75rem;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 0;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 10px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 120ms var(--ease-out);
+}
+
+.auth-oauth-btn:active {
+  transform: scale(0.98);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-oauth-btn:hover {
+    border-color: var(--color-border-control);
+    background: color-mix(in srgb, var(--color-surface) 95%, var(--color-text-primary));
+    text-decoration: none;
+  }
+}
+
+.auth-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0 2px;
+  margin: 12px 0 0;
+  font-size: 13.5px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.auth-switch-btn {
+  min-width: 0;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 4px;
+  transition: text-decoration-color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-switch-btn:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+/* The circle is 36px. Its hit area reaches the 44px touch target, inset symmetrically 20px from the card corner. */
+.auth-close-btn {
+  position: absolute;
+  top: -12px;
+  inset-inline-end: -12px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.auth-close-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-close-btn:hover {
+    background: var(--tint-8);
+    color: var(--color-text-primary);
+  }
+}
+
+/* A pending submit, passkey, or provider link shows a spinner. The other actions wait, so nothing submits twice. */
+.auth-surface [aria-busy="true"] {
+  pointer-events: none;
+}
+
+.auth-surface [aria-busy="true"]::after {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 16px;
+  width: 16px;
+  height: 16px;
+  margin-block: auto;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 999px;
+  animation: auth-spin 700ms linear infinite;
+}
+
+.auth-surface[data-pending] :is(a, button):not([aria-busy="true"], .auth-close-btn) {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+@keyframes auth-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (max-width: 767.98px) {
+  /* The brand and the guest actions share one header row down to a 375px screen. */
+  .navbar-guest-actions :is(.header-login-btn, .header-btn) {
+    padding: 0 12px;
+  }
+
+  #dialog-auth {
+    padding: 28px 24px 16px;
+  }
+
+  .auth-close-btn {
+    top: -12px;
+    inset-inline-end: -8px;
+  }
+}
+
+/* Local dev OAuth account chooser. One card on the canvas: the provider logo, accounts as rows, then Cancel. */
+.dev-oauth-shell {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 20px;
+  min-height: 100dvh;
+  padding: 32px 16px;
+}
+
+.dev-oauth-card {
+  display: grid;
+  width: 100%;
+  max-width: 26rem;
+  padding: 32px 32px 20px;
+  border-radius: 20px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.dev-oauth-provider-mark {
+  display: block;
+  margin-bottom: 16px;
+  color: var(--color-text-primary);
+}
+
+.dev-oauth-provider-mark svg {
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+.dev-oauth-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+
+.dev-oauth-lede {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.dev-oauth-lede strong {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+/* Account rows bleed 12px past the text column, so a hover fill frames the row while names stay aligned with the title. */
+.dev-oauth-accounts {
+  display: grid;
+  gap: 2px;
+  margin: 24px -12px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dev-oauth-accounts form {
+  margin: 0;
+}
+
+.dev-oauth-account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-primary);
+  font-size: 15px;
+  text-align: start;
+  list-style: none;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.dev-oauth-account::-webkit-details-marker {
+  display: none;
+}
+
+.dev-oauth-account:focus-visible {
+  outline-offset: -2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dev-oauth-account:hover {
+    background: var(--tint-4);
+  }
+}
+
+.dev-oauth-avatar {
+  --avatar-tone: var(--subject-engineering);
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--avatar-tone) 14%, var(--color-surface));
+  color: var(--avatar-tone);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.dev-oauth-avatar[data-tone="Curator"] {
+  --avatar-tone: var(--subject-literature);
+}
+
+.dev-oauth-avatar[data-tone="Moderator"] {
+  --avatar-tone: var(--subject-mathematics);
+}
+
+.dev-oauth-avatar[data-tone="add"] {
+  --avatar-tone: var(--color-text-secondary);
+}
+
+.dev-oauth-account-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.dev-oauth-account-name {
+  overflow: hidden;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-oauth-account-email {
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dev-oauth-account-role {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.dev-oauth-chevron {
+  color: var(--color-text-secondary);
+  transition: rotate 200ms var(--ease-out);
+}
+
+.dev-oauth-other[open] .dev-oauth-chevron {
+  rotate: 180deg;
+}
+
+/* The custom account fields indent under the row text, past the 40px avatar and its 12px gap. */
+.dev-oauth-other-form {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding: 8px 12px 12px 64px;
+}
+
+.dev-oauth-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.dev-oauth-cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--layout-touch-target-min);
+  padding: 0 14px;
+  margin-inline-end: -14px;
+  border-radius: 999px;
+  color: var(--color-text-secondary);
+  font-size: 14.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dev-oauth-cancel:hover {
+    background: var(--tint-4);
+    color: var(--color-text-primary);
+    text-decoration: none;
+  }
+}
+
+.dev-oauth-note {
+  max-width: 26rem;
+  margin: 0;
+  padding: 0 16px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  text-align: center;
+  text-wrap: pretty;
+}
+
+.dev-oauth-note code {
+  padding: 0;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-primary);
+}
+
+@media (max-width: 480px) {
+  .dev-oauth-shell {
+    place-items: stretch;
+    align-content: start;
+    padding: 16px;
+  }
+
+  .dev-oauth-card {
+    max-width: none;
+    padding: 28px 24px 16px;
+  }
+
+  .dev-oauth-other-form {
+    padding-inline-start: 12px;
+  }
+
+  .dev-oauth-note {
+    max-width: none;
+    padding: 0 8px;
+  }
 }
 
 /* Profile & Settings Left-Aligned Master-Detail Layout */
@@ -1139,7 +1745,7 @@ section[id] {
   margin: 0 0 var(--space-1);
 }
 
-.sidebar-curricula {
+.sidebar-syllabi {
   padding-top: var(--space-3);
   border-top: 0;
 }
@@ -1153,13 +1759,13 @@ section[id] {
   color: var(--color-text-secondary);
 }
 
-.sidebar-curricula-list {
+.sidebar-syllabi-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.sidebar-curriculum-btn {
+.sidebar-syllabus-btn {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   justify-items: start;
@@ -1174,37 +1780,37 @@ section[id] {
   cursor: pointer;
 }
 
-.sidebar-curriculum-btn.is-active {
+.sidebar-syllabus-btn.is-active {
   background: var(--color-accent-surface);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .sidebar-curriculum-btn:not(.is-active):hover {
+  .sidebar-syllabus-btn:not(.is-active):hover {
     background: var(--tint-8);
     color: var(--color-text-primary);
   }
 }
 
-.sidebar-curriculum-title {
+.sidebar-syllabus-title {
   font-size: 13px;
   font-weight: 500;
   line-height: 1.3;
   color: var(--color-text-secondary);
 }
 
-.sidebar-curriculum-btn.is-active .sidebar-curriculum-title {
+.sidebar-syllabus-btn.is-active .sidebar-syllabus-title {
   font-weight: 600;
   color: var(--color-text-primary);
 }
 
-.sidebar-curriculum-meta {
+.sidebar-syllabus-meta {
   font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-secondary);
 }
 
-.sidebar-new-curriculum-btn {
+.sidebar-new-syllabus-btn {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1224,7 +1830,7 @@ section[id] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .sidebar-new-curriculum-btn:hover {
+  .sidebar-new-syllabus-btn:hover {
     background: var(--tint-8);
     border-color: var(--color-border-control);
   }
@@ -1365,14 +1971,18 @@ section[id] {
   color: var(--color-text-secondary);
 }
 
-input[type="text"],
-input[type="email"],
-input[type="search"],
-input[type="password"],
-input[type="datetime-local"],
-input[type="time"],
-select,
-textarea {
+/* Base form controls. :where() keeps defaults at zero specificity so component inputs (.auth-field, .topic-finder, etc.) always win regardless of source order. */
+:where(
+  input[type="text"],
+  input[type="email"],
+  input[type="url"],
+  input[type="search"],
+  input[type="password"],
+  input[type="datetime-local"],
+  input[type="time"],
+  select,
+  textarea
+) {
   width: 100%;
   max-width: 40rem;
   min-height: 44px;
@@ -2045,7 +2655,7 @@ textarea {
 }
 
 [data-theme="dark"] .node-card:not([data-open="true"], [data-next-up="true"]),
-.curriculum-app-shell[data-theme="dark"] .node-card:not([data-open="true"], [data-next-up="true"]) {
+.syllabus-app-shell[data-theme="dark"] .node-card:not([data-open="true"], [data-next-up="true"]) {
   background: var(--color-surface-secondary);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
 }
@@ -2412,7 +3022,7 @@ textarea {
   }
 }
 
-/* Today: focused curriculum workspace (selected plan header + Study flow swimlanes). */
+/* Today: focused syllabus workspace (selected plan header + Study flow swimlanes). */
 .today-active-workspace {
   display: grid;
   gap: 0;
@@ -2475,7 +3085,7 @@ textarea {
   color: var(--color-text-secondary);
 }
 
-.today-curriculum-actions {
+.today-syllabus-actions {
   align-self: flex-start;
 }
 
@@ -2506,28 +3116,28 @@ textarea {
   margin: 0;
 }
 
-.plan-brief.today-curriculum-brief {
+.plan-brief.today-syllabus-brief {
   display: grid;
   gap: 6px;
   padding-top: 0;
   border: 0;
 }
 
-.plan-brief.today-curriculum-brief > section {
+.plan-brief.today-syllabus-brief > section {
   display: grid;
   grid-template-columns: 64px minmax(0, 1fr);
   column-gap: 16px;
   align-items: baseline;
 }
 
-.today-curriculum-brief .plan-brief-label {
+.today-syllabus-brief .plan-brief-label {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
-.today-curriculum-brief .plan-goal {
+.today-syllabus-brief .plan-goal {
   max-inline-size: 75ch;
   font-size: 15px;
   font-weight: 400;
@@ -2535,7 +3145,7 @@ textarea {
   color: var(--color-text-secondary);
 }
 
-.today-curriculum-brief .plan-scope-list {
+.today-syllabus-brief .plan-scope-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -2545,18 +3155,18 @@ textarea {
   color: var(--color-text-secondary);
 }
 
-.today-curriculum-brief .plan-scope-list li {
+.today-syllabus-brief .plan-scope-list li {
   display: inline-block;
   margin-top: 0;
 }
 
-.today-curriculum-brief .plan-scope-list li:not(:last-child)::after {
+.today-syllabus-brief .plan-scope-list li:not(:last-child)::after {
   content: "\00B7";
   padding-inline: 8px;
   color: var(--color-text-secondary);
 }
 
-.curriculum-card[data-action="select-curriculum"] {
+.syllabus-card[data-action="select-syllabus"] {
   cursor: pointer;
 }
 
@@ -2925,7 +3535,7 @@ math {
 }
 
 /* Today's queue: one white card per active plan, with its next session and next activity */
-.today-curricula-grid {
+.today-syllabi-grid {
   display: grid;
   grid-auto-flow: column;
   grid-template-rows: repeat(5, auto);
@@ -2940,11 +3550,11 @@ math {
 }
 
 /* Four or more plans: three cards and a quarter of the fourth are visible. */
-.today-curricula-grid:has(> .curriculum-card:nth-child(4)) {
+.today-syllabi-grid:has(> .syllabus-card:nth-child(4)) {
   grid-auto-columns: max(16rem, calc((100% - 3 * var(--space-4)) / 3.25));
 }
 
-.curriculum-card {
+.syllabus-card {
   display: grid;
   grid-row: span 5;
   grid-template-rows: auto auto auto 1fr auto;
@@ -2958,12 +3568,12 @@ math {
   scroll-snap-align: start;
 }
 
-.curriculum-card[aria-current="true"] {
+.syllabus-card[aria-current="true"] {
   border-color: var(--color-accent);
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
 
-.curriculum-card > p {
+.syllabus-card > p {
   margin: 0;
 }
 
@@ -2984,7 +3594,7 @@ math {
   color: var(--color-text-secondary);
 }
 
-.curriculum-card-title {
+.syllabus-card-title {
   font-size: 17px;
   line-height: 1.3;
 }
@@ -3079,15 +3689,15 @@ math {
   color: var(--color-text-secondary);
 }
 
-/* Plan & Today Curriculum Overview */
-.today-curriculum-overview {
+/* Plan & Today Syllabus Overview */
+.today-syllabus-overview {
   margin-top: var(--space-5);
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
-.today-curriculum-overview .badge {
+.today-syllabus-overview .badge {
   padding: 0;
   border-radius: 0;
   background: transparent;
@@ -3147,7 +3757,7 @@ math {
   font-size: 14px;
 }
 
-/* Plan header: curriculum switcher cards, curriculum title as H1, emphasized Goal, and plain bullet list */
+/* Plan header: syllabus switcher cards, syllabus title as H1, emphasized Goal, and plain bullet list */
 .plan-hero {
   display: grid;
   gap: var(--space-5);
@@ -3251,8 +3861,8 @@ math {
   letter-spacing: -0.025em;
 }
 
-/* Learn tab representation of the shared curriculum taxonomy, facets, and topic tags */
-.learn-curriculum-tags {
+/* Learn tab representation of the shared syllabus taxonomy, facets, and topic tags */
+.learn-syllabus-tags {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -4215,7 +4825,7 @@ button[interestfor="plan-relationship-legend"] {
   flex-shrink: 0;
 }
 
-.resource-curriculum-pill {
+.resource-syllabus-pill {
   margin: 0;
   padding: 0;
   border: 0;
@@ -4377,17 +4987,46 @@ button[interestfor="plan-relationship-legend"] {
   color: var(--color-text-secondary);
 }
 
+.resource-usage-cell {
+  max-inline-size: 20rem;
+}
+
 .resource-usage-title {
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.4;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
+.resource-status-notice {
+  margin: 0 0 20px;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.resource-unlinked-note {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
 .resource-action-cell {
+  width: 1%;
   white-space: nowrap;
+  text-align: right;
+}
+
+.resource-row-actions {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 @container (width < 600px) {
@@ -5237,7 +5876,7 @@ button[interestfor="plan-relationship-legend"] {
   margin: 0 0 var(--space-6);
 }
 
-/* Details shows the whole curriculum: its goal and scope, then one card per unit with every activity in order.
+/* Details shows the whole syllabus: its goal and scope, then one card per unit with every activity in order.
    A unit card is checked when the unit is part of the adoption. */
 #dialog-partial-adoption {
   max-width: min(760px, calc(100vw - 32px));
@@ -5522,8 +6161,8 @@ ul.adopt-resources {
   font-size: 14px;
 }
 
-/* New Curriculum AI Synthesizer & Suggested Fit Modal */
-#dialog-new-curriculum {
+/* New Syllabus AI Synthesizer & Suggested Fit Modal */
+#dialog-new-syllabus {
   max-width: min(820px, calc(100vw - 32px));
 }
 
@@ -6170,7 +6809,7 @@ ul.adopt-resources {
   font-variant-numeric: tabular-nums;
 }
 
-/* Community impact summary and shared curriculum cards */
+/* Community impact summary and shared syllabus cards */
 .community-impact-banner {
   display: flex;
   flex-wrap: wrap;
@@ -6216,6 +6855,39 @@ ul.adopt-resources {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.passkey-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.passkey-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3) var(--space-4);
+  padding: 16px 20px;
+  border-radius: var(--radius-surface);
+  background: var(--color-swimlane);
+}
+
+.passkey-row-text {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 18rem;
+  min-inline-size: 0;
+}
+
+.passkey-row-title {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text-primary);
 }
 
 .contribution-row {
@@ -6508,7 +7180,7 @@ ul.adopt-resources {
 .providers-data-table input.provider-key-input:focus-visible {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px rgb(11 92 173 / 14%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 18%, transparent);
 }
 
 .providers-data-table input.provider-key-input::placeholder {
@@ -6516,6 +7188,7 @@ ul.adopt-resources {
 }
 
 .provider-key-apply-btn {
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
@@ -6538,6 +7211,7 @@ ul.adopt-resources {
 }
 
 .provider-key-cancel-btn {
+  position: relative;
   display: inline-grid;
   place-items: center;
   flex-shrink: 0;
@@ -6551,6 +7225,12 @@ ul.adopt-resources {
   background: var(--color-surface);
   color: var(--color-text-secondary);
   cursor: pointer;
+}
+
+:is(.provider-key-apply-btn, .provider-key-cancel-btn)::after {
+  content: "";
+  position: absolute;
+  inset: -6px -4px;
 }
 
 .provider-key-cancel-btn:hover {
@@ -6938,9 +7618,15 @@ input[type="checkbox"].ui-switch {
   margin: 0;
   border: 0;
   border-radius: 999px;
-  background: var(--tint-18, rgba(23, 25, 28, 0.22));
+  background: color-mix(in srgb, var(--color-text-primary) 24%, transparent);
   cursor: pointer;
   transition: background-color 160ms var(--ease-out);
+}
+
+input[type="checkbox"].ui-switch::before {
+  content: "";
+  position: absolute;
+  inset: -10px 0;
 }
 
 input[type="checkbox"].ui-switch::after {
@@ -6951,9 +7637,13 @@ input[type="checkbox"].ui-switch::after {
   width: 20px;
   height: 20px;
   border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
-  transition: transform 160ms var(--ease-out);
+  background: var(--color-surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.24);
+  transition: transform 160ms var(--ease-out), background-color 160ms var(--ease-out);
+}
+
+[data-theme="dark"] input[type="checkbox"].ui-switch:not(:checked)::after {
+  background: var(--color-text-primary);
 }
 
 input[type="checkbox"].ui-switch:checked {
@@ -6962,6 +7652,7 @@ input[type="checkbox"].ui-switch:checked {
 
 input[type="checkbox"].ui-switch:checked::after {
   transform: translateX(20px);
+  background: var(--color-action-text);
 }
 
 input[type="checkbox"].ui-switch:focus-visible {
@@ -6978,7 +7669,7 @@ input[type="checkbox"].ui-switch:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: 36px;
+  min-height: var(--layout-touch-target-min);
   cursor: pointer;
   font-size: 14px;
   font-weight: 600;
@@ -7312,8 +8003,8 @@ dialog::backdrop {
 
 .intake-dialog-footer select.intake-model-select {
   width: 100%;
-  height: 38px;
-  min-height: 38px;
+  height: var(--layout-touch-target-min);
+  min-height: var(--layout-touch-target-min);
   padding: 0 28px 0 12px;
   border: 1px solid var(--color-border-control);
   border-radius: var(--radius-control);
@@ -7892,6 +8583,167 @@ dialog.inspector::backdrop {
   text-underline-offset: 3px;
 }
 
+.inspector-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.inspector-section-head h3 {
+  margin: 0;
+}
+
+.inspector-inline-action,
+.source-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: var(--layout-touch-target-min);
+  margin: -10px 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.inspector-inline-action:hover,
+.source-action-btn:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.source-action-danger {
+  color: var(--color-text-secondary);
+}
+
+.source-action-danger:hover {
+  color: var(--color-danger-text);
+}
+
+.source-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.source-card-actions,
+.subtask-material-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+#dialog-resource-editor,
+.resource-editor-dialog {
+  max-inline-size: min(640px, calc(100vw - 32px));
+}
+
+.resource-editor-tabs {
+  margin-block-end: var(--space-4);
+}
+
+.resource-editor-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.resource-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+
+.resource-editor-grid-two {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+}
+
+@media (max-width: 560px) {
+  .resource-editor-grid-two {
+    grid-template-columns: 1fr;
+  }
+}
+
+.resource-editor-field {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.resource-editor-field :is(input, select, textarea) {
+  width: 100%;
+  max-width: none;
+}
+
+.resource-field-hint {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.resource-val-error {
+  display: none;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--color-danger-text);
+}
+
+.resource-editor-field :is(input, textarea):user-invalid,
+.resource-editor-field :is(input, textarea)[aria-invalid="true"] {
+  border-color: var(--color-danger-text);
+}
+
+.resource-editor-field :is(input, textarea):user-invalid:focus,
+.resource-editor-field :is(input, textarea)[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger-text) 16%, transparent);
+}
+
+.resource-editor-field :is(input, textarea):user-invalid + .resource-val-error,
+.resource-editor-field :is(input, textarea)[aria-invalid="true"] + .resource-val-error {
+  display: block;
+}
+
+.resource-editor-error {
+  margin: 0 0 var(--space-3);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-danger-text);
+}
+
+.resource-editor-footer {
+  justify-content: space-between;
+}
+
+.resource-editor-danger-actions,
+.resource-editor-submit-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.resource-editor-submit-actions {
+  margin-inline-start: auto;
+}
+
+.resource-danger-btn:hover {
+  border-color: var(--color-danger-text);
+  color: var(--color-danger-text);
+}
+
 .source-section {
   font-size: 13.5px;
   font-weight: 500;
@@ -8162,9 +9014,9 @@ dialog.inspector::backdrop {
     min-height: var(--layout-touch-target-min);
   }
 
-  /* The sidebar holds Learn navigation and curricula. On a phone it would push Explore, Settings, and Admin
+  /* The sidebar holds Learn navigation and syllabi. On a phone it would push Explore, Settings, and Admin
      down by a screen, and the bottom navigation already covers Learn. */
-  .curriculum-app-shell:not([data-current-top-level="Learn"]) .app-sidebar {
+  .syllabus-app-shell:not([data-current-top-level="Learn"]) .app-sidebar {
     display: none;
   }
 
@@ -8172,6 +9024,7 @@ dialog.inspector::backdrop {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
+    column-gap: var(--space-3);
     padding: var(--space-2) var(--layout-gutter-compact);
   }
 
@@ -8463,11 +9316,12 @@ dialog.inspector::backdrop {
   .proficiency-pill,
   .first-steps,
   .draft-notice,
-  .auth-return,
   .seg-btn[aria-pressed="true"],
   .sort-btn[aria-pressed="true"],
   .switch-track,
-  .dialog-close-btn {
+  input[type="checkbox"].ui-switch,
+  .dialog-close-btn,
+  .auth-close-btn {
     border: 1px solid CanvasText;
   }
 

@@ -162,8 +162,8 @@ CREATE TABLE IF NOT EXISTS payment_webhook_events (
 CREATE TABLE IF NOT EXISTS publication_previews (
     preview_id TEXT PRIMARY KEY CHECK (length(preview_id) BETWEEN 3 AND 128),
     account_id TEXT NOT NULL REFERENCES accounts(account_id) ON DELETE CASCADE,
-    curriculum_id TEXT NOT NULL CHECK (length(curriculum_id) BETWEEN 3 AND 128),
-    curriculum_revision_id TEXT NOT NULL CHECK (length(curriculum_revision_id) BETWEEN 3 AND 128),
+    syllabus_id TEXT NOT NULL CHECK (length(syllabus_id) BETWEEN 3 AND 128),
+    syllabus_revision_id TEXT NOT NULL CHECK (length(syllabus_revision_id) BETWEEN 3 AND 128),
     visibility TEXT NOT NULL CHECK (visibility IN ('public', 'unlisted')),
     preview_sha256 TEXT NOT NULL CHECK (length(preview_sha256) = 64),
     content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
@@ -174,13 +174,13 @@ CREATE TABLE IF NOT EXISTS publication_previews (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_publication_previews_account_curriculum
-    ON publication_previews (account_id, curriculum_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_publication_previews_account_syllabus
+    ON publication_previews (account_id, syllabus_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS publications (
     publication_id TEXT PRIMARY KEY CHECK (length(publication_id) BETWEEN 3 AND 128),
     owner_account_id TEXT NULL REFERENCES accounts(account_id) ON DELETE SET NULL,
-    source_curriculum_id TEXT NOT NULL CHECK (length(source_curriculum_id) BETWEEN 3 AND 128),
+    source_syllabus_id TEXT NOT NULL CHECK (length(source_syllabus_id) BETWEEN 3 AND 128),
     public_author_id TEXT NOT NULL CHECK (length(public_author_id) BETWEEN 3 AND 128),
     publisher_display_name TEXT NOT NULL CHECK (length(publisher_display_name) BETWEEN 1 AND 80),
     visibility TEXT NOT NULL CHECK (
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS publication_revisions (
     publication_id TEXT NOT NULL REFERENCES publications(publication_id) ON DELETE CASCADE,
     revision_number INTEGER NOT NULL CHECK (revision_number >= 1),
     supersedes_publication_revision_id TEXT NULL,
-    source_curriculum_revision_id TEXT NOT NULL CHECK (length(source_curriculum_revision_id) BETWEEN 3 AND 128),
+    source_syllabus_revision_id TEXT NOT NULL CHECK (length(source_syllabus_revision_id) BETWEEN 3 AND 128),
     preview_sha256 TEXT NOT NULL CHECK (length(preview_sha256) = 64),
     content_sha256 TEXT NOT NULL CHECK (length(content_sha256) = 64),
     upvote_count BIGINT NOT NULL DEFAULT 0 CHECK (upvote_count >= 0),
@@ -282,7 +282,7 @@ CREATE TABLE IF NOT EXISTS account_deletion_requests (
     status TEXT NOT NULL CHECK (status IN ('completed', 'tombstoned')),
     tombstoned_entities_count INTEGER NOT NULL CHECK (tombstoned_entities_count >= 1),
     withdrawn_publications_count INTEGER NOT NULL DEFAULT 0 CHECK (withdrawn_publications_count >= 0),
-    retained_adopted_curricula_count INTEGER NOT NULL DEFAULT 0 CHECK (retained_adopted_curricula_count >= 0),
+    retained_adopted_syllabi_count INTEGER NOT NULL DEFAULT 0 CHECK (retained_adopted_syllabi_count >= 0),
     requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

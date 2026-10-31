@@ -1,4 +1,4 @@
-// One live model call that writes the text of a two-module curriculum and finds web resources for the
+// One live model call that writes the text of a two-module syllabus and finds web resources for the
 // topics the catalog does not cover. Each provider uses its own native web search tool.
 // Raw fetch, not the provider SDKs: one request per provider does not justify three new dependencies.
 
@@ -27,13 +27,13 @@ export interface DraftResource {
   readonly sections: readonly string[];
 }
 
-export interface CurriculumDraft {
+export interface SyllabusDraft {
   readonly summary: string;
   readonly modules: readonly [DraftModule, DraftModule];
   readonly resources: readonly DraftResource[];
 }
 
-export type LiveDraftOutcome = { readonly draft: CurriculumDraft } | { readonly error: string };
+export type LiveDraftOutcome = { readonly draft: SyllabusDraft } | { readonly error: string };
 
 export interface LiveDraftRequest {
   readonly providerId: string;
@@ -61,7 +61,7 @@ export function buildLiveDraftPrompt(params: {
     deltaTopics.length > 0
       ? `Use web search to find at most ${MAX_DRAFT_RESOURCES} free, real study resources that cover these uncovered topics: ${deltaTopics.join(", ")}. Give each resource's canonical https URL. Do not return any URL in this list:\n${bypassedUrls.map((url) => `- ${url}`).join("\n") || "- none"}`
       : `Every requested topic is already covered. Do not search the web, and return an empty "resources" list.`;
-  return `You write a two-module self-study curriculum for an adult learner.
+  return `You write a two-module self-study syllabus for an adult learner.
 
 <intake>
 ${searchPrompt}
@@ -147,7 +147,7 @@ function draftResource(value: unknown): DraftResource | null {
   };
 }
 
-export function parseCurriculumDraft(reply: string): CurriculumDraft {
+export function parseSyllabusDraft(reply: string): SyllabusDraft {
   const start = reply.indexOf("{");
   const end = reply.lastIndexOf("}");
   if (start < 0 || end < start) throw new Error("the reply has no JSON object");
@@ -227,8 +227,8 @@ const REPLY_TEXT: Readonly<Record<string, (request: LiveDraftRequest, apiKey: st
   },
 };
 
-export async function requestLiveDraft(request: LiveDraftRequest, apiKey: string, fetchImpl: Fetch = fetch): Promise<CurriculumDraft> {
+export async function requestLiveDraft(request: LiveDraftRequest, apiKey: string, fetchImpl: Fetch = fetch): Promise<SyllabusDraft> {
   const replyText = REPLY_TEXT[request.providerId];
   if (!replyText) throw new Error(`no live client for provider ${request.providerId}`);
-  return parseCurriculumDraft(await replyText(request, apiKey, fetchImpl));
+  return parseSyllabusDraft(await replyText(request, apiKey, fetchImpl));
 }
