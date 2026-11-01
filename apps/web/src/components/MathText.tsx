@@ -1,5 +1,5 @@
 import type { VNode } from "preact";
-import { tokenizeTextWithLatex } from "../../../../packages/ui/src/index.ts";
+import { tokenizeTextWithLatex } from "@syllabus/ui";
 
 export function MathText({ text }: { readonly text: string }): VNode {
   const segments = tokenizeTextWithLatex(text);

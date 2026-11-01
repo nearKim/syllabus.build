@@ -438,3 +438,35 @@ test("T14-Full & T09: Complete screen inventory, role boundaries (@S88), WCAG 2.
     )
   );
 });
+
+test("T13 Adversarial: resolveTransitiveAdoptionScope safely handles cyclic module and objective graphs without stack overflow", () => {
+  const cyclicSyllabus = {
+    content: {
+      objectives: [
+        { objective_id: "obj-1", prerequisite_objective_ids: ["obj-2"] },
+        { objective_id: "obj-2", prerequisite_objective_ids: ["obj-1"] },
+      ],
+      prerequisite_edges: [
+        { from_objective_id: "obj-1", to_objective_id: "obj-2" },
+        { from_objective_id: "obj-2", to_objective_id: "obj-1" },
+      ],
+      modules: [
+        {
+          module_id: "mod-1",
+          prerequisite_module_ids: ["mod-2"],
+          objective_ids: ["obj-1"],
+        },
+        {
+          module_id: "mod-2",
+          prerequisite_module_ids: ["mod-1"],
+          objective_ids: ["obj-2"],
+        },
+      ],
+    },
+  };
+  const adoption = createPublicAdoptionController(cyclicSyllabus);
+  const scope = adoption.resolveScope(["mod-1"]);
+  assert.ok(scope.resolvedModuleIds.includes("mod-1"));
+  assert.ok(scope.resolvedModuleIds.includes("mod-2"));
+});
+

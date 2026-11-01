@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { h } from "preact";
 import { renderToString } from "preact-render-to-string";
 import { GitHubMark, GoogleMark, PERSONAS } from "./components/AuthDialog.tsx";
-import { initialsOf, usernameOf } from "./components/HeaderBar.tsx";
+import { initialsOf, usernameOf } from "./auth.ts";
 
 export const OAUTH_PROVIDERS = ["google", "github"];
 

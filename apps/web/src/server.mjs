@@ -40,7 +40,7 @@ import {
 } from "./openCatalog.mjs";
 import { isAdminAccount } from "./components/AdminResourcesView.tsx";
 import { PERSONAS } from "./components/AuthDialog.tsx";
-import { defaultUsernameOfEmail } from "./components/HeaderBar.tsx";
+import { defaultUsernameOfEmail } from "./auth.ts";
 import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
 import { PROVIDER_KEY_ENV, requestLiveDraft } from "./liveDraft.ts";
 import { requestLiveConceptCheck } from "./liveTutor.ts";

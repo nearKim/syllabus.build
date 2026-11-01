@@ -1,4 +1,15 @@
-import { renderUntrustedCatalogText } from "../../../packages/ui/src/index.ts";
+import { renderUntrustedCatalogText } from "@syllabus/ui";
+
+export const asRecord = (value: unknown): Readonly<Record<string, unknown>> =>
+  value !== null && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+export const rawListOf = (
+  record: Readonly<Record<string, unknown>>,
+  key: string,
+): readonly Readonly<Record<string, unknown>>[] => {
+  const list: unknown = record[key];
+  return (Array.isArray(list) ? list : []).map(asRecord);
+};
 
 export function cloneJson<T>(value: T): T {
   return structuredClone(value);

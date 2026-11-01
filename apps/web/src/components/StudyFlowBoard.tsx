@@ -1,5 +1,5 @@
 import type { VNode } from "preact";
-import type { PlanMapAndOutlineModel } from "../../../../packages/ui/src/index.ts";
+import type { PlanMapAndOutlineModel } from "@syllabus/ui";
 import { ArrowSvg, ConnectorSvg, FlowKey, StatusGlyph, UnitMarker, type GlyphTone, type SegmentStyle } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
 

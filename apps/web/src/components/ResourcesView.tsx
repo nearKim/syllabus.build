@@ -2,7 +2,7 @@ import type { VNode } from "preact";
 import {
   buildPlanMapAndOutlineModel,
   type CatalogResourceMetadataInput,
-} from "../../../../packages/ui/src/index.ts";
+} from "@syllabus/ui";
 import { formatMinorCurrency } from "../billingAndSharing.ts";
 import catalogResourcesJson from "../data/catalogResources.json" with { type: "json" };
 import type { ProficiencyProfileFixture } from "../diagnosticsAndAdaptation.ts";

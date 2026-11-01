@@ -2166,6 +2166,64 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   assert.ok(unauthorizedAdminPanel.includes("403 Unauthorized Role"));
 });
 
+test("cascadeActivityDeletionToSchedule removes deleted activity IDs from schedule sessions", async () => {
+  const { cascadeActivityDeletionToSchedule, removeSyllabusActivity, removeSyllabusModule } = await import(
+    "../src/components/syllabusEditor/astMutations.ts"
+  );
+  const schedule1 = {
+    sessions: [
+      { session_id: "sess-1", activity_ids: ["act-1", "act-2"] },
+      { session_id: "sess-2", activity_ids: ["act-3", "act-2"] },
+    ],
+  };
+  const updated = cascadeActivityDeletionToSchedule(schedule1, ["act-2"]);
+  const s1 = updated.sessions.find((s) => s.session_id === "sess-1");
+  const s2 = updated.sessions.find((s) => s.session_id === "sess-2");
+  assert.deepEqual(s1.activity_ids, ["act-1"]);
+  assert.deepEqual(s2.activity_ids, ["act-3"]);
+
+  const syllabus = {
+    revision_id: "rev-1",
+    revision_number: 1,
+    modules: [
+      { module_id: "mod-1", activity_ids: ["act-1", "act-2"] },
+      { module_id: "mod-2", activity_ids: ["act-3"] },
+    ],
+    activities: [
+      { activity_id: "act-1", type: "theory" },
+      { activity_id: "act-2", type: "theory" },
+      { activity_id: "act-3", type: "theory" },
+    ],
+  };
+  const schedule2 = {
+    sessions: [
+      { session_id: "sess-1", activity_ids: ["act-1", "act-2"] },
+      { session_id: "sess-2", activity_ids: ["act-3"] },
+    ],
+  };
+
+  const actResult = removeSyllabusActivity(syllabus, "act-2", schedule2);
+  assert.equal("error" in actResult, false);
+  assert.deepEqual(actResult.removedActivityIds, ["act-2"]);
+  assert.deepEqual(actResult.schedule.sessions[0].activity_ids, ["act-1"]);
+
+  const modResult = removeSyllabusModule(syllabus, "mod-2", schedule2);
+  assert.equal("error" in modResult, false);
+  assert.deepEqual(modResult.removedActivityIds, ["act-3"]);
+  assert.deepEqual(modResult.schedule.sessions[1].activity_ids, []);
+});
+
+test("confirm-delete-syllabus gracefully falls back when active plans are deleted", () => {
+  const root = { innerHTML: "" };
+  const app = mountSyllabusWebApp(root);
+  const planIds = ["syllabus-rag-python-001", "syllabus-linear-algebra-002", "syllabus-quantum-mechanics-003"];
+  for (const id of planIds) {
+    app.applyUiAction("confirm-delete-syllabus", { syllabusId: id });
+  }
+  assert.ok(app.getState().selectedSyllabusId !== undefined);
+});
+
+
 
 
 

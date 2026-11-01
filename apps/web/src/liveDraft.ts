@@ -165,65 +165,190 @@ export function parseSyllabusDraft(reply: string): SyllabusDraft {
 }
 
 type Fetch = typeof fetch;
-type Json = Record<string, any>;
 
-async function postJson(fetchImpl: Fetch, url: string, headers: Record<string, string>, body: unknown): Promise<Json> {
+export type JsonObject = Readonly<Record<string, unknown>>;
+
+export interface OpenAiContentPart {
+  readonly type?: string;
+  readonly text?: string;
+}
+
+export interface OpenAiOutputItem {
+  readonly type?: string;
+  readonly content?: readonly OpenAiContentPart[];
+}
+
+export interface OpenAiChatCompletionResponse {
+  readonly output?: readonly OpenAiOutputItem[];
+  readonly choices?: readonly unknown[];
+  readonly [key: string]: unknown;
+}
+
+export interface AnthropicContentBlock {
+  readonly type?: string;
+  readonly text?: string;
+}
+
+export interface AnthropicMessage {
+  readonly role: "user" | "assistant";
+  readonly content: unknown;
+}
+
+export interface AnthropicMessageResponse {
+  readonly content?: readonly AnthropicContentBlock[];
+  readonly stop_reason?: string;
+  readonly [key: string]: unknown;
+}
+
+export interface GeminiPart {
+  readonly text?: string;
+}
+
+export interface GeminiContent {
+  readonly parts?: readonly GeminiPart[];
+}
+
+export interface GeminiCandidate {
+  readonly content?: GeminiContent;
+}
+
+export interface GeminiGenerateContentResponse {
+  readonly candidates?: readonly GeminiCandidate[];
+  readonly [key: string]: unknown;
+}
+
+export function isJsonObject(val: unknown): val is JsonObject {
+  return typeof val === "object" && val !== null && !Array.isArray(val);
+}
+
+export function isChatCompletionResponse(val: unknown): val is OpenAiChatCompletionResponse {
+  return (
+    isJsonObject(val) &&
+    (("output" in val && Array.isArray(val.output)) ||
+      ("choices" in val && Array.isArray(val.choices)))
+  );
+}
+
+export function isAnthropicMessageResponse(val: unknown): val is AnthropicMessageResponse {
+  return isJsonObject(val) && "content" in val && Array.isArray(val.content);
+}
+
+export function isGeminiGenerateContentResponse(val: unknown): val is GeminiGenerateContentResponse {
+  return isJsonObject(val) && "candidates" in val && Array.isArray(val.candidates);
+}
+
+export function isOpenAiOutputItem(val: unknown): val is OpenAiOutputItem {
+  return isJsonObject(val);
+}
+
+export function isOpenAiContentPart(val: unknown): val is OpenAiContentPart {
+  return isJsonObject(val);
+}
+
+export function isAnthropicContentBlock(val: unknown): val is AnthropicContentBlock {
+  return isJsonObject(val);
+}
+
+export function isGeminiCandidate(val: unknown): val is GeminiCandidate {
+  return isJsonObject(val);
+}
+
+export function isGeminiPart(val: unknown): val is GeminiPart {
+  return isJsonObject(val);
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (isJsonObject(payload) && "error" in payload) {
+    const err = payload["error"];
+    if (isJsonObject(err) && "message" in err) {
+      const msg = err["message"];
+      if (typeof msg === "string") return msg;
+    }
+  }
+  return fallback;
+}
+
+async function postJson(
+  fetchImpl: Fetch,
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+): Promise<JsonObject> {
   const res = await fetchImpl(url, {
     method: "POST",
     headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(180_000),
   });
-  const json = (await res.json().catch(() => null)) as Json | null;
-  if (!res.ok || !json) throw new Error(`${res.status} ${json?.["error"]?.["message"] ?? res.statusText}`);
+  const json: unknown = await res.json().catch(() => null);
+  if (!res.ok || !isJsonObject(json)) {
+    throw new Error(`${res.status} ${extractErrorMessage(json, res.statusText)}`);
+  }
   return json;
 }
 
 const REPLY_TEXT: Readonly<Record<string, (request: LiveDraftRequest, apiKey: string, fetchImpl: Fetch) => Promise<string>>> = {
   // Responses API: the answer is the output_text content of the message items.
   async openai({ modelId, prompt }, apiKey, fetchImpl) {
-    const json = await postJson(fetchImpl, "https://api.openai.com/v1/responses", { authorization: `Bearer ${apiKey}` }, {
+    const raw = await postJson(fetchImpl, "https://api.openai.com/v1/responses", { authorization: `Bearer ${apiKey}` }, {
       model: modelId,
       input: prompt,
       tools: [{ type: "web_search" }],
     });
-    return (json["output"] as Json[])
-      .filter((item) => item["type"] === "message")
-      .flatMap((item) => item["content"] as Json[])
-      .filter((part) => part["type"] === "output_text")
-      .map((part) => part["text"] as string)
+    const json: OpenAiChatCompletionResponse = isChatCompletionResponse(raw) ? raw : {};
+    const output = Array.isArray(json.output) ? json.output : [];
+    return output
+      .filter(isOpenAiOutputItem)
+      .filter((item) => item.type === "message")
+      .flatMap((item) => (Array.isArray(item.content) ? item.content : []))
+      .filter(isOpenAiContentPart)
+      .filter((part) => part.type === "output_text" && typeof part.text === "string")
+      .map((part) => part.text ?? "")
       .join("");
   },
 
   // Messages API. web_search_20250305 is the variant that Claude Haiku 5.5 accepts. A long search can
   // pause the turn, so the paused content goes back until the model ends the turn.
   async anthropic({ modelId, prompt }, apiKey, fetchImpl) {
-    const messages: Json[] = [{ role: "user", content: prompt }];
+    const messages: AnthropicMessage[] = [{ role: "user", content: prompt }];
     for (let turn = 0; turn < 3; turn += 1) {
-      const json = await postJson(fetchImpl, "https://api.anthropic.com/v1/messages", { "x-api-key": apiKey, "anthropic-version": "2026-10-21" }, {
+      const raw = await postJson(fetchImpl, "https://api.anthropic.com/v1/messages", { "x-api-key": apiKey, "anthropic-version": "2026-10-21" }, {
         model: modelId,
         max_tokens: 16000,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: MAX_DRAFT_RESOURCES }],
         messages,
       });
-      if (json["stop_reason"] === "refusal") throw new Error("the model declined the request");
-      if (json["stop_reason"] !== "pause_turn") {
-        return (json["content"] as Json[]).filter((block) => block["type"] === "text").map((block) => block["text"] as string).join("");
+      const json: AnthropicMessageResponse = isAnthropicMessageResponse(raw) ? raw : {};
+      if (json.stop_reason === "refusal") throw new Error("the model declined the request");
+      if (json.stop_reason !== "pause_turn") {
+        const content = Array.isArray(json.content) ? json.content : [];
+        return content
+          .filter(isAnthropicContentBlock)
+          .filter((block) => block.type === "text" && typeof block.text === "string")
+          .map((block) => block.text ?? "")
+          .join("");
       }
-      messages.push({ role: "assistant", content: json["content"] });
+      messages.push({ role: "assistant", content: json.content });
     }
     throw new Error("the web search did not finish in 3 turns");
   },
 
   // generateContent with Google Search grounding: the answer is the text parts of the first candidate.
   async google_gemini({ modelId, prompt }, apiKey, fetchImpl) {
-    const json = await postJson(
+    const raw = await postJson(
       fetchImpl,
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelId)}:generateContent`,
       { "x-goog-api-key": apiKey },
       { contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ google_search: {} }] },
     );
-    return ((json["candidates"]?.[0]?.["content"]?.["parts"] ?? []) as Json[]).map((part) => part["text"] ?? "").join("");
+    const json: GeminiGenerateContentResponse = isGeminiGenerateContentResponse(raw) ? raw : {};
+    const candidates = Array.isArray(json.candidates) ? json.candidates : [];
+    const firstCandidate = candidates.find(isGeminiCandidate);
+    const parts = Array.isArray(firstCandidate?.content?.parts) ? firstCandidate.content.parts : [];
+    return parts
+      .filter(isGeminiPart)
+      .map((part) => (typeof part.text === "string" ? part.text : ""))
+      .join("");
   },
 };
 

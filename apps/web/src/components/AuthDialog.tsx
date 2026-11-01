@@ -1,6 +1,7 @@
 import type { VNode } from "preact";
-import type { LearnSubDestination, TopLevelDestination } from "../index.ts";
-import { BrandLockup, usernameOf, type Account, type AuthStatus } from "./HeaderBar.tsx";
+import type { LearnSubDestination, TopLevelDestination } from "../navigationShell.ts";
+import { BrandLockup } from "./HeaderBar.tsx";
+import { usernameOf, type Account, type AuthStatus } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 
 export const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;

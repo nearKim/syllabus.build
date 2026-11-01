@@ -1,14 +1,14 @@
 import { batch, computed, signal, type ReadonlySignal, type Signal } from "@preact/signals";
-import type { MapKeyboardKey, PlanMapAndOutlineModel, ThemePreference } from "../../../../packages/ui/src/index.ts";
+import type { MapKeyboardKey, PlanMapAndOutlineModel, ThemePreference } from "@syllabus/ui";
 import {
   createSyllabusWebAppController,
   type SyllabusWebAppController,
   type SyllabusWebAppResolvedState,
-  type SyllabusWebAppStateInput,
-} from "../browserApp.ts";
-import type { Account, AuthStatus } from "../components/HeaderBar.tsx";
+} from "../browserAppController.ts";
+import type { SyllabusWebAppStateInput } from "../renderWebAppHtml.ts";
+import type { Account, AuthStatus } from "../auth.ts";
 import type { SettableStatus } from "../components/InspectorDrawer.tsx";
-import type { LearnSubDestination, MapNonDraggingControl, PlanSynchronizedView, TopLevelDestination } from "../index.ts";
+import type { LearnSubDestination, MapNonDraggingControl, PlanSynchronizedView, TopLevelDestination } from "../navigationShell.ts";
 import type { RecordedProgressEventReceipt } from "../tracerBulletViews.ts";
 
 export interface SyllabusSignalStore {

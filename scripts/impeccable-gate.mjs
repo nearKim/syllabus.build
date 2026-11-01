@@ -308,6 +308,9 @@ function main() {
           ...htmlFiles,
           path.join(repoRoot, "apps/web/public/styles.css"),
           path.join(repoRoot, "apps/web/src/browserApp.ts"),
+          path.join(repoRoot, "apps/web/src/renderWebAppHtml.ts"),
+          path.join(repoRoot, "apps/web/src/browserAppController.ts"),
+          path.join(repoRoot, "apps/web/src/mountBrowserApp.ts"),
           path.join(repoRoot, "apps/web/src/components")
         ],
         { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 }

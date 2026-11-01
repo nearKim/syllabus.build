@@ -9,7 +9,7 @@
  * for immediate DB persistence, MiniSearch TF-IDF indexing, and per-syllabus `add` / `edit` / `delete`.
  */
 
-import type { CatalogResourceMetadataInput } from "../../../packages/ui/src/index.ts";
+import type { CatalogResourceMetadataInput } from "@syllabus/ui";
 import { TFIDF_ENGINE, tokenize } from "./tfidfIndex.ts";
 
 export type ManualResourceCategory = "Course" | "Book" | "YouTube" | "Code Lab" | "Problem Set";

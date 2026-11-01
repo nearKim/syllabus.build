@@ -1,11 +1,12 @@
 import type { VNode } from "preact";
-import type { CatalogResourceMetadataInput } from "../../../../packages/ui/src/index.ts";
+import type { CatalogResourceMetadataInput } from "@syllabus/ui";
 import {
   findResourceBindingInSyllabus,
   type ManualResourceAccessModel,
   type ManualResourceCategory,
 } from "../resourceAnalyzer.ts";
-import { asRecord, goalTitleOf, rawListOf, type ActiveSyllabus } from "./ExploreMarketplace.tsx";
+import { asRecord, rawListOf } from "../shared.ts";
+import { goalTitleOf, type ActiveSyllabus } from "./ExploreMarketplace.tsx";
 import { SfIcon } from "./Icons.tsx";
 import { displayUnitTitle } from "./StudyFlowBoard.tsx";
 

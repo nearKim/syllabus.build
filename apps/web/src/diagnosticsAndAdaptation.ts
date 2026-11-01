@@ -1,5 +1,5 @@
-import { buildOperationHeaders } from "../../../packages/api-client/src/index.ts";
-import { resolveSurfaceStyle, type ResolvedSurfaceStyle as SurfaceStyle, type ThemeMode } from "../../../packages/ui/src/index.ts";
+import { buildOperationHeaders } from "@syllabus/api-client";
+import { resolveSurfaceStyle, type ResolvedSurfaceStyle as SurfaceStyle, type ThemeMode } from "@syllabus/ui";
 import { normalizeStringList } from "./shared.ts";
 
 export type ObjectiveEvidenceState = "demonstrated" | "in_progress" | "unverified" | "unknown";

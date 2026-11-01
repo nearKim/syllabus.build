@@ -1,8 +1,8 @@
 import type { VNode } from "preact";
-import type { CatalogResourceMetadataInput } from "../../../../packages/ui/src/index.ts";
+import type { CatalogResourceMetadataInput } from "@syllabus/ui";
 import catalogResourcesJson from "../data/catalogResources.json" with { type: "json" };
 import { searchTfidf, TFIDF_ENGINE } from "../tfidfIndex.ts";
-import type { Account } from "./HeaderBar.tsx";
+import type { Account } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
 import { catalogIndexOf } from "./NewSyllabusDialog.tsx";
