@@ -48,13 +48,15 @@ export interface SelfCheckRubric {
   readonly criteria: readonly string[];
 }
 
-// One practice question per syllabus, with its formula in TeX. A choice value is what Submit records.
+// One practice question per syllabus or activity, with its formula in TeX. A choice value is what Submit records.
 export interface ConceptCheck {
   readonly formula: string;
   readonly question: string;
   readonly choices: readonly { readonly value: string; readonly label: string }[];
+  readonly correctValue?: string | undefined;
   readonly hint: string;
   readonly solution: string;
+  readonly generatedBy?: "curated" | "ai" | "deterministic" | undefined;
 }
 
 export interface PracticeState {
@@ -255,7 +257,18 @@ export function InspectorDrawer({
           ) : null}
 
           <section class="inspector-section" aria-labelledby={`${INSPECTOR_ID}-unit-overview`}>
-            <h3 id={`${INSPECTOR_ID}-unit-overview`}>Overview</h3>
+            <div class="inspector-section-head">
+              <h3 id={`${INSPECTOR_ID}-unit-overview`}>Overview</h3>
+              <button
+                type="button"
+                class="inspector-inline-action"
+                data-action="open-syllabus-editor"
+                data-syllabus-edit-mode="edit-module"
+                data-module-id={mod.moduleId}
+              >
+                Edit unit
+              </button>
+            </div>
             <p class="prose">
               <MathText text={mod.summary} />
             </p>
@@ -504,11 +517,35 @@ export function InspectorDrawer({
             </button>
           )}
         </div>
+        <div class="practice-refresh-row">
+          <button
+            type="button"
+            class="practice-aid"
+            data-action="generate-activity-check"
+            data-activity-id={id}
+          >
+            Generate fresh check
+          </button>
+          {check.generatedBy === "ai" ? <span class="meta-text">Generated with your AI key</span> : null}
+        </div>
         {practice.submitted ? (
           <p class="meta-text practice-feedback" role="status">
             {chosen ? (
               <>
                 Answer submitted: <MathText text={chosen.label} />.
+                {check.correctValue ? (
+                  chosen.value === check.correctValue ? (
+                    <>
+                      {" "}
+                      <strong>{practice.workedSolutionRevealed ? "Correct (solution-assisted)." : "Correct."}</strong>
+                    </>
+                  ) : (
+                    <>
+                      {" "}
+                      <span>Not quite — review the hint or worked solution and try again.</span>
+                    </>
+                  )
+                ) : null}
               </>
             ) : (
               "Choose an answer, then select Submit answer."
@@ -823,6 +860,16 @@ export function InspectorDrawer({
               data-activity-id={id}
             >
               + Add resource
+            </button>
+            <button
+              type="button"
+              class="inspector-inline-action"
+              data-action="open-syllabus-editor"
+              data-syllabus-edit-mode="edit-activity"
+              data-module-id={mod.moduleId}
+              data-activity-id={id}
+            >
+              Edit step
             </button>
           </div>
         </section>

@@ -1,0 +1,48 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "curated",
+  "resource_version_id": "synthetic-resource-la-problem-sets-v1",
+  "title": "Public Problem Sets with Worked Solutions: Linear Algebra",
+  "canonical_url": "https://example.invalid/catalog/linear-algebra-problem-sets",
+  "captured_at": "2026-10-20T16:00:00Z",
+  "category": "Problem Set",
+  "subject": "Mathematics",
+  "provider": {
+    "provider_id": "open-course-problem-bank",
+    "display_name": "Open Course Problem Bank"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-20T16:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "Community Published",
+    "discovered_by_handle": "@spectral_sam",
+    "last_indexed_at": "2026-10-12T15:00:00Z"
+  },
+  "segments": [
+    {
+      "segment_id": "seg-la-ps1",
+      "title": "Problem Set 1: Eigenvalues and Projections",
+      "verified": true
+    },
+    {
+      "segment_id": "seg-la-ps2",
+      "title": "Problem Set 2: The SVD and Low-Rank Approximation",
+      "verified": true
+    }
+  ]
+}

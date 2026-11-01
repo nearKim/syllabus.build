@@ -1,6 +1,7 @@
 //! Core transactional store, identity/session management, tenancy, catalog, and syllabus revisions.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use syllabus_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
@@ -66,14 +67,49 @@ pub(crate) struct StoreInner {
     pub(crate) quarantine_overlays: BTreeMap<String, ResourceQuarantineOverlayRecord>,
     pub(crate) candidate_archives: BTreeMap<String, CandidateArchiveRecord>,
     pub(crate) generation_jobs: BTreeMap<String, GenerationJobRecord>,
+    pub(crate) web_workspaces: BTreeMap<String, WebWorkspaceRecord>,
+    pub(crate) web_passkeys: BTreeMap<String, WebPasskeyRecord>,
+    pub(crate) auth_recovery_tokens: BTreeMap<String, AuthRecoveryTokenRecord>,
     pub(crate) next_seq: u64,
 }
 
 /// Thread-safe transactional store enforcing `T01` identity, tenant isolation,
 /// private/public revision separation, HTTP concurrency rules, and post-restore tombstone replay.
+/// When opened via [`Self::open_postgres`] or [`Self::open_from_env`] with `DATABASE_URL`, every
+/// write guard automatically commits a durable snapshot and catalog mirror to PostgreSQL.
 #[derive(Clone, Default)]
 pub struct InMemoryTransactionalStore {
     pub(crate) inner: Arc<RwLock<StoreInner>>,
+    pub(crate) pg_backend: Option<Arc<crate::pg_backend::PgBackendHandle>>,
+}
+
+pub(crate) struct StoreWriteGuard<'a> {
+    guard: RwLockWriteGuard<'a, StoreInner>,
+    pg_backend: Option<&'a crate::pg_backend::PgBackendHandle>,
+}
+
+impl Deref for StoreWriteGuard<'_> {
+    type Target = StoreInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+impl DerefMut for StoreWriteGuard<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.guard
+    }
+}
+
+impl Drop for StoreWriteGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(pg) = self.pg_backend {
+            if !std::thread::panicking() {
+                let _ = pg.save_store_inner(&self.guard);
+            }
+        }
+    }
 }
 
 pub(crate) const PROHIBITED_PRIVATE_FIELDS_IN_PUBLIC: &[&str] = &[
@@ -100,12 +136,89 @@ impl InMemoryTransactionalStore {
         Self::default()
     }
 
+    /// Returns `true` when this store is backed by a live PostgreSQL write-through connection.
+    #[must_use]
+    pub fn is_postgres_backed(&self) -> bool {
+        self.pg_backend.is_some()
+    }
+
+    /// Returns the active PostgreSQL persistence namespace if Postgres-backed.
+    #[must_use]
+    pub fn postgres_namespace(&self) -> Option<&str> {
+        self.pg_backend.as_deref().map(|pg| pg.namespace())
+    }
+
+    /// Opens a PostgreSQL-backed store for `namespace`, automatically applying embedded migrations,
+    /// restoring any existing durable snapshot (or seeding initial fixtures + open Git catalog on
+    /// first boot), and writing through on every mutation.
+    pub fn open_postgres(database_url: &str, namespace: &str) -> Result<Self, PersistenceError> {
+        let pg = Arc::new(crate::pg_backend::PgBackendHandle::connect(
+            database_url,
+            namespace,
+        )?);
+        if let Some(restored_inner) = pg.load_store_inner()? {
+            let mut store = Self {
+                inner: Arc::new(RwLock::new(restored_inner)),
+                pg_backend: None,
+            };
+            let inserted = store.load_open_catalog_from_workspace();
+            store.pg_backend = Some(Arc::clone(&pg));
+            if inserted > 0 {
+                pg.save_store_inner(&store.read_inner())?;
+            }
+            Ok(store)
+        } else {
+            let mut store = Self::new_with_dev_fixtures();
+            store.load_open_catalog_from_workspace();
+            pg.save_store_inner(&store.read_inner())?;
+            store.pg_backend = Some(pg);
+            Ok(store)
+        }
+    }
+
+    /// Opens a PostgreSQL-backed store when `DATABASE_URL` is configured (using
+    /// `SYLLABUS_STORE_NAMESPACE` or `"default"`), or falls back to an in-memory store seeded
+    /// with dev fixtures and the workspace `catalog/resources` registry.
+    pub fn open_from_env() -> Result<Self, PersistenceError> {
+        if let Ok(db_url) = std::env::var("DATABASE_URL") {
+            let trimmed = db_url.trim();
+            if !trimmed.is_empty() {
+                let ns = std::env::var("SYLLABUS_STORE_NAMESPACE")
+                    .ok()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "default".to_string());
+                return Self::open_postgres(trimmed, &ns);
+            }
+        }
+        let store = Self::new_with_dev_fixtures();
+        store.load_open_catalog_from_workspace();
+        Ok(store)
+    }
+
     pub(crate) fn read_inner(&self) -> RwLockReadGuard<'_, StoreInner> {
+        if let Some(ref pg) = self.pg_backend {
+            if let Ok(mut try_w) = self.inner.try_write() {
+                if let Ok(Some((rev, refreshed))) = pg.load_store_inner_if_newer() {
+                    *try_w = refreshed;
+                    pg.set_last_seen_revision(rev);
+                }
+            }
+        }
         self.inner.read().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub(crate) fn write_inner(&self) -> RwLockWriteGuard<'_, StoreInner> {
-        self.inner.write().unwrap_or_else(PoisonError::into_inner)
+    pub(crate) fn write_inner(&self) -> StoreWriteGuard<'_> {
+        let mut guard = self.inner.write().unwrap_or_else(PoisonError::into_inner);
+        if let Some(ref pg) = self.pg_backend {
+            if let Ok(Some((rev, refreshed))) = pg.load_store_inner_if_newer() {
+                *guard = refreshed;
+                pg.set_last_seen_revision(rev);
+            }
+        }
+        StoreWriteGuard {
+            guard,
+            pg_backend: self.pg_backend.as_deref(),
+        }
     }
 
     /// Creates a store pre-seeded with Learner A (`00000000-0000-4000-8000-000000000001`)
@@ -603,7 +716,7 @@ impl InMemoryTransactionalStore {
             return Ok(Some(AuthenticatedPrincipal {
                 account_id: sess.account_id.clone(),
                 roles: sess.roles.clone(),
-                is_development_only_identity: true,
+                is_development_only_identity: false,
             }));
         }
         Ok(None)
@@ -2845,5 +2958,454 @@ impl InMemoryTransactionalStore {
             job.stage_history.push("cancelled".to_string());
         }
         Ok(job.clone())
+    }
+
+    // =========================================================================
+    // Normalized Web Workspace, Passkey, Profile & Auth Recovery Operations
+    // =========================================================================
+
+    #[must_use]
+    pub fn get_web_workspace(&self, principal: &AuthenticatedPrincipal) -> Option<WebWorkspaceRecord> {
+        let guard = self.read_inner();
+        guard.web_workspaces.get(&principal.account_id).cloned()
+    }
+
+    pub fn put_web_workspace(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        workspace_json: Value,
+        expected_revision: Option<u64>,
+        now_ms: u64,
+    ) -> Result<WebWorkspaceRecord, PersistenceError> {
+        if !workspace_json.is_object() {
+            return Err(PersistenceError::Validation(
+                "workspace_json must be a JSON object".to_string(),
+            ));
+        }
+        let mut guard = self.write_inner();
+        let email = guard
+            .accounts
+            .get(&principal.account_id)
+            .filter(|a| a.deleted_at_ms.is_none())
+            .map(|a| a.email.clone())
+            .unwrap_or_else(|| format!("{}@syllabus.local", principal.account_id));
+
+        let current_rev = guard
+            .web_workspaces
+            .get(&principal.account_id)
+            .map(|w| w.revision)
+            .unwrap_or(0);
+        if let Some(expected) = expected_revision {
+            if expected != current_rev {
+                return Err(PersistenceError::PreconditionFailed {
+                    expected_etag: format!("\"ws-v{expected}\""),
+                    actual_etag: format!("\"ws-v{current_rev}\""),
+                });
+            }
+        }
+        let record = WebWorkspaceRecord {
+            account_id: principal.account_id.clone(),
+            email,
+            workspace_json,
+            revision: current_rev + 1,
+            updated_at_ms: now_ms,
+        };
+        guard
+            .web_workspaces
+            .insert(principal.account_id.clone(), record.clone());
+        Ok(record)
+    }
+
+    pub fn delete_web_workspace(&self, principal: &AuthenticatedPrincipal) -> bool {
+        let mut guard = self.write_inner();
+        guard.web_workspaces.remove(&principal.account_id).is_some()
+    }
+
+    pub fn update_account_profile(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        email: Option<&str>,
+        display_name: Option<&str>,
+        avatar_url: Option<&str>,
+    ) -> Result<AccountRecord, PersistenceError> {
+        let normalized_email_opt = match email.map(str::trim).filter(|s| !s.is_empty()) {
+            Some(raw) => Some(Self::normalize_email(raw)?),
+            None => None,
+        };
+
+        let mut guard = self.write_inner();
+        if let Some(ref next_email) = normalized_email_opt {
+            let conflict = guard.accounts.values().any(|a| {
+                a.account_id != principal.account_id
+                    && a.deleted_at_ms.is_none()
+                    && a.email.eq_ignore_ascii_case(next_email)
+            });
+            if conflict {
+                return Err(PersistenceError::Conflict {
+                    code: "email_already_in_use",
+                    message: format!("email `{next_email}` is already bound to another account"),
+                });
+            }
+        }
+
+        let acct = guard
+            .accounts
+            .get_mut(&principal.account_id)
+            .filter(|a| a.deleted_at_ms.is_none())
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "account",
+                resource_id: principal.account_id.clone(),
+            })?;
+
+        if let Some(next_email) = normalized_email_opt {
+            if !acct.email.eq_ignore_ascii_case(&next_email) {
+                acct.email = next_email.clone();
+                acct.email_verified = false;
+            }
+        }
+        if let Some(name) = display_name {
+            let trimmed = name.trim();
+            acct.display_name = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        if let Some(avatar) = avatar_url {
+            let trimmed = avatar.trim();
+            acct.avatar_url = if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+        }
+        let updated = acct.clone();
+        if let Some(ws) = guard.web_workspaces.get_mut(&principal.account_id) {
+            ws.email = updated.email.clone();
+        }
+        for pk in guard.web_passkeys.values_mut() {
+            if pk.account_id == principal.account_id {
+                pk.email = updated.email.clone();
+            }
+        }
+        Ok(updated)
+    }
+
+    #[must_use]
+    pub fn list_web_passkeys(&self, principal: &AuthenticatedPrincipal) -> Vec<WebPasskeyRecord> {
+        let guard = self.read_inner();
+        guard
+            .web_passkeys
+            .values()
+            .filter(|p| p.account_id == principal.account_id)
+            .cloned()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn list_web_passkeys_by_email(&self, email: &str) -> Vec<WebPasskeyRecord> {
+        let trimmed = email.trim();
+        let guard = self.read_inner();
+        guard
+            .web_passkeys
+            .values()
+            .filter(|p| trimmed.is_empty() || p.email.eq_ignore_ascii_case(trimmed))
+            .cloned()
+            .collect()
+    }
+
+    #[must_use]
+    pub fn get_web_passkey_by_credential_id(&self, credential_id: &str) -> Option<WebPasskeyRecord> {
+        let guard = self.read_inner();
+        guard.web_passkeys.get(credential_id).cloned()
+    }
+
+    pub fn put_web_passkey(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        credential_id: &str,
+        credential_json: Value,
+        now_ms: u64,
+    ) -> Result<WebPasskeyRecord, PersistenceError> {
+        let cred_id = credential_id.trim();
+        if cred_id.is_empty() {
+            return Err(PersistenceError::Validation(
+                "credential_id must be non-empty".to_string(),
+            ));
+        }
+        let mut guard = self.write_inner();
+        if let Some(existing) = guard.web_passkeys.get(cred_id) {
+            if existing.account_id != principal.account_id {
+                return Err(PersistenceError::Security(
+                    SecurityError::CrossTenantAccessDenied {
+                        principal_id: principal.account_id.clone(),
+                        owner_id: existing.account_id.clone(),
+                    },
+                ));
+            }
+        }
+        let email = guard
+            .accounts
+            .get(&principal.account_id)
+            .map(|a| a.email.clone())
+            .unwrap_or_else(|| format!("{}@syllabus.local", principal.account_id));
+        let rec = WebPasskeyRecord {
+            credential_id: cred_id.to_string(),
+            account_id: principal.account_id.clone(),
+            email,
+            credential_json,
+            updated_at_ms: now_ms,
+        };
+        guard.web_passkeys.insert(cred_id.to_string(), rec.clone());
+        Ok(rec)
+    }
+
+    pub fn delete_web_passkey(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        credential_id: &str,
+    ) -> Result<bool, PersistenceError> {
+        let mut guard = self.write_inner();
+        if let Some(existing) = guard.web_passkeys.get(credential_id) {
+            principal.require_learner_ownership(&existing.account_id)?;
+        } else {
+            return Ok(false);
+        }
+        Ok(guard.web_passkeys.remove(credential_id).is_some())
+    }
+
+    pub fn create_passkey_session(
+        &self,
+        credential_id: &str,
+        updated_counter: Option<u64>,
+        now_ms: u64,
+    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
+        let mut guard = self.write_inner();
+        let account_id = {
+            let pk = guard
+                .web_passkeys
+                .get_mut(credential_id)
+                .ok_or_else(|| PersistenceError::Security(SecurityError::Unauthenticated))?;
+            if let Some(counter) = updated_counter {
+                if let Some(obj) = pk.credential_json.as_object_mut() {
+                    obj.insert("counter".to_string(), json!(counter));
+                }
+                pk.updated_at_ms = now_ms;
+            }
+            pk.account_id.clone()
+        };
+        let acct = guard
+            .accounts
+            .get(&account_id)
+            .filter(|a| a.deleted_at_ms.is_none())
+            .cloned()
+            .ok_or_else(|| PersistenceError::Security(SecurityError::Unauthenticated))?;
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let session =
+            Self::issue_session_locked(&mut guard, seq, acct.account_id.clone(), acct.roles.clone());
+        Ok((acct, session))
+    }
+
+    fn generate_recovery_code(seq: u64, account_id: &str, purpose: &str, now_ms: u64) -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let entropy = format!("recovery-v1|{seq}|{account_id}|{purpose}|{now_ms}|{nanos}");
+        let digest = sha256_bytes_hex(entropy.as_bytes());
+        let num = u32::from_str_radix(&digest[..8], 16).unwrap_or(100_000) % 900_000 + 100_000;
+        format!("{num:06}")
+    }
+
+    pub fn issue_password_reset_token(
+        &self,
+        email: &str,
+        now_ms: u64,
+        ttl_ms: u64,
+    ) -> Result<Option<AuthRecoveryTokenIssued>, PersistenceError> {
+        let normalized_email = Self::normalize_email(email)?;
+        let mut guard = self.write_inner();
+        let Some(acct) = guard
+            .accounts
+            .values()
+            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
+            .cloned()
+        else {
+            return Ok(None);
+        };
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let code = Self::generate_recovery_code(seq, &acct.account_id, "password_reset", now_ms);
+        let token_key = format!("password_reset:{}:{code}", acct.email.to_ascii_lowercase());
+        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
+        let expires_at_ms = now_ms.saturating_add(ttl_ms);
+
+        guard.auth_recovery_tokens.insert(
+            token_sha256.clone(),
+            AuthRecoveryTokenRecord {
+                token_sha256,
+                account_id: acct.account_id.clone(),
+                email: acct.email.clone(),
+                purpose: "password_reset".to_string(),
+                expires_at_ms,
+                consumed_at_ms: None,
+            },
+        );
+        Ok(Some(AuthRecoveryTokenIssued {
+            token: code,
+            account_id: acct.account_id,
+            email: acct.email,
+            purpose: "password_reset".to_string(),
+            expires_at_ms,
+        }))
+    }
+
+    pub fn confirm_password_reset_token(
+        &self,
+        email: &str,
+        token: &str,
+        new_password: &str,
+        now_ms: u64,
+    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
+        let normalized_email = Self::normalize_email(email)?;
+        let cleaned_code = token.trim();
+        if cleaned_code.is_empty() {
+            return Err(PersistenceError::Validation(
+                "recovery code is required".to_string(),
+            ));
+        }
+        let mut guard = self.write_inner();
+        let token_key = format!("password_reset:{normalized_email}:{cleaned_code}");
+        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
+
+        let account_id = {
+            let rec = guard
+                .auth_recovery_tokens
+                .get_mut(&token_sha256)
+                .ok_or_else(|| PersistenceError::Security(SecurityError::Unauthenticated))?;
+            if rec.consumed_at_ms.is_some()
+                || rec.expires_at_ms < now_ms
+                || rec.purpose != "password_reset"
+            {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            }
+            rec.consumed_at_ms = Some(now_ms);
+            rec.account_id.clone()
+        };
+
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let salt = format!("syllabus-pw-reset-salt-{seq}-{normalized_email}");
+        let pw_hash =
+            hash_password(new_password, salt.as_bytes()).map_err(PersistenceError::Security)?;
+
+        let acct = {
+            let acct_mut = guard
+                .accounts
+                .get_mut(&account_id)
+                .filter(|a| a.deleted_at_ms.is_none())
+                .ok_or_else(|| PersistenceError::Security(SecurityError::Unauthenticated))?;
+            acct_mut.password_hash = Some(pw_hash);
+            acct_mut.clone()
+        };
+
+        // Revoke older sessions on password reset for defense-in-depth, then mint a fresh session.
+        for sess in guard.sessions_by_token_sha.values_mut() {
+            if sess.account_id == account_id {
+                sess.revoked = true;
+            }
+        }
+        let session =
+            Self::issue_session_locked(&mut guard, seq, acct.account_id.clone(), acct.roles.clone());
+        Ok((acct, session))
+    }
+
+    pub fn issue_email_verification_token(
+        &self,
+        principal: &AuthenticatedPrincipal,
+        now_ms: u64,
+        ttl_ms: u64,
+    ) -> Result<AuthRecoveryTokenIssued, PersistenceError> {
+        let mut guard = self.write_inner();
+        let acct = guard
+            .accounts
+            .get(&principal.account_id)
+            .filter(|a| a.deleted_at_ms.is_none())
+            .cloned()
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "account",
+                resource_id: principal.account_id.clone(),
+            })?;
+        guard.next_seq += 1;
+        let seq = guard.next_seq;
+        let code =
+            Self::generate_recovery_code(seq, &acct.account_id, "email_verification", now_ms);
+        let token_key = format!("email_verification:{code}");
+        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
+        let expires_at_ms = now_ms.saturating_add(ttl_ms);
+
+        guard.auth_recovery_tokens.insert(
+            token_sha256.clone(),
+            AuthRecoveryTokenRecord {
+                token_sha256,
+                account_id: acct.account_id.clone(),
+                email: acct.email.clone(),
+                purpose: "email_verification".to_string(),
+                expires_at_ms,
+                consumed_at_ms: None,
+            },
+        );
+        Ok(AuthRecoveryTokenIssued {
+            token: code,
+            account_id: acct.account_id,
+            email: acct.email,
+            purpose: "email_verification".to_string(),
+            expires_at_ms,
+        })
+    }
+
+    pub fn confirm_email_verification_token(
+        &self,
+        token: &str,
+        now_ms: u64,
+    ) -> Result<AccountRecord, PersistenceError> {
+        let cleaned = token.trim();
+        if cleaned.is_empty() {
+            return Err(PersistenceError::Validation(
+                "verification token is required".to_string(),
+            ));
+        }
+        let mut guard = self.write_inner();
+        let token_key = format!("email_verification:{cleaned}");
+        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
+
+        let (account_id, verified_email) = {
+            let rec = guard
+                .auth_recovery_tokens
+                .get_mut(&token_sha256)
+                .ok_or_else(|| PersistenceError::Security(SecurityError::Unauthenticated))?;
+            if rec.consumed_at_ms.is_some()
+                || rec.expires_at_ms < now_ms
+                || rec.purpose != "email_verification"
+            {
+                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+            }
+            rec.consumed_at_ms = Some(now_ms);
+            (rec.account_id.clone(), rec.email.clone())
+        };
+
+        let acct = guard
+            .accounts
+            .get_mut(&account_id)
+            .filter(|a| a.deleted_at_ms.is_none())
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "account",
+                resource_id: account_id.clone(),
+            })?;
+        if acct.email.eq_ignore_ascii_case(&verified_email) {
+            acct.email_verified = true;
+        }
+        Ok(acct.clone())
     }
 }

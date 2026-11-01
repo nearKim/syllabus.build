@@ -5,7 +5,11 @@ use serde_json::json;
 
     #[test]
     fn baseline_and_t01_migrations_are_embedded_and_valid() {
-        assert_eq!(MIGRATIONS.len(), 9);
+        assert_eq!(MIGRATIONS.len(), 11);
+        assert!(WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS web_account_workspaces"));
+        assert!(WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL
+            .contains("CREATE TABLE IF NOT EXISTS worker_dispatch_receipts"));
         assert!(OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL
             .contains("CREATE TABLE IF NOT EXISTS oauth_identities"));
         assert!(POLYMORPHIC_RESOURCE_INDICES_AND_TAGS_MIGRATION_SQL
@@ -787,4 +791,291 @@ use serde_json::json;
             .expect("reuse GitHub OAuth account");
         assert!(!gh_second.is_new_account);
         assert_eq!(gh_first.account.account_id, gh_second.account.account_id);
+    }
+
+    #[test]
+    fn open_catalog_workspace_files_load_and_validate_against_contract_schema() {
+        let store = InMemoryTransactionalStore::new();
+        let inserted = store.load_open_catalog_from_workspace();
+        assert!(
+            inserted >= 18,
+            "expected at least 18 open catalog JSON files loaded from catalog/resources, got {inserted}"
+        );
+        let registry = syllabus_contracts::ContractRegistry::load_from_workspace()
+            .expect("load contract registry");
+        for res in store.list_catalog_resources(true) {
+            registry
+                .validate("resource.schema.json", &res.to_contract_json())
+                .unwrap_or_else(|e| {
+                    panic!(
+                        "open catalog resource `{}` failed resource.schema.json: {e}",
+                        res.resource_version_id
+                    )
+                });
+        }
+    }
+
+    #[tokio::test]
+    async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across_restarts() {
+        let Ok(pg_url) = std::env::var("TEST_POSTGRES_URL") else {
+            return;
+        };
+        let pg_url = pg_url.trim().to_string();
+        if pg_url.is_empty() {
+            return;
+        }
+        let namespace = format!(
+            "test-ns-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(1)
+        );
+
+        let acct_id: String;
+        {
+            let store = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
+                .expect("open postgres-backed store (boot 1)");
+            assert!(store.is_postgres_backed());
+            assert_eq!(store.postgres_namespace(), Some(namespace.as_str()));
+
+            let (acct, _sess) = store
+                .register_email_account("pg-alice@example.test", "StrongPgPass123!", Some("PG Alice"))
+                .expect("register pg-alice");
+            acct_id = acct.account_id.clone();
+
+            let principal = AuthenticatedPrincipal {
+                account_id: acct_id.clone(),
+                roles: vec![PrincipalRole::Learner],
+                is_development_only_identity: false,
+            };
+            store
+                .commit_private_syllabus_revision(
+                    &principal,
+                    "syllabus-pg-persist-1",
+                    "rev-pg-persist-1",
+                    json!({ "title": "Persistent Postgres Syllabus", "modules": [] }),
+                )
+                .expect("commit syllabus revision");
+            store
+                .create_credential(
+                    &principal,
+                    "cred-pg-alice-openai",
+                    "openai",
+                    "Alice BYOK Key",
+                    "sk-live-alice-pg-secret-8899",
+                )
+                .expect("create encrypted BYOK credential");
+        }
+
+        // Boot 2: fresh store instance against the same PostgreSQL database and namespace
+        {
+            let restarted = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
+                .expect("reopen postgres-backed store (boot 2)");
+            let (_logged_in_acct, _sess2) = restarted
+                .login_email_account("pg-alice@example.test", "StrongPgPass123!")
+                .expect("password hash must survive PostgreSQL restart");
+            let principal = AuthenticatedPrincipal {
+                account_id: acct_id.clone(),
+                roles: vec![PrincipalRole::Learner],
+                is_development_only_identity: false,
+            };
+            let active = restarted
+                .get_private_syllabus_revision(&principal, "rev-pg-persist-1")
+                .expect("persisted active syllabus revision");
+            assert_eq!(
+                active.payload["title"],
+                json!("Persistent Postgres Syllabus")
+            );
+            let (decrypted_secret, _cred_meta) = restarted
+                .open_credential_for_pinned_inference(&principal, "cred-pg-alice-openai", 1)
+                .expect("decrypt persisted BYOK envelope after restart");
+            assert_eq!(decrypted_secret, "sk-live-alice-pg-secret-8899");
+        }
+
+        // Also verify PostgreSQL transactional outbox enqueue + claim/complete tick
+        let job_id = format!("pg-job-{namespace}");
+        crate::enqueue_pg_outbox_job(
+            &pg_url,
+            &job_id,
+            &acct_id,
+            "schedule_reminder_sync",
+            &json!({ "syllabus_id": "syllabus-pg-persist-1" }),
+        )
+        .await
+        .expect("enqueue pg outbox job");
+        let tick = crate::run_pg_outbox_worker_tick(&pg_url, "pg-test-worker", 60)
+            .await
+            .expect("run pg outbox worker tick");
+        assert!(
+            tick.claimed_and_completed_job_ids.contains(&job_id),
+            "expected worker tick to claim and complete `{job_id}`, got {:?}",
+            tick.claimed_and_completed_job_ids
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_receipts() {
+        let pg_url = std::env::var("TEST_POSTGRES_URL")
+            .or_else(|_| std::env::var("DATABASE_URL"))
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        if pg_url.is_empty() {
+            return;
+        }
+        let namespace = format!(
+            "replica-ns-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(2)
+        );
+
+        let replica_a = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
+            .expect("open replica_a against PostgreSQL");
+        let replica_b = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
+            .expect("open replica_b against PostgreSQL");
+
+        let (acct, _sess) = replica_a
+            .register_email_account("replica-maya@syllabus.so", "InitialPass123!", Some("Maya"))
+            .expect("register account on replica_a");
+        let principal = AuthenticatedPrincipal {
+            account_id: acct.account_id.clone(),
+            roles: vec![PrincipalRole::Learner],
+            is_development_only_identity: false,
+        };
+
+        // 1. Write web workspace + passkey on replica_a -> immediately visible on live replica_b
+        let ws = replica_a
+            .put_web_workspace(
+                &principal,
+                json!({
+                    "selectedSyllabusId": "syllabus-rag-python-001",
+                    "sealedByokEnvelopes": {
+                        "openai": { "credential_ref": "cred-openai-1", "masked_suffix": "9a4F" }
+                    }
+                }),
+                None,
+                1_776_000_000_000,
+            )
+            .expect("put_web_workspace on replica_a");
+        assert_eq!(ws.revision, 1);
+
+        replica_a
+            .put_web_passkey(
+                &principal,
+                "pk-cred-replica-1",
+                json!({
+                    "id": "pk-cred-replica-1",
+                    "passkeyUserId": acct.account_id,
+                    "counter": 1
+                }),
+                1_776_000_000_100,
+            )
+            .expect("put_web_passkey on replica_a");
+
+        let synced_ws = replica_b
+            .get_web_workspace(&principal)
+            .expect("replica_b must observe replica_a workspace via revision sync");
+        assert_eq!(synced_ws.revision, 1);
+        assert_eq!(
+            synced_ws.workspace_json["selectedSyllabusId"],
+            json!("syllabus-rag-python-001")
+        );
+
+        let synced_pks = replica_b.list_web_passkeys(&principal);
+        assert_eq!(synced_pks.len(), 1);
+        assert_eq!(synced_pks[0].credential_id, "pk-cred-replica-1");
+
+        // 2. Issue email verification & password reset on replica_a -> confirm on replica_b
+        let verify_issued = replica_a
+            .issue_email_verification_token(&principal, 1_776_000_000_200, 3_600_000)
+            .expect("issue email verification on replica_a");
+        let verified_acct = replica_b
+            .confirm_email_verification_token(&verify_issued.token, 1_776_000_000_300)
+            .expect("confirm email verification on replica_b");
+        assert!(verified_acct.email_verified);
+
+        let reset_issued = replica_b
+            .issue_password_reset_token("replica-maya@syllabus.so", 1_776_000_000_400, 900_000)
+            .expect("issue password reset on replica_b")
+            .expect("account exists");
+        let (_reset_acct, _reset_sess) = replica_a
+            .confirm_password_reset_token(
+                "replica-maya@syllabus.so",
+                &reset_issued.token,
+                "RotatedReplicaPass456!",
+                1_776_000_000_500,
+            )
+            .expect("confirm password reset on replica_a");
+
+        let (_relogin_acct, _) = replica_b
+            .login_email_account("replica-maya@syllabus.so", "RotatedReplicaPass456!")
+            .expect("login with reset password on replica_b");
+
+        // 3. Verify normalized row-level SQL tables & worker_dispatch_receipts directly in PostgreSQL
+        let email_job_id = format!("pg-dispatch-email-{namespace}");
+        crate::enqueue_pg_outbox_job(
+            &pg_url,
+            &email_job_id,
+            &acct.account_id,
+            "email_verification",
+            &json!({ "email": "replica-maya@syllabus.so", "code": "654321" }),
+        )
+        .await
+        .expect("enqueue email_verification job");
+
+        let tick = crate::run_pg_outbox_worker_tick(&pg_url, "pg-dispatch-worker", 60)
+            .await
+            .expect("run outbox worker tick");
+        assert!(tick.claimed_and_completed_job_ids.contains(&email_job_id));
+
+        let (pg_client, pg_conn) = tokio_postgres::connect(&pg_url, tokio_postgres::NoTls)
+            .await
+            .expect("connect direct tokio_postgres client");
+        tokio::spawn(async move {
+            let _ = pg_conn.await;
+        });
+
+        let scoped_acct = format!("{namespace}:{}", acct.account_id);
+        let ws_row = pg_client
+            .query_opt(
+                "SELECT revision FROM web_account_workspaces WHERE account_id = $1",
+                &[&scoped_acct],
+            )
+            .await
+            .expect("query web_account_workspaces");
+        assert_eq!(ws_row.map(|r| r.get::<_, i64>(0)), Some(1));
+
+        let scoped_pk = format!("{namespace}:pk-cred-replica-1");
+        let pk_row = pg_client
+            .query_opt(
+                "SELECT credential_id FROM web_passkey_credentials WHERE credential_id = $1",
+                &[&scoped_pk],
+            )
+            .await
+            .expect("query web_passkey_credentials");
+        assert!(pk_row.is_some(), "expected row in web_passkey_credentials");
+
+        let tok_count: i64 = pg_client
+            .query_one(
+                "SELECT COUNT(*)::BIGINT FROM web_auth_recovery_tokens WHERE account_id = $1 AND consumed_at_ms IS NOT NULL",
+                &[&scoped_acct],
+            )
+            .await
+            .expect("query web_auth_recovery_tokens")
+            .get(0);
+        assert_eq!(tok_count, 2, "both email_verification and password_reset tokens must be recorded consumed");
+
+        let receipt_row = pg_client
+            .query_opt(
+                "SELECT job_type, status FROM worker_dispatch_receipts WHERE job_id = $1",
+                &[&email_job_id],
+            )
+            .await
+            .expect("query worker_dispatch_receipts");
+        assert!(receipt_row.is_some(), "expected durable receipt row in worker_dispatch_receipts");
+        let receipt = receipt_row.unwrap();
+        assert_eq!(receipt.get::<_, String>(0), "email_verification");
     }

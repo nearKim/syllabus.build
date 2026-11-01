@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://syllabus.io/catalog/schema/resource.schema.json",
+  "title": "Syllabus Open Catalog Resource",
+  "description": "A human-editable, Git-tracked learning resource entry (book, course, lecture video, code lab, or problem set) indexed by Syllabus.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "resource_version_id",
+    "title",
+    "canonical_url",
+    "captured_at",
+    "category",
+    "subject",
+    "provider",
+    "access",
+    "ingestion_permissions",
+    "vector_index",
+    "segments"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Relative path to this JSON Schema for editor autocomplete."
+    },
+    "catalog_collection": {
+      "type": "string",
+      "enum": ["curated", "community_discovered"],
+      "default": "curated",
+      "description": "Whether this entry belongs to the core curated catalog or community-discovered global corpus."
+    },
+    "resource_version_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,120}$",
+      "description": "Stable kebab-case identifier matching the filename without .json."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 240
+    },
+    "canonical_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https?://"
+    },
+    "captured_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "category": {
+      "type": "string",
+      "enum": ["Course", "Book", "YouTube", "Code Lab", "Problem Set"]
+    },
+    "subject": {
+      "type": "string",
+      "enum": ["Engineering", "Systems", "Mathematics", "Physics", "Literature"]
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1200
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 80
+      }
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "display_name"],
+      "properties": {
+        "provider_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "tier_label",
+        "cost_label",
+        "rights_label",
+        "certificate_included",
+        "optional_certificate_price_minor"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": ["free", "freemium_optional_certificate", "paid", "library_loan"]
+        },
+        "tier_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cost_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rights_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "certificate_included": {
+          "type": "boolean"
+        },
+        "optional_certificate_price_minor": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "access_verified_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "ingestion_permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "permissions"],
+      "properties": {
+        "basis": {
+          "type": "string",
+          "enum": ["link_and_metadata_only", "open_license", "publisher_agreement"]
+        },
+        "permissions": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "vector_index": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "index_type", "discovered_by", "discovered_by_handle", "last_indexed_at"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["indexed", "pending", "quarantined"]
+        },
+        "index_type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discovered_by": {
+          "type": "string",
+          "minLength": 1
+        },
+        "discovered_by_handle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "last_indexed_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["segment_id", "title", "verified"],
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

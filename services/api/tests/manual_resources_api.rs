@@ -256,3 +256,86 @@ async fn manual_resource_ingestion_rejects_ssrf_and_loopback_urls() {
         assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }
+
+#[tokio::test]
+async fn web_dto_parity_explicit_id_category_access_aliases_and_auto_syllabus_binding() {
+    let state = ApiAppState::new(ReleaseFeatureGates::default());
+    let app = build_router_with_state(state);
+    let token = login_token(&app, "learner-a@example.test").await;
+
+    // 1. Ingest with explicit web `resource_version_id`
+    let explicit_id = "manual-web-parity-triton-v1";
+    let ingest_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/catalog/resources/manual")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "resource_version_id": explicit_id,
+                        "raw_text": "https://github.com/triton-lang/triton GPU kernel tutorials",
+                        "title": "Triton GPU Kernel Tutorials",
+                        "category": "Repository",
+                        "subject": "Systems",
+                        "access_model": "free"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ingest_resp.status(), StatusCode::CREATED);
+
+    // 2. PATCH using @syllabus/web payload shape (`category`, `summary`, `access_model: "free"`, `subject`, `segment_titles`)
+    let patch_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/catalog/resources/{explicit_id}"))
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "title": "Triton GPU Kernel Tutorials (Updated)",
+                        "category": "Video",
+                        "summary": "Deep-dive into block-level GPU programming.",
+                        "subject": "Systems",
+                        "access_model": "freemium_optional_certificate",
+                        "segment_titles": ["1. Vector Add", "2. Fused Softmax"]
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(patch_resp.status(), StatusCode::OK);
+
+    // 3. Bind to a frontend-generated syllabus ID that didn't pre-exist in Rust
+    let bind_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/syllabi/syllabus-gen-web-001/resources")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "resource_version_id": explicit_id,
+                        "role": "primary",
+                        "selection_rationale": "Core GPU kernel hands-on material."
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bind_resp.status(), StatusCode::CREATED);
+}

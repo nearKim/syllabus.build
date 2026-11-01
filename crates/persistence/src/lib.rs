@@ -38,6 +38,7 @@ pub use serde_json;
 
 pub mod migrations;
 pub mod models;
+pub mod pg_backend;
 pub mod store;
 mod store_billing;
 mod store_learning;
@@ -46,6 +47,10 @@ mod store_sharing;
 
 pub use migrations::*;
 pub use models::*;
+pub use pg_backend::{
+    apply_migrations_to_postgres, enqueue_pg_outbox_job, run_pg_outbox_worker_tick,
+    PgOutboxTickReport,
+};
 pub use store::*;
 
 #[cfg(test)]

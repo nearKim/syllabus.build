@@ -1,0 +1,37 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "curated",
+  "resource_version_id": "synthetic-resource-cert-prep-v1",
+  "title": "Applied Sequence Modeling Lab & Optional Certification Track",
+  "canonical_url": "https://example.invalid/catalog/sequence-lab-cert",
+  "captured_at": "2026-10-20T16:00:00Z",
+  "category": "Course",
+  "subject": "Engineering",
+  "provider": {
+    "provider_id": "systems-ai-institute",
+    "display_name": "Systems AI Institute"
+  },
+  "access": {
+    "model": "freemium_optional_certificate",
+    "tier_label": "Freemium",
+    "cost_label": "Core $0 · Cert $49",
+    "rights_label": "Link & metadata",
+    "certificate_included": true,
+    "optional_certificate_price_minor": 4900,
+    "access_verified_at": "2026-10-20T16:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "Curator Verified",
+    "discovered_by_handle": "@alex",
+    "last_indexed_at": "2026-10-20T16:00:00Z"
+  },
+  "segments": []
+}

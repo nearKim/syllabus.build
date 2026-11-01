@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+FROM rust:1-bookworm AS builder
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY services ./services
+COPY specs ./specs
+COPY catalog ./catalog
+
+RUN cargo build --release --locked -p syllabus-api -p syllabus-worker
+
+FROM debian:bookworm-slim AS runtime
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /app/target/release/syllabus-api /usr/local/bin/syllabus-api
+COPY --from=builder /app/target/release/syllabus-worker /usr/local/bin/syllabus-worker
+COPY --from=builder /app/crates/persistence/migrations ./crates/persistence/migrations
+COPY --from=builder /app/specs ./specs
+COPY --from=builder /app/catalog ./catalog
+
+ENV APP_ENV=production \
+    API_BIND_ADDR=0.0.0.0:8080 \
+    SYLLABUS_WORKSPACE_ROOT=/app \
+    OPEN_CATALOG_DIR=/app/catalog/resources
+
+EXPOSE 8080
+
+CMD ["syllabus-api"]

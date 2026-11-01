@@ -1,0 +1,37 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "curated",
+  "resource_version_id": "synthetic-resource-la-lab-v1",
+  "title": "Numerical Linear Algebra Lab: Iterative Eigensolvers",
+  "canonical_url": "https://example.invalid/catalog/eigensolver-lab",
+  "captured_at": "2026-10-20T16:00:00Z",
+  "category": "Code Lab",
+  "subject": "Mathematics",
+  "provider": {
+    "provider_id": "open-math-commons",
+    "display_name": "Open Math Commons (Curator Verified)"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-20T16:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "Curator Verified",
+    "discovered_by_handle": "@spectral_sam",
+    "last_indexed_at": "2026-10-12T15:00:00Z"
+  },
+  "segments": []
+}

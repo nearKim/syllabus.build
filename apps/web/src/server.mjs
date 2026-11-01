@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildSync } from "esbuild";
@@ -24,11 +25,25 @@ import {
   getDialogLightDismissFallbackScript,
   renderSyllabusWebAppHtml,
 } from "./browserApp.ts";
+import {
+  DEFAULT_CREDENTIAL_META,
+  openByokApiKey,
+  resolveByokMasterKey,
+  sealByokApiKey,
+  toMaskedCredentialRecord,
+} from "./byokVault.mjs";
+import {
+  DEFAULT_OPEN_CATALOG_DIR,
+  loadOpenCatalogFromDisk,
+  serializeOpenCatalogEntry,
+  writeOpenCatalogResourceFile,
+} from "./openCatalog.mjs";
 import { isAdminAccount } from "./components/AdminResourcesView.tsx";
 import { PERSONAS } from "./components/AuthDialog.tsx";
 import { defaultUsernameOfEmail } from "./components/HeaderBar.tsx";
 import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
 import { PROVIDER_KEY_ENV, requestLiveDraft } from "./liveDraft.ts";
+import { requestLiveConceptCheck } from "./liveTutor.ts";
 import { analyzeManualResourceWithAi } from "./resourceAnalyzer.ts";
 import {
   buildOAuthAuthorizeRedirect,
@@ -313,7 +328,15 @@ ${fallbackScript}
   function restoreAuthDraft(draft, action) {
     const dialog = root.querySelector('#dialog-auth[data-open="true"]');
     if (!draft || !dialog) return;
-    if (action === "submit-sign-in" || action === "submit-sign-up") dialog.querySelector("form").dataset.submitted = "true";
+    if (
+      action === "submit-sign-in" ||
+      action === "submit-sign-up" ||
+      action === "request-password-reset" ||
+      action === "confirm-password-reset"
+    ) {
+      const formEl = dialog.querySelector("form");
+      if (formEl) formEl.dataset.submitted = "true";
+    }
     const inputs = Array.from(dialog.querySelectorAll("input[id]"));
     inputs.forEach((input) => {
       if (draft.values[input.id] !== undefined) input.value = draft.values[input.id];
@@ -769,7 +792,7 @@ ${fallbackScript}
     if (event.target && event.target.closest && event.target.closest('[data-action="toggle-auth-password"]')) event.preventDefault();
   });
 
-  // Post-interaction validation for #dialog-auth and #dialog-resource-editor fields (syncs aria-invalid on blur and clears immediately when valid).
+  // Post-interaction validation for dialog and inline verification forms (syncs aria-invalid on blur and clears immediately when valid).
   root.addEventListener(
     "blur",
     (event) => {
@@ -778,7 +801,7 @@ ${fallbackScript}
         !input ||
         (input.localName !== "input" && input.localName !== "textarea") ||
         !input.closest ||
-        !input.closest("#dialog-auth, #dialog-resource-editor")
+        !input.closest("#dialog-auth, #dialog-resource-editor, #dialog-syllabus-editor, .email-verify-form")
       ) {
         return;
       }
@@ -794,7 +817,7 @@ ${fallbackScript}
       !input ||
       (input.localName !== "input" && input.localName !== "textarea") ||
       !input.closest ||
-      !input.closest("#dialog-auth, #dialog-resource-editor")
+      !input.closest("#dialog-auth, #dialog-resource-editor, #dialog-syllabus-editor, .email-verify-form")
     ) {
       return;
     }
@@ -903,6 +926,12 @@ ${fallbackScript}
       dispatchServerRender({ action: "toggle-upvote", revisionId: target.dataset.revisionId });
     } else {
       const patch = Object.assign({}, target.dataset);
+      if (action === "open-dialog" && !patch.publicationId) {
+        const pubHost = target.closest("[data-publication-id]");
+        if (pubHost && pubHost.dataset.publicationId) {
+          patch.publicationId = pubHost.dataset.publicationId;
+        }
+      }
       if (target.closest("#dialog-new-syllabus")) {
         const goalInput = root.querySelector("#intake-goal");
         if (goalInput) patch.intakeGoalTitle = goalInput.value;
@@ -914,6 +943,20 @@ ${fallbackScript}
       if (action === "request-hint" || action === "study-worked-solution" || action === "submit-practice") {
         const checked = root.querySelector('input[name="practice-choice"]:checked');
         if (checked) patch.practiceChoice = checked.value;
+      }
+      if (action === "submit-diagnostic-answer") {
+        const checkedDiag = root.querySelector('input[name="diagnostic-choice"]:checked');
+        if (checkedDiag) patch.diagnosticChoice = checkedDiag.value;
+      }
+      if (action === "generate-activity-check") {
+        target.disabled = true;
+        target.setAttribute("aria-busy", "true");
+        dispatchServerRender(patch).then((ok) => {
+          if (ok) return;
+          target.disabled = false;
+          target.removeAttribute("aria-busy");
+        });
+        return;
       }
       if (action === "reschedule-session" && target.dataset.sessionId) {
         const row = target.closest(".schedule-row") || root;
@@ -1046,6 +1089,39 @@ ${fallbackScript}
         intakeTopic: topicSelect.value,
         intakeGoalTitle: goalInput ? goalInput.value : undefined,
       });
+      return;
+    }
+    const tzSelect = event.target && event.target.closest ? event.target.closest('select[data-action="set-reminder-timezone"]') : null;
+    if (tzSelect && tzSelect.value) {
+      dispatchServerRender({ action: "set-reminder-timezone", reminderTimezone: tzSelect.value });
+      return;
+    }
+    const reminderSchedEl = event.target && event.target.closest ? event.target.closest('[data-action="set-reminder-schedule"]') : null;
+    if (reminderSchedEl && reminderSchedEl.value) {
+      dispatchServerRender({
+        action: "set-reminder-schedule",
+        reminderField: reminderSchedEl.dataset.reminderField,
+        value: reminderSchedEl.value,
+      });
+      return;
+    }
+    const providerModelSelect = event.target && event.target.closest ? event.target.closest('select[data-action="set-provider-model"]') : null;
+    if (providerModelSelect && providerModelSelect.value) {
+      dispatchServerRender({
+        action: "set-provider-model",
+        providerId: providerModelSelect.dataset.providerId,
+        modelId: providerModelSelect.value,
+      });
+      return;
+    }
+    const intakeModelSelect = event.target && event.target.closest ? event.target.closest('select[data-action="set-intake-ai-model"]') : null;
+    if (intakeModelSelect && intakeModelSelect.value) {
+      const goalInput = root.querySelector("#intake-goal");
+      dispatchServerRender({
+        action: "set-intake-ai-model",
+        compoundModel: intakeModelSelect.value,
+        intakeGoalTitle: goalInput ? goalInput.value : undefined,
+      });
     }
   });
 
@@ -1143,16 +1219,58 @@ function proxyOrFallbackApiRequest(req, res, apiBaseUrl) {
 const SESSION_COOKIE = "cio_sid";
 const OAUTH_STATE_COOKIE = "cio_oauth";
 
-// The shared store: resources indexed by any session, registered user accounts, linked OAuth identities, and each session's state.
-// With a storePath it is one JSON file that survives a restart. Without one it lives in memory.
-function openStore(storePath) {
+// The shared store separates ephemeral auth session cookies (`sessions[sid]`) from durable per-account
+// workspaces (`accountWorkspaces[workspaceKey]`) and AES-256-GCM BYOK credentials (`byokVault[accountId]`).
+// Signing out detaches `sessions[sid]` without ever erasing `accountWorkspaces`.
+function openStore(storePath, openCatalogDir = DEFAULT_OPEN_CATALOG_DIR) {
   const saved = storePath && fs.existsSync(storePath) ? JSON.parse(fs.readFileSync(storePath, "utf8")) : {};
+  const openCatalog = loadOpenCatalogFromDisk(openCatalogDir);
+  const accountWorkspaces = { ...(saved.accountWorkspaces ?? {}) };
+  const sessions = {};
+  for (const [sid, rawSess] of Object.entries(saved.sessions ?? {})) {
+    if (!rawSess || typeof rawSess !== "object") continue;
+    const explicitAuth = Boolean(rawSess.explicitAuth);
+    const authStatus = rawSess.authStatus ?? "authenticated";
+    const account = rawSess.account ?? null;
+    const accountId = rawSess.accountId ?? account?.accountId ?? null;
+    if ("generatedPlans" in rawSess || "syllabusOverrides" in rawSess || "userLibraryResourceIds" in rawSess) {
+      const legacyKey = explicitAuth && accountId ? accountId : `sandbox:${sid}`;
+      if (!accountWorkspaces[legacyKey]) {
+        const {
+          authStatus: _as,
+          account: _ac,
+          accountId: _aid,
+          explicitAuth: _ea,
+          topLevel: _tl,
+          learnSubDestination: _ls,
+          returnTo: _rt,
+          ...legacyWorkspace
+        } = rawSess;
+        accountWorkspaces[legacyKey] = legacyWorkspace;
+      }
+    }
+    sessions[sid] = {
+      authStatus,
+      accountId,
+      account,
+      explicitAuth,
+      topLevel: rawSess.topLevel,
+      learnSubDestination: rawSess.learnSubDestination,
+      returnTo: rawSess.returnTo ?? null,
+    };
+  }
   const data = {
-    resources: { ...catalogResourcesJson.global_discovered_resources, ...saved.resources },
+    resources: {
+      ...catalogResourcesJson.global_discovered_resources,
+      ...openCatalog.all,
+      ...saved.resources,
+    },
     accounts: saved.accounts ?? {},
     oauthIdentities: saved.oauthIdentities ?? {},
     passkeys: saved.passkeys ?? {},
-    sessions: saved.sessions ?? {},
+    byokVault: saved.byokVault ?? {},
+    accountWorkspaces,
+    sessions,
   };
   return {
     data,
@@ -1224,11 +1342,282 @@ export function createWebAppServer(options = {}) {
     options.apiBaseUrl ?? env.API_BASE_URL ?? "http://127.0.0.1:8080";
   const oauthSecret =
     options.oauthCookieSecret ?? env.OAUTH_COOKIE_SECRET ?? crypto.randomBytes(32).toString("hex");
-  const store = openStore(options.storePath);
+  const openCatalogDir = options.openCatalogDir ?? DEFAULT_OPEN_CATALOG_DIR;
+  const allowOpenCatalogDiskWrite =
+    options.allowOpenCatalogDiskWrite ??
+    Boolean(options.openCatalogDir || (options.storePath && !String(options.storePath).includes(os.tmpdir())));
+  const byokMasterKeyPath =
+    options.byokMasterKeyPath ??
+    (options.storePath ? path.join(path.dirname(options.storePath), "byok-master.key") : undefined);
+  const byokMasterKey = resolveByokMasterKey({
+    envKey: options.byokMasterKey ?? env.BYOK_MASTER_KEY,
+    keyFilePath: byokMasterKeyPath,
+  });
+  const store = openStore(options.storePath, openCatalogDir);
   const devIdpCodes = createDevIdpCodeStore();
-  // ponytail: sessions live until the process exits. Add an idle timeout if the server ever faces real traffic.
+  const maxActiveSessions = options.maxActiveSessions ?? (Number(env.WEB_MAX_ACTIVE_SESSIONS) || 500);
+  const sessionIdleTtlMs = options.sessionIdleTtlMs ?? (Number(env.WEB_SESSION_IDLE_TTL_MS) || 24 * 60 * 60 * 1000);
+  const ceremonyTtlMs = 10 * 60 * 1000;
+  const rateLimitMaxRequests = options.rateLimitMaxRequests ?? (Number(env.WEB_RATE_LIMIT_MAX) || 300);
+  const rateLimitWindowMs = options.rateLimitWindowMs ?? (Number(env.WEB_RATE_LIMIT_WINDOW_MS) || 60_000);
+  const cookieSecureAttr = !isLocalDevEnv(env) ? "; Secure" : "";
+
   const controllers = new Map();
+  const controllerLastSeen = new Map();
   const passkeyCeremonies = new Map();
+  const sessionApiTokens = new Map();
+  const rateLimitBuckets = new Map();
+  const localRecoveryTokens = new Map();
+  const devAuthOutbox = [];
+
+  function sha256Hex(text) {
+    return crypto.createHash("sha256").update(text).digest("hex");
+  }
+
+  function pushDevOutboxMessage(msg) {
+    if (!isLocalDevEnv(env)) return;
+    devAuthOutbox.push(msg);
+    if (devAuthOutbox.length > 100) {
+      devAuthOutbox.splice(0, devAuthOutbox.length - 100);
+    }
+  }
+
+  function touchSessionCache(sid) {
+    const now = Date.now();
+    controllerLastSeen.set(sid, now);
+    if (controllers.size <= maxActiveSessions) return;
+    for (const [k, seenAt] of controllerLastSeen.entries()) {
+      if (k !== sid && now - seenAt > sessionIdleTtlMs) {
+        controllers.delete(k);
+        controllerLastSeen.delete(k);
+      }
+    }
+    while (controllers.size > maxActiveSessions) {
+      let oldestKey = null;
+      let oldestTs = Infinity;
+      for (const [k, seenAt] of controllerLastSeen.entries()) {
+        if (k !== sid && seenAt < oldestTs) {
+          oldestTs = seenAt;
+          oldestKey = k;
+        }
+      }
+      if (!oldestKey) break;
+      controllers.delete(oldestKey);
+      controllerLastSeen.delete(oldestKey);
+    }
+  }
+
+  function putPasskeyCeremony(key, ceremony) {
+    const now = Date.now();
+    for (const [k, entry] of passkeyCeremonies.entries()) {
+      if (!entry || entry.expiresAt <= now) passkeyCeremonies.delete(k);
+    }
+    passkeyCeremonies.set(key, { ceremony, expiresAt: now + ceremonyTtlMs });
+  }
+
+  function takePasskeyCeremony(key) {
+    const entry = passkeyCeremonies.get(key);
+    passkeyCeremonies.delete(key);
+    if (!entry || entry.expiresAt <= Date.now()) return undefined;
+    return entry.ceremony;
+  }
+
+  function checkRateLimit(req) {
+    if (rateLimitMaxRequests <= 0) return { allowed: true, retryAfterSec: 0 };
+    const fwd = String(req.headers["x-forwarded-for"] ?? "").split(",")[0]?.trim();
+    const ip = fwd || req.socket?.remoteAddress || "127.0.0.1";
+    const now = Date.now();
+    const cutoff = now - rateLimitWindowMs;
+    const prev = rateLimitBuckets.get(ip) ?? [];
+    const recent = prev.filter((ts) => ts > cutoff);
+    if (recent.length >= rateLimitMaxRequests) {
+      rateLimitBuckets.set(ip, recent);
+      const retryAfterSec = Math.max(1, Math.ceil(((recent[0] ?? now) + rateLimitWindowMs - now) / 1000));
+      return { allowed: false, retryAfterSec };
+    }
+    recent.push(now);
+    rateLimitBuckets.set(ip, recent);
+    if (rateLimitBuckets.size > 2000) {
+      for (const [k, timestamps] of rateLimitBuckets.entries()) {
+        if (timestamps.every((ts) => ts <= cutoff)) rateLimitBuckets.delete(k);
+      }
+    }
+    return { allowed: true, retryAfterSec: 0 };
+  }
+
+  function isCrossOriginMutatingRequest(req) {
+    if (String(req.headers["sec-fetch-site"] ?? "").toLowerCase() === "cross-site") {
+      return true;
+    }
+    const rawOrigin = req.headers.origin;
+    if (!rawOrigin) return false;
+    try {
+      const originHost = new URL(String(rawOrigin)).host.toLowerCase();
+      const allowedHosts = new Set();
+      if (req.headers.host) allowedHosts.add(String(req.headers.host).toLowerCase());
+      allowedHosts.add(new URL(publicOriginOf(req)).host.toLowerCase());
+      if (isLocalDevEnv(env)) {
+        for (const h of [...allowedHosts]) {
+          if (h.startsWith("127.0.0.1:")) allowedHosts.add(h.replace("127.0.0.1:", "localhost:"));
+          if (h.startsWith("localhost:")) allowedHosts.add(h.replace("localhost:", "127.0.0.1:"));
+        }
+      }
+      return !allowedHosts.has(originHost);
+    } catch {
+      return true;
+    }
+  }
+
+  async function callBackendJson(method, endpointPath, opts = {}) {
+    const base = apiBaseUrl.replace(/\/+$/, "");
+    try {
+      const reqHeaders = { ...(opts.headers ?? {}) };
+      if (opts.token) reqHeaders.Authorization = `Bearer ${opts.token}`;
+      if (opts.rawBody !== undefined) {
+        if (!reqHeaders["Content-Type"]) reqHeaders["Content-Type"] = "application/json";
+      } else if (opts.body !== undefined) {
+        reqHeaders["Content-Type"] = "application/json";
+      }
+      const res = await fetchImpl(`${base}${endpointPath}`, {
+        method,
+        headers: reqHeaders,
+        ...(opts.rawBody !== undefined
+          ? { body: opts.rawBody }
+          : opts.body !== undefined
+            ? { body: JSON.stringify(opts.body) }
+            : {}),
+      });
+      if (res.status >= 500) {
+        return { reachable: false, ok: false, status: res.status, data: null };
+      }
+      const text = await res.text();
+      let data = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = null;
+        }
+      }
+      return { reachable: true, ok: res.ok, status: res.status, data };
+    } catch {
+      return { reachable: false, ok: false, status: 0, data: null };
+    }
+  }
+
+  function refreshOpenCatalogIntoStore() {
+    const diskCatalog = loadOpenCatalogFromDisk(openCatalogDir);
+    for (const [id, entry] of Object.entries(diskCatalog.all)) {
+      if (!store.data.resources[id]) {
+        store.data.resources[id] = entry;
+      }
+    }
+    return diskCatalog;
+  }
+
+  function resolveByokCredentialsForAccount(accountId, workspace = {}) {
+    if (options.initialState?.byokCredentials && (!accountId || !store.data.byokVault[accountId])) {
+      return [...options.initialState.byokCredentials];
+    }
+    const disabledEnv = new Set(workspace?.disabledEnvProviders ?? []);
+    const vaultForAccount = (accountId && store.data.byokVault[accountId]) || {};
+    const out = [];
+    for (const providerId of ["openai", "anthropic", "google_gemini"]) {
+      const envlp = vaultForAccount[providerId];
+      if (envlp) {
+        out.push(toMaskedCredentialRecord(envlp));
+        continue;
+      }
+      if (!disabledEnv.has(providerId)) {
+        const envKey = env[PROVIDER_KEY_ENV[providerId]]?.trim();
+        if (envKey && envKey.length >= 4) {
+          const meta = DEFAULT_CREDENTIAL_META[providerId];
+          const suffix = envKey.slice(-4);
+          out.push({
+            credential_ref: meta.credentialRef,
+            provider_id: providerId,
+            label: `${meta.label} (Server Env)`,
+            status: "active",
+            credential_version_ref: `${meta.credentialRef}-env-v1`,
+            masked_hint: `••••${suffix}`,
+            masked_suffix: suffix,
+            version: 1,
+            etag: `"credential-${meta.credentialRef}-env-v1"`,
+            updated_at: "2026-01-01T00:00:00.000Z",
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  function resolveRuntimeApiKeyForAccount(accountId, providerId, workspace = {}) {
+    if (!providerId) return undefined;
+    const envlp = accountId ? store.data.byokVault[accountId]?.[providerId] : undefined;
+    if (envlp) {
+      return openByokApiKey({ masterKey: byokMasterKey, accountId, envelope: envlp });
+    }
+    const disabledEnv = new Set(workspace?.disabledEnvProviders ?? []);
+    if (!disabledEnv.has(providerId)) {
+      const envKey = env[PROVIDER_KEY_ENV[providerId]]?.trim();
+      if (envKey) return envKey;
+    }
+    return undefined;
+  }
+
+  function workspaceKeyFor(sid, sessionMeta) {
+    if (!sessionMeta || sessionMeta.authStatus !== "authenticated") return null;
+    if (sessionMeta.explicitAuth && sessionMeta.accountId) return sessionMeta.accountId;
+    return `sandbox:${sid}`;
+  }
+
+  function extractWorkspaceSnapshot(controller, prevWorkspace = {}) {
+    const s = controller.getState();
+    const libraryResourcesSnapshot = Object.fromEntries(
+      (s.userLibraryResourceIds ?? [])
+        .map((id) => [id, s.catalogResources[id] ?? store.data.resources[id]])
+        .filter(([, entry]) => Boolean(entry)),
+    );
+    return {
+      selectedSyllabusId: s.selectedSyllabusId,
+      generatedPlans: s.generatedPlans,
+      syllabusOverrides: s.syllabusOverrides,
+      deletedSyllabusIds: s.deletedSyllabusIds,
+      scheduleOverrides: s.scheduleOverrides,
+      userLibraryResourceIds: s.userLibraryResourceIds,
+      libraryResourcesSnapshot,
+      adminRemovedResourceIds: s.adminRemovedResourceIds,
+      adminResourceOverrides: s.adminResourceOverrides,
+      recordedProgressEvents: s.recordedProgressEvents,
+      activityStates: s.activityStates,
+      skippedActivityIds: s.skippedActivityIds,
+      completedSubtaskIds: s.completedSubtaskIds,
+      dynamicConceptChecks: s.dynamicConceptChecks,
+      conceptCheckSeed: s.conceptCheckSeed,
+      proficiencyOverrides: s.proficiencyOverrides,
+      wallet: s.wallet,
+      emailVerified: s.emailVerified,
+      adoptions: s.adoptions,
+      publishedListings: s.publishedListings,
+      unpublishedPublicationIds: s.unpublishedPublicationIds,
+      votes: s.votes,
+      themePreference: s.themePreference,
+      solidSurfaces: s.solidSurfaces,
+      reduceMotion: s.reduceMotion,
+      flowOrder: s.flowOrder,
+      deepDive: s.deepDive,
+      spacedReview: s.spacedReview,
+      remindersEnabled: s.remindersEnabled,
+      remindersPaused: s.remindersPaused,
+      reminderTimezone: s.reminderTimezone,
+      reminderWeekdayTime: s.reminderWeekdayTime,
+      reminderWeekendTime: s.reminderWeekendTime,
+      reminderLeadMinutes: s.reminderLeadMinutes,
+      providerModels: s.providerModels,
+      primaryCredentialRef: s.primaryCredentialRef,
+      disabledEnvProviders: prevWorkspace?.disabledEnvProviders ?? [],
+    };
+  }
 
   function passkeysForAccount(accountId) {
     return Object.values(store.data.passkeys)
@@ -1300,18 +1689,200 @@ export function createWebAppServer(options = {}) {
     return `http://${hostHeader || "localhost:3000"}`;
   }
 
+  function hydrateControllerForSession(sid) {
+    const savedSess = store.data.sessions[sid];
+    const initialAuthStatus = savedSess?.authStatus ?? options.initialState?.authStatus ?? "authenticated";
+    const initialAccount =
+      savedSess?.account ??
+      options.initialState?.account ??
+      PERSONAS.learner;
+    const explicitAuth = Boolean(savedSess?.explicitAuth);
+    const meta = {
+      authStatus: initialAuthStatus,
+      accountId: initialAuthStatus === "authenticated" ? initialAccount.accountId : null,
+      account: initialAuthStatus === "authenticated" ? initialAccount : null,
+      explicitAuth,
+    };
+    const wsKey = workspaceKeyFor(sid, meta);
+    const savedWorkspace = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
+    const creds =
+      initialAuthStatus === "authenticated"
+        ? resolveByokCredentialsForAccount(initialAccount.accountId, savedWorkspace)
+        : [];
+    return createSyllabusWebAppController({
+      ...options.initialState,
+      ...savedWorkspace,
+      authStatus: initialAuthStatus,
+      ...(initialAccount ? { account: initialAccount } : {}),
+      ...(savedSess?.topLevel ? { topLevel: savedSess.topLevel } : {}),
+      ...(savedSess?.learnSubDestination ? { learnSubDestination: savedSess.learnSubDestination } : {}),
+      ...(savedSess?.returnTo !== undefined ? { returnTo: savedSess.returnTo } : {}),
+      byokCredentials: creds,
+      ...(savedWorkspace.primaryCredentialRef ? { primaryCredentialRef: savedWorkspace.primaryCredentialRef } : {}),
+    });
+  }
+
+  function authenticateSessionAsAccount(sid, prevController, resolvedAccount) {
+    const prevState = prevController.getState();
+    const pendingReturnTo = prevState.returnTo;
+    const wasGuest = prevState.authStatus === "guest";
+    const savedWorkspace = store.data.accountWorkspaces[resolvedAccount.accountId] ?? {};
+    const creds = resolveByokCredentialsForAccount(resolvedAccount.accountId, savedWorkspace);
+    const targetTopLevel = pendingReturnTo
+      ? pendingReturnTo.topLevel
+      : wasGuest
+        ? "Learn"
+        : prevState.topLevel;
+    const targetLearnSub = pendingReturnTo
+      ? pendingReturnTo.learnSubDestination
+      : wasGuest
+        ? "Today"
+        : prevState.learnSubDestination;
+    const nextController = createSyllabusWebAppController({
+      ...options.initialState,
+      ...savedWorkspace,
+      authStatus: "authenticated",
+      account: resolvedAccount,
+      topLevel: targetTopLevel,
+      learnSubDestination: targetLearnSub,
+      openDialogId: pendingReturnTo ? pendingReturnTo.openDialogId : null,
+      ...(pendingReturnTo?.adoptPublicationId ? { adoptPublicationId: pendingReturnTo.adoptPublicationId } : {}),
+      returnTo: null,
+      authNotice: null,
+      byokCredentials: creds,
+      ...(savedWorkspace.primaryCredentialRef ? { primaryCredentialRef: savedWorkspace.primaryCredentialRef } : {}),
+    });
+    nextController.syncCatalogResources(
+      store.data.resources,
+      nextController.getState().adminRemovedResourceIds,
+    );
+    syncControllerPasskeys(nextController, null);
+    controllers.set(sid, nextController);
+    touchSessionCache(sid);
+    store.data.sessions[sid] = {
+      authStatus: "authenticated",
+      accountId: resolvedAccount.accountId,
+      account: resolvedAccount,
+      explicitAuth: true,
+      topLevel: targetTopLevel,
+      learnSubDestination: targetLearnSub,
+      returnTo: null,
+    };
+    return nextController;
+  }
+
+  async function authenticateAndHydrateFromBackend(
+    sid,
+    prevController,
+    resolvedAccount,
+    apiToken = null,
+    backendEmailVerified = false,
+  ) {
+    const accountId = resolvedAccount.accountId;
+    const normalizedEmail = resolvedAccount.email.trim().toLowerCase();
+    if (typeof apiToken === "string" && apiToken) {
+      sessionApiTokens.set(sid, apiToken);
+      backendTokenByEmail.set(normalizedEmail, apiToken);
+      const [wsRes, pkRes, walletRes] = await Promise.all([
+        callBackendJson("GET", "/v1/me/workspace", { token: apiToken }),
+        callBackendJson("GET", "/v1/me/passkeys", { token: apiToken }),
+        callBackendJson("GET", "/v1/me/wallet", { token: apiToken }),
+      ]);
+      if (wsRes.ok && wsRes.data?.workspace_json && typeof wsRes.data.workspace_json === "object") {
+        const {
+          sealedByokEnvelopes,
+          libraryResourcesSnapshot,
+          ...remoteWorkspace
+        } = wsRes.data.workspace_json;
+        if (sealedByokEnvelopes && typeof sealedByokEnvelopes === "object") {
+          store.data.byokVault[accountId] = {
+            ...sealedByokEnvelopes,
+            ...(store.data.byokVault[accountId] ?? {}),
+          };
+        }
+        if (libraryResourcesSnapshot && typeof libraryResourcesSnapshot === "object") {
+          for (const [resId, entry] of Object.entries(libraryResourcesSnapshot)) {
+            if (entry && typeof entry === "object" && !store.data.resources[resId]) {
+              store.data.resources[resId] = entry;
+            }
+          }
+        }
+        store.data.accountWorkspaces[accountId] = {
+          ...(store.data.accountWorkspaces[accountId] ?? {}),
+          ...remoteWorkspace,
+        };
+      }
+      if (pkRes.ok && Array.isArray(pkRes.data?.items)) {
+        for (const item of pkRes.data.items) {
+          if (item?.credential_id && item.credential_json && typeof item.credential_json === "object") {
+            store.data.passkeys[item.credential_id] = item.credential_json;
+          }
+        }
+      }
+      if (
+        walletRes.ok &&
+        walletRes.data &&
+        typeof walletRes.data.available_minor_units === "number" &&
+        walletRes.data.lifetime_purchased_minor_units > 0 &&
+        !store.data.accountWorkspaces[accountId]?.wallet
+      ) {
+        store.data.accountWorkspaces[accountId] = {
+          ...(store.data.accountWorkspaces[accountId] ?? {}),
+          wallet: {
+            currency: walletRes.data.currency || "USD",
+            available_minor: walletRes.data.available_minor_units,
+            reserved_minor: walletRes.data.reserved_minor_units || 0,
+            live_billing_enabled: true,
+            updated_at: walletRes.data.updated_at || new Date().toISOString(),
+          },
+        };
+      }
+    }
+    if (backendEmailVerified) {
+      store.data.accountWorkspaces[accountId] = {
+        ...(store.data.accountWorkspaces[accountId] ?? {}),
+        emailVerified: true,
+      };
+    }
+    store.save();
+    return authenticateSessionAsAccount(sid, prevController, resolvedAccount);
+  }
+
+  // Detaches `sid` to guest view without modifying or deleting `store.data.accountWorkspaces`.
+  function detachSessionToGuest(sid, controller, authNotice = null) {
+    const postState = controller.getState();
+    sessionApiTokens.delete(sid);
+    controller.setPasskeys([], null);
+    controller.setByokCredentials([], "");
+    store.data.sessions[sid] = {
+      authStatus: "guest",
+      accountId: null,
+      account: null,
+      explicitAuth: false,
+      topLevel: postState.topLevel,
+      learnSubDestination: postState.learnSubDestination,
+      returnTo: postState.returnTo ?? null,
+    };
+    if (authNotice) {
+      // Keep any explicit deletion notice already placed on the controller.
+    }
+    store.save();
+  }
+
   // An unknown or missing cookie gets a new random session, so a client cannot choose its session id.
   function sessionFor(req, res) {
     let sid = cookieOf(req, SESSION_COOKIE);
     if (!sid || !(controllers.has(sid) || store.data.sessions[sid])) {
       sid = crypto.randomUUID();
-      appendSetCookie(res, `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax`);
+      appendSetCookie(res, `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax${cookieSecureAttr}`);
     }
+    refreshOpenCatalogIntoStore();
     let controller = controllers.get(sid);
     if (!controller) {
-      controller = createSyllabusWebAppController({ ...options.initialState, ...store.data.sessions[sid] });
+      controller = hydrateControllerForSession(sid);
       controllers.set(sid, controller);
     }
+    touchSessionCache(sid);
     controller.syncCatalogResources(
       store.data.resources,
       controller.getState().adminRemovedResourceIds,
@@ -1320,17 +1891,16 @@ export function createWebAppServer(options = {}) {
     return { sid, controller };
   }
 
-  // Saves the resources this session indexed/edited/deleted, its auth identity, and its syllabi mutations when changed.
+  // Saves global catalog additions, session auth metadata, and (only while authenticated) the account's workspace.
   function persist(sid, controller) {
+    const state = controller.getState();
     const {
       catalogResources,
-      generatedPlans,
-      syllabusOverrides,
       userLibraryResourceIds,
       adminRemovedResourceIds,
       authStatus,
       account,
-    } = controller.getState();
+    } = state;
     const userLibSet = new Set(userLibraryResourceIds);
     let resourcesChanged = false;
     for (const [id, entry] of Object.entries(catalogResources)) {
@@ -1347,23 +1917,79 @@ export function createWebAppServer(options = {}) {
         resourcesChanged = true;
       }
     }
-    const nextSessionSnapshot = {
-      generatedPlans,
-      syllabusOverrides,
-      userLibraryResourceIds,
-      adminRemovedResourceIds,
+
+    const prevSession = store.data.sessions[sid];
+    const explicitAuth = authStatus === "authenticated" ? Boolean(prevSession?.explicitAuth) : false;
+    const nextSessionMeta = {
       authStatus,
-      account,
+      accountId: authStatus === "authenticated" ? account.accountId : null,
+      account: authStatus === "authenticated" ? account : null,
+      explicitAuth,
+      topLevel: state.topLevel,
+      learnSubDestination: state.learnSubDestination,
+      returnTo: state.returnTo ?? null,
     };
-    const prevSnapshot = store.data.sessions[sid];
-    const sessionChanged = JSON.stringify(nextSessionSnapshot) !== JSON.stringify(prevSnapshot);
-    if (!resourcesChanged && !sessionChanged) return;
-    store.data.sessions[sid] = nextSessionSnapshot;
+    const sessionChanged = JSON.stringify(nextSessionMeta) !== JSON.stringify(prevSession);
+
+    let workspaceChanged = false;
+    const wsKey = workspaceKeyFor(sid, nextSessionMeta);
+    if (wsKey) {
+      const prevWs = store.data.accountWorkspaces[wsKey];
+      const nextWs = extractWorkspaceSnapshot(controller, prevWs);
+      if (JSON.stringify(nextWs) !== JSON.stringify(prevWs)) {
+        store.data.accountWorkspaces[wsKey] = nextWs;
+        workspaceChanged = true;
+      }
+      // Mirror unauthenticated default-persona demo progress to `learner-default` unless `alex@syllabus.io` is a password-protected account,
+      // so signing out of demo mode and signing back in as alex@syllabus.io restores pre-signout work while keeping forged cookies isolated.
+      if (!explicitAuth && account.accountId === "learner-default" && !store.data.accounts["alex@syllabus.io"]?.passwordHash) {
+        const prevDemoWs = store.data.accountWorkspaces["learner-default"];
+        if (JSON.stringify(nextWs) !== JSON.stringify(prevDemoWs)) {
+          store.data.accountWorkspaces["learner-default"] = nextWs;
+          workspaceChanged = true;
+        }
+      }
+    }
+
+    if (!resourcesChanged && !sessionChanged && !workspaceChanged) return false;
+    store.data.sessions[sid] = nextSessionMeta;
     store.save();
+    return true;
+  }
+
+  function apiTokenForSession(sid, controller) {
+    const direct = sessionApiTokens.get(sid);
+    if (direct) return direct;
+    const st = controller?.getState?.();
+    if (st?.authStatus === "authenticated" && st.account?.email) {
+      return backendTokenByEmail.get(st.account.email.trim().toLowerCase()) ?? null;
+    }
+    return null;
+  }
+
+  async function persistAsync(sid, controller, forceRemote = false) {
+    const changed = persist(sid, controller);
+    if (!changed && !forceRemote) return;
+    const sess = store.data.sessions[sid];
+    const st = controller.getState();
+    if (!sess?.explicitAuth || st.authStatus !== "authenticated") return;
+    const apiToken = apiTokenForSession(sid, controller);
+    if (!apiToken) return;
+    const accountId = st.account.accountId;
+    const ws = store.data.accountWorkspaces[accountId] ?? extractWorkspaceSnapshot(controller);
+    await callBackendJson("PUT", "/v1/me/workspace", {
+      token: apiToken,
+      body: {
+        workspace_json: {
+          ...ws,
+          sealedByokEnvelopes: store.data.byokVault[accountId] ?? {},
+        },
+      },
+    });
   }
 
   const backendTokenByEmail = new Map();
-  async function syncBackendResourceEndpoint(email, method, endpointPath, payload) {
+  async function syncBackendResourceEndpoint(email, method, endpointPath, payload, extraHeaders = {}) {
     if (!email) return null;
     const base = apiBaseUrl.replace(/\/+$/, "");
     try {
@@ -1385,6 +2011,7 @@ export function createWebAppServer(options = {}) {
         headers: {
           Authorization: `Bearer ${token}`,
           ...(payload !== undefined ? { "Content-Type": "application/json" } : {}),
+          ...extraHeaders,
         },
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
       });
@@ -1396,9 +2023,17 @@ export function createWebAppServer(options = {}) {
     }
   }
 
-  async function runServerManualResourceAnalysis(controller, data) {
+  async function runServerManualResourceAnalysis(sid, controller, data) {
+    const state = controller.getState();
     const aiModel = controller.designatedAiModel();
-    const apiKey = aiModel ? env[PROVIDER_KEY_ENV[aiModel.providerId]] : undefined;
+    const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
+    const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
+    const apiKey =
+      aiModel && state.authStatus === "authenticated"
+        ? resolveRuntimeApiKeyForAccount(state.account.accountId, aiModel.providerId, ws)
+        : aiModel
+          ? env[PROVIDER_KEY_ENV[aiModel.providerId]]
+          : undefined;
     return analyzeManualResourceWithAi({
       rawText: data.rawText ?? "",
       explicitUrl: data.explicitUrl,
@@ -1438,18 +2073,201 @@ export function createWebAppServer(options = {}) {
     };
   }
 
+  function signWebhookPayloadHex(rawJson) {
+    const secret = env.BILLING_WEBHOOK_SECRET || "whsec_syllabus_io_dev_secret_key_2026";
+    return crypto.createHmac("sha256", secret).update(rawJson).digest("hex");
+  }
+
+  async function executeHostedTopUp(sid, controller, requestedAmountMinor, reqOrigin) {
+    const rawNum = Number.parseInt(String(requestedAmountMinor ?? "1000"), 10);
+    const amountMinor = Number.isFinite(rawNum) && rawNum >= 100 ? Math.min(rawNum, 100_000) : 1000;
+    const prevState = controller.getState();
+    const stripeKey = env.STRIPE_SECRET_KEY?.trim();
+    if (stripeKey) {
+      const form = new URLSearchParams({
+        mode: "payment",
+        success_url: `${reqOrigin}/?topLevel=Settings&billing=success`,
+        cancel_url: `${reqOrigin}/?topLevel=Settings&billing=canceled`,
+        "line_items[0][price_data][currency]": "usd",
+        "line_items[0][price_data][product_data][name]": "Syllabus.io Hosted AI Credits",
+        "line_items[0][price_data][unit_amount]": String(amountMinor),
+        "line_items[0][quantity]": "1",
+        client_reference_id: prevState.account.accountId,
+      });
+      const stripeRes = await fetchImpl("https://api.stripe.com/v1/checkout/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${stripeKey}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: form.toString(),
+      });
+      const stripeJson = await stripeRes.json();
+      if (!stripeRes.ok) {
+        throw new Error(stripeJson?.error?.message || `Stripe checkout failed (${stripeRes.status})`);
+      }
+      controller.setWallet(
+        prevState.wallet,
+        `Redirecting to Stripe Checkout for $${(amountMinor / 100).toFixed(2)} hosted credit top-up.`,
+      );
+      await persistAsync(sid, controller);
+      return {
+        mode: "stripe",
+        checkout_session_id: stripeJson.id,
+        checkout_url: stripeJson.url,
+        wallet: controller.getState().wallet,
+      };
+    }
+
+    let apiToken = apiTokenForSession(sid, controller);
+    if (!apiToken && prevState.authStatus === "authenticated") {
+      const sessRes = await callBackendJson("POST", "/v1/auth/sessions", {
+        body: { email: prevState.account.email, authentication_code: "123456" },
+      });
+      if (sessRes.ok && typeof sessRes.data?.session_token === "string") {
+        apiToken = sessRes.data.session_token;
+        backendTokenByEmail.set(prevState.account.email.trim().toLowerCase(), apiToken);
+      }
+    }
+
+    let checkoutSessionId = `cs_hosted_${crypto.randomUUID().slice(0, 12)}`;
+    if (apiToken) {
+      const idemKey = `idem-topup-${crypto.randomUUID()}`;
+      const csRes = await callBackendJson("POST", "/v1/billing/checkout-sessions", {
+        token: apiToken,
+        headers: { "Idempotency-Key": idemKey },
+        body: {
+          checkout_session_id: checkoutSessionId,
+          package_id: "pkg-hosted-topup",
+          amount_minor_units: amountMinor,
+          credit_minor_units: amountMinor,
+          success_url: `${reqOrigin}/?topLevel=Settings&billing=success`,
+          cancel_url: `${reqOrigin}/?topLevel=Settings&billing=canceled`,
+        },
+      });
+      if (csRes.ok && csRes.data?.checkout_session_id) {
+        checkoutSessionId = csRes.data.checkout_session_id;
+        const rawWebhook = JSON.stringify({
+          provider_event_id: `evt_${crypto.randomUUID().replace(/-/g, "")}`,
+          event_type: "checkout.session.completed",
+          checkout_session_id: checkoutSessionId,
+          amount_minor_units: amountMinor,
+        });
+        const sigHex = signWebhookPayloadHex(rawWebhook);
+        await callBackendJson("POST", "/v1/billing/webhooks", {
+          rawBody: rawWebhook,
+          headers: { "X-Billing-Signature": `sha256=${sigHex}` },
+        });
+      }
+    }
+
+    const nextWallet = {
+      ...prevState.wallet,
+      available_minor: prevState.wallet.available_minor + amountMinor,
+      updated_at: new Date().toISOString(),
+    };
+    controller.setWallet(
+      nextWallet,
+      `Added $${(amountMinor / 100).toFixed(2)} to your hosted AI credit wallet. New available balance: $${(nextWallet.available_minor / 100).toFixed(2)}.`,
+    );
+    await persistAsync(sid, controller);
+    return {
+      mode: "settled",
+      checkout_session_id: checkoutSessionId,
+      wallet: controller.getState().wallet,
+    };
+  }
+
   const server = http.createServer(async (req, res) => {
     const parsedUrl = new URL(req.url ?? "/", "http://127.0.0.1");
     const pathname = parsedUrl.pathname;
+    const localDev = isLocalDevEnv(env);
+
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader(
+      "Content-Security-Policy",
+      localDev
+        ? "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' http://localhost:* http://127.0.0.1:* https:"
+        : "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https:",
+    );
+    if (!localDev) {
+      res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+    }
 
     if (pathname.startsWith("/v1/")) {
       proxyOrFallbackApiRequest(req, res, apiBaseUrl);
       return;
     }
 
+    if (req.method === "POST" && pathname !== "/api/billing/webhook") {
+      if (isCrossOriginMutatingRequest(req)) {
+        res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Cross-origin request blocked." }));
+        return;
+      }
+      if (pathname.startsWith("/api/") || pathname.startsWith("/auth/")) {
+        const rl = checkRateLimit(req);
+        if (!rl.allowed) {
+          res.writeHead(429, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Retry-After": String(rl.retryAfterSec),
+          });
+          res.end(JSON.stringify({ error: "Too many requests. Please try again shortly." }));
+          return;
+        }
+      }
+    }
+
+    if (pathname === "/auth/dev-outbox" && req.method === "GET") {
+      if (!localDev) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Not found." }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ messages: devAuthOutbox }));
+      return;
+    }
+
+    if (pathname === "/auth/verify-email" && req.method === "GET") {
+      const { sid, controller } = sessionFor(req, res);
+      const code = (parsedUrl.searchParams.get("token") ?? parsedUrl.searchParams.get("code") ?? "").trim();
+      if (code) {
+        const apiRes = await callBackendJson("POST", "/v1/auth/email-verification/confirm", {
+          body: { code },
+        });
+        if (apiRes.reachable) {
+          if (apiRes.ok) {
+            const verifiedEmail = apiRes.data?.email || controller.getState().account?.email || "your email";
+            controller.setEmailVerificationState(true, false, `Verified ${verifiedEmail}.`);
+            await persistAsync(sid, controller, true);
+          } else {
+            controller.setEmailVerificationState(false, true, "Invalid or expired verification link.");
+            await persistAsync(sid, controller);
+          }
+        } else {
+          const rec = localRecoveryTokens.get(sha256Hex(`email_verification:${code}`));
+          if (rec && !rec.consumed && rec.expiresAt > Date.now()) {
+            rec.consumed = true;
+            controller.setEmailVerificationState(true, false, `Verified ${rec.email}.`);
+            await persistAsync(sid, controller, true);
+          } else {
+            controller.setEmailVerificationState(false, true, "Invalid or expired verification link.");
+            await persistAsync(sid, controller);
+          }
+        }
+      }
+      res.writeHead(302, { Location: "/?topLevel=Settings", "Cache-Control": "no-store" });
+      res.end();
+      return;
+    }
+
     if (pathname === "/auth/providers" && req.method === "GET") {
       const origin = publicOriginOf(req);
-      const localDev = isLocalDevEnv(env);
       const providers = ["google", "github"].map((p) => {
         const live = Boolean(resolveProviderCredentials(p, env));
         return {
@@ -1487,7 +2305,7 @@ export function createWebAppServer(options = {}) {
           );
           appendSetCookie(
             res,
-            `${OAUTH_STATE_COOKIE}=${signedCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+            `${OAUTH_STATE_COOKIE}=${signedCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${cookieSecureAttr}`,
           );
           persist(sid, controller);
           res.writeHead(302, { Location: redirect.url, "Cache-Control": "no-store" });
@@ -1503,14 +2321,13 @@ export function createWebAppServer(options = {}) {
     }
 
     const devIdpMatch = pathname.match(/^\/auth\/dev-idp\/(google|github)\/authorize$/);
-    if (devIdpMatch && isLocalDevEnv(env)) {
+    if (devIdpMatch && localDev) {
       const provider = devIdpMatch[1];
       if (isOAuthProvider(provider)) {
         if (req.method === "GET") {
           const redirectUri = parsedUrl.searchParams.get("redirect_uri") ?? buildOAuthCallbackUrl(publicOriginOf(req), provider);
           const state = parsedUrl.searchParams.get("state") ?? "";
           const codeChallenge = parsedUrl.searchParams.get("code_challenge") ?? "";
-          // The chooser follows the session's theme, so leaving the app for it keeps the same light or dark surface.
           const theme = sessionFor(req, res).controller.getState().themePreference === "dark" ? "dark" : "light";
           const html = renderDevOAuthConsentHtml({ provider, redirectUri, state, codeChallenge, theme });
           res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" });
@@ -1560,8 +2377,8 @@ export function createWebAppServer(options = {}) {
     if (oauthCallbackMatch && req.method === "GET") {
       const provider = oauthCallbackMatch[1];
       if (isOAuthProvider(provider)) {
-        const { sid, controller } = sessionFor(req, res);
-        appendSetCookie(res, `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+        let { sid, controller } = sessionFor(req, res);
+        appendSetCookie(res, `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${cookieSecureAttr}`);
 
         const oauthCookie = verifyOAuthStateCookie(cookieOf(req, OAUTH_STATE_COOKIE), oauthSecret);
         const queryState = parsedUrl.searchParams.get("state") ?? "";
@@ -1591,7 +2408,7 @@ export function createWebAppServer(options = {}) {
         try {
           const redirectUri = buildOAuthCallbackUrl(publicOriginOf(req), provider);
           const profile =
-            code.startsWith("devcode_") && isLocalDevEnv(env)
+            code.startsWith("devcode_") && localDev
               ? devIdpCodes.exchangeCode({
                   provider,
                   code,
@@ -1620,9 +2437,14 @@ export function createWebAppServer(options = {}) {
             fetchImpl,
           );
           const resolvedAccount = resolveOrCreateOAuthAccount(profile, backendSession?.account_id);
-          controller.completeExternalAuth(resolvedAccount);
-          syncControllerPasskeys(controller, null);
-          persist(sid, controller);
+          controller = await authenticateAndHydrateFromBackend(
+            sid,
+            controller,
+            resolvedAccount,
+            backendSession?.session_token ?? null,
+            Boolean(profile.emailVerified || backendSession?.email_verified),
+          );
+          await persistAsync(sid, controller, true);
           res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
           res.end();
         } catch (err) {
@@ -1657,7 +2479,7 @@ export function createWebAppServer(options = {}) {
           existingCredentials,
           promotion: Boolean(body.promotion),
         });
-        passkeyCeremonies.set(`${sid}:reg`, ceremony);
+        putPasskeyCeremony(`${sid}:reg`, ceremony);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ options: regOptions, rpId: rpConfig.rpID }));
       } catch (err) {
@@ -1681,8 +2503,7 @@ export function createWebAppServer(options = {}) {
         res.end(JSON.stringify({ error: "Sign in before registering a passkey." }));
         return;
       }
-      const ceremony = passkeyCeremonies.get(`${sid}:reg`);
-      passkeyCeremonies.delete(`${sid}:reg`);
+      const ceremony = takePasskeyCeremony(`${sid}:reg`);
       try {
         const rawBody = await readRequestBody(req);
         const attestationResponse = rawBody ? JSON.parse(rawBody) : null;
@@ -1694,8 +2515,15 @@ export function createWebAppServer(options = {}) {
         ensureStoredAccountRecord(account);
         store.data.passkeys[storedCredential.id] = storedCredential;
         store.save();
+        const apiToken = apiTokenForSession(sid, controller);
+        if (apiToken) {
+          await callBackendJson("PUT", `/v1/me/passkeys/${encodeURIComponent(storedCredential.id)}`, {
+            token: apiToken,
+            body: { credential_json: storedCredential },
+          });
+        }
         syncControllerPasskeys(controller, `Added ${storedCredential.name} for passwordless sign-in.`);
-        persist(sid, controller);
+        await persistAsync(sid, controller);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(
           JSON.stringify({
@@ -1718,7 +2546,7 @@ export function createWebAppServer(options = {}) {
         await readRequestBody(req);
         const rpConfig = resolveWebAuthnRpConfig(req, env, options.publicOrigin);
         const { options: authOptions, ceremony } = await createPasskeyAuthenticationOptions(rpConfig);
-        passkeyCeremonies.set(`${sid}:auth`, ceremony);
+        putPasskeyCeremony(`${sid}:auth`, ceremony);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ options: authOptions, rpId: rpConfig.rpID }));
       } catch (err) {
@@ -1734,12 +2562,20 @@ export function createWebAppServer(options = {}) {
     }
 
     if (pathname === "/auth/passkey/login/verify" && req.method === "POST") {
-      const { sid, controller } = sessionFor(req, res);
-      const ceremony = passkeyCeremonies.get(`${sid}:auth`);
-      passkeyCeremonies.delete(`${sid}:auth`);
+      let { sid, controller } = sessionFor(req, res);
+      const ceremony = takePasskeyCeremony(`${sid}:auth`);
       try {
         const rawBody = await readRequestBody(req);
         const assertionResponse = rawBody ? JSON.parse(rawBody) : null;
+        if (assertionResponse?.id && !store.data.passkeys[assertionResponse.id]) {
+          const remotePk = await callBackendJson(
+            "GET",
+            `/v1/auth/passkeys/${encodeURIComponent(String(assertionResponse.id))}`,
+          );
+          if (remotePk.ok && remotePk.data?.credential_json && typeof remotePk.data.credential_json === "object") {
+            store.data.passkeys[String(assertionResponse.id)] = remotePk.data.credential_json;
+          }
+        }
         const result = await verifyPasskeyAuthentication({
           response: assertionResponse,
           ceremony,
@@ -1755,10 +2591,32 @@ export function createWebAppServer(options = {}) {
         result.storedCredential.lastUsedAt = Date.now();
         store.save();
 
-        const resolvedAccount = resolveAccountForPasskey(result.storedCredential);
-        controller.completeExternalAuth(resolvedAccount);
-        syncControllerPasskeys(controller, null);
-        persist(sid, controller);
+        const pkSessRes = await callBackendJson("POST", "/v1/auth/passkeys/session", {
+          body: {
+            credential_id: result.storedCredential.id,
+            counter: result.authenticationInfo.newCounter,
+          },
+        });
+        const resolvedAccount =
+          pkSessRes.ok && pkSessRes.data?.account_id
+            ? {
+                accountId: pkSessRes.data.account_id,
+                email: pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.io",
+                username:
+                  pkSessRes.data.display_name ||
+                  defaultUsernameOfEmail(pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.io"),
+                ...(pkSessRes.data.avatar_url ? { avatarUrl: pkSessRes.data.avatar_url } : {}),
+                role: defaultRoleForEmail(pkSessRes.data.email || result.storedCredential.email || ""),
+              }
+            : resolveAccountForPasskey(result.storedCredential);
+        controller = await authenticateAndHydrateFromBackend(
+          sid,
+          controller,
+          resolvedAccount,
+          pkSessRes.ok ? pkSessRes.data?.session_token ?? null : null,
+          Boolean(pkSessRes.data?.email_verified),
+        );
+        await persistAsync(sid, controller);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(
           JSON.stringify({
@@ -1882,11 +2740,256 @@ export function createWebAppServer(options = {}) {
       return;
     }
 
+    if (pathname === "/catalog/schema/resource.schema.json" && req.method === "GET") {
+      const schemaCandidate = fs.existsSync(path.join(openCatalogDir, "schema/resource.schema.json"))
+        ? path.join(openCatalogDir, "schema/resource.schema.json")
+        : path.join(DEFAULT_OPEN_CATALOG_DIR, "schema/resource.schema.json");
+      if (!fs.existsSync(schemaCandidate)) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: "Catalog JSON schema not found." }));
+        return;
+      }
+      res.writeHead(200, {
+        "Content-Type": "application/schema+json; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      res.end(fs.readFileSync(schemaCandidate, "utf8"));
+      return;
+    }
+
+    if (pathname === "/catalog/resources.json" && req.method === "GET") {
+      const diskCatalog = refreshOpenCatalogIntoStore();
+      const merged = {
+        ...catalogResourcesJson.resources,
+        ...catalogResourcesJson.global_discovered_resources,
+        ...diskCatalog.all,
+        ...store.data.resources,
+      };
+      const entries = Object.values(merged)
+        .filter((e) => e && typeof e === "object" && typeof e.resource_version_id === "string")
+        .sort((a, b) => a.resource_version_id.localeCompare(b.resource_version_id));
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-cache",
+      });
+      res.end(
+        JSON.stringify(
+          {
+            schema_version: "1.0.0",
+            contribute_directory: "catalog/resources/<subject>/<resource_version_id>.json",
+            json_schema: "/catalog/schema/resource.schema.json",
+            count: entries.length,
+            resources: entries,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+
+    const singleCatalogMatch = pathname.match(/^\/catalog\/resources\/([a-zA-Z0-9._-]+)\.json$/);
+    if (singleCatalogMatch && req.method === "GET") {
+      const requestedId = decodeURIComponent(singleCatalogMatch[1]);
+      const diskCatalog = refreshOpenCatalogIntoStore();
+      const entry =
+        store.data.resources[requestedId] ??
+        diskCatalog.all[requestedId] ??
+        catalogResourcesJson.global_discovered_resources[requestedId] ??
+        catalogResourcesJson.resources[requestedId];
+      if (!entry) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: `Resource '${requestedId}' not found in open catalog.` }));
+        return;
+      }
+      const collection =
+        diskCatalog.resources[requestedId] || catalogResourcesJson.resources[requestedId]
+          ? "curated"
+          : "community_discovered";
+      const safeFile = requestedId.replace(/[^a-zA-Z0-9._-]+/g, "-");
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-cache",
+        "Content-Disposition": `attachment; filename="${safeFile}.json"`,
+      });
+      res.end(serializeOpenCatalogEntry(entry, collection));
+      return;
+    }
+
+    if (pathname === "/api/account/export" && req.method === "GET") {
+      const { sid, controller } = sessionFor(req, res);
+      const state = controller.getState();
+      if (state.authStatus !== "authenticated") {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Sign in before exporting your account archive." }));
+        return;
+      }
+      const accountId = state.account.accountId;
+      const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]) ?? accountId;
+      const workspace = extractWorkspaceSnapshot(controller, store.data.accountWorkspaces[wsKey]);
+      const vaultEntries = Object.values(store.data.byokVault[accountId] ?? {});
+      const archive = {
+        schema_version: "1.0.0",
+        exported_at: new Date().toISOString(),
+        account: {
+          account_id: accountId,
+          email: state.account.email,
+          username: state.account.username ?? defaultUsernameOfEmail(state.account.email),
+          role: state.account.role,
+        },
+        included_scope: [
+          "account_profile",
+          "syllabi_and_overrides",
+          "schedule_overrides",
+          "progress_events_and_activity_states",
+          "library_resources",
+          "adoptions_publications_and_votes",
+          "reminder_and_ui_preferences",
+          "byok_masked_metadata_only",
+        ],
+        excluded_scope: [
+          "raw_byok_api_keys",
+          "encrypted_byok_ciphertexts",
+          "password_hashes",
+          "passkey_cose_public_keys",
+        ],
+        workspace: {
+          selected_syllabus_id: workspace.selectedSyllabusId,
+          generated_plans: workspace.generatedPlans,
+          syllabus_overrides: workspace.syllabusOverrides,
+          schedule_overrides: workspace.scheduleOverrides,
+          recorded_progress_events: workspace.recordedProgressEvents,
+          activity_states: workspace.activityStates,
+          completed_subtask_ids: workspace.completedSubtaskIds,
+          skipped_activity_ids: workspace.skippedActivityIds,
+          user_library_resource_ids: workspace.userLibraryResourceIds,
+          library_resources: Object.fromEntries(
+            (workspace.userLibraryResourceIds ?? [])
+              .map((id) => [id, state.catalogResources[id] ?? store.data.resources[id]])
+              .filter(([, v]) => Boolean(v)),
+          ),
+          adoptions: workspace.adoptions,
+          published_listings: workspace.publishedListings,
+          unpublished_publication_ids: workspace.unpublishedPublicationIds,
+          votes: workspace.votes,
+          preferences: {
+            theme: workspace.themePreference,
+            solid_surfaces: workspace.solidSurfaces,
+            reduce_motion: workspace.reduceMotion,
+            flow_order: workspace.flowOrder,
+            deep_dive: workspace.deepDive,
+            spaced_review: workspace.spacedReview,
+            reminders_enabled: workspace.remindersEnabled,
+            reminders_paused: workspace.remindersPaused,
+            reminder_timezone: workspace.reminderTimezone,
+            reminder_weekday_time: workspace.reminderWeekdayTime,
+            reminder_weekend_time: workspace.reminderWeekendTime,
+            reminder_lead_minutes: workspace.reminderLeadMinutes,
+            provider_models: workspace.providerModels,
+          },
+        },
+        byok_credentials_metadata: vaultEntries.map((envlp) => ({
+          credential_ref: envlp.credential_ref,
+          provider_id: envlp.provider_id,
+          label: envlp.label,
+          version: envlp.version,
+          masked_hint: `••••${envlp.masked_suffix}`,
+          updated_at: envlp.updated_at,
+        })),
+      };
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Disposition": 'attachment; filename="syllabus-account-export.json"',
+      });
+      res.end(`${JSON.stringify(archive, null, 2)}\n`);
+      return;
+    }
+
+    if (pathname === "/api/schedule.ics" && req.method === "GET") {
+      const { controller } = sessionFor(req, res);
+      const state = controller.getState();
+      if (state.authStatus !== "authenticated") {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Sign in before exporting your study calendar." }));
+        return;
+      }
+      const icsText = controller.exportScheduleIcs();
+      res.writeHead(200, {
+        "Content-Type": "text/calendar; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Disposition": 'attachment; filename="syllabus-schedule.ics"',
+      });
+      res.end(icsText);
+      return;
+    }
+
+    if (pathname === "/api/billing/checkout" && req.method === "POST") {
+      const { sid, controller } = sessionFor(req, res);
+      const state = controller.getState();
+      if (state.authStatus !== "authenticated") {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Sign in before purchasing hosted AI credits." }));
+        return;
+      }
+      try {
+        const rawBody = await readRequestBody(req);
+        const payload = rawBody ? JSON.parse(rawBody) : {};
+        const amountMinor = payload.amountMinor ?? payload.amount_minor_units ?? 1000;
+        const outcome = await executeHostedTopUp(sid, controller, amountMinor, publicOriginOf(req));
+        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(
+          JSON.stringify({
+            ...outcome,
+            state: controller.getState(),
+          }),
+        );
+      } catch (err) {
+        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      }
+      return;
+    }
+
+    if (pathname === "/api/billing/webhook" && req.method === "POST") {
+      const rawBody = await readRequestBody(req);
+      const sigHeader = String(
+        req.headers["x-billing-signature"] ?? req.headers["stripe-signature"] ?? "",
+      ).trim();
+      const apiRes = await callBackendJson("POST", "/v1/billing/webhooks", {
+        rawBody,
+        headers: sigHeader ? { "X-Billing-Signature": sigHeader } : {},
+      });
+      if (apiRes.reachable) {
+        res.writeHead(apiRes.status || 200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        res.end(JSON.stringify(apiRes.data ?? { received: apiRes.ok }));
+        return;
+      }
+      const normalized = sigHeader.replace(/^(sha256=|v1=)/, "");
+      const expected = signWebhookPayloadHex(rawBody);
+      const valid =
+        normalized.length === expected.length &&
+        crypto.timingSafeEqual(Buffer.from(normalized, "utf8"), Buffer.from(expected, "utf8"));
+      if (!valid) {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Invalid webhook HMAC signature." }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ received: true }));
+      return;
+    }
+
     if (pathname === "/api/resources/manual" && req.method === "POST") {
       const { sid, controller } = sessionFor(req, res);
       try {
         const rawBody = await readRequestBody(req);
         const payload = rawBody ? JSON.parse(rawBody) : {};
+        const wantOpenCatalog =
+          payload.saveToOpenCatalog === true || payload.saveToOpenCatalog === "true";
         const data = {
           rawText: typeof payload.rawText === "string" ? payload.rawText : (typeof payload.raw_text === "string" ? payload.raw_text : ""),
           explicitUrl: typeof payload.explicitUrl === "string" ? payload.explicitUrl : (typeof payload.url === "string" ? payload.url : undefined),
@@ -1897,7 +3000,7 @@ export function createWebAppServer(options = {}) {
           targetModuleId: typeof payload.targetModuleId === "string" ? payload.targetModuleId : undefined,
           role: typeof payload.role === "string" ? payload.role : "primary",
         };
-        const analyzedOutcome = await runServerManualResourceAnalysis(controller, data);
+        const analyzedOutcome = await runServerManualResourceAnalysis(sid, controller, data);
         if ("error" in analyzedOutcome) {
           res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ error: analyzedOutcome.error }));
@@ -1905,19 +3008,26 @@ export function createWebAppServer(options = {}) {
         }
         controller.applyUiAction("ingest-manual-resource", data, null, null, analyzedOutcome);
         const nextState = controller.getState();
+        const createdEntry = nextState.catalogResources[analyzedOutcome.resourceVersionId];
+        let openCatalogPath = null;
+        if (wantOpenCatalog && allowOpenCatalogDiskWrite && createdEntry) {
+          openCatalogPath = writeOpenCatalogResourceFile(openCatalogDir, createdEntry, "community_discovered");
+        }
         if (nextState.authStatus === "authenticated") {
           await syncBackendResourceEndpoint(nextState.account.email, "POST", "/v1/catalog/resources/manual", {
+            resource_version_id: analyzedOutcome.resourceVersionId,
             raw_text: data.rawText,
             url: analyzedOutcome.canonicalUrl,
             title_override: analyzedOutcome.title,
           });
         }
-        persist(sid, controller);
+        await persistAsync(sid, controller);
         res.writeHead(201, { "Content-Type": "application/json; charset=utf-8" });
         res.end(
           JSON.stringify({
             analyzedDraft: analyzedOutcome,
-            resource: nextState.catalogResources[analyzedOutcome.resourceVersionId],
+            resource: createdEntry,
+            ...(openCatalogPath ? { openCatalogPath } : {}),
             state: nextState,
           }),
         );
@@ -1929,7 +3039,7 @@ export function createWebAppServer(options = {}) {
     }
 
     if (pathname === "/api/ui-state" && req.method === "POST") {
-      const { sid, controller } = sessionFor(req, res);
+      let { sid, controller } = sessionFor(req, res);
       let body = "";
       req.on("data", (chunk) => {
         body += chunk;
@@ -1937,6 +3047,14 @@ export function createWebAppServer(options = {}) {
       req.on("end", async () => {
         try {
           const cmd = body ? JSON.parse(body) : {};
+          if (
+            !localDev &&
+            (cmd.action === "switch-persona" || cmd.action === "simulate-session-expired")
+          ) {
+            res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+            res.end(JSON.stringify({ error: "Debug session actions are disabled outside local development." }));
+            return;
+          }
           if (cmd.action === "navigate-top" && cmd.destination) {
             controller.navigateTopLevel(cmd.destination);
           } else if (cmd.action === "navigate-learn-sub" && cmd.subDestination) {
@@ -1958,7 +3076,7 @@ export function createWebAppServer(options = {}) {
           } else if (cmd.action === "toggle-upvote") {
             controller.toggleUpvote(cmd.revisionId);
           } else if (cmd.action === "open-dialog" && cmd.dialogId) {
-            controller.openDialog(cmd.dialogId, cmd.authMode);
+            controller.openDialog(cmd.dialogId, cmd.authMode, cmd.publicationId);
           } else if (cmd.action === "close-dialog") {
             controller.closeDialog();
           } else if (cmd.action === "submit-sign-up") {
@@ -1972,32 +3090,43 @@ export function createWebAppServer(options = {}) {
               controller.failExternalAuth("An account with that email already exists. Log in instead.", "signup");
             } else {
               const username = defaultUsernameOfEmail(email);
-              const backend = await syncBackendAuth(
-                apiBaseUrl,
-                "/v1/auth/signup",
-                { email, password },
-                fetchImpl,
-              );
-              const existing = store.data.accounts[email];
-              const record = {
-                accountId: existing?.accountId ?? backend?.account_id ?? `usr-${crypto.randomUUID().slice(0, 12)}`,
-                email,
-                username: existing?.username ?? username,
-                avatarUrl: existing?.avatarUrl,
-                role: existing?.role ?? defaultRoleForEmail(email),
-                passwordHash: hashAccountPassword(password),
-                oauthProviders: existing?.oauthProviders ?? [],
-              };
-              store.data.accounts[email] = record;
-              store.save();
-              controller.completeExternalAuth({
-                accountId: record.accountId,
-                email: record.email,
-                username: record.username,
-                ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
-                role: record.role,
+              const apiRes = await callBackendJson("POST", "/v1/auth/signup", {
+                body: { email, password, display_name: username },
               });
-              syncControllerPasskeys(controller, null);
+              if (apiRes.reachable && !apiRes.ok) {
+                const dupMsg =
+                  apiRes.status === 409
+                    ? "An account with that email already exists. Log in instead."
+                    : apiRes.data?.error?.message || "Could not create account.";
+                controller.failExternalAuth(dupMsg, "signup");
+              } else {
+                const backend = apiRes.data;
+                const existing = store.data.accounts[email];
+                const record = {
+                  accountId: existing?.accountId ?? backend?.account_id ?? `usr-${crypto.randomUUID().slice(0, 12)}`,
+                  email,
+                  username: existing?.username ?? backend?.display_name ?? username,
+                  avatarUrl: existing?.avatarUrl ?? backend?.avatar_url ?? undefined,
+                  role: existing?.role ?? defaultRoleForEmail(email),
+                  passwordHash: hashAccountPassword(password),
+                  oauthProviders: existing?.oauthProviders ?? [],
+                };
+                store.data.accounts[email] = record;
+                store.save();
+                controller = await authenticateAndHydrateFromBackend(
+                  sid,
+                  controller,
+                  {
+                    accountId: record.accountId,
+                    email: record.email,
+                    username: record.username,
+                    ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
+                    role: record.role,
+                  },
+                  backend?.session_token ?? null,
+                  Boolean(backend?.email_verified),
+                );
+              }
             }
           } else if (cmd.action === "submit-sign-in") {
             const email = String(cmd.email ?? "").trim().toLowerCase();
@@ -2005,20 +3134,6 @@ export function createWebAppServer(options = {}) {
             const stored = store.data.accounts[email];
             if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
               controller.failExternalAuth("Enter a valid email address.", "login");
-            } else if (stored?.passwordHash) {
-              if (!verifyAccountPassword(password, stored.passwordHash)) {
-                controller.failExternalAuth("Incorrect email or password.", "login");
-              } else {
-                await syncBackendAuth(apiBaseUrl, "/v1/auth/login", { email, password }, fetchImpl);
-                controller.completeExternalAuth({
-                  accountId: stored.accountId,
-                  email: stored.email,
-                  username: stored.username ?? defaultUsernameOfEmail(stored.email),
-                  ...(stored.avatarUrl ? { avatarUrl: stored.avatarUrl } : {}),
-                  role: stored.role,
-                });
-                syncControllerPasskeys(controller, null);
-              }
             } else if (stored && !stored.passwordHash) {
               const hasPasskey = passkeysForAccount(stored.accountId).length > 0;
               const linked = (stored.oauthProviders ?? []).map(oauthProviderLabel).join(" or ");
@@ -2028,9 +3143,411 @@ export function createWebAppServer(options = {}) {
                 const providerText = linked || "OAuth";
                 controller.failExternalAuth(`This account signs in with ${providerText}. Continue with ${providerText} below.`, "login");
               }
+            } else if (password.length > 0) {
+              const apiRes = await callBackendJson("POST", "/v1/auth/login", {
+                body: { email, password },
+              });
+              if (apiRes.reachable && apiRes.ok && apiRes.data?.account_id) {
+                const backend = apiRes.data;
+                const record = {
+                  accountId: backend.account_id,
+                  email,
+                  username: backend.display_name || stored?.username || defaultUsernameOfEmail(email),
+                  ...(backend.avatar_url || stored?.avatarUrl ? { avatarUrl: backend.avatar_url || stored?.avatarUrl } : {}),
+                  role: stored?.role ?? defaultRoleForEmail(email),
+                  passwordHash: hashAccountPassword(password),
+                  oauthProviders: stored?.oauthProviders ?? [],
+                };
+                store.data.accounts[email] = record;
+                store.save();
+                controller = await authenticateAndHydrateFromBackend(
+                  sid,
+                  controller,
+                  {
+                    accountId: record.accountId,
+                    email: record.email,
+                    username: record.username,
+                    ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
+                    role: record.role,
+                  },
+                  backend.session_token ?? null,
+                  Boolean(backend.email_verified),
+                );
+              } else if (!apiRes.reachable && stored?.passwordHash && verifyAccountPassword(password, stored.passwordHash)) {
+                controller = authenticateSessionAsAccount(sid, controller, {
+                  accountId: stored.accountId,
+                  email: stored.email,
+                  username: stored.username ?? defaultUsernameOfEmail(stored.email),
+                  ...(stored.avatarUrl ? { avatarUrl: stored.avatarUrl } : {}),
+                  role: stored.role,
+                });
+              } else if (apiRes.reachable && !apiRes.ok && stored?.passwordHash && verifyAccountPassword(password, stored.passwordHash)) {
+                controller = authenticateSessionAsAccount(sid, controller, {
+                  accountId: stored.accountId,
+                  email: stored.email,
+                  username: stored.username ?? defaultUsernameOfEmail(stored.email),
+                  ...(stored.avatarUrl ? { avatarUrl: stored.avatarUrl } : {}),
+                  role: stored.role,
+                });
+              } else {
+                controller.failExternalAuth("Incorrect email or password.", "login");
+              }
+            } else if (stored?.passwordHash) {
+              controller.failExternalAuth("Incorrect email or password.", "login");
             } else {
-              controller.applyUiAction("submit-sign-in", { email, password });
-              syncControllerPasskeys(controller, null);
+              const fallbackAccount =
+                Object.values(PERSONAS).find((p) => p.email === email) ?? {
+                  accountId: `account-${email}`,
+                  email,
+                  username: defaultUsernameOfEmail(email),
+                  role: defaultRoleForEmail(email),
+                };
+              controller = authenticateSessionAsAccount(sid, controller, fallbackAccount);
+            }
+          } else if (cmd.action === "request-password-reset") {
+            const email = String(cmd.email ?? "").trim().toLowerCase();
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              controller.failExternalAuth("Enter a valid email address.", "reset");
+            } else {
+              const apiRes = await callBackendJson("POST", "/v1/auth/password-reset/request", {
+                body: { email },
+              });
+              let issuedCode =
+                apiRes.ok && typeof apiRes.data?.dev_recovery_code === "string"
+                  ? apiRes.data.dev_recovery_code
+                  : null;
+              if (!apiRes.reachable) {
+                const acct = store.data.accounts[email];
+                if (acct) {
+                  issuedCode = String(crypto.randomInt(100000, 1000000));
+                  localRecoveryTokens.set(sha256Hex(`password_reset:${email}:${issuedCode}`), {
+                    kind: "password_reset",
+                    email,
+                    accountId: acct.accountId,
+                    expiresAt: Date.now() + 15 * 60_000,
+                    consumed: false,
+                  });
+                }
+              }
+              if (issuedCode) {
+                pushDevOutboxMessage({
+                  kind: "password_reset",
+                  email,
+                  code: issuedCode,
+                  created_at: new Date().toISOString(),
+                });
+              }
+              controller.advancePasswordReset(
+                email,
+                `If an account exists for ${email}, a 6-digit recovery code has been sent.`,
+              );
+            }
+          } else if (cmd.action === "confirm-password-reset") {
+            const email = String(cmd.email || controller.getState().authResetEmail || "")
+              .trim()
+              .toLowerCase();
+            const code = String(cmd.code ?? "").trim();
+            const nextPassword = String(cmd.password ?? "");
+            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+              controller.failExternalAuth("Enter a valid email address.", "reset_confirm");
+            } else if (!/^[0-9]{6}$/.test(code)) {
+              controller.failExternalAuth("Enter the 6-digit recovery code.", "reset_confirm");
+            } else if (nextPassword.length < 8) {
+              controller.failExternalAuth("Use a new password with at least 8 characters.", "reset_confirm");
+            } else {
+              const apiRes = await callBackendJson("POST", "/v1/auth/password-reset/confirm", {
+                body: { email, code, new_password: nextPassword },
+              });
+              if (apiRes.reachable) {
+                if (!apiRes.ok || !apiRes.data?.account_id) {
+                  controller.failExternalAuth("Invalid or expired recovery code.", "reset_confirm");
+                } else {
+                  const backend = apiRes.data;
+                  const existing = store.data.accounts[email];
+                  const record = {
+                    accountId: backend.account_id,
+                    email,
+                    username: backend.display_name || existing?.username || defaultUsernameOfEmail(email),
+                    ...(backend.avatar_url || existing?.avatarUrl ? { avatarUrl: backend.avatar_url || existing?.avatarUrl } : {}),
+                    role: existing?.role ?? defaultRoleForEmail(email),
+                    passwordHash: hashAccountPassword(nextPassword),
+                    oauthProviders: existing?.oauthProviders ?? [],
+                  };
+                  store.data.accounts[email] = record;
+                  store.save();
+                  controller = await authenticateAndHydrateFromBackend(
+                    sid,
+                    controller,
+                    {
+                      accountId: record.accountId,
+                      email: record.email,
+                      username: record.username,
+                      ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
+                      role: record.role,
+                    },
+                    backend.session_token ?? null,
+                    Boolean(backend.email_verified),
+                  );
+                }
+              } else {
+                const tokenEntry = localRecoveryTokens.get(sha256Hex(`password_reset:${email}:${code}`));
+                const existing = store.data.accounts[email];
+                if (!tokenEntry || tokenEntry.consumed || tokenEntry.expiresAt <= Date.now() || !existing) {
+                  controller.failExternalAuth("Invalid or expired recovery code.", "reset_confirm");
+                } else {
+                  tokenEntry.consumed = true;
+                  existing.passwordHash = hashAccountPassword(nextPassword);
+                  store.save();
+                  controller = authenticateSessionAsAccount(sid, controller, {
+                    accountId: existing.accountId,
+                    email: existing.email,
+                    username: existing.username ?? defaultUsernameOfEmail(existing.email),
+                    ...(existing.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
+                    role: existing.role ?? defaultRoleForEmail(existing.email),
+                  });
+                }
+              }
+            }
+          } else if (cmd.action === "request-email-verification") {
+            const st = controller.getState();
+            if (st.authStatus === "authenticated") {
+              const apiToken = apiTokenForSession(sid, controller);
+              const apiRes = apiToken
+                ? await callBackendJson("POST", "/v1/auth/email-verification/request", { token: apiToken })
+                : { reachable: false, ok: false, data: null };
+              let issuedCode =
+                apiRes.ok && typeof apiRes.data?.dev_verification_code === "string"
+                  ? apiRes.data.dev_verification_code
+                  : null;
+              if (!issuedCode && (!apiRes.reachable || !apiToken)) {
+                issuedCode = String(crypto.randomInt(100000, 1000000));
+                localRecoveryTokens.set(sha256Hex(`email_verification:${issuedCode}`), {
+                  kind: "email_verification",
+                  email: st.account.email,
+                  accountId: st.account.accountId,
+                  expiresAt: Date.now() + 24 * 60 * 60_000,
+                  consumed: false,
+                });
+              }
+              if (issuedCode) {
+                pushDevOutboxMessage({
+                  kind: "email_verification",
+                  email: st.account.email,
+                  code: issuedCode,
+                  verify_url: `${publicOriginOf(req)}/auth/verify-email?token=${encodeURIComponent(issuedCode)}`,
+                  created_at: new Date().toISOString(),
+                });
+              }
+              controller.setEmailVerificationState(
+                false,
+                true,
+                `Sent a 6-digit verification code to ${st.account.email}.`,
+              );
+            }
+          } else if (cmd.action === "confirm-email-verification") {
+            const st = controller.getState();
+            const code = String(cmd.code ?? "").trim();
+            if (st.authStatus === "authenticated") {
+              if (!/^[0-9]{6}$/.test(code)) {
+                controller.setEmailVerificationState(false, true, "Enter a valid 6-digit verification code.");
+              } else {
+                const apiRes = await callBackendJson("POST", "/v1/auth/email-verification/confirm", {
+                  body: { code },
+                });
+                if (apiRes.reachable) {
+                  if (apiRes.ok) {
+                    controller.setEmailVerificationState(
+                      true,
+                      false,
+                      `Email address ${st.account.email} verified.`,
+                    );
+                  } else {
+                    controller.setEmailVerificationState(false, true, "Invalid or expired verification code.");
+                  }
+                } else {
+                  const rec = localRecoveryTokens.get(sha256Hex(`email_verification:${code}`));
+                  if (rec && !rec.consumed && rec.expiresAt > Date.now()) {
+                    rec.consumed = true;
+                    controller.setEmailVerificationState(
+                      true,
+                      false,
+                      `Email address ${st.account.email} verified.`,
+                    );
+                  } else {
+                    controller.setEmailVerificationState(false, true, "Invalid or expired verification code.");
+                  }
+                }
+              }
+            }
+          } else if (cmd.action === "start-hosted-checkout") {
+            const st = controller.getState();
+            if (st.authStatus === "authenticated") {
+              await executeHostedTopUp(sid, controller, cmd.amountMinor ?? 1000, publicOriginOf(req));
+            } else {
+              controller.applyUiAction("start-hosted-checkout", { amountMinor: String(cmd.amountMinor ?? "1000") });
+            }
+          } else if (cmd.action === "sign-out") {
+            const apiToken = apiTokenForSession(sid, controller);
+            if (apiToken) {
+              await callBackendJson("DELETE", "/v1/auth/session", { token: apiToken });
+            }
+            controller.applyUiAction("sign-out");
+            detachSessionToGuest(sid, controller);
+          } else if (cmd.action === "switch-persona" && typeof cmd.persona === "string") {
+            if (cmd.persona === "guest") {
+              controller.applyUiAction("switch-persona", { persona: "guest" });
+              detachSessionToGuest(sid, controller);
+            } else if (PERSONAS[cmd.persona]) {
+              controller = authenticateSessionAsAccount(sid, controller, PERSONAS[cmd.persona]);
+            }
+          } else if (cmd.action === "confirm-delete-account") {
+            const { authStatus, account } = controller.getState();
+            if (authStatus === "authenticated") {
+              const apiToken = apiTokenForSession(sid, controller);
+              if (apiToken) {
+                await Promise.all([
+                  callBackendJson("DELETE", "/v1/me/workspace", { token: apiToken }),
+                  callBackendJson("POST", "/v1/me/deletion-requests", {
+                    token: apiToken,
+                    headers: { "Idempotency-Key": `idem-del-${account.accountId}` },
+                    body: { reason: "learner_requested_account_deletion" },
+                  }),
+                ]);
+              }
+              const deletedAccountId = account.accountId;
+              const deletedEmail = account.email.trim().toLowerCase();
+              delete store.data.accountWorkspaces[deletedAccountId];
+              delete store.data.accountWorkspaces[`sandbox:${sid}`];
+              delete store.data.byokVault[deletedAccountId];
+              for (const [accKey, accRec] of Object.entries(store.data.accounts)) {
+                if (accKey === deletedEmail || accRec?.accountId === deletedAccountId) {
+                  delete store.data.accounts[accKey];
+                }
+              }
+              for (const [idKey, linkedEmail] of Object.entries(store.data.oauthIdentities)) {
+                if (linkedEmail === deletedEmail) {
+                  delete store.data.oauthIdentities[idKey];
+                }
+              }
+              for (const [pkId, pkRec] of Object.entries(store.data.passkeys)) {
+                if (pkRec?.passkeyUserId === deletedAccountId) {
+                  delete store.data.passkeys[pkId];
+                }
+              }
+              backendTokenByEmail.delete(deletedEmail);
+              controller.applyUiAction("confirm-delete-account");
+              detachSessionToGuest(sid, controller);
+            }
+          } else if (cmd.action === "replace-key") {
+            const beforeState = controller.getState();
+            if (beforeState.authStatus === "authenticated") {
+              const accountId = beforeState.account.accountId;
+              const providerId = String(cmd.providerId ?? beforeState.editingCredentialProviderId ?? "openai").trim();
+              const rawKey = String(cmd.keyValue ?? "").trim();
+              const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]) ?? accountId;
+              const prevWs = store.data.accountWorkspaces[wsKey] ?? extractWorkspaceSnapshot(controller);
+              if (rawKey.length < 8) {
+                controller.setByokCredentials(
+                  resolveByokCredentialsForAccount(accountId, prevWs),
+                  undefined,
+                  "Enter a valid API key (at least 8 characters).",
+                );
+              } else {
+                const prevEnvelope = store.data.byokVault[accountId]?.[providerId];
+                const envelope = sealByokApiKey({
+                  masterKey: byokMasterKey,
+                  accountId,
+                  providerId,
+                  rawApiKey: rawKey,
+                  credentialRef: typeof cmd.credentialRef === "string" ? cmd.credentialRef : undefined,
+                  previousVersion: prevEnvelope?.version ?? 0,
+                });
+                if (!store.data.byokVault[accountId]) {
+                  store.data.byokVault[accountId] = {};
+                }
+                store.data.byokVault[accountId][providerId] = envelope;
+                const nextDisabled = (prevWs.disabledEnvProviders ?? []).filter((p) => p !== providerId);
+                store.data.accountWorkspaces[wsKey] = {
+                  ...prevWs,
+                  disabledEnvProviders: nextDisabled,
+                };
+                store.save();
+                const nextCreds = resolveByokCredentialsForAccount(accountId, store.data.accountWorkspaces[wsKey]);
+                const nextPrimary =
+                  beforeState.primaryCredentialRef &&
+                  nextCreds.some((c) => c.credential_ref === beforeState.primaryCredentialRef)
+                    ? beforeState.primaryCredentialRef
+                    : envelope.credential_ref;
+                controller.setByokCredentials(
+                  nextCreds,
+                  nextPrimary,
+                  `API key encrypted with AES-256-GCM and stored in server custody (••••${envelope.masked_suffix}). Queued jobs keep their active key version.`,
+                );
+                if (envelope.version === 1) {
+                  await syncBackendResourceEndpoint(
+                    beforeState.account.email,
+                    "POST",
+                    "/v1/me/credentials",
+                    {
+                      credential_ref: envelope.credential_ref,
+                      provider_id: providerId,
+                      label: envelope.label,
+                      api_key: rawKey,
+                    },
+                  );
+                } else {
+                  await syncBackendResourceEndpoint(
+                    beforeState.account.email,
+                    "PATCH",
+                    `/v1/me/credentials/${encodeURIComponent(envelope.credential_ref)}`,
+                    {
+                      api_key: rawKey,
+                      label: envelope.label,
+                    },
+                    { "If-Match": `"cred-v${envelope.version - 1}"` },
+                  );
+                }
+              }
+            }
+          } else if (cmd.action === "delete-connection") {
+            const beforeState = controller.getState();
+            if (beforeState.authStatus === "authenticated") {
+              const accountId = beforeState.account.accountId;
+              const targetRef = typeof cmd.credentialRef === "string" ? cmd.credentialRef : "";
+              const providerId =
+                (typeof cmd.providerId === "string" && cmd.providerId) ||
+                beforeState.byokCredentials.find((c) => c.credential_ref === targetRef)?.provider_id ||
+                "";
+              const prevEnvelope = providerId ? store.data.byokVault[accountId]?.[providerId] : undefined;
+              if (providerId && store.data.byokVault[accountId]) {
+                delete store.data.byokVault[accountId][providerId];
+              }
+              const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]) ?? accountId;
+              const prevWs = store.data.accountWorkspaces[wsKey] ?? extractWorkspaceSnapshot(controller);
+              const nextDisabled = providerId
+                ? Array.from(new Set([...(prevWs.disabledEnvProviders ?? []), providerId]))
+                : (prevWs.disabledEnvProviders ?? []);
+              store.data.accountWorkspaces[wsKey] = {
+                ...prevWs,
+                disabledEnvProviders: nextDisabled,
+              };
+              store.save();
+              const nextCreds = resolveByokCredentialsForAccount(accountId, store.data.accountWorkspaces[wsKey]);
+              controller.setByokCredentials(
+                nextCreds,
+                undefined,
+                "Removed encrypted API key from server custody. Revoke the key in your provider dashboard if it is no longer needed.",
+              );
+              const credRefToRevoke = prevEnvelope?.credential_ref || targetRef;
+              if (credRefToRevoke && prevEnvelope) {
+                await syncBackendResourceEndpoint(
+                  beforeState.account.email,
+                  "DELETE",
+                  `/v1/me/credentials/${encodeURIComponent(credRefToRevoke)}`,
+                  undefined,
+                  { "If-Match": `"cred-v${prevEnvelope.version}"` },
+                );
+              }
             }
           } else if (cmd.action === "delete-passkey" && typeof cmd.credentialId === "string") {
             const { authStatus, account } = controller.getState();
@@ -2038,29 +3555,93 @@ export function createWebAppServer(options = {}) {
             if (authStatus === "authenticated" && existing && existing.passkeyUserId === account.accountId) {
               delete store.data.passkeys[cmd.credentialId];
               store.save();
+              const apiToken = apiTokenForSession(sid, controller);
+              if (apiToken) {
+                await callBackendJson("DELETE", `/v1/me/passkeys/${encodeURIComponent(cmd.credentialId)}`, {
+                  token: apiToken,
+                });
+              }
               syncControllerPasskeys(controller, "Passkey removed from your account.");
             } else {
               controller.applyUiAction("delete-passkey", { credentialId: cmd.credentialId });
             }
           } else if (typeof cmd.action === "string") {
-            const data = Object.fromEntries(Object.entries(cmd).filter(([, value]) => typeof value === "string"));
+            const data = Object.fromEntries(
+              Object.entries(cmd).filter(([k, value]) => k !== "keyValue" && typeof value === "string"),
+            );
             let live = null;
             let analyzedOutcome = null;
+            let generatedConceptCheck = null;
             if (cmd.action === "generate-syllabus-ai") {
               const request = controller.liveGenerationRequest(data);
-              const apiKey = request ? env[PROVIDER_KEY_ENV[request.providerId]] : undefined;
-              if (apiKey) {
-                live = await requestLiveDraft(request, apiKey).then((draft) => ({ draft }), (err) => ({ error: err.message }));
+              const beforeState = controller.getState();
+              const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
+              const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
+              const apiKey =
+                request && beforeState.authStatus === "authenticated"
+                  ? resolveRuntimeApiKeyForAccount(beforeState.account.accountId, request.providerId, ws)
+                  : undefined;
+              if (request && apiKey) {
+                live = await requestLiveDraft(request, apiKey, fetchImpl).then((draft) => ({ draft }), (err) => ({ error: err.message }));
+              }
+            } else if (cmd.action === "generate-activity-check") {
+              const tutorReq = controller.liveConceptCheckRequest(data.activityId);
+              const beforeState = controller.getState();
+              const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
+              const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
+              const apiKey =
+                tutorReq && beforeState.authStatus === "authenticated"
+                  ? resolveRuntimeApiKeyForAccount(beforeState.account.accountId, tutorReq.providerId, ws)
+                  : undefined;
+              if (tutorReq && apiKey) {
+                const tutorRes = await requestLiveConceptCheck(tutorReq, apiKey, fetchImpl).catch(
+                  () => null,
+                );
+                if (tutorRes && !("error" in tutorRes)) {
+                  generatedConceptCheck = tutorRes;
+                }
               }
             } else if (cmd.action === "ingest-manual-resource") {
-              analyzedOutcome = await runServerManualResourceAnalysis(controller, data);
+              analyzedOutcome = await runServerManualResourceAnalysis(sid, controller, data);
             }
-            controller.applyUiAction(cmd.action, data, data.practiceChoice ?? null, live, analyzedOutcome);
+            controller.applyUiAction(
+              cmd.action,
+              data,
+              data.practiceChoice ?? data.diagnosticChoice ?? null,
+              live,
+              analyzedOutcome,
+              generatedConceptCheck,
+            );
 
             const afterState = controller.getState();
+            if (
+              cmd.action === "ingest-manual-resource" &&
+              data.saveToOpenCatalog === "true" &&
+              allowOpenCatalogDiskWrite &&
+              analyzedOutcome &&
+              !("error" in analyzedOutcome)
+            ) {
+              const createdEntry = afterState.catalogResources[analyzedOutcome.resourceVersionId];
+              if (createdEntry) {
+                writeOpenCatalogResourceFile(openCatalogDir, createdEntry, "community_discovered");
+              }
+            } else if (
+              cmd.action === "save-resource-edit" &&
+              data.saveToOpenCatalog === "true" &&
+              allowOpenCatalogDiskWrite &&
+              data.resourceVersionId &&
+              !afterState.resourceEditorError
+            ) {
+              const updatedEntry = afterState.catalogResources[data.resourceVersionId];
+              if (updatedEntry) {
+                writeOpenCatalogResourceFile(openCatalogDir, updatedEntry, "community_discovered");
+              }
+            }
+
             if (afterState.authStatus === "authenticated") {
               if (cmd.action === "ingest-manual-resource" && analyzedOutcome && !("error" in analyzedOutcome)) {
                 await syncBackendResourceEndpoint(afterState.account.email, "POST", "/v1/catalog/resources/manual", {
+                  resource_version_id: analyzedOutcome.resourceVersionId,
                   raw_text: data.rawText ?? "",
                   url: analyzedOutcome.canonicalUrl,
                   title_override: analyzedOutcome.title,
@@ -2127,13 +3708,25 @@ export function createWebAppServer(options = {}) {
                   }
                   store.save();
                 }
+                const apiToken = apiTokenForSession(sid, controller);
+                if (apiToken) {
+                  await callBackendJson("PATCH", "/v1/me/profile", {
+                    token: apiToken,
+                    body: {
+                      email: nextAccount.email,
+                      display_name: nextAccount.username,
+                      ...(nextAccount.avatarUrl ? { avatar_url: nextAccount.avatarUrl } : {}),
+                    },
+                  });
+                }
               }
             }
-            if (cmd.action === "sign-out" || cmd.action === "switch-persona") {
-              syncControllerPasskeys(controller, null);
-            }
           }
-          persist(sid, controller);
+          const forceRemoteSync =
+            cmd.action === "replace-key" ||
+            cmd.action === "delete-connection" ||
+            cmd.action === "submit-sign-up";
+          await persistAsync(sid, controller, forceRemoteSync);
 
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
           res.end(
@@ -2208,7 +3801,10 @@ const isMainModule =
 if (isMainModule) {
   const port = Number(process.env.WEB_PORT ?? 3000);
   const host = process.env.WEB_HOST ?? "localhost";
-  const { server } = createWebAppServer({ storePath: path.resolve(__dirname, "../.data/web-store.json") });
+  const explicitStorePath = process.env.WEB_STORE_PATH?.trim()
+    ? path.resolve(process.env.WEB_STORE_PATH.trim())
+    : undefined;
+  const { server } = createWebAppServer({ storePath: explicitStorePath });
   const bindHost = host === "localhost" ? "127.0.0.1" : host;
   server.listen(port, bindHost, () => {
     console.log(

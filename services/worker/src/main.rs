@@ -5,13 +5,17 @@ use syllabus_jobs::{
     evaluate_pg_bloat_health, OutboxJobQueue, OutboxQueueConfig, PgBloatHealthReport,
     PgTableTupleStats, QueueMetricsSnapshot,
 };
-use syllabus_persistence::{PostgresTransactionalStatements, MIGRATIONS};
+use syllabus_persistence::{
+    apply_migrations_to_postgres, run_pg_outbox_worker_tick, PostgresTransactionalStatements,
+    MIGRATIONS,
+};
 use syllabus_providers::{DeterministicFakeProvider, InferenceProvider};
 
 const DEFAULT_WORKER_ID: &str = "worker-main";
 const INITIAL_TICK_NOW_MS: u64 = 1_000;
-const EXPECTED_MIGRATION_COUNT: usize = 9;
+const EXPECTED_MIGRATION_COUNT: usize = 11;
 const DEFAULT_MAX_DEAD_TUPLE_RATIO: f64 = 0.20;
+const DEFAULT_POLL_INTERVAL_MS: u64 = 2_000;
 
 /// Verifies that the workspace contract registry, deterministic provider, and embedded SQL
 /// migrations are consistent on worker startup, returning the default `OutboxQueueConfig`.
@@ -61,10 +65,68 @@ pub fn check_worker_pg_bloat_health(stats: &[PgTableTupleStats]) -> PgBloatHealt
 #[tokio::main]
 async fn main() {
     let cfg = verify_worker_bootstrap();
+    let run_once = std::env::args().any(|arg| arg == "--once")
+        || std::env::var("WORKER_RUN_ONCE")
+            .ok()
+            .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
+    let worker_id = std::env::var("WORKER_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_WORKER_ID.to_string());
+    let poll_ms = std::env::var("WORKER_POLL_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_POLL_INTERVAL_MS)
+        .max(100);
+
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        let trimmed_url = db_url.trim();
+        if !trimmed_url.is_empty() {
+            apply_migrations_to_postgres(trimmed_url)
+                .await
+                .expect("apply PostgreSQL migrations on worker startup");
+            let first_tick = run_pg_outbox_worker_tick(
+                trimmed_url,
+                &worker_id,
+                i64::from(cfg.lease_duration_seconds),
+            )
+            .await
+            .expect("initial PostgreSQL outbox tick");
+            println!(
+                "syllabus-worker postgres outbox online (worker_id={worker_id}, lease={}s, completed={}, remaining_queued={})",
+                cfg.lease_duration_seconds,
+                first_tick.claimed_and_completed_job_ids.len(),
+                first_tick.remaining_queued_count
+            );
+            if run_once {
+                return;
+            }
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(poll_ms));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        if let Err(err) = run_pg_outbox_worker_tick(
+                            trimmed_url,
+                            &worker_id,
+                            i64::from(cfg.lease_duration_seconds),
+                        ).await {
+                            eprintln!("syllabus-worker postgres tick error: {err}");
+                        }
+                    }
+                    _ = tokio::signal::ctrl_c() => {
+                        println!("syllabus-worker shutting down cleanly");
+                        break;
+                    }
+                }
+            }
+            return;
+        }
+    }
+
     let queue = OutboxJobQueue::new(cfg);
-    let snapshot = run_worker_maintenance_tick(&queue, DEFAULT_WORKER_ID, INITIAL_TICK_NOW_MS);
+    let snapshot = run_worker_maintenance_tick(&queue, &worker_id, INITIAL_TICK_NOW_MS);
     println!(
-        "syllabus-worker bootstrap verified (lease={}s, max_attempts={}, queued={})",
+        "syllabus-worker bootstrap verified (storage=in_memory, lease={}s, max_attempts={}, queued={})",
         cfg.lease_duration_seconds, cfg.max_attempts, snapshot.queued_depth
     );
 }

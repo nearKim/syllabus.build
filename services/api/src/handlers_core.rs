@@ -59,6 +59,8 @@ pub(crate) struct SessionResponseDto {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) email: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) email_verified: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) avatar_url: Option<String>,
@@ -80,6 +82,7 @@ fn build_session_response(
         expires_at: session.expires_at,
         session_token: Some(session.token),
         email: account.map(|a| a.email.clone()),
+        email_verified: account.map(|a| a.email_verified),
         display_name: account.and_then(|a| a.display_name.clone()),
         avatar_url: account.and_then(|a| a.avatar_url.clone()),
         auth_provider: auth_provider.map(str::to_string),
@@ -115,6 +118,7 @@ pub(crate) async fn get_auth_session_handler(
             expires_at: DEFAULT_SESSION_EXPIRES_AT.to_string(),
             session_token: None,
             email: account.as_ref().map(|a| a.email.clone()),
+            email_verified: account.as_ref().map(|a| a.email_verified),
             display_name: account.as_ref().and_then(|a| a.display_name.clone()),
             avatar_url: account.as_ref().and_then(|a| a.avatar_url.clone()),
             auth_provider: None,
@@ -1265,4 +1269,349 @@ pub(crate) async fn delete_syllabus_resource_handler(
         "revision": revision,
     });
     Ok(json_with_etag(StatusCode::OK, &receipt.etag, &body))
+}
+
+fn current_epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(DEFAULT_NOW_EPOCH_MS)
+}
+
+async fn enqueue_outbox_durable_and_memory(
+    state: &ApiAppState,
+    job_id: &str,
+    account_id: &str,
+    job_type: &str,
+    payload: Value,
+    now_ms: u64,
+) {
+    let _ = state
+        .outbox
+        .enqueue(job_id, account_id, job_type, payload.clone(), now_ms);
+    if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        let trimmed = db_url.trim();
+        if !trimmed.is_empty() {
+            let _ = syllabus_persistence::enqueue_pg_outbox_job(
+                trimmed, job_id, account_id, job_type, &payload,
+            )
+            .await;
+        }
+    }
+}
+
+pub(crate) async fn get_my_workspace_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
+    if let Some(record) = state.store.get_web_workspace(&principal) {
+        let etag = format!("\"ws-v{}\"", record.revision);
+        Ok(json_with_etag(StatusCode::OK, &etag, &record))
+    } else {
+        let account = state.store.get_account_by_id(&principal.account_id);
+        let body = json!({
+            "account_id": principal.account_id,
+            "email": account.map(|a| a.email),
+            "workspace_json": Value::Null,
+            "revision": 0,
+            "updated_at_ms": 0,
+        });
+        Ok(json_with_etag(StatusCode::OK, "\"ws-v0\"", &body))
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PutWorkspaceRequestDto {
+    pub(crate) workspace_json: Value,
+    #[serde(default)]
+    pub(crate) expected_revision: Option<u64>,
+}
+
+pub(crate) async fn put_my_workspace_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Json(dto): Json<PutWorkspaceRequestDto>,
+) -> ApiResult {
+    let record = state.store.put_web_workspace(
+        &principal,
+        dto.workspace_json,
+        dto.expected_revision,
+        current_epoch_ms(),
+    )?;
+    let etag = format!("\"ws-v{}\"", record.revision);
+    Ok(json_with_etag(StatusCode::OK, &etag, &record))
+}
+
+pub(crate) async fn delete_my_workspace_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
+    let _ = state.store.delete_web_workspace(&principal);
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PatchMyProfileDto {
+    #[serde(default)]
+    pub(crate) email: Option<String>,
+    #[serde(default)]
+    pub(crate) display_name: Option<String>,
+    #[serde(default)]
+    pub(crate) avatar_url: Option<String>,
+}
+
+pub(crate) async fn patch_my_profile_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Json(dto): Json<PatchMyProfileDto>,
+) -> ApiResult {
+    let account = state.store.update_account_profile(
+        &principal,
+        dto.email.as_deref(),
+        dto.display_name.as_deref(),
+        dto.avatar_url.as_deref(),
+    )?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "account_id": account.account_id,
+            "email": account.email,
+            "email_verified": account.email_verified,
+            "display_name": account.display_name,
+            "avatar_url": account.avatar_url,
+            "roles": account.roles,
+        })),
+    )
+        .into_response())
+}
+
+pub(crate) async fn list_my_passkeys_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
+    let items = state.store.list_web_passkeys(&principal);
+    Ok((StatusCode::OK, Json(json!({ "items": items }))).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PutPasskeyDto {
+    pub(crate) credential_json: Value,
+}
+
+pub(crate) async fn put_my_passkey_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path(credential_id): Path<String>,
+    Json(dto): Json<PutPasskeyDto>,
+) -> ApiResult {
+    let rec = state.store.put_web_passkey(
+        &principal,
+        &credential_id,
+        dto.credential_json,
+        current_epoch_ms(),
+    )?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
+}
+
+pub(crate) async fn delete_my_passkey_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+    Path(credential_id): Path<String>,
+) -> ApiResult {
+    let _ = state.store.delete_web_passkey(&principal, &credential_id)?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct LookupPasskeysQueryDto {
+    #[serde(default)]
+    pub(crate) email: Option<String>,
+}
+
+pub(crate) async fn lookup_passkeys_for_auth_handler(
+    State(state): State<ApiAppState>,
+    Query(query): Query<LookupPasskeysQueryDto>,
+) -> ApiResult {
+    let items = state
+        .store
+        .list_web_passkeys_by_email(query.email.as_deref().unwrap_or(""));
+    Ok((StatusCode::OK, Json(json!({ "items": items }))).into_response())
+}
+
+pub(crate) async fn get_passkey_for_auth_handler(
+    State(state): State<ApiAppState>,
+    Path(credential_id): Path<String>,
+) -> ApiResult {
+    let rec = state
+        .store
+        .get_web_passkey_by_credential_id(&credential_id)
+        .ok_or_else(|| PersistenceError::NotFound {
+            resource_type: "passkey",
+            resource_id: credential_id,
+        })?;
+    Ok((StatusCode::OK, Json(rec)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PasskeySessionRequestDto {
+    pub(crate) credential_id: String,
+    #[serde(default)]
+    pub(crate) counter: Option<u64>,
+}
+
+pub(crate) async fn create_passkey_session_handler(
+    State(state): State<ApiAppState>,
+    Json(dto): Json<PasskeySessionRequestDto>,
+) -> ApiResult {
+    let (account, session) = state.store.create_passkey_session(
+        &dto.credential_id,
+        dto.counter,
+        current_epoch_ms(),
+    )?;
+    Ok((
+        StatusCode::OK,
+        Json(build_session_response(
+            Some(&account),
+            session,
+            Some("passkey"),
+            Some(false),
+        )),
+    )
+        .into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PasswordResetRequestDto {
+    pub(crate) email: String,
+}
+
+pub(crate) async fn request_password_reset_handler(
+    State(state): State<ApiAppState>,
+    Json(dto): Json<PasswordResetRequestDto>,
+) -> ApiResult {
+    let now_ms = current_epoch_ms();
+    let issued_opt = state
+        .store
+        .issue_password_reset_token(&dto.email, now_ms, 15 * 60 * 1000)?;
+
+    let mut dev_code: Option<String> = None;
+    if let Some(issued) = issued_opt {
+        if state.gates.env.is_local_dev_or_test() {
+            dev_code = Some(issued.token.clone());
+        }
+        let job_id = format!("pwreset-{}-{now_ms}", issued.account_id);
+        enqueue_outbox_durable_and_memory(
+            &state,
+            &job_id,
+            &issued.account_id,
+            "password_reset_email",
+            json!({
+                "email": issued.email,
+                "subject": "Syllabus.io Password Recovery Code",
+                "expires_at_ms": issued.expires_at_ms,
+                "recovery_code": issued.token,
+            }),
+            now_ms,
+        )
+        .await;
+    }
+
+    let mut body = json!({
+        "status": "accepted",
+        "message": "If an account exists for that email, a 6-digit recovery code has been sent.",
+    });
+    if let Some(code) = dev_code {
+        body["dev_recovery_code"] = json!(code);
+    }
+    Ok((StatusCode::ACCEPTED, Json(body)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct PasswordResetConfirmDto {
+    pub(crate) email: String,
+    #[serde(alias = "token")]
+    pub(crate) code: String,
+    pub(crate) new_password: String,
+}
+
+pub(crate) async fn confirm_password_reset_handler(
+    State(state): State<ApiAppState>,
+    Json(dto): Json<PasswordResetConfirmDto>,
+) -> ApiResult {
+    let (account, session) = state.store.confirm_password_reset_token(
+        &dto.email,
+        &dto.code,
+        &dto.new_password,
+        current_epoch_ms(),
+    )?;
+    Ok((
+        StatusCode::OK,
+        Json(build_session_response(
+            Some(&account),
+            session,
+            Some("email"),
+            Some(false),
+        )),
+    )
+        .into_response())
+}
+
+pub(crate) async fn request_email_verification_handler(
+    State(state): State<ApiAppState>,
+    AuthPrincipal(principal): AuthPrincipal,
+) -> ApiResult {
+    let now_ms = current_epoch_ms();
+    let issued =
+        state
+            .store
+            .issue_email_verification_token(&principal, now_ms, 24 * 60 * 60 * 1000)?;
+    let job_id = format!("emailverify-{}-{now_ms}", issued.account_id);
+    enqueue_outbox_durable_and_memory(
+        &state,
+        &job_id,
+        &issued.account_id,
+        "email_verification",
+        json!({
+            "email": issued.email,
+            "subject": "Verify your Syllabus.io email address",
+            "expires_at_ms": issued.expires_at_ms,
+            "verification_code": issued.token,
+        }),
+        now_ms,
+    )
+    .await;
+
+    let mut body = json!({
+        "status": "sent",
+        "email": issued.email,
+        "expires_at_ms": issued.expires_at_ms,
+    });
+    if state.gates.env.is_local_dev_or_test() {
+        body["dev_verification_code"] = json!(issued.token);
+    }
+    Ok((StatusCode::ACCEPTED, Json(body)).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct EmailVerificationConfirmDto {
+    #[serde(alias = "token")]
+    pub(crate) code: String,
+}
+
+pub(crate) async fn confirm_email_verification_handler(
+    State(state): State<ApiAppState>,
+    Json(dto): Json<EmailVerificationConfirmDto>,
+) -> ApiResult {
+    let account = state
+        .store
+        .confirm_email_verification_token(&dto.code, current_epoch_ms())?;
+    Ok((
+        StatusCode::OK,
+        Json(json!({
+            "account_id": account.account_id,
+            "email": account.email,
+            "email_verified": account.email_verified,
+        })),
+    )
+        .into_response())
 }

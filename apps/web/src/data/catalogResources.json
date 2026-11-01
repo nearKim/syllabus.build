@@ -1,16 +1,16 @@
 {
   "schema_version": "0.3.0",
   "resources": {
-    "synthetic-resource-tokenization-v1": {
-      "resource_version_id": "synthetic-resource-tokenization-v1",
-      "title": "Reviewed Open Monograph: Subword Tokenization & Sequence Packing",
-      "canonical_url": "https://example.invalid/catalog/tokenization-monograph",
+    "synthetic-resource-anna-karenina-v1": {
+      "resource_version_id": "synthetic-resource-anna-karenina-v1",
+      "title": "Anna Karenina (Constance Garnett translation)",
+      "canonical_url": "https://example.invalid/catalog/anna-karenina-garnett",
       "captured_at": "2026-10-20T16:00:00Z",
       "category": "Book",
-      "subject": "Engineering",
+      "subject": "Literature",
       "provider": {
-        "provider_id": "open-ml-press",
-        "display_name": "Open ML Press (Curator Verified)"
+        "provider_id": "public-domain-classics",
+        "display_name": "Public Domain Classics Library (Curator Verified)"
       },
       "access": {
         "model": "free",
@@ -31,51 +31,21 @@
         "status": "indexed",
         "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
-        "discovered_by_handle": "@alex",
-        "last_indexed_at": "2026-10-20T16:00:00Z"
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
       },
       "segments": [
         {
-          "segment_id": "seg-bpe-overview",
-          "title": "Section 2.1: Byte-Pair Encoding Merge Tables",
+          "segment_id": "seg-ak-part-7",
+          "title": "Part Seven: Anna's final journey",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-ak-part-8",
+          "title": "Part Eight: Levin's resolution",
           "verified": true
         }
       ]
-    },
-    "synthetic-resource-cert-prep-v1": {
-      "resource_version_id": "synthetic-resource-cert-prep-v1",
-      "title": "Applied Sequence Modeling Lab & Optional Certification Track",
-      "canonical_url": "https://example.invalid/catalog/sequence-lab-cert",
-      "captured_at": "2026-10-20T16:00:00Z",
-      "category": "Course",
-      "subject": "Engineering",
-      "provider": {
-        "provider_id": "systems-ai-institute",
-        "display_name": "Systems AI Institute"
-      },
-      "access": {
-        "model": "freemium_optional_certificate",
-        "tier_label": "Freemium",
-        "cost_label": "Core $0 · Cert $49",
-        "rights_label": "Link & metadata",
-        "certificate_included": true,
-        "optional_certificate_price_minor": 4900,
-        "access_verified_at": "2026-10-20T16:00:00Z"
-      },
-      "ingestion_permissions": {
-        "basis": "link_and_metadata_only",
-        "permissions": {
-          "display_excerpts": "denied"
-        }
-      },
-      "vector_index": {
-        "status": "indexed",
-        "index_type": "tfidf-cosine-v1",
-        "discovered_by": "Curator Verified",
-        "discovered_by_handle": "@alex",
-        "last_indexed_at": "2026-10-20T16:00:00Z"
-      },
-      "segments": []
     },
     "synthetic-resource-attention-youtube-v1": {
       "resource_version_id": "synthetic-resource-attention-youtube-v1",
@@ -118,24 +88,59 @@
         }
       ]
     },
-    "synthetic-resource-rag-lab-repo-v1": {
-      "resource_version_id": "synthetic-resource-rag-lab-repo-v1",
-      "title": "Code Lab Repository: FlashAttention & Tokenizer Benchmarks",
-      "canonical_url": "https://example.invalid/catalog/rag-benchmark-lab-repo",
+    "synthetic-resource-berlin-essay-v1": {
+      "resource_version_id": "synthetic-resource-berlin-essay-v1",
+      "title": "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)",
+      "canonical_url": "https://example.invalid/catalog/hedgehog-and-the-fox",
       "captured_at": "2026-10-20T16:00:00Z",
-      "category": "Code Lab",
-      "subject": "Engineering",
+      "category": "Book",
+      "subject": "Literature",
       "provider": {
-        "provider_id": "open-ml-press",
-        "display_name": "Open ML Press (Curator Verified)"
+        "provider_id": "university-press-catalog",
+        "display_name": "University Press Catalog"
       },
       "access": {
-        "model": "free",
-        "tier_label": "Free",
-        "cost_label": "$0",
+        "model": "library_loan",
+        "tier_label": "Library Loan",
+        "cost_label": "Institutional / Loan",
         "rights_label": "Link & metadata",
         "certificate_included": false,
         "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "index_type": "tfidf-cosine-v1",
+        "discovered_by": "Community Published",
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
+      },
+      "segments": []
+    },
+    "synthetic-resource-cert-prep-v1": {
+      "resource_version_id": "synthetic-resource-cert-prep-v1",
+      "title": "Applied Sequence Modeling Lab & Optional Certification Track",
+      "canonical_url": "https://example.invalid/catalog/sequence-lab-cert",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Course",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "systems-ai-institute",
+        "display_name": "Systems AI Institute"
+      },
+      "access": {
+        "model": "freemium_optional_certificate",
+        "tier_label": "Freemium",
+        "cost_label": "Core $0 · Cert $49",
+        "rights_label": "Link & metadata",
+        "certificate_included": true,
+        "optional_certificate_price_minor": 4900,
         "access_verified_at": "2026-10-20T16:00:00Z"
       },
       "ingestion_permissions": {
@@ -153,16 +158,16 @@
       },
       "segments": []
     },
-    "synthetic-resource-strang-youtube-v1": {
-      "resource_version_id": "synthetic-resource-strang-youtube-v1",
-      "title": "MIT OCW YouTube Lecture: Projection Matrices and Least Squares",
-      "canonical_url": "https://example.invalid/catalog/youtube-mit-projections",
+    "synthetic-resource-la-lab-v1": {
+      "resource_version_id": "synthetic-resource-la-lab-v1",
+      "title": "Numerical Linear Algebra Lab: Iterative Eigensolvers",
+      "canonical_url": "https://example.invalid/catalog/eigensolver-lab",
       "captured_at": "2026-10-20T16:00:00Z",
-      "category": "YouTube",
+      "category": "Code Lab",
       "subject": "Mathematics",
       "provider": {
-        "provider_id": "mit-ocw-youtube",
-        "display_name": "MIT OpenCourseWare · YouTube (Curator Verified)"
+        "provider_id": "open-math-commons",
+        "display_name": "Open Math Commons (Curator Verified)"
       },
       "access": {
         "model": "free",
@@ -186,13 +191,7 @@
         "discovered_by_handle": "@spectral_sam",
         "last_indexed_at": "2026-10-12T15:00:00Z"
       },
-      "segments": [
-        {
-          "segment_id": "seg-yt-projection",
-          "title": "12:40 — Deriving $P = A(A^T A)^{-1}A^T$",
-          "verified": true
-        }
-      ]
+      "segments": []
     },
     "synthetic-resource-la-notes-v1": {
       "resource_version_id": "synthetic-resource-la-notes-v1",
@@ -286,16 +285,16 @@
         }
       ]
     },
-    "synthetic-resource-la-lab-v1": {
-      "resource_version_id": "synthetic-resource-la-lab-v1",
-      "title": "Numerical Linear Algebra Lab: Iterative Eigensolvers",
-      "canonical_url": "https://example.invalid/catalog/eigensolver-lab",
+    "synthetic-resource-rag-lab-repo-v1": {
+      "resource_version_id": "synthetic-resource-rag-lab-repo-v1",
+      "title": "Code Lab Repository: FlashAttention & Tokenizer Benchmarks",
+      "canonical_url": "https://example.invalid/catalog/rag-benchmark-lab-repo",
       "captured_at": "2026-10-20T16:00:00Z",
       "category": "Code Lab",
-      "subject": "Mathematics",
+      "subject": "Engineering",
       "provider": {
-        "provider_id": "open-math-commons",
-        "display_name": "Open Math Commons (Curator Verified)"
+        "provider_id": "open-ml-press",
+        "display_name": "Open ML Press (Curator Verified)"
       },
       "access": {
         "model": "free",
@@ -316,135 +315,8 @@
         "status": "indexed",
         "index_type": "tfidf-cosine-v1",
         "discovered_by": "Curator Verified",
-        "discovered_by_handle": "@spectral_sam",
-        "last_indexed_at": "2026-10-12T15:00:00Z"
-      },
-      "segments": []
-    },
-    "synthetic-resource-war-and-peace-v1": {
-      "resource_version_id": "synthetic-resource-war-and-peace-v1",
-      "title": "War and Peace (Louise and Aylmer Maude translation)",
-      "canonical_url": "https://example.invalid/catalog/war-and-peace-maude",
-      "captured_at": "2026-10-20T16:00:00Z",
-      "category": "Book",
-      "subject": "Humanities",
-      "provider": {
-        "provider_id": "public-domain-classics",
-        "display_name": "Public Domain Classics Library (Curator Verified)"
-      },
-      "access": {
-        "model": "free",
-        "tier_label": "Free",
-        "cost_label": "$0",
-        "rights_label": "Link & metadata",
-        "certificate_included": false,
-        "optional_certificate_price_minor": null,
-        "access_verified_at": "2026-10-20T16:00:00Z"
-      },
-      "ingestion_permissions": {
-        "basis": "link_and_metadata_only",
-        "permissions": {
-          "display_excerpts": "denied"
-        }
-      },
-      "vector_index": {
-        "status": "indexed",
-        "index_type": "tfidf-cosine-v1",
-        "discovered_by": "Curator Verified",
-        "discovered_by_handle": "@tolstoy_seminar",
-        "last_indexed_at": "2026-10-16T18:00:00Z"
-      },
-      "segments": [
-        {
-          "segment_id": "seg-wp-book-3",
-          "title": "Book Three: Austerlitz",
-          "verified": true
-        },
-        {
-          "segment_id": "seg-wp-book-9",
-          "title": "Book Nine, Chapter 1: What causes a historical event",
-          "verified": true
-        }
-      ]
-    },
-    "synthetic-resource-anna-karenina-v1": {
-      "resource_version_id": "synthetic-resource-anna-karenina-v1",
-      "title": "Anna Karenina (Constance Garnett translation)",
-      "canonical_url": "https://example.invalid/catalog/anna-karenina-garnett",
-      "captured_at": "2026-10-20T16:00:00Z",
-      "category": "Book",
-      "subject": "Humanities",
-      "provider": {
-        "provider_id": "public-domain-classics",
-        "display_name": "Public Domain Classics Library (Curator Verified)"
-      },
-      "access": {
-        "model": "free",
-        "tier_label": "Free",
-        "cost_label": "$0",
-        "rights_label": "Link & metadata",
-        "certificate_included": false,
-        "optional_certificate_price_minor": null,
-        "access_verified_at": "2026-10-20T16:00:00Z"
-      },
-      "ingestion_permissions": {
-        "basis": "link_and_metadata_only",
-        "permissions": {
-          "display_excerpts": "denied"
-        }
-      },
-      "vector_index": {
-        "status": "indexed",
-        "index_type": "tfidf-cosine-v1",
-        "discovered_by": "Curator Verified",
-        "discovered_by_handle": "@tolstoy_seminar",
-        "last_indexed_at": "2026-10-16T18:00:00Z"
-      },
-      "segments": [
-        {
-          "segment_id": "seg-ak-part-7",
-          "title": "Part Seven: Anna's final journey",
-          "verified": true
-        },
-        {
-          "segment_id": "seg-ak-part-8",
-          "title": "Part Eight: Levin's resolution",
-          "verified": true
-        }
-      ]
-    },
-    "synthetic-resource-berlin-essay-v1": {
-      "resource_version_id": "synthetic-resource-berlin-essay-v1",
-      "title": "The Hedgehog and the Fox: An Essay on Tolstoy's View of History (Isaiah Berlin)",
-      "canonical_url": "https://example.invalid/catalog/hedgehog-and-the-fox",
-      "captured_at": "2026-10-20T16:00:00Z",
-      "category": "Book",
-      "subject": "Humanities",
-      "provider": {
-        "provider_id": "university-press-catalog",
-        "display_name": "University Press Catalog"
-      },
-      "access": {
-        "model": "library_loan",
-        "tier_label": "Library Loan",
-        "cost_label": "Institutional / Loan",
-        "rights_label": "Link & metadata",
-        "certificate_included": false,
-        "optional_certificate_price_minor": null,
-        "access_verified_at": "2026-10-20T16:00:00Z"
-      },
-      "ingestion_permissions": {
-        "basis": "link_and_metadata_only",
-        "permissions": {
-          "display_excerpts": "denied"
-        }
-      },
-      "vector_index": {
-        "status": "indexed",
-        "index_type": "tfidf-cosine-v1",
-        "discovered_by": "Community Published",
-        "discovered_by_handle": "@tolstoy_seminar",
-        "last_indexed_at": "2026-10-16T18:00:00Z"
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
       },
       "segments": []
     },
@@ -631,6 +503,134 @@
           "verified": true
         }
       ]
+    },
+    "synthetic-resource-strang-youtube-v1": {
+      "resource_version_id": "synthetic-resource-strang-youtube-v1",
+      "title": "MIT OCW YouTube Lecture: Projection Matrices and Least Squares",
+      "canonical_url": "https://example.invalid/catalog/youtube-mit-projections",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "YouTube",
+      "subject": "Mathematics",
+      "provider": {
+        "provider_id": "mit-ocw-youtube",
+        "display_name": "MIT OpenCourseWare · YouTube (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "index_type": "tfidf-cosine-v1",
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@spectral_sam",
+        "last_indexed_at": "2026-10-12T15:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-yt-projection",
+          "title": "12:40 — Deriving $P = A(A^T A)^{-1}A^T$",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-tokenization-v1": {
+      "resource_version_id": "synthetic-resource-tokenization-v1",
+      "title": "Reviewed Open Monograph: Subword Tokenization & Sequence Packing",
+      "canonical_url": "https://example.invalid/catalog/tokenization-monograph",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Engineering",
+      "provider": {
+        "provider_id": "open-ml-press",
+        "display_name": "Open ML Press (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "index_type": "tfidf-cosine-v1",
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@alex",
+        "last_indexed_at": "2026-10-20T16:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-bpe-overview",
+          "title": "Section 2.1: Byte-Pair Encoding Merge Tables",
+          "verified": true
+        }
+      ]
+    },
+    "synthetic-resource-war-and-peace-v1": {
+      "resource_version_id": "synthetic-resource-war-and-peace-v1",
+      "title": "War and Peace (Louise and Aylmer Maude translation)",
+      "canonical_url": "https://example.invalid/catalog/war-and-peace-maude",
+      "captured_at": "2026-10-20T16:00:00Z",
+      "category": "Book",
+      "subject": "Literature",
+      "provider": {
+        "provider_id": "public-domain-classics",
+        "display_name": "Public Domain Classics Library (Curator Verified)"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-20T16:00:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "indexed",
+        "index_type": "tfidf-cosine-v1",
+        "discovered_by": "Curator Verified",
+        "discovered_by_handle": "@tolstoy_seminar",
+        "last_indexed_at": "2026-10-16T18:00:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-wp-book-3",
+          "title": "Book Three: Austerlitz",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-wp-book-9",
+          "title": "Book Nine, Chapter 1: What causes a historical event",
+          "verified": true
+        }
+      ]
     }
   },
   "global_discovered_resources": {
@@ -685,6 +685,52 @@
         }
       ]
     },
+    "discovered-course-triton-kernels-v1": {
+      "resource_version_id": "discovered-course-triton-kernels-v1",
+      "title": "Open Course: GPU Kernel Programming with OpenAI Triton & FlashAttention-3",
+      "canonical_url": "https://example.invalid/catalog/triton-gpu-kernels-course",
+      "captured_at": "2026-10-25T14:20:00Z",
+      "category": "Course",
+      "subject": "Systems",
+      "provider": {
+        "provider_id": "gpu-mode-open-collective",
+        "display_name": "GPU MODE Open Collective · Web Search Grounded"
+      },
+      "access": {
+        "model": "free",
+        "tier_label": "Free",
+        "cost_label": "$0",
+        "rights_label": "Link & metadata",
+        "certificate_included": false,
+        "optional_certificate_price_minor": null,
+        "access_verified_at": "2026-10-25T14:20:00Z"
+      },
+      "ingestion_permissions": {
+        "basis": "link_and_metadata_only",
+        "permissions": {
+          "display_excerpts": "denied"
+        }
+      },
+      "vector_index": {
+        "status": "pending_reindex",
+        "index_type": "tfidf-cosine-v1",
+        "discovered_by": "AI Web Search",
+        "discovered_by_handle": "@ferris_ops",
+        "last_indexed_at": "2026-10-25T14:20:00Z"
+      },
+      "segments": [
+        {
+          "segment_id": "seg-triton-sram",
+          "title": "Lecture 3: Shared Memory Tiling & Warp Specialization",
+          "verified": true
+        },
+        {
+          "segment_id": "seg-triton-fa3",
+          "title": "Lecture 6: Asynchronous Tensor Cores & Ping-Pong Scheduling",
+          "verified": true
+        }
+      ]
+    },
     "discovered-youtube-rag-eval-playlist-v1": {
       "resource_version_id": "discovered-youtube-rag-eval-playlist-v1",
       "title": "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
@@ -732,52 +778,6 @@
         {
           "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid3",
           "title": "34:05 · Part 3: End-to-End Hybrid Retrieval + Reranker Ablation Walkthrough",
-          "verified": true
-        }
-      ]
-    },
-    "discovered-course-triton-kernels-v1": {
-      "resource_version_id": "discovered-course-triton-kernels-v1",
-      "title": "Open Course: GPU Kernel Programming with OpenAI Triton & FlashAttention-3",
-      "canonical_url": "https://example.invalid/catalog/triton-gpu-kernels-course",
-      "captured_at": "2026-10-25T14:20:00Z",
-      "category": "Course",
-      "subject": "Systems",
-      "provider": {
-        "provider_id": "gpu-mode-open-collective",
-        "display_name": "GPU MODE Open Collective · Web Search Grounded"
-      },
-      "access": {
-        "model": "free",
-        "tier_label": "Free",
-        "cost_label": "$0",
-        "rights_label": "Link & metadata",
-        "certificate_included": false,
-        "optional_certificate_price_minor": null,
-        "access_verified_at": "2026-10-25T14:20:00Z"
-      },
-      "ingestion_permissions": {
-        "basis": "link_and_metadata_only",
-        "permissions": {
-          "display_excerpts": "denied"
-        }
-      },
-      "vector_index": {
-        "status": "pending_reindex",
-        "index_type": "tfidf-cosine-v1",
-        "discovered_by": "AI Web Search",
-        "discovered_by_handle": "@ferris_ops",
-        "last_indexed_at": "2026-10-25T14:20:00Z"
-      },
-      "segments": [
-        {
-          "segment_id": "seg-triton-sram",
-          "title": "Lecture 3: Shared Memory Tiling & Warp Specialization",
-          "verified": true
-        },
-        {
-          "segment_id": "seg-triton-fa3",
-          "title": "Lecture 6: Asynchronous Tensor Cores & Ping-Pong Scheduling",
           "verified": true
         }
       ]

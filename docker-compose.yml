@@ -8,15 +8,77 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syllabus}
       POSTGRES_DB: ${POSTGRES_DB:-syllabus_dev}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./crates/persistence/migrations:/docker-entrypoint-initdb.d:ro
+      - syllabus_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-syllabus} -d $${POSTGRES_DB:-syllabus_dev}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  syllabus-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: syllabus-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      API_BIND_ADDR: 0.0.0.0:8080
+      DATABASE_URL: postgres://${POSTGRES_USER:-syllabus}:${POSTGRES_PASSWORD:-syllabus}@postgres:5432/${POSTGRES_DB:-syllabus_dev}
+      PUBLIC_WEB_ORIGIN: ${PUBLIC_WEB_ORIGIN:-http://localhost:3000}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-whsec_syllabus_io_dev_secret_key_2026}
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+  syllabus-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: syllabus-worker
+    restart: unless-stopped
+    command: ["syllabus-worker"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-syllabus}:${POSTGRES_PASSWORD:-syllabus}@postgres:5432/${POSTGRES_DB:-syllabus_dev}
+      WORKER_ID: ${WORKER_ID:-worker-main}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}
+
+  syllabus-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: syllabus-web
+    restart: unless-stopped
+    depends_on:
+      - syllabus-api
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: 3000
+      API_BASE_URL: http://syllabus-api:8080
+      PUBLIC_WEB_ORIGIN: ${PUBLIC_WEB_ORIGIN:-http://localhost:3000}
+      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      OAUTH_COOKIE_SECRET: ${OAUTH_COOKIE_SECRET:-}
+      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-whsec_syllabus_io_dev_secret_key_2026}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
 volumes:
-  postgres_data:
+  syllabus_pgdata:

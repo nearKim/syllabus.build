@@ -47,11 +47,26 @@ pub enum ContractValidationError {
 /// Returns the workspace root directory.
 #[must_use]
 pub fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
+    if let Ok(explicit) = std::env::var("SYLLABUS_WORKSPACE_ROOT") {
+        let trimmed = explicit.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+    let compile_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(|p| p.parent())
         .expect("workspace root")
-        .to_path_buf()
+        .to_path_buf();
+    if compile_root.join("specs").is_dir() {
+        return compile_root;
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        if cwd.join("specs").is_dir() {
+            return cwd;
+        }
+    }
+    compile_root
 }
 
 /// Authoritative backend JSON Schema Draft 2020-12 registry loaded from

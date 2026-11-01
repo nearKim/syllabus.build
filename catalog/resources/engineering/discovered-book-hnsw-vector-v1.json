@@ -1,0 +1,53 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "community_discovered",
+  "resource_version_id": "discovered-book-hnsw-vector-v1",
+  "title": "Book: Approximate Nearest Neighbor & HNSW Vector Indexing (Vector Indexing)",
+  "canonical_url": "https://example.invalid/catalog/discovered-book-hnsw-vector-v1",
+  "captured_at": "2026-10-26T18:00:00Z",
+  "category": "Book",
+  "subject": "Engineering",
+  "provider": {
+    "provider_id": "open-retrieval-press",
+    "display_name": "Open Retrieval Press · Indexed Book (ISBN 978-0-262-54118-3)"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-26T18:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "AI Web Search",
+    "discovered_by_handle": "@maya_dev",
+    "last_indexed_at": "2026-10-26T18:00:00Z"
+  },
+  "segments": [
+    {
+      "segment_id": "discovered-book-hnsw-vector-v1-ch1",
+      "title": "Ch. 1 · Dense Embedding Geometry & Cosine vs. Inner-Product Metrics (pp. 1–32)",
+      "verified": true
+    },
+    {
+      "segment_id": "discovered-book-hnsw-vector-v1-ch2",
+      "title": "Ch. 2 · Hierarchical Navigable Small World (HNSW) Graph Construction (pp. 33–74)",
+      "verified": true
+    },
+    {
+      "segment_id": "discovered-book-hnsw-vector-v1-ch3",
+      "title": "Ch. 3 · Recall@k vs. Latency Tradeoffs & Product Quantization (pp. 75–112)",
+      "verified": true
+    }
+  ]
+}

@@ -96,20 +96,58 @@ impl InMemoryTransactionalStore {
             if let Some(resource_type) = patch.resource_type {
                 let trimmed = resource_type.trim();
                 if !trimmed.is_empty() {
-                    record.resource_type = trimmed.to_string();
+                    record.resource_type = normalize_contract_resource_type(trimmed).to_string();
                 }
             }
             if let Some(description) = patch.description {
-                record.description = description.trim().to_string();
+                let mut desc = description.trim().to_string();
+                if let Some(ref segs) = patch.segment_titles {
+                    let cleaned_segs: Vec<String> = segs
+                        .iter()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    if !cleaned_segs.is_empty() && !desc.contains("Sections:") {
+                        desc = format!("{desc} Sections: {}.", cleaned_segs.join("; "));
+                    }
+                }
+                record.description = desc;
+            } else if let Some(segs) = patch.segment_titles {
+                let cleaned_segs: Vec<String> = segs
+                    .into_iter()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if !cleaned_segs.is_empty() {
+                    let base = record
+                        .description
+                        .split(" Sections:")
+                        .next()
+                        .unwrap_or(&record.description)
+                        .trim();
+                    record.description = format!("{base} Sections: {}.", cleaned_segs.join("; "));
+                }
             }
             if let Some(topics) = patch.topics {
-                let cleaned: Vec<String> = topics
+                let mut cleaned: Vec<String> = topics
                     .into_iter()
                     .map(|t| t.trim().to_string())
                     .filter(|t| !t.is_empty())
                     .collect();
+                if let Some(ref subject) = patch.subject {
+                    let subj = subject.trim().to_ascii_lowercase();
+                    if !subj.is_empty() && !cleaned.iter().any(|t| t.eq_ignore_ascii_case(&subj)) {
+                        cleaned.push(subj);
+                    }
+                }
                 if !cleaned.is_empty() {
                     record.topics = cleaned;
+                }
+            } else if let Some(subject) = patch.subject {
+                let subj = subject.trim().to_ascii_lowercase();
+                if !subj.is_empty() && !record.topics.iter().any(|t| t.eq_ignore_ascii_case(&subj))
+                {
+                    record.topics.push(subj);
                 }
             }
             if let Some(level) = patch.level {
@@ -181,26 +219,29 @@ impl InMemoryTransactionalStore {
             .filter(|r| r.syllabus_id == syllabus_id)
             .cloned()
             .collect();
-        let first = existing_revs
-            .first()
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "syllabus",
-                resource_id: syllabus_id.to_string(),
-            })?;
-        principal.require_learner_ownership(&first.owner_account_id)?;
-
-        existing_revs.sort_by_key(|r| r.revision_number);
-        let base_rev = existing_revs
-            .iter()
-            .rev()
-            .find(|r| r.is_active)
-            .or_else(|| existing_revs.last())
-            .expect("at least one revision");
-
-        let mut payload = base_rev.payload.clone();
-        if !payload.is_object() {
-            payload = json!({});
-        }
+        let mut payload = if let Some(first) = existing_revs.first() {
+            principal.require_learner_ownership(&first.owner_account_id)?;
+            existing_revs.sort_by_key(|r| r.revision_number);
+            let base_rev = existing_revs
+                .iter()
+                .rev()
+                .find(|r| r.is_active)
+                .or_else(|| existing_revs.last())
+                .expect("at least one revision");
+            let cloned = base_rev.payload.clone();
+            if cloned.is_object() {
+                cloned
+            } else {
+                json!({ "syllabus_id": syllabus_id, "title": syllabus_id, "modules": [] })
+            }
+        } else {
+            json!({
+                "syllabus_id": syllabus_id,
+                "title": syllabus_id,
+                "modules": [],
+                "activities": []
+            })
+        };
 
         let role = match input.role.as_deref().map(str::trim) {
             Some("supplemental" | "optional") => "supplemental",
@@ -743,5 +784,277 @@ fn ensure_provenance_source_id(payload: &mut Value, rv_id: &str) {
         if !arr.iter().any(|v| v.as_str() == Some(rv_id)) {
             arr.push(json!(rv_id));
         }
+    }
+}
+
+pub(crate) fn normalize_contract_resource_type(raw: &str) -> &'static str {
+    let lower = raw.trim().to_ascii_lowercase();
+    if lower.contains("video") || lower.contains("youtube") {
+        "video"
+    } else if lower.contains("textbook") {
+        "textbook"
+    } else if lower.contains("book") {
+        "book"
+    } else if lower.contains("course") {
+        "course"
+    } else if lower.contains("repo") || lower.contains("github") {
+        "repository"
+    } else if lower.contains("doc") {
+        "documentation"
+    } else if lower.contains("cert") {
+        "certification"
+    } else if lower.contains("project") || lower.contains("problem") || lower.contains("lab") {
+        "project"
+    } else {
+        "article"
+    }
+}
+
+fn collect_open_catalog_json_files(
+    dir: &std::path::Path,
+    out: &mut Vec<std::path::PathBuf>,
+) -> std::io::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?.filter_map(Result::ok).collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_open_catalog_json_files(&path, out)?;
+        } else if path.extension().and_then(|e| e.to_str()) == Some("json") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn parse_open_catalog_json_record(raw_json: &str) -> Option<CatalogResourceVersionRecord> {
+    let v: Value = serde_json::from_str(raw_json).ok()?;
+    let rv_id = v.get("resource_version_id")?.as_str()?.trim();
+    let title = v.get("title")?.as_str()?.trim();
+    let canonical_url = v.get("canonical_url")?.as_str()?.trim();
+    if rv_id.is_empty() || title.is_empty() || canonical_url.is_empty() {
+        return None;
+    }
+
+    let resource_id = rv_id.strip_suffix("-v1").unwrap_or(rv_id).to_string();
+    let category = v
+        .get("category")
+        .and_then(Value::as_str)
+        .unwrap_or("Article");
+    let resource_type = normalize_contract_resource_type(category).to_string();
+    let subject = v
+        .get("subject")
+        .and_then(Value::as_str)
+        .unwrap_or("Engineering")
+        .trim();
+
+    let provider_obj = v.get("provider");
+    let provider_id = provider_obj
+        .and_then(|p| p.get("provider_id"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("community-open-catalog")
+        .to_string();
+    let provider_display_name = provider_obj
+        .and_then(|p| p.get("display_name"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Open Community Catalog")
+        .to_string();
+
+    let access_obj = v.get("access");
+    let access_model = access_obj
+        .and_then(|a| a.get("model"))
+        .and_then(|m| serde_json::from_value::<CatalogAccessModel>(m.clone()).ok())
+        .unwrap_or(CatalogAccessModel::FreePublic);
+    let cert_included = access_obj
+        .and_then(|a| a.get("certificate_included"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let optional_cert_price = access_obj
+        .and_then(|a| a.get("optional_certificate_price_minor"))
+        .and_then(Value::as_u64);
+    let price_minor_units = match access_model {
+        CatalogAccessModel::FreePublic => Some(0),
+        _ => optional_cert_price.or(Some(0)),
+    };
+
+    let mut topics: Vec<String> = v
+        .get("topic_tags")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(Value::as_str)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    if !subject.is_empty() && !topics.iter().any(|t| t.eq_ignore_ascii_case(subject)) {
+        topics.push(subject.to_ascii_lowercase());
+    }
+    if topics.is_empty() {
+        topics.push("general".to_string());
+    }
+
+    let segment_titles: Vec<String> = v
+        .get("segments")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|seg| seg.get("title").and_then(Value::as_str))
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let summary = v
+        .get("summary")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let description = match (summary, segment_titles.is_empty()) {
+        (Some(s), true) => s.to_string(),
+        (Some(s), false) => format!("{s} Sections: {}.", segment_titles.join("; ")),
+        (None, false) => format!(
+            "{category} in {subject} from {provider_display_name}. Sections: {}.",
+            segment_titles.join("; ")
+        ),
+        (None, true) => format!("{category} in {subject} from {provider_display_name}."),
+    };
+
+    let captured_at = v
+        .get("captured_at")
+        .and_then(Value::as_str)
+        .unwrap_or("2026-10-30T00:00:00Z")
+        .to_string();
+    let allow_excerpts = v
+        .get("ingestion_permissions")
+        .and_then(|ip| ip.get("permissions"))
+        .and_then(|p| p.get("display_excerpts"))
+        .and_then(Value::as_str)
+        == Some("allowed");
+
+    let is_synthetic_fixture = rv_id.starts_with("synthetic-")
+        || canonical_url.contains("example.invalid")
+        || v.get("catalog_collection").and_then(Value::as_str) == Some("synthetic_fixture");
+
+    Some(CatalogResourceVersionRecord {
+        resource_version_id: rv_id.to_string(),
+        resource_id,
+        version_number: 1,
+        title: title.to_string(),
+        provider_id,
+        provider_display_name,
+        canonical_url: canonical_url.to_string(),
+        resource_type,
+        language: "en".to_string(),
+        description,
+        topics,
+        level: "intermediate".to_string(),
+        objective_ids: Vec::new(),
+        access_model,
+        currency: Some("USD".to_string()),
+        price_minor_units,
+        subscription_ids: Vec::new(),
+        is_optional_certification: cert_included || optional_cert_price.is_some(),
+        review_status: ResourceReviewStatus::Approved,
+        review_evidence: Some(CatalogReviewEvidence {
+            reviewer_principal_id: "open-catalog-git".to_string(),
+            reviewed_at: captured_at,
+            pedagogical_fit_score: 5,
+            accuracy_score: 5,
+            accessibility_score: 5,
+            rights_verified: true,
+            rationale: "Open Git-tracked community catalog resource.".to_string(),
+            credibility_basis: "expert_practitioner".to_string(),
+            evidence_url: canonical_url.to_string(),
+        }),
+        freshness_state: ResourceFreshnessState::Healthy,
+        acquisition_permission: AcquisitionPermission {
+            allow_metadata: true,
+            allow_link_out: true,
+            allow_short_excerpt: allow_excerpts,
+            allow_full_text_storage: false,
+            allow_embedding: true,
+            allow_redistribution: false,
+            license_spdx_or_custom: "LinkOut-Metadata-Only".to_string(),
+            requires_attribution: true,
+            attribution_text: Some(title.to_string()),
+            notes: Some("Loaded from open Git catalog/resources registry.".to_string()),
+        },
+        is_synthetic_fixture,
+        metadata_embedding: None,
+    })
+}
+
+impl InMemoryTransactionalStore {
+    /// Loads contributor-editable JSON resource files from `<catalog_dir>/resources/**/*.json`
+    /// (or `<catalog_dir>/**/*.json` if pointed directly at `catalog/resources`), inserting any
+    /// new `resource_version_id` entries into `catalog_resources` and the TF-IDF search index.
+    pub fn load_open_catalog_from_dir(
+        &self,
+        catalog_dir: &std::path::Path,
+    ) -> Result<usize, PersistenceError> {
+        let resources_root = if catalog_dir.join("resources").is_dir() {
+            catalog_dir.join("resources")
+        } else {
+            catalog_dir.to_path_buf()
+        };
+        let mut files = Vec::new();
+        collect_open_catalog_json_files(&resources_root, &mut files)
+            .map_err(|e| PersistenceError::Validation(format!("open catalog read failed: {e}")))?;
+
+        let mut parsed_records = Vec::new();
+        for file_path in files {
+            if let Ok(raw) = std::fs::read_to_string(&file_path) {
+                if let Some(rec) = parse_open_catalog_json_record(&raw) {
+                    parsed_records.push(rec);
+                }
+            }
+        }
+        if parsed_records.is_empty() {
+            return Ok(0);
+        }
+
+        let mut guard = self.write_inner();
+        let mut inserted = 0usize;
+        for rec in parsed_records {
+            if !guard.catalog_resources.contains_key(&rec.resource_version_id) {
+                Self::sync_catalog_tfidf_entry_locked(&mut guard, &rec);
+                guard
+                    .catalog_resources
+                    .insert(rec.resource_version_id.clone(), rec);
+                inserted += 1;
+            }
+        }
+        Ok(inserted)
+    }
+
+    /// Resolves the workspace `catalog/resources` directory (via `OPEN_CATALOG_DIR` or
+    /// `<repo_root>/catalog/resources`) and loads any new open-catalog JSON entries.
+    pub fn load_open_catalog_from_workspace(&self) -> usize {
+        if let Ok(custom) = std::env::var("OPEN_CATALOG_DIR") {
+            let trimmed = custom.trim();
+            if !trimmed.is_empty() {
+                return self
+                    .load_open_catalog_from_dir(std::path::Path::new(trimmed))
+                    .unwrap_or(0);
+            }
+        }
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        if let Some(repo_root) = manifest_dir.parent().and_then(|p| p.parent()) {
+            let default_dir = repo_root.join("catalog").join("resources");
+            if default_dir.is_dir() {
+                return self.load_open_catalog_from_dir(&default_dir).unwrap_or(0);
+            }
+        }
+        0
     }
 }

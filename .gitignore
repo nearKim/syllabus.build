@@ -5,6 +5,8 @@ dist/
 .next/
 out/
 coverage/
+.data/
+apps/web/.data/
 
 # Environment and local secrets
 .env

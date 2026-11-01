@@ -81,6 +81,32 @@ import {
   type IntakePipelineExecutionReceipt, type IntakeSubject,
 } from "./components/NewSyllabusDialog.tsx";
 import { buildLiveDraftPrompt, type LiveDraftOutcome, type LiveDraftRequest } from "./liveDraft.ts";
+import {
+  buildDeterministicConceptCheck,
+  buildDiagnosticQuestionForObjective,
+  type GeneratedConceptCheck,
+  type LiveTutorModelRequest,
+} from "./liveTutor.ts";
+import {
+  DeleteSyllabusDialog,
+  DiagnosticCheckDialog,
+  SYLLABUS_EDIT_MODES,
+  SyllabusStructureEditorDialog,
+  activityPromptOfRaw,
+  applyAcceptedAdaptationToSyllabus,
+  buildDynamicAdaptationProposal,
+  buildDynamicDiagnosticSession,
+  buildEffectiveProficiency,
+  moveSyllabusActivity,
+  moveSyllabusModule,
+  mutateSyllabusMeta,
+  removeSyllabusActivity,
+  removeSyllabusModule,
+  upsertSyllabusActivity,
+  upsertSyllabusModule,
+  type ProficiencyOverrideEntry,
+  type SyllabusEditMode,
+} from "./components/SyllabusEditorAndDiagnosticDialogs.tsx";
 import { createSyllabusSignalStore, type SyllabusSignalStore } from "./state/store.ts";
 
 export {
@@ -142,7 +168,9 @@ export interface SyllabusWebAppStateInput {
   readonly practiceSubmitted?: boolean; readonly practiceChoice?: string | null;
   readonly skippedActivityIds?: readonly string[];
   readonly completedSubtaskIds?: readonly string[];
-  readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly reminderTimezone?: string; readonly keyVisible?: boolean;
+  readonly remindersEnabled?: boolean; readonly remindersPaused?: boolean; readonly reminderTimezone?: string;
+  readonly reminderWeekdayTime?: string; readonly reminderWeekendTime?: string; readonly reminderLeadMinutes?: string;
+  readonly keyVisible?: boolean;
   readonly diagnosticControl?: "active" | "paused" | "stopped";
   readonly adaptationChoice?: "pending" | "accept_reviewed" | "keep_current";
   readonly loadMoreNote?: string | null; readonly intakeNote?: string | null;
@@ -160,6 +188,8 @@ export interface SyllabusWebAppStateInput {
   readonly marketplaceTopicsExpanded?: boolean;
   readonly votes?: readonly Vote[]; readonly adoptions?: readonly Adoption[];
   readonly publishedListings?: readonly MarketplaceListing[];
+  readonly unpublishedPublicationIds?: readonly string[];
+  readonly unpublishPublicationId?: string | null;
   readonly adoptPublicationId?: string | null; readonly adoptModuleIds?: readonly string[];
   readonly resourceScope?: ResourceScope; readonly resourceCategory?: ResourceCategory;
   readonly adminConsoleOpen?: boolean;
@@ -176,6 +206,7 @@ export interface SyllabusWebAppStateInput {
   readonly intakeSelectedResourceIds?: readonly string[]; readonly intakeSkippedResourceIds?: readonly string[];
   readonly generatedPlans?: readonly ActiveSyllabus[];
   readonly syllabusOverrides?: Readonly<Record<string, Record<string, unknown>>>;
+  readonly scheduleOverrides?: Readonly<Record<string, Record<string, unknown>>>;
   readonly userLibraryResourceIds?: readonly string[];
   readonly resourceEditorMode?: ResourceEditorMode;
   readonly editingResourceId?: string | null;
@@ -186,6 +217,22 @@ export interface SyllabusWebAppStateInput {
   readonly resourceEditorError?: string | null;
   readonly resourceNotice?: string | null;
   readonly lastPipelineReceipt?: IntakePipelineExecutionReceipt | null;
+  readonly dynamicConceptChecks?: Readonly<Record<string, ConceptCheck>>;
+  readonly conceptCheckSeed?: number;
+  readonly proficiencyOverrides?: Readonly<Record<string, ProficiencyOverrideEntry>>;
+  readonly deletedSyllabusIds?: readonly string[];
+  readonly diagnosticObjectiveId?: string | null;
+  readonly diagnosticChoice?: string | null;
+  readonly diagnosticFeedback?: { readonly passed: boolean; readonly message: string } | null;
+  readonly syllabusEditMode?: SyllabusEditMode;
+  readonly editingSyllabusModuleId?: string | null;
+  readonly editingSyllabusActivityId?: string | null;
+  readonly syllabusEditorError?: string | null;
+  readonly syllabusEditorNotice?: string | null;
+  readonly authResetEmail?: string;
+  readonly emailVerified?: boolean;
+  readonly emailVerificationPending?: boolean;
+  readonly billingNotice?: string | null;
 }
 
 type MinuteTuple = readonly [media: number, reading: number, practice: number, assessment: number, review: number];
@@ -616,7 +663,7 @@ const ACTIVE_SYLLABI: readonly ActiveSyllabus[] = [
 ];
 
 const planIn = (plans: readonly ActiveSyllabus[], syllabusId: unknown): ActiveSyllabus =>
-  plans.find((plan) => plan.syllabusId === syllabusId) ?? RAG_PLAN;
+  plans.find((plan) => plan.syllabusId === syllabusId) ?? plans[0] ?? RAG_PLAN;
 
 const RUST_ASYNC_SYLLABUS: Record<string, unknown> = {
   schema_version: "0.2.0", syllabus_id: "syllabus-rust-async-004",
@@ -892,9 +939,10 @@ const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
 
 const PRACTICE_ACTIONS: ReadonlySet<string> = new Set(["request-hint", "study-worked-solution", "submit-practice"]);
 
-// Actions that need no valid session: signing in or out, browsing the Marketplace, appearance, and view layout.
+// Actions that need no valid session: signing in, password recovery, browsing the Marketplace, appearance, and view layout.
 const OPEN_ACTIONS: ReadonlySet<string> = new Set([
-  "submit-sign-in", "submit-sign-up", "switch-auth-mode", "toggle-auth-password",
+  "submit-sign-in", "submit-sign-up", "request-password-reset", "confirm-password-reset",
+  "switch-auth-mode", "toggle-auth-password",
   "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
   "set-marketplace-filter", "toggle-marketplace-topics", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query",
   "load-more",
@@ -912,8 +960,10 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "normalize", label: "It makes each row of attention weights sum to 1" },
       { value: "cost", label: "It makes attention cost linear instead of quadratic in sequence length" },
     ],
+    correctValue: "variance",
     hint: "Suppose the entries of q and k are independent, with mean 0 and variance 1. The dot product $q \\cdot k$ adds $d_k$ such products. What is its variance?",
     solution: "The dot product q·k has variance d_k. Dividing by $\\sqrt{d_k}$ brings the variance back to $1$, so the softmax does not saturate and its gradients stay useful. The softmax, not the scale, makes each row sum to 1. The scale does not change the quadratic cost.",
+    generatedBy: "curated",
   },
   "publication-linear-algebra-001": {
     formula: "A = Q \\Lambda Q^T",
@@ -923,8 +973,10 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "invertible", label: "Every real symmetric matrix is invertible" },
       { value: "distinct", label: "Its eigenvalues are always distinct" },
     ],
+    correctValue: "orthogonal",
     hint: "Take eigenvectors $v_1$ and $v_2$ with eigenvalues $\\lambda_1 \\neq \\lambda_2$. Compute $v_1^T A v_2$ in two ways, and use $A^T = A$.",
     solution: "Because $A^T = A$, $v_1^T A v_2$ equals both $\\lambda_2 v_1^T v_2$ and $\\lambda_1 v_1^T v_2$. With $\\lambda_1 \\neq \\lambda_2$, this forces $v_1^T v_2 = 0$. The spectral theorem also gives a full set of real eigenvectors, so each repeated eigenvalue has an orthonormal basis for its eigenspace. These orthonormal eigenvectors are the columns of $Q$, and the eigenvalues fill the diagonal of $\\Lambda$. The zero matrix and the identity show that $A$ need not be invertible or have distinct eigenvalues.",
+    generatedBy: "curated",
   },
   "publication-statmech-001": {
     formula: "P_i = \\frac{1}{Z} e^{-\\beta E_i}",
@@ -934,8 +986,10 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "energy", label: "It is the mean energy of the system" },
       { value: "temperature", label: "It sets the temperature of the heat bath" },
     ],
+    correctValue: "normalize",
     hint: "Add $P_i$ over every microstate $i$. What must the total be, and what does that force $Z$ to equal?",
     solution: "The probabilities must sum to $1$, so $Z = \\sum_j e^{-\\beta E_j}$, a sum over states. The bath temperature enters through $\\beta = \\frac{1}{k_B T}$, not through $Z$. The mean energy comes from $Z$ as $\\langle E \\rangle = -\\frac{\\partial \\ln Z}{\\partial \\beta}$, but $Z$ itself is not an energy.",
+    generatedBy: "curated",
   },
   "publication-rust-async-001": {
     formula: "\\mathrm{poll}(cx) \\in \\{\\mathrm{Pending}, \\mathrm{Ready}(T)\\}",
@@ -945,8 +999,10 @@ const CONCEPT_CHECKS: Readonly<Record<string, ConceptCheck>> = {
       { value: "spin", label: "Loop inside poll until the result is ready" },
       { value: "nothing", label: "Nothing, because the executor polls every pending future again on its next tick" },
     ],
+    correctValue: "waker",
     hint: "After Pending, the executor parks the task. What tells the executor that the task is worth polling again?",
     solution: "Before it returns Pending, the future stores or registers cx.waker() with the I/O source, timer, or task that it waits on. That source calls wake() when progress is possible, and only then does the executor poll the task again. A loop inside poll blocks the executor thread, and an executor does not poll a parked task again by itself.",
+    generatedBy: "curated",
   },
 };
 
@@ -1152,6 +1208,49 @@ const rubricOf = (syllabus: Record<string, unknown>, activityId: string): SelfCh
   return typeof ref === "string" ? SELF_CHECK_RUBRICS[ref] ?? null : null;
 };
 
+function resolveActivityConceptCheck(
+  plan: ActiveSyllabus,
+  syllabus: Record<string, unknown>,
+  activityId: string,
+  dynamicChecks: Readonly<Record<string, ConceptCheck>> = {},
+): ConceptCheck | null {
+  if (dynamicChecks[activityId]) return dynamicChecks[activityId]!;
+  if (plan.publicationId && CONCEPT_CHECKS[plan.publicationId]) {
+    return CONCEPT_CHECKS[plan.publicationId]!;
+  }
+  if (
+    plan.publicationId === "publication-tolstoy-001" ||
+    plan.assessmentMode === "Self-Check Rubric" ||
+    rubricOf(syllabus, activityId) !== null
+  ) {
+    return null;
+  }
+  const rawActs = rawListOf(syllabus, "activities");
+  const rawAct = rawActs.find((a) => a["activity_id"] === activityId);
+  if (!rawAct) return null;
+  const rawModules = rawListOf(syllabus, "modules");
+  const holder =
+    rawModules.find((m) => normalizeStringList(m["activity_ids"]).includes(activityId)) ?? rawModules[0];
+  const objIds = normalizeStringList(rawAct["objective_ids"]);
+  const rawObjectives = rawListOf(syllabus, "objectives");
+  const rawObj =
+    rawObjectives.find((o) => objIds.includes(String(o["objective_id"] ?? ""))) ?? rawObjectives[0];
+  return buildDeterministicConceptCheck({
+    syllabusTitle: goalTitleOf(syllabus),
+    subject: typeof syllabus["subject"] === "string" ? syllabus["subject"] : plan.domain,
+    moduleTitle: typeof holder?.["title"] === "string" ? holder["title"] : "Core Unit",
+    activityId,
+    activityTitle: typeof rawAct["title"] === "string" ? rawAct["title"] : activityId,
+    activityType: typeof rawAct["type"] === "string" ? rawAct["type"] : "theory",
+    activityPrompt: activityPromptOfRaw(rawAct),
+    objectiveId: typeof rawObj?.["objective_id"] === "string" ? rawObj["objective_id"] : undefined,
+    objectiveTitle: typeof rawObj?.["title"] === "string" ? rawObj["title"] : undefined,
+    successCriterion:
+      typeof rawObj?.["success_criterion"] === "string" ? rawObj["success_criterion"] : undefined,
+    variantSeed: 0,
+  });
+}
+
 const activityIdsOf = (syllabus: Record<string, unknown>): ReadonlySet<string> =>
   new Set(rawListOf(syllabus, "activities").map((entry) => entry["activity_id"]).filter((id): id is string => typeof id === "string"));
 
@@ -1197,19 +1296,44 @@ const plansFor = (
   listings: readonly MarketplaceListing[],
   generatedPlans: readonly ActiveSyllabus[] = [],
   syllabusOverrides: Readonly<Record<string, Record<string, unknown>>> = {},
-): readonly ActiveSyllabus[] =>
-  [
+  scheduleOverrides: Readonly<Record<string, Record<string, unknown>>> = {},
+  deletedSyllabusIds: readonly string[] = [],
+): readonly ActiveSyllabus[] => {
+  const deletedSet = new Set(deletedSyllabusIds);
+  const resolved = [
     ...ACTIVE_SYLLABI,
     ...adoptions.filter((adoption) => adoption.accountId === accountId).flatMap((adoption) => {
       const listing = listings.find((entry) => entry.publicationId === adoption.publicationId);
       return listing ? [adoptedPlanOf(listing, adoption)] : [];
     }),
     ...generatedPlans.filter((plan) => (plan.syllabus["account_id"] ?? accountId) === accountId),
-  ].map((plan) =>
-    syllabusOverrides[plan.syllabusId]
-      ? { ...plan, syllabus: syllabusOverrides[plan.syllabusId]! }
-      : plan,
-  );
+  ]
+    .filter((plan) => !deletedSet.has(plan.syllabusId))
+    .map((plan) => ({
+      ...plan,
+      ...(syllabusOverrides[plan.syllabusId] ? { syllabus: syllabusOverrides[plan.syllabusId]! } : {}),
+      ...(scheduleOverrides[plan.syllabusId] ? { schedule: scheduleOverrides[plan.syllabusId]! } : {}),
+    }));
+  if (resolved.length > 0) return resolved;
+  return [
+    makeActiveSyllabus(
+      "syllabus-starter-empty",
+      {
+        ...DEFAULT_SYNTHETIC_SYLLABUS,
+        syllabus_id: "syllabus-starter-empty",
+        account_id: accountId,
+        goal: {
+          title: "Starter Study Workspace",
+          summary: "Create a new syllabus with AI or adopt a community syllabus from Explore.",
+          included_topics: [],
+          excluded_topics: [],
+        },
+      },
+      { ...DEFAULT_SYNTHETIC_SCHEDULE, schedule_id: "schedule-starter-empty" },
+      null,
+    ),
+  ];
+};
 
 function renderInspector(props: Parameters<typeof InspectorDrawer>[0]): string {
   return renderToString(h(InspectorDrawer, props));
@@ -1325,21 +1449,32 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
   const authStatus: AuthStatus = inputState.authStatus ?? "authenticated";
   const account: Account = inputState.account ?? PERSONAS.learner;
   const signedOut = authStatus === "guest";
-  const listings = [...MARKETPLACE_LISTINGS, ...(inputState.publishedListings ?? [])];
+  const unpublishedSet = new Set(inputState.unpublishedPublicationIds ?? []);
+  const listings = [...MARKETPLACE_LISTINGS, ...(inputState.publishedListings ?? [])].filter(
+    (entry) => !unpublishedSet.has(entry.publicationId),
+  );
   const votes = inputState.votes ?? [];
   const adoptions = inputState.adoptions ?? [];
   const generatedPlans = inputState.generatedPlans ?? [];
   const syllabusOverrides = inputState.syllabusOverrides ?? {};
-  const plans = plansFor(account.accountId, adoptions, listings, generatedPlans, syllabusOverrides);
+  const scheduleOverrides = inputState.scheduleOverrides ?? {};
+  const deletedSyllabusIds = inputState.deletedSyllabusIds ?? [];
+  const plans = plansFor(account.accountId, adoptions, listings, generatedPlans, syllabusOverrides, scheduleOverrides, deletedSyllabusIds);
   // A syllabus or schedule in the input replaces the selected plan's own, so single-plan callers keep working.
   const registered = planIn(plans, inputState.selectedSyllabusId);
   const selectedPlan: ActiveSyllabus = {
     ...registered,
     syllabus: syllabusOverrides[registered.syllabusId] ?? inputState.syllabus ?? registered.syllabus,
-    schedule: inputState.schedule ?? registered.schedule,
+    schedule: scheduleOverrides[registered.syllabusId] ?? inputState.schedule ?? registered.schedule,
   };
   const { syllabus, schedule } = selectedPlan;
-  const proficiency = inputState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
+  const proficiencyOverrides = inputState.proficiencyOverrides ?? {};
+  const hasProficiencyOverrides = Object.keys(proficiencyOverrides).length > 0;
+  const proficiency = buildEffectiveProficiency(
+    inputState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY,
+    syllabus,
+    proficiencyOverrides,
+  );
   const catalogResources = inputState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
 
   const viewportWidthPx = inputState.viewportWidthPx ?? 1280;
@@ -1397,12 +1532,24 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     ifMatch: `"${basePlanModel.revisionId}-etag"`, confirmedByLearner: true, acknowledgeScheduleChanges: true,
   });
 
+  const diagnosticControl = inputState.diagnosticControl ?? "active";
+  const hasSyllabusOverride = Boolean(syllabusOverrides[selectedPlan.syllabusId]);
+  const effectiveDiagnosticSession =
+    inputState.diagnosticSession ??
+    (selectedPlan.syllabusId === "syllabus-rag-python-001" && !hasProficiencyOverrides && !hasSyllabusOverride && diagnosticControl === "active"
+      ? DEFAULT_DIAGNOSTIC_SESSION
+      : buildDynamicDiagnosticSession(selectedPlan.syllabusId, syllabus, proficiency, diagnosticControl));
   const diagnosticState = createDiagnosticFlowController(
-    inputState.diagnosticSession ?? DEFAULT_DIAGNOSTIC_SESSION, proficiency, resolvedThemeMode,
+    effectiveDiagnosticSession, proficiency, resolvedThemeMode,
   ).getState();
 
+  const effectiveAdaptationProposal =
+    inputState.adaptationProposal ??
+    (selectedPlan.syllabusId === "syllabus-rag-python-001" && !hasProficiencyOverrides && !hasSyllabusOverride
+      ? DEFAULT_ADAPTATION_PROPOSAL
+      : buildDynamicAdaptationProposal(selectedPlan.syllabusId, syllabus, proficiency, DEFAULT_ADAPTATION_PROPOSAL));
   const adaptationDiff = createAdaptationDiffController(
-    inputState.adaptationProposal ?? DEFAULT_ADAPTATION_PROPOSAL, resolvedThemeMode,
+    effectiveAdaptationProposal, resolvedThemeMode,
   ).getDiffModel();
 
   // Marketplace: public listings filtered and sorted for this viewer. Counts are public totals across accounts.
@@ -1451,10 +1598,16 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
   });
 
   const selectedTimezone = inputState.reminderTimezone ?? "America/New_York";
+  const reminderWeekdayTime = inputState.reminderWeekdayTime ?? "19:00";
+  const reminderWeekendTime = inputState.reminderWeekendTime ?? "10:00";
+  const reminderLeadMinutes = inputState.reminderLeadMinutes ?? "15";
+  const parsedLeadMinutes = Number.parseInt(reminderLeadMinutes, 10);
   const reminderState = createReminderPreferenceController(
     {
       enabled: true, channels: ["email", "web_push"], timezone: selectedTimezone,
-      quiet_hours: { start_local_time: "22:00", end_local_time: "07:30" }, lead_time_minutes: 15, version: 1, etag: '"notification-prefs-v1"',
+      quiet_hours: { start_local_time: "22:00", end_local_time: "07:30" },
+      lead_time_minutes: Number.isFinite(parsedLeadMinutes) && parsedLeadMinutes >= 0 ? parsedLeadMinutes : 15,
+      version: 1, etag: '"notification-prefs-v1"',
     },
     [{ occurrence_id: "reminder-occ-001", session_id: "session-today-1", scheduled_for: "2026-10-26T17:45:00-04:00", status: "scheduled" }],
     resolvedThemeMode,
@@ -1476,7 +1629,6 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
   const remindersOn = inputState.remindersEnabled ?? reminderState.enabled;
   const remindersPaused = inputState.remindersPaused ?? false;
   const keyVisible = inputState.keyVisible ?? false;
-  const diagnosticControl = inputState.diagnosticControl ?? "active";
   const adaptationChoice = inputState.adaptationChoice ?? "pending";
   const loadMoreNote = inputState.loadMoreNote ?? null;
   const intakeNote = inputState.intakeNote ?? null;
@@ -1632,7 +1784,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
       rigor: mathDepthFor(syllabus, selectedActivity.objectiveIds.flatMap((objectiveId) => topicOf.get(objectiveId) ?? [])),
       deliverables: deliverablesOf(syllabus, selectedActivity.activityId), catalogResources,
       rubric: rubricOf(syllabus, selectedActivity.activityId),
-      conceptCheck: CONCEPT_CHECKS[selectedPlan.publicationId ?? ""] ?? null,
+      conceptCheck: resolveActivityConceptCheck(selectedPlan, syllabus, selectedActivity.activityId, inputState.dynamicConceptChecks ?? {}),
       practice: { hintRequested, workedSolutionRevealed, submitted: practiceSubmitted, choice: practiceChoice },
       skipRecorded: skippedActivityIds.has(selectedActivity.activityId),
       completedSubtaskIds: inputState.completedSubtaskIds ?? [],
@@ -1800,7 +1952,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     return humanize(nodeId);
   };
   const adaptationChoiceCopy = adaptationChoice === "accept_reviewed"
-    ? "Accept revision was reviewed on this screen. No live adaptation route accepted it, so the current plan stays in place."
+    ? "Revision applied to your active syllabus. Corroborated introductory steps were waived and targeted bridge work was inserted."
     : adaptationChoice === "keep_current"
       ? "Current plan kept. The proposal was not accepted."
       : "Review these suggested changes before applying them to your syllabus.";
@@ -1851,7 +2003,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
       const preview = rescheduleSessionId === sessionId
         ? `<p class="prose session-reschedule-note" role="status">${
             rescheduleValue
-              ? `Session ${sessionNum} moves to <strong>${escapeHtml(humanTime)}</strong>. Not saved yet.`
+              ? `Session ${sessionNum} rescheduled to <strong>${escapeHtml(humanTime)}</strong> · Saved.`
               : `Choose a date and time in ${escapeHtml(timezoneLabel)}.`
           }</p>`
         : "";
@@ -1999,6 +2151,8 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
               <h1 class="page-title plan-title">${escapeHtml(goalTitleOf(syllabus))}</h1>
               <div class="plan-toolbar">
                 ${selectedPlan.draft ? `<button type="button" class="btn-primary" data-action="activate-revision" data-syllabus-id="${escapeHtml(revisionActivationReq.syllabusId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}">Activate plan</button>` : `<button type="button" class="btn-secondary" data-action="activate-revision" data-syllabus-id="${escapeHtml(revisionActivationReq.syllabusId)}" data-revision-id="${escapeHtml(revisionActivationReq.revisionId)}" data-if-match="${escapeHtml(revisionActivationReq.headers["If-Match"] ?? "")}" hidden>Activate plan</button>`}
+                <button type="button" class="btn-secondary" data-action="open-syllabus-editor" data-syllabus-edit-mode="syllabus">Edit structure</button>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Preview adaptation</button>
                 <button type="button" class="btn-secondary" data-action="open-resource-editor" data-editor-mode="ingest" data-syllabus-id="${escapeHtml(selectedPlan.syllabusId)}">+ Add resource</button>
                 <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share with Community</button>
                 <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Resume Study<span aria-hidden="true">→</span></button>
@@ -2057,6 +2211,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
               <label class="field field-inline" for="progress-syllabus-control" hidden><span>Syllabus</span>
                 <select id="progress-syllabus-control" name="progress-syllabus" data-action="select-syllabus">${planOptionsHtml}</select>
               </label>
+              <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-adaptation-diff">Preview adaptation</button>
               <button type="button" class="btn-secondary" data-action="navigate-learn-sub" data-sub-destination="Today">Open Study Flow<span aria-hidden="true">→</span></button>
             </div>
           </div>
@@ -2179,6 +2334,23 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                   ${inputState.profileNotice ? `<p class="profile-save-status" role="status">${escapeHtml(inputState.profileNotice)}</p>` : ""}
                 </div>
               </form>
+            </div>
+            <div class="profile-verification-bar" data-email-verified="${Boolean(inputState.emailVerified)}">
+              <div class="profile-verification-copy">
+                <span class="badge" data-verified="${Boolean(inputState.emailVerified)}">${inputState.emailVerified ? "Email verified" : "Email unverified"}</span>
+                <span class="row-meta">${inputState.emailVerified ? `Recovery and study notifications are active for ${escapeHtml(account.email)}.` : "Verify your email address to enable account recovery and scheduled study notifications."}</span>
+              </div>
+              ${inputState.emailVerified ? "" : `<div class="profile-verification-controls">
+                <button type="button" class="btn-secondary" data-action="request-email-verification">Send verification code</button>
+                <form class="email-verify-form" data-action="confirm-email-verification" novalidate>
+                  <label class="field" for="profile-verify-code-input">
+                    <span class="st-sr">Email verification code</span>
+                    <span class="field-hint" id="profile-verify-code-hint">6-digit code</span>
+                    <input id="profile-verify-code-input" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="6-digit code" aria-describedby="profile-verify-code-hint" autocomplete="one-time-code" required>
+                  </label>
+                  <button type="submit" class="btn-secondary">Verify email</button>
+                </form>
+              </div>`}
             </div>
           </section>
 
@@ -2412,6 +2584,15 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
               <summary>Custody, rotation &amp; billing details</summary>
               <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} You act directly as the API account holder with your chosen provider (OpenAI, Anthropic, or Google) under their respective Terms of Service and direct billing. Saving a key does not run a chargeable test. Applying a new key updates future jobs while queued jobs stay on their active key version. Removing a key deletes this app's encrypted copy and does not revoke the key at the issuer.</p>
             </details>
+            <details class="settings-disclosure" id="hosted-wallet-panel"${inputState.billingNotice ? " open" : ""}>
+              <summary>Hosted AI credit wallet (optional) · ${escapeHtml(formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency))} available</summary>
+              <p class="disclosure-text">BYOK inference incurs $0.00 platform fees. Optional hosted credits cover AI synthesis and dynamic concept checks when you prefer managed inference without storing a personal provider key. Reserved holds: ${escapeHtml(formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency))}.</p>
+              <div class="action-row wallet-topup-actions">
+                <button type="button" class="btn-secondary" data-action="start-hosted-checkout" data-amount-minor="1000">Top up $10.00</button>
+                <button type="button" class="btn-secondary" data-action="start-hosted-checkout" data-amount-minor="2500">Top up $25.00</button>
+              </div>
+              ${inputState.billingNotice ? `<p class="section-lede" id="settings-billing-notice" role="status">${escapeHtml(inputState.billingNotice)}</p>` : ""}
+            </details>
           </section>
 
           <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
@@ -2429,20 +2610,23 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                 </select>
               </label>
               <label class="field" for="reminder-weekday-time">Weekdays (Mon–Fri)
-                <input id="reminder-weekday-time" type="time" name="weekday-time" value="19:00">
+                <input id="reminder-weekday-time" type="time" name="weekday-time" data-action="set-reminder-schedule" data-reminder-field="weekdayTime" value="${escapeHtml(reminderWeekdayTime)}">
               </label>
               <label class="field" for="reminder-weekend-time">Weekends (Sat–Sun)
-                <input id="reminder-weekend-time" type="time" name="weekend-time" value="10:00">
+                <input id="reminder-weekend-time" type="time" name="weekend-time" data-action="set-reminder-schedule" data-reminder-field="weekendTime" value="${escapeHtml(reminderWeekendTime)}">
               </label>
               <label class="field" for="reminder-lead-time">Notify me
-                <select id="reminder-lead-time" name="lead-time">
-                  <option value="0">At start time</option>
-                  <option value="10">10 minutes before</option>
-                  <option value="15" selected>15 minutes before</option>
-                  <option value="30">30 minutes before</option>
-                  <option value="60">1 hour before</option>
+                <select id="reminder-lead-time" name="lead-time" data-action="set-reminder-schedule" data-reminder-field="leadMinutes">
+                  <option value="0"${reminderLeadMinutes === "0" ? " selected" : ""}>At start time</option>
+                  <option value="10"${reminderLeadMinutes === "10" ? " selected" : ""}>10 minutes before</option>
+                  <option value="15"${reminderLeadMinutes === "15" ? " selected" : ""}>15 minutes before</option>
+                  <option value="30"${reminderLeadMinutes === "30" ? " selected" : ""}>30 minutes before</option>
+                  <option value="60"${reminderLeadMinutes === "60" ? " selected" : ""}>1 hour before</option>
                 </select>
               </label>
+            </div>
+            <div class="action-row reminder-export-row">
+              <a class="btn-secondary" href="/api/schedule.ics" download="syllabus-schedule.ics">Export calendar (.ics)</a>
             </div>
           </section>
 
@@ -2581,23 +2765,31 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     originListing,
   }))}
 
-  <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2>${DIALOG_CLOSE_BUTTON}</header>
+  <dialog id="dialog-unpublish" closedby="any" aria-labelledby="dialog-unpublish-title"${dialogOpen("dialog-unpublish")} data-publication-id="${escapeHtml(inputState.unpublishPublicationId ?? "")}" data-opaque-surface="true">
+    <div class="dialog-surface">
+      <header class="dialog-header"><h2 id="dialog-unpublish-title">Unpublish</h2><form method="dialog">${DIALOG_CLOSE_BUTTON}</form></header>
       <p class="prose warning-copy">Unpublish makes all public revisions of this publication unavailable through app-controlled publication routes. It does not erase permitted private copies or external copies. Historical votes are not transferred.</p>
-      <p class="prose">This screen does not call a live unpublish route and does not report success.</p>
-    </form>
+      <footer class="dialog-footer">
+        <form method="dialog"><button type="submit" class="btn-secondary" data-action="close-dialog" autofocus>Cancel</button></form>
+        <button type="button" class="btn-danger" data-action="confirm-unpublish-syllabus" data-publication-id="${escapeHtml(inputState.unpublishPublicationId ?? "")}">Unpublish syllabus</button>
+      </footer>
+    </div>
   </dialog>
 
   <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title"${dialogOpen("dialog-account-deletion")} data-opaque-surface="true">
-    <form method="dialog" class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2>${DIALOG_CLOSE_BUTTON}</header>
+    <div class="dialog-surface">
+      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2><form method="dialog">${DIALOG_CLOSE_BUTTON}</form></header>
       <p>Export Scope Included: <code>${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}</code></p>
       <p>Export Scope Excluded: <code>${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}</code></p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
       <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Deletion does not promise immediate removal from every backup.</p>
-    </form>
+      <footer class="dialog-footer">
+        <a class="btn-secondary" href="/api/account/export" download="syllabus-account-export.json">Download export (.json)</a>
+        <form method="dialog"><button type="submit" class="btn-secondary" data-action="close-dialog" autofocus>Cancel</button></form>
+        <button type="button" class="btn-danger" data-action="confirm-delete-account">Delete account permanently</button>
+      </footer>
+    </div>
   </dialog>
 
   <dialog id="dialog-avatar-cropper" class="modal-dialog modal-dialog-sm avatar-cropper-dialog" closedby="any" aria-labelledby="dialog-avatar-cropper-title"${dialogOpen("dialog-avatar-cropper")} data-opaque-surface="true">
@@ -2631,7 +2823,86 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
         <button type="button" class="btn-primary" data-action="save-avatar-crop">Apply photo</button>
       </footer>
     </div>
-  </dialog>`}
+  </dialog>
+
+  ${(() => {
+    const rawObjectives = rawListOf(syllabus, "objectives");
+    const demObjIds = new Set(
+      proficiency.objective_evidence.filter((e) => e.status === "demonstrated").map((e) => e.objective_id),
+    );
+    const defaultDiagObj =
+      rawObjectives.find((o) => !demObjIds.has(String(o["objective_id"] ?? ""))) ?? rawObjectives[0];
+    const activeDiagObjId =
+      inputState.diagnosticObjectiveId && rawObjectives.some((o) => o["objective_id"] === inputState.diagnosticObjectiveId)
+        ? inputState.diagnosticObjectiveId
+        : (typeof defaultDiagObj?.["objective_id"] === "string" ? defaultDiagObj["objective_id"] : null);
+    const activeRawObj = activeDiagObjId
+      ? rawObjectives.find((o) => o["objective_id"] === activeDiagObjId)
+      : undefined;
+    const diagQuestion = activeRawObj
+      ? buildDiagnosticQuestionForObjective({
+          syllabusTitle: goalTitleOf(syllabus),
+          subject: typeof syllabus["subject"] === "string" ? syllabus["subject"] : selectedPlan.domain,
+          objectiveId: String(activeRawObj["objective_id"] ?? ""),
+          objectiveVersionId:
+            typeof activeRawObj["objective_version_id"] === "string"
+              ? activeRawObj["objective_version_id"]
+              : undefined,
+          objectiveTitle:
+            typeof activeRawObj["title"] === "string"
+              ? activeRawObj["title"]
+              : String(activeRawObj["objective_id"] ?? ""),
+          description:
+            typeof activeRawObj["description"] === "string" ? activeRawObj["description"] : undefined,
+          successCriterion:
+            typeof activeRawObj["success_criterion"] === "string"
+              ? activeRawObj["success_criterion"]
+              : undefined,
+        })
+      : null;
+    const nextUnassessedObj = rawObjectives.find(
+      (o) =>
+        o["objective_id"] !== activeDiagObjId &&
+        !demObjIds.has(String(o["objective_id"] ?? "")),
+    ) ?? rawObjectives.find((o) => o["objective_id"] !== activeDiagObjId);
+    const nextDiagObjId =
+      typeof nextUnassessedObj?.["objective_id"] === "string"
+        ? nextUnassessedObj["objective_id"]
+        : null;
+    return [
+      renderToString(
+        h(DiagnosticCheckDialog, {
+          open: openDialogId === "dialog-diagnostic-check",
+          question: diagQuestion,
+          selectedChoice: inputState.diagnosticChoice ?? null,
+          feedback: inputState.diagnosticFeedback ?? null,
+          isDemonstrated: Boolean(activeDiagObjId && demObjIds.has(activeDiagObjId)),
+          assessedCount: rawObjectives.filter((o) => demObjIds.has(String(o["objective_id"] ?? ""))).length,
+          totalCount: rawObjectives.length,
+          nextObjectiveId: nextDiagObjId,
+        }),
+      ),
+      renderToString(
+        h(SyllabusStructureEditorDialog, {
+          open: openDialogId === "dialog-syllabus-editor",
+          mode: inputState.syllabusEditMode ?? "syllabus",
+          syllabusId: selectedPlan.syllabusId,
+          syllabus,
+          editingModuleId: inputState.editingSyllabusModuleId ?? selectedModuleId ?? null,
+          editingActivityId: inputState.editingSyllabusActivityId ?? selectedActivityId ?? null,
+          editorError: inputState.syllabusEditorError ?? null,
+          editorNotice: inputState.syllabusEditorNotice ?? null,
+        }),
+      ),
+      renderToString(
+        h(DeleteSyllabusDialog, {
+          open: openDialogId === "dialog-delete-syllabus",
+          syllabusId: selectedPlan.syllabusId,
+          syllabusTitle: goalTitleOf(syllabus),
+        }),
+      ),
+    ].join("\n  ");
+  })()}`}
 
   ${renderToString(h(AuthDialog, {
     open: openDialogId === "dialog-auth",
@@ -2641,6 +2912,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     authNotice,
     authMode,
     authPasswordVisible,
+    resetEmail: inputState.authResetEmail,
   }))}
 
   <script data-dialog-light-dismiss-fallback="true">
@@ -2667,6 +2939,8 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let votes: Vote[] = [...(initialState.votes ?? [])];
   let adoptions: Adoption[] = [...(initialState.adoptions ?? [])];
   let publishedListings: MarketplaceListing[] = [...(initialState.publishedListings ?? [])];
+  let unpublishedPublicationIds: string[] = [...(initialState.unpublishedPublicationIds ?? [])];
+  let unpublishPublicationId: string | null = initialState.unpublishPublicationId ?? null;
   let adoptPublicationId: string | null = initialState.adoptPublicationId ?? null;
   let resourceScope: ResourceScope = initialState.resourceScope ?? "selected";
   let resourceCategory: ResourceCategory = initialState.resourceCategory ?? "All";
@@ -2679,12 +2953,18 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     ...(initialState.adminResourceOverrides ?? {}),
   };
   let adminNotice: string | null = initialState.adminNotice ?? null;
-  const listings = (): readonly MarketplaceListing[] => [...MARKETPLACE_LISTINGS, ...publishedListings];
+  const listings = (): readonly MarketplaceListing[] =>
+    [...MARKETPLACE_LISTINGS, ...publishedListings].filter(
+      (entry) => !unpublishedPublicationIds.includes(entry.publicationId),
+    );
   const adoptListing = (): MarketplaceListing | undefined => listings().find((entry) => entry.publicationId === adoptPublicationId);
   let adoptModuleIds: string[] = [...(initialState.adoptModuleIds ?? unitIdsOf(adoptListing()))];
   let generatedPlans: ActiveSyllabus[] = [...(initialState.generatedPlans ?? [])];
   let syllabusOverrides: Record<string, Record<string, unknown>> = {
     ...(initialState.syllabusOverrides ?? {}),
+  };
+  let scheduleOverrides: Record<string, Record<string, unknown>> = {
+    ...(initialState.scheduleOverrides ?? {}),
   };
   let userLibraryResourceIds: string[] = [...(initialState.userLibraryResourceIds ?? [])];
   let resourceEditorMode: ResourceEditorMode = initialState.resourceEditorMode ?? "ingest";
@@ -2695,7 +2975,30 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let resourceRawDraft: string = initialState.resourceRawDraft ?? "";
   let resourceEditorError: string | null = initialState.resourceEditorError ?? null;
   let resourceNotice: string | null = initialState.resourceNotice ?? null;
-  const currentPlans = () => plansFor(account.accountId, adoptions, listings(), generatedPlans, syllabusOverrides);
+  let dynamicConceptChecks: Record<string, ConceptCheck> = {
+    ...(initialState.dynamicConceptChecks ?? {}),
+  };
+  let conceptCheckSeed: number = initialState.conceptCheckSeed ?? 1;
+  let proficiencyOverrides: Record<string, ProficiencyOverrideEntry> = {
+    ...(initialState.proficiencyOverrides ?? {}),
+  };
+  let deletedSyllabusIds: string[] = [...(initialState.deletedSyllabusIds ?? [])];
+  let diagnosticObjectiveId: string | null = initialState.diagnosticObjectiveId ?? null;
+  let diagnosticChoice: string | null = initialState.diagnosticChoice ?? null;
+  let diagnosticFeedback: { readonly passed: boolean; readonly message: string } | null =
+    initialState.diagnosticFeedback ?? null;
+  let syllabusEditMode: SyllabusEditMode = initialState.syllabusEditMode ?? "syllabus";
+  let editingSyllabusModuleId: string | null = initialState.editingSyllabusModuleId ?? null;
+  let editingSyllabusActivityId: string | null = initialState.editingSyllabusActivityId ?? null;
+  let syllabusEditorError: string | null = initialState.syllabusEditorError ?? null;
+  let syllabusEditorNotice: string | null = initialState.syllabusEditorNotice ?? null;
+  let authResetEmail: string = initialState.authResetEmail ?? "";
+  let emailVerified: boolean = initialState.emailVerified ?? false;
+  let emailVerificationPending: boolean = initialState.emailVerificationPending ?? false;
+  let wallet: HostedCreditWalletSnapshot = initialState.wallet ?? DEFAULT_WALLET;
+  let billingNotice: string | null = initialState.billingNotice ?? null;
+  const currentPlans = () =>
+    plansFor(account.accountId, adoptions, listings(), generatedPlans, syllabusOverrides, scheduleOverrides, deletedSyllabusIds);
   const isMyPlan = (syllabusId: unknown): syllabusId is string => currentPlans().some((plan) => plan.syllabusId === syllabusId);
   // Input overrides replace the selected plan's syllabus and schedule, the same rule the render applies.
   let selectedSyllabusId = planIn(currentPlans(), initialState.selectedSyllabusId).syllabusId;
@@ -2704,7 +3007,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     return {
       ...plan,
       syllabus: syllabusOverrides[plan.syllabusId] ?? initialState.syllabus ?? plan.syllabus,
-      schedule: initialState.schedule ?? plan.schedule,
+      schedule: scheduleOverrides[plan.syllabusId] ?? initialState.schedule ?? plan.schedule,
     };
   };
   const openingStep = stepOf(planData().syllabus, initialState.selectedActivityId);
@@ -2726,6 +3029,9 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let remindersEnabled = initialState.remindersEnabled ?? true;
   let remindersPaused = initialState.remindersPaused ?? false;
   let reminderTimezone = initialState.reminderTimezone ?? "America/New_York";
+  let reminderWeekdayTime = initialState.reminderWeekdayTime ?? "19:00";
+  let reminderWeekendTime = initialState.reminderWeekendTime ?? "10:00";
+  let reminderLeadMinutes = initialState.reminderLeadMinutes ?? "15";
   let keyVisible = initialState.keyVisible ?? false;
   let byokCredentials: MaskedCredentialRecord[] = [...(initialState.byokCredentials ?? DEFAULT_BYOK_CREDENTIALS)];
   let editingCredentialProviderId: string | null = initialState.editingCredentialProviderId ?? null;
@@ -2750,7 +3056,9 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let inspectorMode: InspectorMode = initialState.inspectorMode ?? "activity";
   let openDialogId: string | null = initialState.openDialogId ?? null;
 
-  const proficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
+  const baseProficiency = initialState.proficiency ?? DEFAULT_SYNTHETIC_PROFICIENCY;
+  const effectiveProficiencyOf = (syl: Record<string, unknown>) =>
+    buildEffectiveProficiency(baseProficiency, syl, proficiencyOverrides);
   let catalogResources: Readonly<Record<string, CatalogResourceMetadataInput>> =
     initialState.catalogResources ?? DEFAULT_CATALOG_RESOURCES;
   let intakeGoalTitle = initialState.intakeGoalTitle ?? "";
@@ -2780,7 +3088,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   const activityStatesInput = (): Readonly<Record<string, ActivityExecutionStatus>> =>
     ({ ...(initialState.activityStates ?? {}), ...Object.fromEntries(statusOverrides) });
   const todayFor = (plan: ActiveSyllabus) => buildTodayFor({
-    syllabus: plan.syllabus, schedule: plan.schedule, proficiency, catalogResources,
+    syllabus: plan.syllabus, schedule: plan.schedule, proficiency: effectiveProficiencyOf(plan.syllabus), catalogResources,
     activityStates: activityStatesInput(), events: recordedProgressEvents,
   });
   const buildToday = () => todayFor(planData());
@@ -2812,12 +3120,12 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
 
   // The activity's subtask ids, from the same list the drawer renders.
   function subtaskIdsOf(activityId: string): readonly string[] {
-    const { syllabus, publicationId } = planData();
+    const plan = planData();
     const modules = buildCurrentPlanModel().outlineModules;
     const activity = modules.flatMap((mod) => mod.activities).find((act) => act.activityId === activityId);
     if (!activity) return [];
-    const conceptCheck = CONCEPT_CHECKS[publicationId ?? ""] ?? null;
-    return activitySubtasks(modules, activity, rubricOf(syllabus, activityId), conceptCheck).map(({ subtaskId }) => subtaskId);
+    const conceptCheck = resolveActivityConceptCheck(plan, plan.syllabus, activityId, dynamicConceptChecks);
+    return activitySubtasks(modules, activity, rubricOf(plan.syllabus, activityId), conceptCheck).map(({ subtaskId }) => subtaskId);
   }
 
   // A Done activity shows every subtask as checked, even one completed elsewhere, so a change starts from all of them.
@@ -2845,11 +3153,13 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     return setActivityStatus(activityId, after.length === 0 ? "not_started" : after.length === ids.length ? "completed" : "in_progress");
   }
 
-  const buildCurrentPlanModel = (): PlanMapAndOutlineModel =>
-    buildPlanMapAndOutlineModel({
-      syllabus: planData().syllabus, proficiency, activityStates: todayController.getState().activityExecutionStates,
+  const buildCurrentPlanModel = (): PlanMapAndOutlineModel => {
+    const syl = planData().syllabus;
+    return buildPlanMapAndOutlineModel({
+      syllabus: syl, proficiency: effectiveProficiencyOf(syl), activityStates: todayController.getState().activityExecutionStates,
       catalogResources, viewportWidthPx, selectedModuleId, selectedActivityId, focusedNodeId, zoom,
     });
+  };
 
   // Practice answers belong to one activity, so another activity starts its concept check fresh.
   function selectActivity(activityId: string | null): void {
@@ -2931,6 +3241,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     diagnosticControl = "active";
     adaptationChoice = "pending";
     adoptPublicationId = null;
+    unpublishPublicationId = null;
     adoptModuleIds = [];
     resourceScope = "selected";
     resourceCategory = "All";
@@ -2943,6 +3254,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     adminNotice = null;
     generatedPlans = [];
     syllabusOverrides = {};
+    scheduleOverrides = {};
     userLibraryResourceIds = [];
     resourceEditorMode = "ingest";
     editingResourceId = null;
@@ -2952,6 +3264,23 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     resourceRawDraft = "";
     resourceEditorError = null;
     resourceNotice = null;
+    dynamicConceptChecks = {};
+    conceptCheckSeed = 1;
+    proficiencyOverrides = {};
+    deletedSyllabusIds = [];
+    diagnosticObjectiveId = null;
+    diagnosticChoice = null;
+    diagnosticFeedback = null;
+    syllabusEditMode = "syllabus";
+    editingSyllabusModuleId = null;
+    editingSyllabusActivityId = null;
+    syllabusEditorError = null;
+    syllabusEditorNotice = null;
+    authResetEmail = "";
+    emailVerified = false;
+    emailVerificationPending = false;
+    wallet = DEFAULT_WALLET;
+    billingNotice = null;
     intakeGoalTitle = "";
     lastPipelineReceipt = null;
     studyDetailOpen = false;
@@ -3083,29 +3412,34 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   function publishSelectedPlan(): void {
     const plan = planData();
     const key = `${plan.syllabusId}-${account.accountId}`;
+    const nextPubId = `publication-${key}`;
     const origin = listings().find((listing) => listing.publicationId === plan.publicationId && listing.ownerAccountId !== account.accountId);
     const tags = syllabusTagsOf(plan.syllabus, {
       subject: plan.domain,
       gateStyle: plan.assessmentMode,
       topicTags: origin?.topicTags,
     });
-    publishedListings = [...publishedListings, {
-      publicationId: `publication-${key}`, revisionId: `public-revision-${key}-1`,
-      subject: tags.subject, gateStyle: tags.gateStyle, topicTags: tags.topicTags, handle: handleOf(account),
-      upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
-      ownerAccountId: account.accountId, sourceSyllabusId: plan.syllabusId, basedOn: origin?.handle ?? null,
-      syllabus: {
-        ...plan.syllabus, account_id: "public-template",
-        subject: tags.subject, gate_style: tags.gateStyle, topic_tags: tags.topicTags,
-        objectives: rawListOf(plan.syllabus, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
+    unpublishedPublicationIds = unpublishedPublicationIds.filter((id) => id !== nextPubId);
+    publishedListings = [
+      ...publishedListings.filter((entry) => entry.publicationId !== nextPubId),
+      {
+        publicationId: nextPubId, revisionId: `public-revision-${key}-1`,
+        subject: tags.subject, gateStyle: tags.gateStyle, topicTags: tags.topicTags, handle: handleOf(account),
+        upvotes: 0, adoptions: 0, publishedAt: new Date().toISOString(),
+        ownerAccountId: account.accountId, sourceSyllabusId: plan.syllabusId, basedOn: origin?.handle ?? null,
+        syllabus: {
+          ...plan.syllabus, account_id: "public-template",
+          subject: tags.subject, gate_style: tags.gateStyle, topic_tags: tags.topicTags,
+          objectives: rawListOf(plan.syllabus, "objectives").map((objective) => ({ ...objective, prior_evidence_refs: [] })),
+        },
+        schedule: {
+          ...plan.schedule,
+          sessions: rawListOf(plan.schedule, "sessions").map((session) => ({
+            session_id: session["session_id"], duration_minutes: session["duration_minutes"], activity_ids: session["activity_ids"],
+          })),
+        },
       },
-      schedule: {
-        ...plan.schedule,
-        sessions: rawListOf(plan.schedule, "sessions").map((session) => ({
-          session_id: session["session_id"], duration_minutes: session["duration_minutes"], activity_ids: session["activity_ids"],
-        })),
-      },
-    }];
+    ];
     openDialogId = null;
     topLevel = "Explore";
   }
@@ -3127,6 +3461,8 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       profileNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
       publishedListings: [...publishedListings] as readonly MarketplaceListing[],
+      unpublishedPublicationIds: [...unpublishedPublicationIds] as readonly string[],
+      unpublishPublicationId,
       adoptPublicationId, adoptModuleIds: [...adoptModuleIds] as readonly string[],
       resourceScope, resourceCategory,
       adminConsoleOpen,
@@ -3141,7 +3477,9 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       openDialogId, hintRequested, workedSolutionRevealed, practiceSubmitted, practiceChoice,
       skippedActivityIds: [...skippedActivityIds] as readonly string[],
       completedSubtaskIds: [...completedSubtaskIds] as readonly string[],
-      remindersEnabled, remindersPaused, reminderTimezone, keyVisible,
+      remindersEnabled, remindersPaused, reminderTimezone,
+      reminderWeekdayTime, reminderWeekendTime, reminderLeadMinutes,
+      keyVisible,
       byokCredentials: [...byokCredentials] as readonly MaskedCredentialRecord[],
       primaryCredentialRef,
       editingCredentialProviderId,
@@ -3156,6 +3494,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       intakeSkippedResourceIds: [...intakeSkippedResourceIds] as readonly string[],
       generatedPlans: [...generatedPlans] as readonly ActiveSyllabus[],
       syllabusOverrides: { ...syllabusOverrides } as Readonly<Record<string, Record<string, unknown>>>,
+      scheduleOverrides: { ...scheduleOverrides } as Readonly<Record<string, Record<string, unknown>>>,
       userLibraryResourceIds: [...userLibraryResourceIds] as readonly string[],
       resourceEditorMode,
       editingResourceId,
@@ -3166,6 +3505,23 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       resourceEditorError,
       resourceNotice,
       lastPipelineReceipt,
+      dynamicConceptChecks: { ...dynamicConceptChecks } as Readonly<Record<string, ConceptCheck>>,
+      conceptCheckSeed,
+      proficiencyOverrides: { ...proficiencyOverrides } as Readonly<Record<string, ProficiencyOverrideEntry>>,
+      deletedSyllabusIds: [...deletedSyllabusIds] as readonly string[],
+      diagnosticObjectiveId,
+      diagnosticChoice,
+      diagnosticFeedback,
+      syllabusEditMode,
+      editingSyllabusModuleId,
+      editingSyllabusActivityId,
+      syllabusEditorError,
+      syllabusEditorNotice,
+      authResetEmail,
+      emailVerified,
+      emailVerificationPending,
+      wallet,
+      billingNotice,
     };
   };
 
@@ -3336,7 +3692,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       votes = votes.some(mine) ? votes.filter((vote) => !mine(vote)) : [...votes, { accountId: account.accountId, revisionId: publicationRevisionId }];
       return getState();
     },
-    openDialog(dialogId: string, requestedAuthMode?: string) {
+    openDialog(dialogId: string, requestedAuthMode?: string, publicationId?: string) {
       if (dialogId !== "dialog-auth" && !signedIn()) {
         const label = dialogId === "dialog-publication-preview" ? "Share with Community" : undefined;
         return requireSignIn(placeOf(topLevel, learnSubDestination, dialogId, null, label));
@@ -3345,6 +3701,13 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         authNotice = null;
         authPasswordVisible = false;
         if (isOneOf(AUTH_MODES, requestedAuthMode)) authMode = requestedAuthMode;
+      }
+      if (dialogId === "dialog-unpublish") {
+        const candidate =
+          publicationId && listings().some((l) => l.publicationId === publicationId && l.ownerAccountId === account.accountId)
+            ? publicationId
+            : (listings().find((l) => l.ownerAccountId === account.accountId)?.publicationId ?? null);
+        unpublishPublicationId = candidate;
       }
       openDialogId = dialogId;
       return getState();
@@ -3377,6 +3740,155 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       if (notice !== undefined) passkeyNotice = notice;
       return getState();
     },
+    setByokCredentials(
+      nextCredentials: readonly MaskedCredentialRecord[],
+      nextPrimaryRef?: string,
+      note?: string | null,
+    ) {
+      byokCredentials = [...nextCredentials];
+      const active = byokCredentials.filter((c) => c.status === "active" && Boolean(c.masked_suffix));
+      if (nextPrimaryRef !== undefined) {
+        primaryCredentialRef = active.some((c) => c.credential_ref === nextPrimaryRef)
+          ? nextPrimaryRef
+          : (active[0]?.credential_ref ?? "");
+      } else if (!active.some((c) => c.credential_ref === primaryCredentialRef)) {
+        primaryCredentialRef = active[0]?.credential_ref ?? "";
+      }
+      editingCredentialProviderId = null;
+      if (note !== undefined) keyActionNote = note;
+      return getState();
+    },
+    liveConceptCheckRequest(requestedActivityId?: string): LiveTutorModelRequest | null {
+      if (!signedIn()) return null;
+      const model = designatedModel();
+      if (!model) return null;
+      const plan = planData();
+      const actId = requestedActivityId || selectedActivityId || "";
+      const rawAct = rawListOf(plan.syllabus, "activities").find((a) => a["activity_id"] === actId);
+      if (!rawAct) return null;
+      const rawModules = rawListOf(plan.syllabus, "modules");
+      const holder =
+        rawModules.find((m) => normalizeStringList(m["activity_ids"]).includes(actId)) ?? rawModules[0];
+      const objIds = normalizeStringList(rawAct["objective_ids"]);
+      const rawObjectives = rawListOf(plan.syllabus, "objectives");
+      const rawObj =
+        rawObjectives.find((o) => objIds.includes(String(o["objective_id"] ?? ""))) ?? rawObjectives[0];
+      return {
+        ...model,
+        syllabusTitle: goalTitleOf(plan.syllabus),
+        subject: typeof plan.syllabus["subject"] === "string" ? plan.syllabus["subject"] : plan.domain,
+        moduleTitle: typeof holder?.["title"] === "string" ? holder["title"] : "Core Unit",
+        activityId: actId,
+        activityTitle: typeof rawAct["title"] === "string" ? rawAct["title"] : actId,
+        activityType: typeof rawAct["type"] === "string" ? rawAct["type"] : "theory",
+        activityPrompt: activityPromptOfRaw(rawAct),
+        objectiveId: typeof rawObj?.["objective_id"] === "string" ? rawObj["objective_id"] : undefined,
+        objectiveTitle: typeof rawObj?.["title"] === "string" ? rawObj["title"] : undefined,
+        successCriterion:
+          typeof rawObj?.["success_criterion"] === "string" ? rawObj["success_criterion"] : undefined,
+        variantSeed: conceptCheckSeed + 1,
+      };
+    },
+    setActivityConceptCheck(activityId: string, check: ConceptCheck) {
+      dynamicConceptChecks = { ...dynamicConceptChecks, [activityId]: check };
+      resetPractice();
+      completedSubtaskIds = completedSubtaskIds.filter((sid) => sid !== conceptCheckSubtaskId(activityId));
+      return getState();
+    },
+    setWallet(nextWallet: HostedCreditWalletSnapshot, notice?: string | null) {
+      wallet = nextWallet;
+      if (notice !== undefined) billingNotice = notice;
+      return getState();
+    },
+    setEmailVerificationState(verified: boolean, pending?: boolean, notice?: string | null) {
+      emailVerified = verified;
+      if (pending !== undefined) emailVerificationPending = pending;
+      if (notice !== undefined) profileNotice = notice;
+      return getState();
+    },
+    advancePasswordReset(email: string, notice: string) {
+      authResetEmail = email.trim().toLowerCase();
+      authMode = "reset_confirm";
+      authNotice = notice;
+      openDialogId = "dialog-auth";
+      return getState();
+    },
+    exportScheduleIcs(): string {
+      const escIcs = (raw: string) =>
+        raw
+          .replace(/\\/g, "\\\\")
+          .replace(/;/g, "\\;")
+          .replace(/,/g, "\\,")
+          .replace(/\r?\n/g, "\\n");
+      const fmtUtc = (dt: Date) =>
+        dt
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d{3}Z$/, "Z");
+      const nowStamp = fmtUtc(new Date());
+      const leadMins = Math.max(0, Number.parseInt(reminderLeadMinutes, 10) || 15);
+      const lines: string[] = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Syllabus.io//Study Schedule//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Syllabus.io Study Schedule",
+        `X-WR-TIMEZONE:${escIcs(reminderTimezone)}`,
+      ];
+      for (const plan of currentPlans()) {
+        const effSchedule = scheduleOverrides[plan.syllabusId] ?? plan.schedule;
+        const effSyllabus = syllabusOverrides[plan.syllabusId] ?? plan.syllabus;
+        const planTitle = goalTitleOf(effSyllabus);
+        const actById = new Map(
+          rawListOf(effSyllabus, "activities").map((a) => [
+            String(a["activity_id"] ?? ""),
+            typeof a["title"] === "string" ? a["title"] : String(a["activity_id"] ?? "Study step"),
+          ]),
+        );
+        for (const sess of rawListOf(effSchedule, "sessions")) {
+          const sessId = String(sess["session_id"] ?? "session");
+          const rawStart =
+            sessId === rescheduleSessionId && rescheduleValue
+              ? rescheduleValue
+              : typeof sess["start_at"] === "string"
+                ? sess["start_at"]
+                : "";
+          const parsedStart = rawStart ? new Date(rawStart) : new Date(Number.NaN);
+          const startDt = Number.isNaN(parsedStart.getTime()) ? new Date() : parsedStart;
+          const durMins =
+            typeof sess["duration_minutes"] === "number" && sess["duration_minutes"] > 0
+              ? sess["duration_minutes"]
+              : 45;
+          const endDt = new Date(startDt.getTime() + durMins * 60_000);
+          const actIds = normalizeStringList(sess["activity_ids"]);
+          const actTitles = actIds.map((id) => actById.get(id) ?? id).filter(Boolean);
+          const summary =
+            actTitles.length > 0 ? `${planTitle}: ${actTitles[0]}` : `${planTitle}: Study Session`;
+          const description =
+            actTitles.length > 0
+              ? `Syllabus: ${planTitle}\nActivities:\n- ${actTitles.join("\n- ")}`
+              : `Syllabus: ${planTitle}`;
+          lines.push("BEGIN:VEVENT");
+          lines.push(`UID:${escIcs(`${plan.syllabusId}-${sessId}@syllabus.io`)}`);
+          lines.push(`DTSTAMP:${nowStamp}`);
+          lines.push(`DTSTART:${fmtUtc(startDt)}`);
+          lines.push(`DTEND:${fmtUtc(endDt)}`);
+          lines.push(`SUMMARY:${escIcs(summary)}`);
+          lines.push(`DESCRIPTION:${escIcs(description)}`);
+          if (remindersEnabled && !remindersPaused && sess["reminder_enabled"] !== false) {
+            lines.push("BEGIN:VALARM");
+            lines.push("ACTION:DISPLAY");
+            lines.push(`DESCRIPTION:${escIcs(summary)}`);
+            lines.push(`TRIGGER:-PT${leadMins}M`);
+            lines.push("END:VALARM");
+          }
+          lines.push("END:VEVENT");
+        }
+      }
+      lines.push("END:VCALENDAR");
+      return `${lines.join("\r\n")}\r\n`;
+    },
     // The live draft for generate-syllabus-ai and analyzedResourceOutcome for ingest-manual-resource are passed by the server.
     applyUiAction(
       action: string,
@@ -3384,6 +3896,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       submittedChoice: string | null = null,
       liveOutcome: LiveDraftOutcome | null = null,
       analyzedResourceOutcome: AnalyzedManualResourceDraft | { readonly error: string } | null = null,
+      generatedConceptCheckOutcome: GeneratedConceptCheck | null = null,
     ) {
       const value = (key: string) => data[key];
       // Without a valid session only reading, filtering, appearance, and signing in run. Anything else asks for sign-in.
@@ -3398,7 +3911,52 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       if (action === "close-study-detail") studyDetailOpen = false;
       else if (action === "submit-sign-in") signInWithEmail(value("email") ?? "");
       else if (action === "submit-sign-up") signUpWithEmail(value("email") ?? "", value("password") ?? "");
-      else if (action === "switch-auth-mode" && isOneOf(AUTH_MODES, data["authMode"])) {
+      else if (action === "request-password-reset") {
+        const address = (value("email") ?? "").trim().toLowerCase();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+          authNotice = "Enter a valid email address.";
+          authMode = "reset";
+          openDialogId = "dialog-auth";
+        } else {
+          authResetEmail = address;
+          authMode = "reset_confirm";
+          authNotice = `If an account exists for ${address}, a 6-digit recovery code has been sent.`;
+          openDialogId = "dialog-auth";
+        }
+      } else if (action === "confirm-password-reset") {
+        const address = ((value("email") || authResetEmail) ?? "").trim().toLowerCase();
+        const code = (value("code") ?? "").trim();
+        const nextPassword = value("password") ?? "";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+          authNotice = "Enter a valid email address.";
+          authMode = "reset_confirm";
+          openDialogId = "dialog-auth";
+        } else if (!/^[0-9]{6}$/.test(code)) {
+          authNotice = "Enter the 6-digit recovery code.";
+          authMode = "reset_confirm";
+          openDialogId = "dialog-auth";
+        } else if (nextPassword.length < 8) {
+          authNotice = "Use a new password with at least 8 characters.";
+          authMode = "reset_confirm";
+          openDialogId = "dialog-auth";
+        } else {
+          authResetEmail = "";
+          authMode = "login";
+          signInWithEmail(address);
+        }
+      } else if (action === "request-email-verification") {
+        emailVerificationPending = true;
+        profileNotice = `Sent a 6-digit verification code to ${account.email}.`;
+      } else if (action === "confirm-email-verification") {
+        const code = (value("code") ?? "").trim();
+        if (!/^[0-9]{6}$/.test(code)) {
+          profileNotice = "Enter a valid 6-digit verification code.";
+        } else {
+          emailVerified = true;
+          emailVerificationPending = false;
+          profileNotice = `Email address ${account.email} verified.`;
+        }
+      } else if (action === "switch-auth-mode" && isOneOf(AUTH_MODES, data["authMode"])) {
         authMode = data["authMode"];
         authNotice = null;
         authPasswordVisible = false;
@@ -3462,7 +4020,34 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         const listing = adoptableListing(adoptPublicationId);
         if (listing) adopt(listing);
       } else if (action === "confirm-publish-syllabus" && !publishedFromSelected()) publishSelectedPlan();
-      else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
+      else if (action === "confirm-unpublish-syllabus") {
+        const targetId =
+          data["publicationId"] ||
+          unpublishPublicationId ||
+          listings().find((l) => l.ownerAccountId === account.accountId)?.publicationId ||
+          "";
+        const target = listings().find(
+          (l) => l.publicationId === targetId && l.ownerAccountId === account.accountId,
+        );
+        if (target) {
+          if (!unpublishedPublicationIds.includes(target.publicationId)) {
+            unpublishedPublicationIds = [...unpublishedPublicationIds, target.publicationId];
+          }
+          publishedListings = publishedListings.filter((l) => l.publicationId !== target.publicationId);
+          unpublishPublicationId = null;
+          openDialogId = null;
+          loadMoreNote = `Unpublished "${goalTitleOf(target.syllabus)}" from Explore.`;
+        } else {
+          handled = false;
+        }
+      } else if (action === "confirm-delete-account") {
+        if (!signedIn()) {
+          handled = false;
+        } else {
+          signOut();
+          authNotice = "Your account and private workspace data have been permanently deleted.";
+        }
+      } else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
       else if (action === "select-syllabus" && data["syllabusId"] === "__new_syllabus__") {
         openDialogId = "dialog-new-syllabus";
       } else if (action === "select-syllabus" && data["syllabusId"] === "__edit_plan__") {
@@ -3570,6 +4155,40 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         practiceSubmitted = true;
         practiceChoice = submittedChoice;
         if (submittedChoice && selectedActivityId) setSubtaskChecked(selectedActivityId, conceptCheckSubtaskId(selectedActivityId), true);
+      } else if (action === "generate-activity-check") {
+        const plan = planData();
+        const actId = (data["activityId"] ?? selectedActivityId ?? "").trim();
+        const rawAct = rawListOf(plan.syllabus, "activities").find((a) => a["activity_id"] === actId);
+        if (actId && rawAct) {
+          const nextSeed = conceptCheckSeed + 1;
+          conceptCheckSeed = nextSeed;
+          const rawModules = rawListOf(plan.syllabus, "modules");
+          const holder =
+            rawModules.find((m) => normalizeStringList(m["activity_ids"]).includes(actId)) ?? rawModules[0];
+          const objIds = normalizeStringList(rawAct["objective_ids"]);
+          const rawObjectives = rawListOf(plan.syllabus, "objectives");
+          const rawObj =
+            rawObjectives.find((o) => objIds.includes(String(o["objective_id"] ?? ""))) ?? rawObjectives[0];
+          const nextCheck: ConceptCheck =
+            generatedConceptCheckOutcome ??
+            buildDeterministicConceptCheck({
+              syllabusTitle: goalTitleOf(plan.syllabus),
+              subject: typeof plan.syllabus["subject"] === "string" ? plan.syllabus["subject"] : plan.domain,
+              moduleTitle: typeof holder?.["title"] === "string" ? holder["title"] : "Core Unit",
+              activityId: actId,
+              activityTitle: typeof rawAct["title"] === "string" ? rawAct["title"] : actId,
+              activityType: typeof rawAct["type"] === "string" ? rawAct["type"] : "theory",
+              activityPrompt: activityPromptOfRaw(rawAct),
+              objectiveId: typeof rawObj?.["objective_id"] === "string" ? rawObj["objective_id"] : undefined,
+              objectiveTitle: typeof rawObj?.["title"] === "string" ? rawObj["title"] : undefined,
+              successCriterion:
+                typeof rawObj?.["success_criterion"] === "string" ? rawObj["success_criterion"] : undefined,
+              variantSeed: nextSeed,
+            });
+          dynamicConceptChecks = { ...dynamicConceptChecks, [actId]: nextCheck };
+          resetPractice();
+          completedSubtaskIds = completedSubtaskIds.filter((sid) => sid !== conceptCheckSubtaskId(actId));
+        }
       } else if (action === "toggle-subtask" && data["activityId"] && data["subtaskId"]) {
         const { activityId, subtaskId } = data;
         setSubtaskChecked(activityId, subtaskId, !checkedSubtasksOf(activityId).includes(subtaskId));
@@ -3580,13 +4199,106 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         if (!skippedActivityIds.includes(activityId)) skippedActivityIds.push(activityId);
       } else if (action === "diagnostic-pause") diagnosticControl = "paused";
       else if (action === "diagnostic-stop-early") diagnosticControl = "stopped";
-      else if (action === "diagnostic-continue") diagnosticControl = "active";
-      else if (action === "accept-revision") adaptationChoice = "accept_reviewed";
-      else if (action === "keep-current-plan") adaptationChoice = "keep_current";
+      else if (action === "diagnostic-continue") {
+        diagnosticControl = "active";
+        const plan = planData();
+        const rawObjectives = rawListOf(plan.syllabus, "objectives");
+        const effProf = effectiveProficiencyOf(plan.syllabus);
+        const demIds = new Set(
+          effProf.objective_evidence.filter((e) => e.status === "demonstrated").map((e) => e.objective_id),
+        );
+        const requestedObjId = data["objectiveId"]?.trim();
+        const targetObj =
+          (requestedObjId ? rawObjectives.find((o) => o["objective_id"] === requestedObjId) : undefined) ??
+          rawObjectives.find((o) => !demIds.has(String(o["objective_id"] ?? ""))) ??
+          rawObjectives[0];
+        diagnosticObjectiveId = typeof targetObj?.["objective_id"] === "string" ? targetObj["objective_id"] : null;
+        diagnosticChoice = null;
+        diagnosticFeedback = null;
+        studyDetailOpen = false;
+        openDialogId = "dialog-diagnostic-check";
+      } else if (action === "submit-diagnostic-answer") {
+        const plan = planData();
+        const rawObjectives = rawListOf(plan.syllabus, "objectives");
+        const objId = (data["objectiveId"] ?? diagnosticObjectiveId ?? "").trim();
+        const rawObj = rawObjectives.find((o) => o["objective_id"] === objId) ?? rawObjectives[0];
+        const chosenVal = (data["diagnosticChoice"] ?? submittedChoice ?? "").trim();
+        if (!rawObj) {
+          diagnosticFeedback = { passed: false, message: "Select a target capability first." };
+        } else if (!chosenVal) {
+          diagnosticFeedback = { passed: false, message: "Select an answer option before verifying." };
+        } else {
+          const resolvedObjId = String(rawObj["objective_id"] ?? "");
+          diagnosticObjectiveId = resolvedObjId;
+          diagnosticChoice = chosenVal;
+          const q = buildDiagnosticQuestionForObjective({
+            syllabusTitle: goalTitleOf(plan.syllabus),
+            subject: typeof plan.syllabus["subject"] === "string" ? plan.syllabus["subject"] : plan.domain,
+            objectiveId: resolvedObjId,
+            objectiveVersionId:
+              typeof rawObj["objective_version_id"] === "string" ? rawObj["objective_version_id"] : undefined,
+            objectiveTitle:
+              typeof rawObj["title"] === "string" ? rawObj["title"] : resolvedObjId,
+            description: typeof rawObj["description"] === "string" ? rawObj["description"] : undefined,
+            successCriterion:
+              typeof rawObj["success_criterion"] === "string" ? rawObj["success_criterion"] : undefined,
+          });
+          if (chosenVal === q.correctValue) {
+            const evidenceRef = `diag-check-${resolvedObjId}`;
+            proficiencyOverrides = {
+              ...proficiencyOverrides,
+              [resolvedObjId]: { status: "demonstrated", evidenceRef },
+            };
+            adaptationChoice = "pending";
+            todayController = buildToday();
+            diagnosticFeedback = {
+              passed: true,
+              message: `Recorded corroborated checkpoint (${evidenceRef}) for "${q.objectiveTitle}". You can now preview and accept plan adaptation.`,
+            };
+          } else {
+            diagnosticFeedback = {
+              passed: false,
+              message:
+                "That choice does not match the capability criterion. Review the explanation below or study the linked unit activities before re-checking.",
+            };
+          }
+        }
+      } else if (action === "accept-revision") {
+        const plan = planData();
+        const effProf = effectiveProficiencyOf(plan.syllabus);
+        const hasOv = Object.keys(proficiencyOverrides).length > 0 || Boolean(syllabusOverrides[plan.syllabusId]);
+        const proposal =
+          initialState.adaptationProposal ??
+          (plan.syllabusId === "syllabus-rag-python-001" && !hasOv
+            ? DEFAULT_ADAPTATION_PROPOSAL
+            : buildDynamicAdaptationProposal(plan.syllabusId, plan.syllabus, effProf, DEFAULT_ADAPTATION_PROPOSAL));
+        const adapted = applyAcceptedAdaptationToSyllabus(plan.syllabus, proposal);
+        for (const waivedId of adapted.waivedActivityIds) {
+          if (!skippedActivityIds.includes(waivedId)) skippedActivityIds = [...skippedActivityIds, waivedId];
+          statusOverrides.set(waivedId, "waived");
+        }
+        setSyllabusPayload(plan.syllabusId, adapted.syllabus);
+        adaptationChoice = "accept_reviewed";
+      } else if (action === "keep-current-plan") adaptationChoice = "keep_current";
       else if (action === "toggle-reminders") remindersEnabled = !remindersEnabled;
       else if (action === "pause-reminders") remindersPaused = !remindersPaused;
       else if (action === "set-reminder-timezone" && (data["reminderTimezone"] || data["value"])) {
         reminderTimezone = (data["reminderTimezone"] ?? data["value"] ?? "America/New_York").trim();
+      } else if (action === "set-reminder-schedule") {
+        const field = data["reminderField"];
+        const nextVal = (data["value"] ?? "").trim();
+        if (typeof data["weekdayTime"] === "string" && data["weekdayTime"].trim()) {
+          reminderWeekdayTime = data["weekdayTime"].trim();
+        }
+        if (typeof data["weekendTime"] === "string" && data["weekendTime"].trim()) {
+          reminderWeekendTime = data["weekendTime"].trim();
+        }
+        if (typeof data["leadMinutes"] === "string" && data["leadMinutes"].trim()) {
+          reminderLeadMinutes = data["leadMinutes"].trim();
+        }
+        if (field === "weekdayTime" && nextVal) reminderWeekdayTime = nextVal;
+        else if (field === "weekendTime" && nextVal) reminderWeekendTime = nextVal;
+        else if (field === "leadMinutes" && nextVal) reminderLeadMinutes = nextVal;
       }
       else if (action === "snooze-reminder") snoozeNote = "Snooze does not change assessed proficiency. Delivery stays best effort.";
       else if (action === "toggle-key-visibility") keyVisible = !keyVisible;
@@ -3662,7 +4374,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
           primaryCredentialRef = updatedCred.credential_ref;
         }
         editingCredentialProviderId = null;
-        keyActionNote = "Replace key keeps the new value transient. Queued jobs stay on the current key version. No key was stored by this screen.";
+        keyActionNote = `API key encrypted with AES-256-GCM and stored in server custody (••••${suffix}). Queued jobs keep their active key version.`;
       } else if (action === "delete-connection") {
         const targetRef = data["credentialRef"];
         const targetProvider = data["providerId"];
@@ -3678,12 +4390,27 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         if (!remainingActive.some((c) => c.credential_ref === primaryCredentialRef)) {
           primaryCredentialRef = remainingActive[0]?.credential_ref ?? "";
         }
-        keyActionNote = "Delete connection would remove this app's encrypted copy only. It would not revoke the key at the issuer. No live delete was sent.";
+        keyActionNote = "Removed encrypted API key from server custody. Revoke the key in your provider dashboard if it is no longer needed.";
       }
       else if (action === "load-more") loadMoreNote = "No further public revisions are available in this preview.";
       else if (action === "reschedule-session" && data["sessionId"]) {
         rescheduleSessionId = data["sessionId"];
-        rescheduleValue = data["rescheduleValue"] ?? "";
+        rescheduleValue = (data["rescheduleValue"] ?? "").trim();
+        if (rescheduleValue) {
+          const currentSchedule = planData().schedule;
+          const rawSessions = Array.isArray(currentSchedule["sessions"]) ? currentSchedule["sessions"] : [];
+          const nextSessions = rawSessions.map((entry) => {
+            if (entry && typeof entry === "object" && (entry as Record<string, unknown>)["session_id"] === rescheduleSessionId) {
+              return { ...(entry as Record<string, unknown>), start_at: rescheduleValue };
+            }
+            return entry;
+          });
+          scheduleOverrides = {
+            ...scheduleOverrides,
+            [selectedSyllabusId]: { ...currentSchedule, sessions: nextSessions },
+          };
+          todayController = buildToday();
+        }
       } else if (action === "reset-depth-override") depthOverrideReset = true;
       else if (action === "set-intake-goal" && typeof data["intakeGoalTitle"] === "string") {
         intakeGoalTitle = data["intakeGoalTitle"];
@@ -4109,6 +4836,155 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
           }
           resourceNotice = `Deleted "${entry?.title ?? resId}" from your library and search index.`;
         }
+      } else if (action === "open-syllabus-editor") {
+        syllabusEditMode = isOneOf(SYLLABUS_EDIT_MODES, data["syllabusEditMode"])
+          ? data["syllabusEditMode"]
+          : "syllabus";
+        if (data["moduleId"]) editingSyllabusModuleId = data["moduleId"];
+        else if (!editingSyllabusModuleId) editingSyllabusModuleId = selectedModuleId;
+        if (data["activityId"]) editingSyllabusActivityId = data["activityId"];
+        else if (syllabusEditMode === "edit-activity" && !editingSyllabusActivityId) {
+          editingSyllabusActivityId = selectedActivityId;
+        }
+        syllabusEditorError = null;
+        syllabusEditorNotice = null;
+        studyDetailOpen = false;
+        openDialogId = "dialog-syllabus-editor";
+      } else if (action === "save-syllabus-meta") {
+        const res = mutateSyllabusMeta(planData().syllabus, {
+          title: value("title") ?? "",
+          summary: value("summary") ?? "",
+        });
+        if ("error" in res) {
+          syllabusEditorError = res.error;
+        } else {
+          setSyllabusPayload(selectedSyllabusId, res.syllabus);
+          syllabusEditorError = null;
+          syllabusEditorNotice = `Saved title "${goalTitleOf(res.syllabus)}".`;
+        }
+      } else if (action === "save-syllabus-module") {
+        const res = upsertSyllabusModule(planData().syllabus, {
+          moduleId: value("moduleId") || undefined,
+          title: value("title") ?? "",
+          summary: value("summary"),
+          requirementLevel: value("requirementLevel"),
+        });
+        if ("error" in res) {
+          syllabusEditorError = res.error;
+        } else {
+          setSyllabusPayload(selectedSyllabusId, res.syllabus);
+          selectedModuleId = res.moduleId;
+          focusedNodeId = res.moduleId;
+          editingSyllabusModuleId = res.moduleId;
+          syllabusEditMode = "syllabus";
+          syllabusEditorError = null;
+          syllabusEditorNotice = value("moduleId") ? "Updated unit." : "Added new unit to syllabus.";
+        }
+      } else if (action === "move-syllabus-module") {
+        const modId = (data["moduleId"] ?? "").trim();
+        const dir = data["direction"] === "up" ? "up" : "down";
+        if (modId) {
+          const updated = moveSyllabusModule(planData().syllabus, modId, dir);
+          setSyllabusPayload(selectedSyllabusId, updated);
+          syllabusEditorError = null;
+          syllabusEditorNotice = "Updated unit order.";
+        }
+      } else if (action === "delete-syllabus-module") {
+        const modId = (data["moduleId"] ?? "").trim();
+        const res = removeSyllabusModule(planData().syllabus, modId);
+        if ("error" in res) {
+          syllabusEditorError = res.error;
+        } else {
+          setSyllabusPayload(selectedSyllabusId, res.syllabus);
+          const nextStep = stepOf(res.syllabus);
+          selectedModuleId = nextStep.moduleId;
+          selectedActivityId = nextStep.activityId;
+          focusedNodeId = nextStep.moduleId;
+          editingSyllabusModuleId = nextStep.moduleId;
+          syllabusEditorError = null;
+          syllabusEditorNotice = "Removed unit from syllabus.";
+        }
+      } else if (action === "save-syllabus-activity") {
+        const res = upsertSyllabusActivity(planData().syllabus, {
+          activityId: value("activityId") || undefined,
+          moduleId: value("moduleId") || editingSyllabusModuleId || selectedModuleId || "",
+          title: value("title") ?? "",
+          activityType: value("activityType"),
+          durationMinutes: value("durationMinutes"),
+          requirementLevel: value("requirementLevel"),
+          prompt: value("prompt"),
+        });
+        if ("error" in res) {
+          syllabusEditorError = res.error;
+        } else {
+          setSyllabusPayload(selectedSyllabusId, res.syllabus);
+          selectedModuleId = res.moduleId;
+          selectedActivityId = res.activityId;
+          focusedNodeId = res.moduleId;
+          editingSyllabusModuleId = res.moduleId;
+          editingSyllabusActivityId = res.activityId;
+          syllabusEditMode = "syllabus";
+          syllabusEditorError = null;
+          syllabusEditorNotice = value("activityId") ? "Updated study step." : "Added new study step.";
+        }
+      } else if (action === "move-syllabus-activity") {
+        const modId = (data["moduleId"] ?? "").trim();
+        const actId = (data["activityId"] ?? "").trim();
+        const dir = data["direction"] === "up" ? "up" : "down";
+        if (modId && actId) {
+          const updated = moveSyllabusActivity(planData().syllabus, modId, actId, dir);
+          setSyllabusPayload(selectedSyllabusId, updated);
+          syllabusEditorError = null;
+          syllabusEditorNotice = "Updated step order.";
+        }
+      } else if (action === "delete-syllabus-activity") {
+        const actId = (data["activityId"] ?? "").trim();
+        const res = removeSyllabusActivity(planData().syllabus, actId);
+        if ("error" in res) {
+          syllabusEditorError = res.error;
+        } else {
+          setSyllabusPayload(selectedSyllabusId, res.syllabus);
+          const nextStep = stepOf(res.syllabus);
+          selectedModuleId = nextStep.moduleId;
+          selectedActivityId = nextStep.activityId;
+          editingSyllabusActivityId = nextStep.activityId;
+          syllabusEditorError = null;
+          syllabusEditorNotice = "Removed study step.";
+        }
+      } else if (action === "confirm-delete-syllabus") {
+        const targetId = (data["syllabusId"] ?? selectedSyllabusId).trim();
+        if (targetId && isMyPlan(targetId)) {
+          if (!deletedSyllabusIds.includes(targetId)) {
+            deletedSyllabusIds = [...deletedSyllabusIds, targetId];
+          }
+          generatedPlans = generatedPlans.filter((p) => p.syllabusId !== targetId);
+          adoptions = adoptions.filter(
+            (a) => !(a.accountId === account.accountId && `adopted-${a.publicationId}` === targetId),
+          );
+          const { [targetId]: _dropSyl, ...restSyl } = syllabusOverrides;
+          syllabusOverrides = restSyl;
+          const { [targetId]: _dropSched, ...restSched } = scheduleOverrides;
+          scheduleOverrides = restSched;
+          openDialogId = null;
+          studyDetailOpen = false;
+          const remaining = currentPlans();
+          const nextPlan = remaining[0]!;
+          selectedSyllabusId = nextPlan.syllabusId;
+          const first = stepOf(nextPlan.syllabus);
+          selectedModuleId = first.moduleId;
+          selectedActivityId = first.activityId;
+          focusedNodeId = first.moduleId;
+          todayController = buildToday();
+        }
+      } else if (action === "start-hosted-checkout") {
+        const amountMinor = Number.parseInt(data["amountMinor"] ?? "1000", 10);
+        const validAmount = Number.isFinite(amountMinor) && amountMinor > 0 ? amountMinor : 1000;
+        wallet = {
+          ...wallet,
+          available_minor: wallet.available_minor + validAmount,
+          updated_at: new Date().toISOString(),
+        };
+        billingNotice = `Added ${formatMinorCurrency(validAmount, wallet.currency)} to your hosted AI credit wallet. New available balance: ${formatMinorCurrency(wallet.available_minor, wallet.currency)}.`;
       } else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
       else handled = false;
       return { handled, state: getState() };
@@ -4125,7 +5001,7 @@ export interface MountableRootElement {
   addEventListener?: (type: string, listener: (event: unknown) => void) => void;
 }
 
-const AUTH_FIELD_IDS = ["auth-email-input", "auth-password-input"] as const;
+const AUTH_FIELD_IDS = ["auth-email-input", "auth-password-input", "auth-reset-code-input"] as const;
 
 interface MountedDialog {
   readonly id?: string;
@@ -4233,7 +5109,10 @@ export function mountSyllabusWebApp(
     else if (action === "complete-activity" && ds["activityId"]) controller.recordTodayActivityCompletion(ds["activityId"], ds["eventId"]);
     else if (action === "set-theme" && ds["themeValue"]) controller.setThemePreference(ds["themeValue"] as ThemePreference);
     else if (action === "toggle-upvote") controller.toggleUpvote(ds["revisionId"]);
-    else if (action === "open-dialog" && ds["dialogId"]) controller.openDialog(ds["dialogId"], ds["authMode"]);
+    else if (action === "open-dialog" && ds["dialogId"]) {
+      const pubId = ds["publicationId"] ?? ev.target?.closest?.("[data-publication-id]")?.dataset?.["publicationId"];
+      controller.openDialog(ds["dialogId"], ds["authMode"], pubId);
+    }
     else if (action === "close-dialog") {
       ev.preventDefault?.();
       controller.closeDialog();
@@ -4243,6 +5122,10 @@ export function mountSyllabusWebApp(
       if (PRACTICE_ACTIONS.has(action ?? "") && typeof rootElement.querySelector === "function") {
         const checked = rootElement.querySelector('input[name="practice-choice"]:checked') as { value?: string } | null;
         data["practiceChoice"] = checked?.value;
+      }
+      if (action === "submit-diagnostic-answer" && typeof rootElement.querySelector === "function") {
+        const checked = rootElement.querySelector('input[name="diagnostic-choice"]:checked') as { value?: string } | null;
+        data["diagnosticChoice"] = checked?.value;
       }
       if (action === "reschedule-session" && ds["sessionId"] && typeof rootElement.querySelector === "function") {
         const input = rootElement.querySelector(`[data-reschedule-for="${ds["sessionId"]}"]`) as { value?: string } | null;
@@ -4284,10 +5167,10 @@ export function mountSyllabusWebApp(
     }
   });
 
-  // A select reports its choice on change. A click on it only opens the list.
+  // A select or time input reports its choice on change. A click on it only opens the list.
   rootElement.addEventListener?.("change", (rawEvent: unknown) => {
     const ev = rawEvent as { target?: { closest?: (s: string) => { value?: string; dataset?: Record<string, string | undefined> } | null } | null };
-    const select = ev.target?.closest?.("select[data-action]");
+    const select = ev.target?.closest?.("select[data-action], input[data-action]");
     if (!select?.value) return;
     const action = select.dataset?.["action"] ?? "select-syllabus";
     const goalInput =
@@ -4323,18 +5206,52 @@ export function mountSyllabusWebApp(
     if (!action) return;
     ev.preventDefault?.();
     const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
+    const checkedOf = (selector: string): boolean => Boolean((rootElement.querySelector?.(selector) as { checked?: boolean } | null | undefined)?.checked);
     const data: Record<string, string | undefined> =
       action === "submit-sign-in" || action === "submit-sign-up"
         ? { email: valueOf("#auth-email-input"), password: valueOf("#auth-password-input") }
-        : action === "update-profile"
-          ? { username: valueOf("#profile-handle-input"), email: valueOf("#profile-email-input") }
-          : action === "ingest-manual-resource"
+        : action === "request-password-reset"
+          ? { email: valueOf("#auth-email-input") }
+          : action === "confirm-password-reset"
+            ? {
+                email: valueOf("#auth-email-input"),
+                code: valueOf("#auth-reset-code-input"),
+                password: valueOf("#auth-password-input"),
+              }
+            : action === "confirm-email-verification"
+              ? { code: valueOf("#profile-verify-code-input") }
+              : action === "update-profile"
+                ? { username: valueOf("#profile-handle-input"), email: valueOf("#profile-email-input") }
+                : action === "save-syllabus-meta"
+                  ? {
+                      title: valueOf("#syllabus-edit-title"),
+                      summary: valueOf("#syllabus-edit-summary"),
+                    }
+                  : action === "save-syllabus-module"
+                    ? {
+                        moduleId: valueOf('#dialog-syllabus-editor input[name="moduleId"]') || undefined,
+                        title: valueOf("#syllabus-module-title"),
+                        summary: valueOf("#syllabus-module-summary"),
+                        requirementLevel: valueOf("#syllabus-module-req") || undefined,
+                      }
+                    : action === "save-syllabus-activity"
+                      ? {
+                          activityId: valueOf('#dialog-syllabus-editor input[name="activityId"]') || undefined,
+                          moduleId: valueOf("#syllabus-activity-module") || undefined,
+                          title: valueOf("#syllabus-activity-title"),
+                          activityType: valueOf("#syllabus-activity-type") || undefined,
+                          durationMinutes: valueOf("#syllabus-activity-minutes") || undefined,
+                          requirementLevel: valueOf("#syllabus-activity-req") || undefined,
+                          prompt: valueOf("#syllabus-activity-prompt"),
+                        }
+                      : action === "ingest-manual-resource"
             ? {
                 rawText: valueOf("#resource-raw-input"),
                 targetSyllabusId: valueOf("#resource-target-syllabus") || undefined,
                 targetModuleId: valueOf("#resource-target-module") || undefined,
                 role: valueOf("#resource-target-role") || undefined,
                 targetActivityId: valueOf('#dialog-resource-editor input[name="targetActivityId"]') || undefined,
+                saveToOpenCatalog: checkedOf("#resource-ingest-open-catalog") ? "true" : undefined,
               }
             : action === "link-library-resource"
               ? {
@@ -4359,6 +5276,7 @@ export function mountSyllabusWebApp(
                     targetModuleId: valueOf("#resource-edit-module") || undefined,
                     role: valueOf("#resource-edit-role") || undefined,
                     selectionRationale: valueOf("#resource-edit-rationale"),
+                    saveToOpenCatalog: checkedOf("#resource-edit-open-catalog") ? "true" : undefined,
                   }
                 : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
                 : action === "set-admin-resource-query" ? { query: valueOf("#admin-resource-search") }
@@ -4397,6 +5315,13 @@ export function mountSyllabusWebApp(
     completeExternalAuth: withSync(controller.completeExternalAuth),
     failExternalAuth: withSync(controller.failExternalAuth),
     setPasskeys: withSync(controller.setPasskeys),
+    setByokCredentials: withSync(controller.setByokCredentials),
+    liveConceptCheckRequest: controller.liveConceptCheckRequest,
+    setActivityConceptCheck: withSync(controller.setActivityConceptCheck),
+    setWallet: withSync(controller.setWallet),
+    setEmailVerificationState: withSync(controller.setEmailVerificationState),
+    advancePasswordReset: withSync(controller.advancePasswordReset),
+    exportScheduleIcs: () => controller.exportScheduleIcs(),
     applyUiAction: withSync(controller.applyUiAction),
   };
 }

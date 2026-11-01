@@ -770,7 +770,7 @@ export async function analyzeManualResourceWithAi(params: {
         signal: controller.signal,
         headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
         body: JSON.stringify({
-          model: params.modelId || "gpt-5.4-mini",
+          model: params.modelId || "gpt-6-luna",
           input: prompt,
           text: {
             format: {
@@ -798,11 +798,11 @@ export async function analyzeManualResourceWithAi(params: {
         signal: controller.signal,
         headers: {
           "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
+          "anthropic-version": "2026-10-21",
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: params.modelId || "claude-haiku-4-5",
+          model: params.modelId || "claude-haiku-5-5",
           max_tokens: 1024,
           messages: [{ role: "user", content: `${prompt}\n\nRespond with a single JSON object only.` }],
         }),
@@ -813,7 +813,7 @@ export async function analyzeManualResourceWithAi(params: {
           body.content?.filter((b) => b.type === "text").map((b) => b.text ?? "").join("") ?? null;
       }
     } else if (params.providerId === "google_gemini") {
-      const model = encodeURIComponent(params.modelId || "gemini-3-flash-preview");
+      const model = encodeURIComponent(params.modelId || "gemini-3.5-flash-lite");
       const res = await fetchFn(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {

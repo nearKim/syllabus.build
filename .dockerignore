@@ -1,0 +1,13 @@
+target
+node_modules
+.git
+.data
+apps/web/.data
+*.log
+.env
+.env.*
+!.env.example
+.DS_Store
+coverage
+.venv
+__pycache__

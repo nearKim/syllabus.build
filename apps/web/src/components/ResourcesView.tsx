@@ -432,6 +432,14 @@ export function ResourcesView({
               ))}
             </select>
           </label>
+          <a
+            href="/catalog/resources.json"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn-secondary"
+          >
+            Open catalog (.json)
+          </a>
           <button
             type="button"
             class="btn-primary"
@@ -636,6 +644,14 @@ export function ResourcesView({
                               <span class="st-sr"> {row.title} in a new tab</span>
                             </a>
                           ) : null}
+                          <a
+                            href={`/catalog/resources/${encodeURIComponent(row.resourceVersionId)}.json`}
+                            download={`${row.resourceVersionId}.json`}
+                            class="source-action-btn"
+                            aria-label={`Download ${row.title} open catalog JSON`}
+                          >
+                            JSON
+                          </a>
                           {!linkedToSelected ? (
                             <button
                               type="button"

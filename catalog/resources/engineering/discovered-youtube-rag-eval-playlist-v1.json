@@ -1,0 +1,53 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "community_discovered",
+  "resource_version_id": "discovered-youtube-rag-eval-playlist-v1",
+  "title": "YouTube Playlist: RAG Triad Evaluation, Faithfulness & Context Recall Walkthrough",
+  "canonical_url": "https://example.invalid/catalog/discovered-youtube-rag-eval-playlist-v1",
+  "captured_at": "2026-10-26T18:00:00Z",
+  "category": "YouTube",
+  "subject": "Engineering",
+  "provider": {
+    "provider_id": "ai-systems-youtube",
+    "display_name": "AI Systems Lab · YouTube Playlist (PL-RAG-EVAL-2026)"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-26T18:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "AI Web Search",
+    "discovered_by_handle": "@kenji_ml",
+    "last_indexed_at": "2026-10-26T18:00:00Z"
+  },
+  "segments": [
+    {
+      "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid1",
+      "title": "00:00 · Part 1: Constructing Golden Evaluation Datasets & Recall@k",
+      "verified": true
+    },
+    {
+      "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid2",
+      "title": "16:20 · Part 2: Automated Faithfulness & Hallucination Attribution Checks",
+      "verified": true
+    },
+    {
+      "segment_id": "discovered-youtube-rag-eval-playlist-v1-vid3",
+      "title": "34:05 · Part 3: End-to-End Hybrid Retrieval + Reranker Ablation Walkthrough",
+      "verified": true
+    }
+  ]
+}

@@ -18,8 +18,8 @@ use syllabus_persistence::{
     StoredIdempotentResponse,
 };
 use syllabus_security::{
-    AppEnvironment, AuthVerifier, AuthenticatedPrincipal, DevFixedIdentityAuthVerifier,
-    ReleaseFeatureGates, SecurityError,
+    AuthVerifier, AuthenticatedPrincipal, DevFixedIdentityAuthVerifier, ReleaseFeatureGates,
+    SecurityError,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -48,19 +48,23 @@ use self::{
     },
     handlers_core::{
         activate_syllabus_revision_handler, add_syllabus_resource_handler,
-        cancel_generation_job_handler, create_auth_session_handler, create_credential_handler,
-        create_export_job_handler, delete_auth_session_handler, delete_catalog_resource_handler,
+        cancel_generation_job_handler, confirm_email_verification_handler,
+        confirm_password_reset_handler, create_auth_session_handler, create_credential_handler,
+        create_export_job_handler, create_passkey_session_handler, delete_auth_session_handler,
+        delete_catalog_resource_handler, delete_my_passkey_handler, delete_my_workspace_handler,
         delete_syllabus_resource_handler, get_auth_session_handler,
-        get_credential_metadata_handler, get_syllabus_overview_handler,
-        get_syllabus_resource_alerts_handler, get_syllabus_revision_handler,
-        get_generation_job_handler, get_my_proficiency_handler, get_my_usage_handler,
-        get_schedule_handler, ingest_manual_catalog_resource_handler, interpret_goal_handler,
-        list_auth_providers_handler, list_credentials_handler, list_my_syllabi_handler,
-        list_or_filter_catalog_resources_handler, login_email_handler,
-        oauth_authorize_url_handler, oauth_callback_exchange_handler,
-        patch_catalog_resource_handler, patch_syllabus_resource_handler, patch_schedule_handler,
-        post_syllabus_progress_event_handler, post_progress_event_handler,
-        put_active_revision_handler, quarantine_catalog_resource_handler,
+        get_credential_metadata_handler, get_generation_job_handler, get_my_proficiency_handler,
+        get_my_usage_handler, get_my_workspace_handler, get_passkey_for_auth_handler,
+        get_schedule_handler, get_syllabus_overview_handler, get_syllabus_resource_alerts_handler,
+        get_syllabus_revision_handler, ingest_manual_catalog_resource_handler,
+        interpret_goal_handler, list_auth_providers_handler, list_credentials_handler,
+        list_my_passkeys_handler, list_my_syllabi_handler, list_or_filter_catalog_resources_handler,
+        login_email_handler, lookup_passkeys_for_auth_handler, oauth_authorize_url_handler,
+        oauth_callback_exchange_handler, patch_catalog_resource_handler, patch_my_profile_handler,
+        patch_schedule_handler, patch_syllabus_resource_handler, post_progress_event_handler,
+        post_syllabus_progress_event_handler, put_active_revision_handler, put_my_passkey_handler,
+        put_my_workspace_handler, quarantine_catalog_resource_handler,
+        request_email_verification_handler, request_password_reset_handler,
         review_catalog_resource_handler, revoke_credential_handler, rotate_credential_handler,
         search_and_index_catalog_handler, signup_email_handler, start_generation_handler,
     },
@@ -110,8 +114,14 @@ impl ApiAppState {
     /// Creates a new `ApiAppState` seeded with development fixtures and outbox configuration.
     #[must_use]
     pub fn new(gates: ReleaseFeatureGates) -> Self {
+        Self::with_store(gates, InMemoryTransactionalStore::new_with_dev_fixtures())
+    }
+
+    /// Creates a new `ApiAppState` bound to the provided transactional store.
+    #[must_use]
+    pub fn with_store(gates: ReleaseFeatureGates, store: InMemoryTransactionalStore) -> Self {
         let auth_verifier: Arc<dyn AuthVerifier> = match DevFixedIdentityAuthVerifier::new(
-            AppEnvironment::Development,
+            gates.env,
             DEFAULT_DEV_ACCOUNT_ID,
         ) {
             Ok(verifier) => Arc::new(verifier),
@@ -119,10 +129,17 @@ impl ApiAppState {
         };
         Self {
             gates,
-            store: InMemoryTransactionalStore::new_with_dev_fixtures(),
+            store,
             outbox: OutboxJobQueue::new(OutboxQueueConfig::default()),
             auth_verifier,
         }
+    }
+
+    /// Creates an `ApiAppState` backed by PostgreSQL when `DATABASE_URL` is configured (or
+    /// in-memory + open Git catalog when `DATABASE_URL` is unset).
+    pub fn new_from_env(gates: ReleaseFeatureGates) -> Result<Self, PersistenceError> {
+        let store = InMemoryTransactionalStore::open_from_env()?;
+        Ok(Self::with_store(gates, store))
     }
 
     /// Authenticates an incoming HTTP request using session token resolution or the configured `AuthVerifier`.
@@ -308,6 +325,16 @@ pub fn build_router(gates: ReleaseFeatureGates) -> Router {
     build_router_with_state(ApiAppState::new(gates))
 }
 
+/// Builds the HTTP API router using `ApiAppState::new_from_env` (connecting to PostgreSQL when
+/// `DATABASE_URL` is set and loading `catalog/resources/**/*.json`).
+pub fn build_router_from_env(
+    gates: ReleaseFeatureGates,
+) -> Result<(Router, bool), PersistenceError> {
+    let state = ApiAppState::new_from_env(gates)?;
+    let is_pg = state.store.is_postgres_backed();
+    Ok((build_router_with_state(state), is_pg))
+}
+
 /// Builds the HTTP API router bound to the provided `ApiAppState`.
 pub fn build_router_with_state(state: ApiAppState) -> Router {
     let readiness_gates = state.gates;
@@ -354,6 +381,44 @@ fn auth_and_core_routes() -> Router<ApiAppState> {
         .route(
             "/v1/auth/sessions/current",
             delete(delete_auth_session_handler),
+        )
+        // Password recovery, email verification, WebAuthn passkeys & durable web workspace routes
+        .route(
+            "/v1/auth/password-reset/request",
+            post(request_password_reset_handler),
+        )
+        .route(
+            "/v1/auth/password-reset/confirm",
+            post(confirm_password_reset_handler),
+        )
+        .route(
+            "/v1/auth/email-verification/request",
+            post(request_email_verification_handler),
+        )
+        .route(
+            "/v1/auth/email-verification/confirm",
+            post(confirm_email_verification_handler),
+        )
+        .route("/v1/auth/passkeys", get(lookup_passkeys_for_auth_handler))
+        .route(
+            "/v1/auth/passkeys/session",
+            post(create_passkey_session_handler),
+        )
+        .route(
+            "/v1/auth/passkeys/{credential_id}",
+            get(get_passkey_for_auth_handler),
+        )
+        .route(
+            "/v1/me/workspace",
+            get(get_my_workspace_handler)
+                .put(put_my_workspace_handler)
+                .delete(delete_my_workspace_handler),
+        )
+        .route("/v1/me/profile", patch(patch_my_profile_handler))
+        .route("/v1/me/passkeys", get(list_my_passkeys_handler))
+        .route(
+            "/v1/me/passkeys/{credential_id}",
+            put(put_my_passkey_handler).delete(delete_my_passkey_handler),
         )
         // Protected learner proficiency & progress event routes
         .route("/v1/me/proficiency", get(get_my_proficiency_handler))

@@ -10,10 +10,18 @@ use crate::DomainError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CatalogAccessModel {
+    #[serde(alias = "free")]
     FreePublic,
+    #[serde(alias = "paid", alias = "purchase", alias = "library_loan")]
     PaidPurchase,
     Subscription,
+    #[serde(
+        alias = "freemium_optional_certificate",
+        alias = "freemium",
+        alias = "free_audit"
+    )]
     FreemiumTrial,
+    #[serde(alias = "unknown")]
     UnknownPrice,
 }
 

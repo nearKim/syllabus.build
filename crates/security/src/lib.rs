@@ -27,6 +27,25 @@ impl AppEnvironment {
     pub fn is_local_dev_or_test(self) -> bool {
         matches!(self, AppEnvironment::Development | AppEnvironment::Test)
     }
+
+    /// Resolves the runtime `AppEnvironment` from `APP_ENV` (falling back to `NODE_ENV` or `Development`).
+    #[must_use]
+    pub fn from_env() -> Self {
+        let raw = std::env::var("APP_ENV")
+            .or_else(|_| std::env::var("SYLLABUS_ENV"))
+            .unwrap_or_else(|_| "development".to_string());
+        Self::parse_str(&raw)
+    }
+
+    #[must_use]
+    pub fn parse_str(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "production" | "prod" => AppEnvironment::Production,
+            "staging" | "stage" => AppEnvironment::Staging,
+            "test" | "testing" => AppEnvironment::Test,
+            _ => AppEnvironment::Development,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -230,6 +249,32 @@ impl Default for ReleaseFeatureGates {
 }
 
 impl ReleaseFeatureGates {
+    #[must_use]
+    fn env_flag_enabled(var_name: &str) -> bool {
+        std::env::var(var_name).ok().is_some_and(|raw| {
+            matches!(
+                raw.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "approved" | "enabled"
+            )
+        })
+    }
+
+    /// Loads `ReleaseFeatureGates` from environment variables (`APP_ENV`, `GATE_D11_*`, `GATE_D07_*`, `GATE_D16_*`, `GATE_D15_*`).
+    #[must_use]
+    pub fn from_env() -> Self {
+        Self {
+            env: AppEnvironment::from_env(),
+            d11_production_auth_approved: Self::env_flag_enabled(
+                "GATE_D11_PRODUCTION_AUTH_APPROVED",
+            ),
+            d07_live_billing_enabled: Self::env_flag_enabled("GATE_D07_LIVE_BILLING_ENABLED"),
+            d16_public_sharing_enabled: Self::env_flag_enabled("GATE_D16_PUBLIC_SHARING_ENABLED"),
+            d15_operative_license_approved: Self::env_flag_enabled(
+                "GATE_D15_OPERATIVE_LICENSE_APPROVED",
+            ),
+        }
+    }
+
     pub fn require_d11_auth_and_kms(&self) -> Result<(), SecurityError> {
         if self.d11_production_auth_approved {
             Ok(())
@@ -303,7 +348,7 @@ impl std::fmt::Debug for CredentialVault {
 
 impl Default for CredentialVault {
     fn default() -> Self {
-        Self::new(*b"syllabus-local-vault-kek-32bytes")
+        Self::from_env()
     }
 }
 
@@ -311,6 +356,32 @@ impl CredentialVault {
     #[must_use]
     pub fn new(master_kek: [u8; 32]) -> Self {
         Self { master_kek }
+    }
+
+    /// Resolves a 32-byte BYOK Key-Encryption-Key from `BYOK_MASTER_KEY` (64-char hex,
+    /// 32-byte base64, or SHA-256 digest of a passphrase), falling back to the local dev KEK.
+    #[must_use]
+    pub fn from_env() -> Self {
+        if let Ok(raw) = std::env::var("BYOK_MASTER_KEY") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                if trimmed.len() == 64 {
+                    if let Ok(bytes) = hex::decode(trimmed) {
+                        if let Ok(arr) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                            return Self::new(arr);
+                        }
+                    }
+                }
+                use base64::Engine as _;
+                if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
+                    if let Ok(arr) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                        return Self::new(arr);
+                    }
+                }
+                return Self::new(sha256_digest(trimmed.as_bytes()));
+            }
+        }
+        Self::new(*b"syllabus-local-vault-kek-32bytes")
     }
 
     /// Formats a redacted suffix (`...XXXX`) suitable for metadata responses (`BILL-003`, `NFR-006`).

@@ -4,7 +4,7 @@ import { BrandLockup, usernameOf, type Account, type AuthStatus } from "./Header
 import { SfIcon } from "./Icons.tsx";
 
 export const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
-export const AUTH_MODES = ["login", "signup"] as const;
+export const AUTH_MODES = ["login", "signup", "reset", "reset_confirm"] as const;
 export type AuthMode = (typeof AUTH_MODES)[number];
 
 export const PERSONAS = {
@@ -34,6 +34,7 @@ export interface AuthDialogProps {
   readonly authNotice: string | null;
   readonly authMode?: AuthMode | undefined;
   readonly authPasswordVisible?: boolean | undefined;
+  readonly resetEmail?: string | undefined;
 }
 
 export function GoogleMark(): VNode {
@@ -85,6 +86,15 @@ function LockIcon(): VNode {
   );
 }
 
+function KeyCodeIcon(): VNode {
+  return (
+    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect width="18" height="14" x="3" y="5" rx="2.5" />
+      <path d="M7 12h10" />
+    </svg>
+  );
+}
+
 // The eye button holds both glyphs. Its aria-pressed state picks the one that shows, so the client flips one attribute.
 function EyeIcons(): VNode {
   return (
@@ -122,15 +132,51 @@ export function AuthDialog({
   authNotice,
   authMode = "login",
   authPasswordVisible = false,
+  resetEmail = "",
 }: AuthDialogProps): VNode {
   const isSignup = authMode === "signup";
-  const prefilledEmail = !isSignup && authStatus === "session_expired" ? account.email : "";
+  const isResetRequest = authMode === "reset";
+  const isResetConfirm = authMode === "reset_confirm";
+  const isRecovery = isResetRequest || isResetConfirm;
+
+  const prefilledEmail = isRecovery
+    ? resetEmail
+    : !isSignup && authStatus === "session_expired"
+      ? account.email
+      : "";
+
+  const formAction = isSignup
+    ? "submit-sign-up"
+    : isResetRequest
+      ? "request-password-reset"
+      : isResetConfirm
+        ? "confirm-password-reset"
+        : "submit-sign-in";
+
+  const dialogTitle = isSignup
+    ? "Create your account"
+    : isResetRequest
+      ? "Reset your password"
+      : isResetConfirm
+        ? "Enter recovery code"
+        : "Sign in with email";
+
+  const submitLabel = isSignup
+    ? "Create account"
+    : isResetRequest
+      ? "Send recovery code"
+      : isResetConfirm
+        ? "Reset password & sign in"
+        : "Log in";
+
+  const needsNewPassword = isSignup || isResetConfirm;
   const passwordAttrs = {
     name: "password",
-    autocomplete: isSignup ? "new-password" : "current-password",
+    autocomplete: needsNewPassword ? "new-password" : "current-password",
     enterkeyhint: "done",
-    minLength: isSignup ? 8 : 1,
-    placeholder: isSignup ? "At least 8 characters" : "Password",
+    minLength: needsNewPassword ? 8 : 1,
+    placeholder: needsNewPassword ? "At least 8 characters" : "Password",
+    "aria-describedby": needsNewPassword ? "auth-password-hint" : undefined,
     required: true,
   } as const;
 
@@ -148,13 +194,13 @@ export function AuthDialog({
       <form
         method="dialog"
         class="dialog-surface auth-surface"
-        data-action={isSignup ? "submit-sign-up" : "submit-sign-in"}
+        data-action={formAction}
         novalidate
       >
         <div class="auth-head">
           <BrandLockup />
           <h2 id="dialog-auth-title" class="auth-title">
-            {isSignup ? "Create your account" : "Sign in with email"}
+            {dialogTitle}
           </h2>
           {returnTo ? (
             <p class="auth-return" role="status">
@@ -172,41 +218,85 @@ export function AuthDialog({
                 id="auth-email-input"
                 type="email"
                 name="email"
-                autocomplete={isSignup ? "username" : "username webauthn"}
+                autocomplete={isSignup || isRecovery ? "username" : "username webauthn"}
                 spellcheck={false}
                 autocapitalize="off"
                 inputmode="email"
                 pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
-                enterkeyhint="next"
+                enterkeyhint={isResetRequest ? "done" : "next"}
                 placeholder="you@example.com"
                 value={prefilledEmail}
-                autofocus
+                autofocus={!isResetConfirm}
                 required
               />
             </div>
           </div>
 
-          <div class="auth-field">
-            <label class="auth-label" for="auth-password-input">Password</label>
-            <div class="auth-password-wrap">
-              <LockIcon />
-              {authPasswordVisible ? (
-                <input id="auth-password-input" type="text" {...passwordAttrs} />
-              ) : (
-                <input id="auth-password-input" type="password" {...passwordAttrs} />
-              )}
-              <button
-                type="button"
-                class="auth-password-eye"
-                data-action="toggle-auth-password"
-                aria-controls="auth-password-input"
-                aria-pressed={authPasswordVisible}
-                aria-label={authPasswordVisible ? "Hide password" : "Show password"}
-              >
-                <EyeIcons />
-              </button>
+          {isResetConfirm ? (
+            <div class="auth-field">
+              <label class="auth-label" for="auth-reset-code-input">Recovery code</label>
+              <p class="field-hint" id="auth-code-hint">Enter the 6-digit recovery code sent to your email.</p>
+              <div class="auth-input-wrap">
+                <KeyCodeIcon />
+                <input
+                  id="auth-reset-code-input"
+                  type="text"
+                  name="code"
+                  autocomplete="one-time-code"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
+                  minLength={6}
+                  maxLength={6}
+                  enterkeyhint="next"
+                  placeholder="6-digit code"
+                  aria-describedby="auth-code-hint"
+                  autofocus
+                  required
+                />
+              </div>
             </div>
-          </div>
+          ) : null}
+
+          {isResetRequest ? null : (
+            <div class="auth-field">
+              <div class="auth-label-row">
+                <label class="auth-label" for="auth-password-input">
+                  {isResetConfirm ? "New password" : "Password"}
+                </label>
+                {authMode === "login" ? (
+                  <button
+                    type="button"
+                    class="auth-switch-btn auth-forgot-btn"
+                    data-action="switch-auth-mode"
+                    data-auth-mode="reset"
+                  >
+                    Forgot password?
+                  </button>
+                ) : null}
+              </div>
+              {needsNewPassword ? (
+                <p class="field-hint" id="auth-password-hint">Use at least 8 characters.</p>
+              ) : null}
+              <div class="auth-password-wrap">
+                <LockIcon />
+                {authPasswordVisible ? (
+                  <input id="auth-password-input" type="text" {...passwordAttrs} />
+                ) : (
+                  <input id="auth-password-input" type="password" {...passwordAttrs} />
+                )}
+                <button
+                  type="button"
+                  class="auth-password-eye"
+                  data-action="toggle-auth-password"
+                  aria-controls="auth-password-input"
+                  aria-pressed={authPasswordVisible}
+                  aria-label={authPasswordVisible ? "Hide password" : "Show password"}
+                >
+                  <EyeIcons />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {authNotice ? (
@@ -217,39 +307,47 @@ export function AuthDialog({
 
         <div class="auth-actions">
           <button type="submit" class="btn-primary auth-submit-btn">
-            {isSignup ? "Create account" : "Log in"}
+            {submitLabel}
           </button>
         </div>
 
-        <div class="auth-alt-block">
-          <p class="auth-alt-label">Or continue with</p>
-          <div class="auth-alt-grid">
-            <a href="/auth/oauth/google" class="auth-oauth-btn" data-oauth-provider="google">
-              <GoogleMark />
-              <span>Google</span>
-            </a>
-            <a href="/auth/oauth/github" class="auth-oauth-btn" data-oauth-provider="github">
-              <GitHubMark />
-              <span>GitHub</span>
-            </a>
-            {isSignup ? null : (
-              <button type="button" class="auth-oauth-btn auth-passkey-btn" data-action="sign-in-passkey">
-                <PasskeyIcon />
-                <span>Passkey</span>
-              </button>
-            )}
+        {isRecovery ? null : (
+          <div class="auth-alt-block">
+            <p class="auth-alt-label">Or continue with</p>
+            <div class="auth-alt-grid">
+              <a href="/auth/oauth/google" class="auth-oauth-btn" data-oauth-provider="google">
+                <GoogleMark />
+                <span>Google</span>
+              </a>
+              <a href="/auth/oauth/github" class="auth-oauth-btn" data-oauth-provider="github">
+                <GitHubMark />
+                <span>GitHub</span>
+              </a>
+              {isSignup ? null : (
+                <button type="button" class="auth-oauth-btn auth-passkey-btn" data-action="sign-in-passkey">
+                  <PasskeyIcon />
+                  <span>Passkey</span>
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <p class="auth-switch">
-          <span>{isSignup ? "Already have an account?" : "Don't have an account?"}</span>
+          <span>
+            {isRecovery
+              ? "Remembered your password?"
+              : isSignup
+                ? "Already have an account?"
+                : "Don't have an account?"}
+          </span>
           <button
             type="button"
             class="auth-switch-btn"
             data-action="switch-auth-mode"
-            data-auth-mode={isSignup ? "login" : "signup"}
+            data-auth-mode={isRecovery || isSignup ? "login" : "signup"}
           >
-            {isSignup ? "Log in" : "Sign up"}
+            {isRecovery || isSignup ? "Log in" : "Sign up"}
           </button>
         </p>
 

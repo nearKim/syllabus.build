@@ -1,0 +1,25 @@
+# syntax=docker/dockerfile:1
+FROM node:22-bookworm-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && corepack enable
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY packages ./packages
+COPY apps/web ./apps/web
+COPY specs ./specs
+COPY catalog ./catalog
+
+RUN pnpm install --frozen-lockfile
+
+ENV APP_ENV=production \
+    WEB_HOST=0.0.0.0 \
+    WEB_PORT=3000
+
+EXPOSE 3000
+
+CMD ["pnpm", "--filter", "@syllabus/web", "dev"]

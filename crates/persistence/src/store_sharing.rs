@@ -1639,6 +1639,13 @@ impl InMemoryTransactionalStore {
             .progress_events
             .retain(|_, e| e.account_id != principal.account_id);
         guard.proficiency_by_account.remove(&principal.account_id);
+        guard.web_workspaces.remove(&principal.account_id);
+        guard
+            .web_passkeys
+            .retain(|_, p| p.account_id != principal.account_id);
+        guard
+            .auth_recovery_tokens
+            .retain(|_, t| t.account_id != principal.account_id);
 
         // Withdraw and anonymize owned publications while keeping adopter private syllabi intact
         for pub_id in &owned_pub_ids {

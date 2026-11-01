@@ -82,6 +82,12 @@ EXPECTED_TABLES=(
   "catalog_changes"
   "oauth_identities"
   "oauth_authorization_states"
+  "runtime_store_snapshots"
+  "open_catalog_resources"
+  "web_account_workspaces"
+  "web_passkey_credentials"
+  "web_auth_recovery_tokens"
+  "worker_dispatch_receipts"
 )
 
 echo "==> Verifying schema tables in PostgreSQL"

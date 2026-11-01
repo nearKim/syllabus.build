@@ -1,0 +1,48 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "community_discovered",
+  "resource_version_id": "discovered-course-triton-kernels-v1",
+  "title": "Open Course: GPU Kernel Programming with OpenAI Triton & FlashAttention-3",
+  "canonical_url": "https://example.invalid/catalog/triton-gpu-kernels-course",
+  "captured_at": "2026-10-25T14:20:00Z",
+  "category": "Course",
+  "subject": "Systems",
+  "provider": {
+    "provider_id": "gpu-mode-open-collective",
+    "display_name": "GPU MODE Open Collective · Web Search Grounded"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-25T14:20:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "pending_reindex",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "AI Web Search",
+    "discovered_by_handle": "@ferris_ops",
+    "last_indexed_at": "2026-10-25T14:20:00Z"
+  },
+  "segments": [
+    {
+      "segment_id": "seg-triton-sram",
+      "title": "Lecture 3: Shared Memory Tiling & Warp Specialization",
+      "verified": true
+    },
+    {
+      "segment_id": "seg-triton-fa3",
+      "title": "Lecture 6: Asynchronous Tensor Cores & Ping-Pong Scheduling",
+      "verified": true
+    }
+  ]
+}

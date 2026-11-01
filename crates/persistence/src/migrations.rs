@@ -21,6 +21,10 @@ pub const INCREMENTAL_CATALOG_AND_HYBRID_INDEX_MIGRATION_SQL: &str =
     include_str!("../migrations/0007_incremental_catalog_and_hybrid_index.sql");
 pub const OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL: &str =
     include_str!("../migrations/0008_oauth_identities_and_password_auth.sql");
+pub const RUNTIME_STORE_AND_OPEN_CATALOG_MIGRATION_SQL: &str =
+    include_str!("../migrations/0009_runtime_store_and_open_catalog.sql");
+pub const WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL: &str =
+    include_str!("../migrations/0010_web_workspaces_and_worker_dispatch.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +35,7 @@ pub struct SqlMigration {
 }
 
 /// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
-pub const MIGRATIONS: [SqlMigration; 9] = [
+pub const MIGRATIONS: [SqlMigration; 11] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -76,6 +80,16 @@ pub const MIGRATIONS: [SqlMigration; 9] = [
         version: 8,
         name: "0008_oauth_identities_and_password_auth.sql",
         sql: OAUTH_IDENTITIES_AND_PASSWORD_AUTH_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 9,
+        name: "0009_runtime_store_and_open_catalog.sql",
+        sql: RUNTIME_STORE_AND_OPEN_CATALOG_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 10,
+        name: "0010_web_workspaces_and_worker_dispatch.sql",
+        sql: WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL,
     },
 ];
 

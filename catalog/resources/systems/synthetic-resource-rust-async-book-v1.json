@@ -1,0 +1,48 @@
+{
+  "$schema": "../../schema/resource.schema.json",
+  "catalog_collection": "curated",
+  "resource_version_id": "synthetic-resource-rust-async-book-v1",
+  "title": "Asynchronous Rust Under the Hood: Futures, Wakers, and Executors",
+  "canonical_url": "https://example.invalid/catalog/async-rust-under-the-hood",
+  "captured_at": "2026-10-20T16:00:00Z",
+  "category": "Book",
+  "subject": "Systems",
+  "provider": {
+    "provider_id": "open-systems-press",
+    "display_name": "Open Systems Press (Curator Verified)"
+  },
+  "access": {
+    "model": "free",
+    "tier_label": "Free",
+    "cost_label": "$0",
+    "rights_label": "Link & metadata",
+    "certificate_included": false,
+    "optional_certificate_price_minor": null,
+    "access_verified_at": "2026-10-20T16:00:00Z"
+  },
+  "ingestion_permissions": {
+    "basis": "link_and_metadata_only",
+    "permissions": {
+      "display_excerpts": "denied"
+    }
+  },
+  "vector_index": {
+    "status": "indexed",
+    "index_type": "tfidf-cosine-v1",
+    "discovered_by": "Community Published",
+    "discovered_by_handle": "@ferris_ops",
+    "last_indexed_at": "2026-10-18T12:00:00Z"
+  },
+  "segments": [
+    {
+      "segment_id": "seg-rs-futures",
+      "title": "Chapters 2–3: Futures, Pin, and Wakers",
+      "verified": true
+    },
+    {
+      "segment_id": "seg-rs-reactor",
+      "title": "Chapter 5: Reactors and I/O Readiness",
+      "verified": true
+    }
+  ]
+}

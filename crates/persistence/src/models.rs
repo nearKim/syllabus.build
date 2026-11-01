@@ -1391,10 +1391,14 @@ pub struct CatalogResourcePatchInput {
     pub canonical_url: Option<String>,
     #[serde(default)]
     pub provider_display_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "category")]
     pub resource_type: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "summary")]
     pub description: Option<String>,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub segment_titles: Option<Vec<String>>,
     #[serde(default)]
     pub topics: Option<Vec<String>>,
     #[serde(default)]
@@ -1453,4 +1457,56 @@ pub fn validate_manual_resource_egress_url(url: &str) -> Result<String, Persiste
         });
     }
     Ok(host)
+}
+
+/// Durable row-level learner workspace state synchronized between `@syllabus/web` and `syllabus-api`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebWorkspaceRecord {
+    pub account_id: String,
+    pub email: String,
+    pub workspace_json: Value,
+    pub revision: u64,
+    pub updated_at_ms: u64,
+}
+
+/// Durable WebAuthn passkey credential record persisted in PostgreSQL (`web_passkey_credentials`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WebPasskeyRecord {
+    pub credential_id: String,
+    pub account_id: String,
+    pub email: String,
+    pub credential_json: Value,
+    pub updated_at_ms: u64,
+}
+
+/// Hashed one-time token record for password reset or email verification (`web_auth_recovery_tokens`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthRecoveryTokenRecord {
+    pub token_sha256: String,
+    pub account_id: String,
+    pub email: String,
+    pub purpose: String,
+    pub expires_at_ms: u64,
+    pub consumed_at_ms: Option<u64>,
+}
+
+/// Freshly minted one-time recovery or verification code returned only at issuance time for outbox delivery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthRecoveryTokenIssued {
+    pub token: String,
+    pub account_id: String,
+    pub email: String,
+    pub purpose: String,
+    pub expires_at_ms: u64,
+}
+
+/// Durable worker outbox dispatch receipt (`worker_dispatch_receipts`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkerDispatchReceipt {
+    pub job_id: String,
+    pub job_type: String,
+    pub channel: String,
+    pub recipient: Option<String>,
+    pub status: String,
+    pub detail_json: Value,
 }
