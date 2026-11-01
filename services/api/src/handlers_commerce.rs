@@ -7,16 +7,16 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use syllabus_domain::{AmbiguousProviderOutcome, BillingModeKind, ModerationVisibilityState};
 use syllabus_persistence::PersistenceError;
 use syllabus_security::AuthenticatedPrincipal;
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 
 use crate::{
     extract_header_str, extract_idempotency_key, extract_if_match, json_bool, json_i64, json_str,
     json_string_vec, json_u64, json_with_etag, ApiAppState, ApiResult, AuthPrincipal,
-    DEFAULT_SYLLABUS_ID, DEFAULT_NOW_EPOCH_MS,
+    DEFAULT_NOW_EPOCH_MS, DEFAULT_SYLLABUS_ID,
 };
 
 // =============================================================================
@@ -24,8 +24,7 @@ use crate::{
 // Ledger, Payment Checkout Sessions & Signed Webhooks
 // =============================================================================
 
-pub(crate) const DEFAULT_WEBHOOK_SIGNING_SECRET: &[u8] =
-    b"whsec_syllabus_io_dev_secret_key_2026";
+pub(crate) const DEFAULT_WEBHOOK_SIGNING_SECRET: &[u8] = b"whsec_syllabus_io_dev_secret_key_2026";
 
 const DEFAULT_BILLING_MODE: &str = "hosted_credits";
 const DEFAULT_OPERATION_KIND: &str = "syllabus_generation";
@@ -76,11 +75,10 @@ pub(crate) async fn create_usage_quote_handler(
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let quote_id = json_str(&payload, &["quote_id"]);
-    let mode_str = json_str(&payload, &["billing_mode", "credential_mode"])
-        .unwrap_or(DEFAULT_BILLING_MODE);
+    let mode_str =
+        json_str(&payload, &["billing_mode", "credential_mode"]).unwrap_or(DEFAULT_BILLING_MODE);
     let billing_mode = parse_billing_mode(mode_str)?;
-    let operation_kind =
-        json_str(&payload, &["operation_kind"]).unwrap_or(DEFAULT_OPERATION_KIND);
+    let operation_kind = json_str(&payload, &["operation_kind"]).unwrap_or(DEFAULT_OPERATION_KIND);
     let provider_id = json_str(&payload, &["provider_id"]).unwrap_or(DEFAULT_PROVIDER_ID);
     let model_id = json_str(&payload, &["model_id"]).unwrap_or(DEFAULT_MODEL_ID);
     let max_reservable = json_i64(
@@ -91,8 +89,7 @@ pub(crate) async fn create_usage_quote_handler(
         ],
     )
     .unwrap_or(DEFAULT_MAX_RESERVABLE_MINOR_UNITS);
-    let estimated_minor =
-        json_i64(&payload, &["estimated_minor_units"]).unwrap_or(max_reservable);
+    let estimated_minor = json_i64(&payload, &["estimated_minor_units"]).unwrap_or(max_reservable);
     let byok_estimated = json_i64(
         &payload,
         &[
@@ -157,10 +154,7 @@ pub(crate) async fn create_credit_reservation_handler(
 }
 
 #[must_use]
-fn reservation_wallet_response<R: Serialize, W: Serialize>(
-    reservation: R,
-    wallet: W,
-) -> Response {
+fn reservation_wallet_response<R: Serialize, W: Serialize>(reservation: R, wallet: W) -> Response {
     (
         StatusCode::OK,
         Json(json!({
@@ -247,8 +241,8 @@ pub(crate) async fn reconcile_ambiguous_timeout_handler(
     let committed_artifact_persisted =
         json_bool(&payload, &["committed_artifact_persisted"]).unwrap_or(false);
     let outcome = parse_ambiguous_provider_outcome(&payload);
-    let now_epoch = json_i64(&payload, &["now_epoch_seconds"])
-        .unwrap_or(DEFAULT_RECONCILE_NOW_EPOCH_SECONDS);
+    let now_epoch =
+        json_i64(&payload, &["now_epoch_seconds"]).unwrap_or(DEFAULT_RECONCILE_NOW_EPOCH_SECONDS);
 
     let (resv, wallet) = state.store.reconcile_ambiguous_provider_timeout(
         &reservation_id,
@@ -290,8 +284,7 @@ pub(crate) async fn create_checkout_session_handler(
         json_i64(&payload, &["amount_minor_units"]).unwrap_or(DEFAULT_CHECKOUT_AMOUNT_MINOR_UNITS);
     let credit_minor_units =
         json_i64(&payload, &["credit_minor_units"]).unwrap_or(amount_minor_units);
-    let success_url =
-        json_str(&payload, &["success_url"]).unwrap_or(DEFAULT_CHECKOUT_SUCCESS_URL);
+    let success_url = json_str(&payload, &["success_url"]).unwrap_or(DEFAULT_CHECKOUT_SUCCESS_URL);
     let cancel_url = json_str(&payload, &["cancel_url"]).unwrap_or(DEFAULT_CHECKOUT_CANCEL_URL);
 
     let sess = state.store.create_checkout_session(
@@ -523,8 +516,7 @@ pub(crate) async fn report_publication_handler(
     let pub_rev_id = json_str(&payload, &["publication_revision_id"]);
     let reason_code =
         json_str(&payload, &["reason_code", "reason"]).unwrap_or(DEFAULT_REPORT_REASON_CODE);
-    let details =
-        json_str(&payload, &["details", "description"]).unwrap_or(DEFAULT_REPORT_DETAILS);
+    let details = json_str(&payload, &["details", "description"]).unwrap_or(DEFAULT_REPORT_DETAILS);
 
     let rep = state.store.report_publication(
         &principal,

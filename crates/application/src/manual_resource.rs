@@ -1,5 +1,6 @@
 //! Manual learning resource ingestion (`URL + free-form notes` -> structured resource + TF-IDF indexing + optional syllabus link).
 
+use serde::{Deserialize, Serialize};
 use syllabus_contracts::jcs::sha256_bytes_hex;
 use syllabus_domain::{
     normalize_canonical_resource_identity, tokenize_search_terms, BookTocChapter,
@@ -8,12 +9,11 @@ use syllabus_domain::{
 };
 use syllabus_persistence::{
     validate_manual_resource_egress_url, AcquisitionPermission, CatalogAccessModel,
-    CatalogResourceVersionRecord, CatalogReviewEvidence, SyllabusResourceBindingInput,
-    SyllabusResourceMutationReceipt, InMemoryTransactionalStore, PersistenceError,
-    ResourceFreshnessState, ResourceReviewStatus,
+    CatalogResourceVersionRecord, CatalogReviewEvidence, InMemoryTransactionalStore,
+    PersistenceError, ResourceFreshnessState, ResourceReviewStatus, SyllabusResourceBindingInput,
+    SyllabusResourceMutationReceipt,
 };
 use syllabus_security::AuthenticatedPrincipal;
-use serde::{Deserialize, Serialize};
 
 /// Input payload for `POST /v1/catalog/resources/manual`.
 /// Supports single-box free-form input (`raw_text`, e.g. `"udemy.com/course/ckad this is the ckad course..."`)
@@ -93,7 +93,10 @@ pub fn extract_url_and_notes_from_freeform(
     let mut detected_token: Option<&str> = None;
     for token in trimmed.split_whitespace() {
         let stripped = token.trim_matches(|c: char| {
-            matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | ',' | ';')
+            matches!(
+                c,
+                '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | ',' | ';'
+            )
         });
         let cleaned = stripped.trim_end_matches(['.', ':', '!', '?']);
         if looks_like_url_token(cleaned) {
@@ -104,13 +107,17 @@ pub fn extract_url_and_notes_from_freeform(
 
     let raw_token = detected_token.ok_or_else(|| {
         PersistenceError::Validation(
-            "could not detect a URL or domain in the input (for example `udemy.com/course/...`)".to_string(),
+            "could not detect a URL or domain in the input (for example `udemy.com/course/...`)"
+                .to_string(),
         )
     })?;
 
     let cleaned_url_token = raw_token
         .trim_matches(|c: char| {
-            matches!(c, '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | ',' | ';')
+            matches!(
+                c,
+                '(' | ')' | '[' | ']' | '<' | '>' | '"' | '\'' | ',' | ';'
+            )
         })
         .trim_end_matches(['.', ':', '!', '?']);
 
@@ -138,11 +145,9 @@ fn looks_like_url_token(token: &str) -> bool {
         return false;
     }
     let tld = labels.last().copied().unwrap_or("");
-    let valid_labels = labels.iter().all(|l| {
-        !l.is_empty()
-            && l.chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-')
-    });
+    let valid_labels = labels
+        .iter()
+        .all(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'));
     valid_labels && tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic())
 }
 
@@ -477,18 +482,23 @@ fn extract_topics_and_segments(
 
     let combined = format!("{title} {notes}");
     let combined_lower = combined.to_ascii_lowercase();
-    if combined_lower.contains("ckad") && !topics.iter().any(|t| t.eq_ignore_ascii_case("kubernetes"))
+    if combined_lower.contains("ckad")
+        && !topics.iter().any(|t| t.eq_ignore_ascii_case("kubernetes"))
     {
         topics.push("CKAD".to_string());
         topics.push("Kubernetes".to_string());
     }
 
     if topics.len() < 4 {
-        let stop_noise = ["blah", "blahblah", "http", "https", "course", "book", "video"];
+        let stop_noise = [
+            "blah", "blahblah", "http", "https", "course", "book", "video",
+        ];
         for term in tokenize_search_terms(&combined) {
             if term.len() >= 3
                 && !stop_noise.contains(&term.as_str())
-                && !topics.iter().any(|existing| existing.eq_ignore_ascii_case(&term))
+                && !topics
+                    .iter()
+                    .any(|existing| existing.eq_ignore_ascii_case(&term))
             {
                 topics.push(term);
                 if topics.len() >= 8 {
@@ -719,13 +729,10 @@ pub fn ingest_manual_resource(
     let price_minor_units = req.price_minor_units.or(profile.default_price_minor);
 
     // Reuse existing manual resource ID if canonical URL already exists, or accept caller's `manual-*` ID, or derive deterministic slug+hash ID.
-    let existing_match = store
-        .list_catalog_resources(false)
-        .into_iter()
-        .find(|rec| {
-            let (rec_norm, _) = normalize_canonical_resource_identity(&rec.canonical_url, None);
-            rec_norm == normalized_url_identity
-        });
+    let existing_match = store.list_catalog_resources(false).into_iter().find(|rec| {
+        let (rec_norm, _) = normalize_canonical_resource_identity(&rec.canonical_url, None);
+        rec_norm == normalized_url_identity
+    });
 
     let resource_version_id = req
         .resource_version_id
@@ -733,7 +740,11 @@ pub fn ingest_manual_resource(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .or_else(|| existing_match.as_ref().map(|r| r.resource_version_id.clone()))
+        .or_else(|| {
+            existing_match
+                .as_ref()
+                .map(|r| r.resource_version_id.clone())
+        })
         .unwrap_or_else(|| {
             let url_hash = &sha256_bytes_hex(normalized_url_identity.as_bytes())[..10];
             let slug: String = title

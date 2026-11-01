@@ -7,12 +7,12 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use serde_json::{json, Value};
 use syllabus_domain::{
     AssistanceLevel, DiagnosticStopReason, LearnerGateDecision, MathDepthPreference,
 };
 use syllabus_persistence::PersistenceError;
 use syllabus_security::AuthenticatedPrincipal;
-use serde_json::{json, Value};
 
 use crate::{
     extract_idempotency_key, extract_if_match, json_bool, json_i64, json_str, json_string_map,
@@ -49,7 +49,9 @@ pub(crate) async fn get_assessment_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Path(assessment_id): Path<String>,
 ) -> ApiResult {
-    let view = state.store.get_assessment_view(&principal, &assessment_id)?;
+    let view = state
+        .store
+        .get_assessment_view(&principal, &assessment_id)?;
     Ok((StatusCode::OK, Json(view)).into_response())
 }
 
@@ -123,8 +125,8 @@ pub(crate) async fn submit_assessment_attempt_handler(
             let declared_assistance = AssistanceLevel::from_wire(assistance_str)
                 .map_err(|err| PersistenceError::Validation(err.to_string()))?;
             let responses = json_string_map(&payload, &["responses"]);
-            let explicit_score_bp = json_u64(&payload, &["score_bp"])
-                .map(|n| u32::try_from(n).unwrap_or(u32::MAX));
+            let explicit_score_bp =
+                json_u64(&payload, &["score_bp"]).map(|n| u32::try_from(n).unwrap_or(u32::MAX));
 
             let record = state.store.submit_assessment_attempt(
                 &principal,
@@ -146,7 +148,9 @@ pub(crate) async fn get_assessment_attempt_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Path(attempt_id): Path<String>,
 ) -> ApiResult {
-    let rec = state.store.get_assessment_attempt(&principal, &attempt_id)?;
+    let rec = state
+        .store
+        .get_assessment_attempt(&principal, &attempt_id)?;
     Ok((StatusCode::OK, Json(rec)).into_response())
 }
 
@@ -178,8 +182,7 @@ fn report_defective_item_inner(
 ) -> ApiResult {
     let reason_code =
         json_str(payload, &["reason_code", "reason"]).unwrap_or(DEFAULT_DEFECT_REASON_CODE);
-    let details =
-        json_str(payload, &["details", "description"]).unwrap_or(DEFAULT_DEFECT_DETAILS);
+    let details = json_str(payload, &["details", "description"]).unwrap_or(DEFAULT_DEFECT_DETAILS);
     let report = state.store.report_defective_assessment_item(
         principal,
         assessment_id,
@@ -197,8 +200,7 @@ pub(crate) async fn apply_key_correction_handler(
     Json(payload): Json<Value>,
 ) -> ApiResult {
     let updated_key = json_string_map(&payload, &["updated_answer_key", "answer_key"]);
-    let rationale =
-        json_str(&payload, &["rationale"]).unwrap_or(DEFAULT_KEY_CORRECTION_RATIONALE);
+    let rationale = json_str(&payload, &["rationale"]).unwrap_or(DEFAULT_KEY_CORRECTION_RATIONALE);
     let correction = state.store.apply_assessment_key_correction(
         &principal,
         &assessment_id,
@@ -549,11 +551,11 @@ pub(crate) async fn snooze_reminder_handler(
     Path(occurrence_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    let snooze_minutes_u64 =
-        json_u64(&payload, &["snooze_minutes", "duration_minutes"]).unwrap_or(DEFAULT_SNOOZE_MINUTES);
+    let snooze_minutes_u64 = json_u64(&payload, &["snooze_minutes", "duration_minutes"])
+        .unwrap_or(DEFAULT_SNOOZE_MINUTES);
     let snooze_minutes = u32::try_from(snooze_minutes_u64).unwrap_or(u32::MAX);
-    let now_epoch = json_i64(&payload, &["now_utc_epoch_seconds"])
-        .unwrap_or(DEFAULT_SNOOZE_NOW_EPOCH_SECONDS);
+    let now_epoch =
+        json_i64(&payload, &["now_utc_epoch_seconds"]).unwrap_or(DEFAULT_SNOOZE_NOW_EPOCH_SECONDS);
 
     let rec = state.store.snooze_reminder_occurrence(
         &principal,

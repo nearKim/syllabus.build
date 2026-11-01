@@ -3,9 +3,9 @@ use axum::{
     http::{Request, StatusCode},
     response::Response,
 };
+use serde_json::{json, Value};
 use syllabus_api::{build_router_with_state, ApiAppState};
 use syllabus_security::ReleaseFeatureGates;
-use serde_json::{json, Value};
 use tower::ServiceExt;
 
 async fn read_body_json(response: Response) -> Value {

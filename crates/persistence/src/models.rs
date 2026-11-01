@@ -2,13 +2,20 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use syllabus_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
-use syllabus_security::{PrincipalRole, SecurityError};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use syllabus_contracts::generated::{OpenApiOperationDescriptor, OPENAPI_OPERATIONS};
+use syllabus_security::{PrincipalRole, SecurityError};
 use thiserror::Error;
 
-use crate::*;
+use syllabus_domain::{
+    validate_outbound_egress_url, AcquisitionPermission, ActivityExecutionStatus,
+    AdoptionOriginBinding, AssessmentKind, AssessmentReviewStatus, AssistanceLevel,
+    CatalogAccessModel, CreditReservation, DiagnosticStopReason, DomainError, DstResolutionPolicy,
+    EvidenceOrigin, FourCostBucketBreakdown, MathDepthPreference, ModerationVisibilityState,
+    ObjectiveProficiencyState, RecomputedAttemptOutcome, ResourceFreshnessState,
+    ResourceReviewStatus, UsageQuote,
+};
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PersistenceError {
@@ -79,7 +86,9 @@ pub enum PersistenceError {
     #[error("catalog approval rubric evidence missing for `{resource_id}`: {reason} (`CAT-002`, `@S04`)")]
     MissingReviewRubricEvidence { resource_id: String, reason: String },
 
-    #[error("ineligible catalog resource `{resource_version_id}`: {reason} (`CAT-004`, `@S06`, `@S10`)")]
+    #[error(
+        "ineligible catalog resource `{resource_version_id}`: {reason} (`CAT-004`, `@S06`, `@S10`)"
+    )]
     IneligibleCatalogResource {
         resource_version_id: String,
         reason: String,
@@ -191,7 +200,9 @@ impl PersistenceError {
             }
             PersistenceError::ResourceOperationNotPermitted { .. } => "resource_permission_denied",
             PersistenceError::UnsafeEgressUrlRejected { .. } => "unsafe_egress_url",
-            PersistenceError::MissingReviewRubricEvidence { .. } => "missing_review_rubric_evidence",
+            PersistenceError::MissingReviewRubricEvidence { .. } => {
+                "missing_review_rubric_evidence"
+            }
             PersistenceError::IneligibleCatalogResource { .. } => "ineligible_resources",
             PersistenceError::InsufficientCatalogCoverage { .. } => "insufficient_catalog_coverage",
             PersistenceError::InvalidModelCandidate { .. } => "invalid_model_output",

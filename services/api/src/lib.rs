@@ -1,87 +1,34 @@
 //! HTTP API service router (`T00`–`T04` identity, tenant isolation, HTTP concurrency, outbox wiring,
 //! reviewed catalog filtering/reviews, goal intake, deterministic generation, and syllabus overview/activation).
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::collections::BTreeMap;
+use std::sync::Arc;
 
-use axum::{
-    extract::FromRequestParts,
-    http::{header, request::Parts, HeaderMap, HeaderValue, StatusCode},
-    response::{IntoResponse, Response},
-    routing::{delete, get, patch, post, put},
-    Json, Router,
-};
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{delete, get, patch, post, put};
+use axum::{Json, Router};
+use serde::Serialize;
+use serde_json::{json, Value};
 use syllabus_application::build_readiness_report;
 use syllabus_domain::DomainError;
 use syllabus_jobs::{OutboxJobQueue, OutboxQueueConfig};
 use syllabus_persistence::{
-    IdempotencyBeginOutcome, InMemoryTransactionalStore, PersistenceError,
-    StoredIdempotentResponse,
+    IdempotencyBeginOutcome, InMemoryTransactionalStore, PersistenceError, StoredIdempotentResponse,
 };
 use syllabus_security::{
     AuthVerifier, AuthenticatedPrincipal, DevFixedIdentityAuthVerifier, ReleaseFeatureGates,
     SecurityError,
 };
-use serde::Serialize;
-use serde_json::{json, Value};
 
+pub(crate) mod handlers_account;
+pub(crate) mod handlers_auth;
+pub(crate) mod handlers_catalog;
 pub(crate) mod handlers_commerce;
-pub(crate) mod handlers_core;
 pub(crate) mod handlers_learning;
-
-use self::{
-    handlers_commerce::{
-        adopt_publication_body_handler, adopt_publication_revision_handler,
-        create_checkout_session_handler, create_credit_reservation_handler,
-        create_usage_quote_handler, delete_my_publication_vote_handler,
-        discover_publications_handler, get_hosted_wallet_handler, get_my_ledger_handler,
-        get_my_publication_vote_handler, get_owned_publication_management_handler,
-        get_public_publication_handler, get_public_publication_revision_handler,
-        import_external_completion_handler, list_moderation_reports_handler,
-        list_owned_publication_revisions_handler, list_owned_publications_handler,
-        moderate_publication_handler, preview_body_publication_handler,
-        preview_syllabus_publication_handler, process_payment_webhook_handler,
-        publish_syllabus_handler, publish_publication_revision_handler,
-        put_my_publication_vote_handler, reconcile_ambiguous_timeout_handler,
-        release_credit_reservation_handler, report_publication_handler,
-        request_account_deletion_handler, settle_credit_reservation_handler,
-        unpublish_publication_handler,
-    },
-    handlers_core::{
-        activate_syllabus_revision_handler, add_syllabus_resource_handler,
-        cancel_generation_job_handler, confirm_email_verification_handler,
-        confirm_password_reset_handler, create_auth_session_handler, create_credential_handler,
-        create_export_job_handler, create_passkey_session_handler, delete_auth_session_handler,
-        delete_catalog_resource_handler, delete_my_passkey_handler, delete_my_workspace_handler,
-        delete_syllabus_resource_handler, get_auth_session_handler,
-        get_credential_metadata_handler, get_generation_job_handler, get_my_proficiency_handler,
-        get_my_usage_handler, get_my_workspace_handler, get_passkey_for_auth_handler,
-        get_schedule_handler, get_syllabus_overview_handler, get_syllabus_resource_alerts_handler,
-        get_syllabus_revision_handler, ingest_manual_catalog_resource_handler,
-        interpret_goal_handler, list_auth_providers_handler, list_credentials_handler,
-        list_my_passkeys_handler, list_my_syllabi_handler, list_or_filter_catalog_resources_handler,
-        login_email_handler, lookup_passkeys_for_auth_handler, oauth_authorize_url_handler,
-        oauth_callback_exchange_handler, patch_catalog_resource_handler, patch_my_profile_handler,
-        patch_schedule_handler, patch_syllabus_resource_handler, post_progress_event_handler,
-        post_syllabus_progress_event_handler, put_active_revision_handler, put_my_passkey_handler,
-        put_my_workspace_handler, quarantine_catalog_resource_handler,
-        request_email_verification_handler, request_password_reset_handler,
-        review_catalog_resource_handler, revoke_credential_handler, rotate_credential_handler,
-        search_and_index_catalog_handler, signup_email_handler, start_generation_handler,
-    },
-    handlers_learning::{
-        accept_adaptation_body_handler, accept_adaptation_path_handler,
-        apply_key_correction_handler, delete_default_push_subscription_handler,
-        delete_push_subscription_handler, evaluate_prerequisite_gate_handler,
-        get_adaptation_proposal_handler, get_assessment_attempt_handler, get_assessment_handler,
-        get_syllabus_adaptation_proposal_handler, get_diagnostic_handler,
-        get_notification_preferences_handler, post_push_subscription_handler,
-        preview_adaptation_handler, put_notification_preferences_handler,
-        record_assessment_assistance_handler, record_attempt_assistance_handler,
-        report_defective_item_body_handler, report_defective_item_path_handler,
-        snooze_reminder_handler, start_diagnostic_handler, stop_diagnostic_handler,
-        submit_assessment_attempt_handler, submit_diagnostic_attempt_handler,
-    },
-};
+pub(crate) mod handlers_syllabus;
 
 pub(crate) const DEFAULT_DEV_ACCOUNT_ID: &str = "00000000-0000-4000-8000-000000000001";
 pub(crate) const DEFAULT_SYLLABUS_ID: &str = "cur-learner-a-1";
@@ -89,6 +36,13 @@ pub(crate) const HEADER_IDEMPOTENCY_KEY: &str = "idempotency-key";
 pub(crate) const HEADER_IDEMPOTENCY_REPLAYED: &str = "Idempotency-Replayed";
 pub(crate) const DEFAULT_NOW_EPOCH_MS: u64 = 10_000;
 pub(crate) const DEFAULT_IDEMPOTENCY_TTL_MS: u64 = 86_400_000;
+
+pub(crate) fn current_epoch_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(DEFAULT_NOW_EPOCH_MS)
+}
 
 struct FailClosedAuthVerifier;
 
@@ -120,13 +74,11 @@ impl ApiAppState {
     /// Creates a new `ApiAppState` bound to the provided transactional store.
     #[must_use]
     pub fn with_store(gates: ReleaseFeatureGates, store: InMemoryTransactionalStore) -> Self {
-        let auth_verifier: Arc<dyn AuthVerifier> = match DevFixedIdentityAuthVerifier::new(
-            gates.env,
-            DEFAULT_DEV_ACCOUNT_ID,
-        ) {
-            Ok(verifier) => Arc::new(verifier),
-            Err(_) => Arc::new(FailClosedAuthVerifier),
-        };
+        let auth_verifier: Arc<dyn AuthVerifier> =
+            match DevFixedIdentityAuthVerifier::new(gates.env, DEFAULT_DEV_ACCOUNT_ID) {
+                Ok(verifier) => Arc::new(verifier),
+                Err(_) => Arc::new(FailClosedAuthVerifier),
+            };
         Self {
             gates,
             store,
@@ -186,12 +138,9 @@ impl ApiAppState {
                         body,
                         etag.as_deref(),
                     )),
-                    Err(err) => Ok(self.complete_idempotent_error(
-                        account_id,
-                        operation_id,
-                        key_str,
-                        err,
-                    )),
+                    Err(err) => {
+                        Ok(self.complete_idempotent_error(account_id, operation_id, key_str, err))
+                    }
                 }
             }
         }
@@ -362,157 +311,224 @@ pub(crate) fn build_v1_routes() -> Router<ApiAppState> {
 fn auth_and_core_routes() -> Router<ApiAppState> {
     Router::new()
         // Companion auth session, email signup/login, and OAuth 2.0 + PKCE routes
-        .route("/v1/auth/providers", get(list_auth_providers_handler))
-        .route("/v1/auth/signup", post(signup_email_handler))
-        .route("/v1/auth/login", post(login_email_handler))
+        .route(
+            "/v1/auth/providers",
+            get(handlers_auth::list_auth_providers_handler),
+        )
+        .route("/v1/auth/signup", post(handlers_auth::signup_email_handler))
+        .route("/v1/auth/login", post(handlers_auth::login_email_handler))
         .route(
             "/v1/auth/oauth/{provider}/authorize",
-            get(oauth_authorize_url_handler),
+            get(handlers_auth::oauth_authorize_url_handler),
         )
         .route(
             "/v1/auth/oauth/{provider}/callback",
-            post(oauth_callback_exchange_handler),
+            post(handlers_auth::oauth_callback_exchange_handler),
         )
-        .route("/v1/auth/session", post(create_auth_session_handler))
-        .route("/v1/auth/session", get(get_auth_session_handler))
-        .route("/v1/auth/session", delete(delete_auth_session_handler))
-        .route("/v1/auth/sessions", post(create_auth_session_handler))
-        .route("/v1/auth/sessions/current", get(get_auth_session_handler))
+        .route(
+            "/v1/auth/session",
+            post(handlers_auth::create_auth_session_handler),
+        )
+        .route(
+            "/v1/auth/session",
+            get(handlers_auth::get_auth_session_handler),
+        )
+        .route(
+            "/v1/auth/session",
+            delete(handlers_auth::delete_auth_session_handler),
+        )
+        .route(
+            "/v1/auth/sessions",
+            post(handlers_auth::create_auth_session_handler),
+        )
         .route(
             "/v1/auth/sessions/current",
-            delete(delete_auth_session_handler),
+            get(handlers_auth::get_auth_session_handler),
+        )
+        .route(
+            "/v1/auth/sessions/current",
+            delete(handlers_auth::delete_auth_session_handler),
         )
         // Password recovery, email verification, WebAuthn passkeys & durable web workspace routes
         .route(
             "/v1/auth/password-reset/request",
-            post(request_password_reset_handler),
+            post(handlers_auth::request_password_reset_handler),
         )
         .route(
             "/v1/auth/password-reset/confirm",
-            post(confirm_password_reset_handler),
+            post(handlers_auth::confirm_password_reset_handler),
         )
         .route(
             "/v1/auth/email-verification/request",
-            post(request_email_verification_handler),
+            post(handlers_auth::request_email_verification_handler),
         )
         .route(
             "/v1/auth/email-verification/confirm",
-            post(confirm_email_verification_handler),
+            post(handlers_auth::confirm_email_verification_handler),
         )
-        .route("/v1/auth/passkeys", get(lookup_passkeys_for_auth_handler))
+        .route(
+            "/v1/auth/passkeys",
+            get(handlers_auth::lookup_passkeys_for_auth_handler),
+        )
         .route(
             "/v1/auth/passkeys/session",
-            post(create_passkey_session_handler),
+            post(handlers_auth::create_passkey_session_handler),
         )
         .route(
             "/v1/auth/passkeys/{credential_id}",
-            get(get_passkey_for_auth_handler),
+            get(handlers_auth::get_passkey_for_auth_handler),
         )
         .route(
             "/v1/me/workspace",
-            get(get_my_workspace_handler)
-                .put(put_my_workspace_handler)
-                .delete(delete_my_workspace_handler),
+            get(handlers_account::get_my_workspace_handler)
+                .put(handlers_account::put_my_workspace_handler)
+                .delete(handlers_account::delete_my_workspace_handler),
         )
-        .route("/v1/me/profile", patch(patch_my_profile_handler))
-        .route("/v1/me/passkeys", get(list_my_passkeys_handler))
+        .route(
+            "/v1/me/profile",
+            patch(handlers_account::patch_my_profile_handler),
+        )
+        .route(
+            "/v1/me/passkeys",
+            get(handlers_account::list_my_passkeys_handler),
+        )
         .route(
             "/v1/me/passkeys/{credential_id}",
-            put(put_my_passkey_handler).delete(delete_my_passkey_handler),
+            put(handlers_account::put_my_passkey_handler)
+                .delete(handlers_account::delete_my_passkey_handler),
         )
         // Protected learner proficiency & progress event routes
-        .route("/v1/me/proficiency", get(get_my_proficiency_handler))
-        .route("/v1/progress-events", post(post_progress_event_handler))
+        .route(
+            "/v1/me/proficiency",
+            get(handlers_syllabus::get_my_proficiency_handler),
+        )
+        .route(
+            "/v1/progress-events",
+            post(handlers_syllabus::post_progress_event_handler),
+        )
         .route(
             "/v1/syllabi/{syllabus_id}/progress-events",
-            post(post_syllabus_progress_event_handler),
+            post(handlers_syllabus::post_syllabus_progress_event_handler),
         )
         // Schedule routes with If-Match optimistic concurrency
-        .route("/v1/schedules/{syllabus_id}", get(get_schedule_handler))
         .route(
             "/v1/schedules/{syllabus_id}",
-            patch(patch_schedule_handler),
+            get(handlers_syllabus::get_schedule_handler),
+        )
+        .route(
+            "/v1/schedules/{syllabus_id}",
+            patch(handlers_syllabus::patch_schedule_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/schedule",
-            get(get_schedule_handler),
+            get(handlers_syllabus::get_schedule_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/schedule",
-            patch(patch_schedule_handler),
+            patch(handlers_syllabus::patch_schedule_handler),
         )
 }
 
 fn credential_and_commerce_routes() -> Router<ApiAppState> {
     Router::new()
         // Credential routes (`T07A`, `T07C`, `@S28`, `@S29`, `@S36`, `@S64`, `@S66`, `@S67`)
-        .route("/v1/me/credentials", post(create_credential_handler))
-        .route("/v1/me/credentials", get(list_credentials_handler))
-        .route("/v1/credentials", post(create_credential_handler))
-        .route("/v1/credentials", get(list_credentials_handler))
         .route(
-            "/v1/me/credentials/{credential_ref}",
-            get(get_credential_metadata_handler),
+            "/v1/me/credentials",
+            post(handlers_account::create_credential_handler),
+        )
+        .route(
+            "/v1/me/credentials",
+            get(handlers_account::list_credentials_handler),
+        )
+        .route(
+            "/v1/credentials",
+            post(handlers_account::create_credential_handler),
+        )
+        .route(
+            "/v1/credentials",
+            get(handlers_account::list_credentials_handler),
         )
         .route(
             "/v1/me/credentials/{credential_ref}",
-            patch(rotate_credential_handler),
+            get(handlers_account::get_credential_metadata_handler),
+        )
+        .route(
+            "/v1/me/credentials/{credential_ref}",
+            patch(handlers_account::rotate_credential_handler),
         )
         .route(
             "/v1/me/credentials/{credential_ref}/rotate",
-            post(rotate_credential_handler),
+            post(handlers_account::rotate_credential_handler),
         )
         .route(
             "/v1/me/credentials/{credential_ref}",
-            delete(revoke_credential_handler),
+            delete(handlers_account::revoke_credential_handler),
         )
-        .route("/v1/me/usage", get(get_my_usage_handler))
+        .route("/v1/me/usage", get(handlers_account::get_my_usage_handler))
         // T07B & T07D: Hosted wallet, usage quotes, credit reservations, settlements, ledger, checkout & webhooks
-        .route("/v1/me/wallet", get(get_hosted_wallet_handler))
-        .route("/v1/me/billing/wallet", get(get_hosted_wallet_handler))
-        .route("/v1/usage-quotes", post(create_usage_quote_handler))
-        .route("/v1/generation-quotes", post(create_usage_quote_handler))
-        .route("/v1/reservations", post(create_credit_reservation_handler))
+        .route(
+            "/v1/me/wallet",
+            get(handlers_commerce::get_hosted_wallet_handler),
+        )
+        .route(
+            "/v1/me/billing/wallet",
+            get(handlers_commerce::get_hosted_wallet_handler),
+        )
+        .route(
+            "/v1/usage-quotes",
+            post(handlers_commerce::create_usage_quote_handler),
+        )
+        .route(
+            "/v1/generation-quotes",
+            post(handlers_commerce::create_usage_quote_handler),
+        )
+        .route(
+            "/v1/reservations",
+            post(handlers_commerce::create_credit_reservation_handler),
+        )
         .route(
             "/v1/usage/reservations",
-            post(create_credit_reservation_handler),
+            post(handlers_commerce::create_credit_reservation_handler),
         )
         .route(
             "/v1/reservations/{reservation_id}/settle",
-            post(settle_credit_reservation_handler),
+            post(handlers_commerce::settle_credit_reservation_handler),
         )
         .route(
             "/v1/usage/reservations/{reservation_id}/settle",
-            post(settle_credit_reservation_handler),
+            post(handlers_commerce::settle_credit_reservation_handler),
         )
         .route(
             "/v1/reservations/{reservation_id}/release",
-            post(release_credit_reservation_handler),
+            post(handlers_commerce::release_credit_reservation_handler),
         )
         .route(
             "/v1/usage/reservations/{reservation_id}/release",
-            post(release_credit_reservation_handler),
+            post(handlers_commerce::release_credit_reservation_handler),
         )
         .route(
             "/v1/reservations/{reservation_id}/reconcile-timeout",
-            post(reconcile_ambiguous_timeout_handler),
+            post(handlers_commerce::reconcile_ambiguous_timeout_handler),
         )
-        .route("/v1/me/ledger", get(get_my_ledger_handler))
+        .route(
+            "/v1/me/ledger",
+            get(handlers_commerce::get_my_ledger_handler),
+        )
         .route(
             "/v1/billing/checkout-sessions",
-            post(create_checkout_session_handler),
+            post(handlers_commerce::create_checkout_session_handler),
         )
         .route(
             "/v1/me/billing/checkout-sessions",
-            post(create_checkout_session_handler),
+            post(handlers_commerce::create_checkout_session_handler),
         )
         .route(
             "/v1/billing/webhooks",
-            post(process_payment_webhook_handler),
+            post(handlers_commerce::process_payment_webhook_handler),
         )
         .route(
             "/v1/webhooks/billing",
-            post(process_payment_webhook_handler),
+            post(handlers_commerce::process_payment_webhook_handler),
         )
 }
 
@@ -521,94 +537,100 @@ fn assessment_and_adaptation_routes() -> Router<ApiAppState> {
         // T05: Reviewed anchor assessments, attempts, assistance events, defect reports & key corrections
         .route(
             "/v1/assessments/{assessment_id}",
-            get(get_assessment_handler),
+            get(handlers_learning::get_assessment_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/attempts",
-            post(submit_assessment_attempt_handler),
+            post(handlers_learning::submit_assessment_attempt_handler),
         )
         .route(
             "/v1/assessment-attempts/{attempt_id}",
-            get(get_assessment_attempt_handler),
+            get(handlers_learning::get_assessment_attempt_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/attempts/{attempt_id}/assistance",
-            post(record_attempt_assistance_handler),
+            post(handlers_learning::record_attempt_assistance_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/assistance-events",
-            post(record_assessment_assistance_handler),
+            post(handlers_learning::record_assessment_assistance_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/items/{item_id}/report-defect",
-            post(report_defective_item_path_handler),
+            post(handlers_learning::report_defective_item_path_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/reports",
-            post(report_defective_item_body_handler),
+            post(handlers_learning::report_defective_item_body_handler),
         )
         .route(
             "/v1/assessments/{assessment_id}/key-corrections",
-            post(apply_key_correction_handler),
+            post(handlers_learning::apply_key_correction_handler),
         )
         .route(
             "/v1/admin/assessments/{assessment_id}/key-corrections",
-            post(apply_key_correction_handler),
+            post(handlers_learning::apply_key_correction_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/objectives/{objective_id}/prerequisite-gate",
-            post(evaluate_prerequisite_gate_handler),
+            post(handlers_learning::evaluate_prerequisite_gate_handler),
         )
         // T12: Objective diagnostics, waivers & adaptation proposals
-        .route("/v1/diagnostics", post(start_diagnostic_handler))
-        .route("/v1/diagnostic-sessions", post(start_diagnostic_handler))
+        .route(
+            "/v1/diagnostics",
+            post(handlers_learning::start_diagnostic_handler),
+        )
+        .route(
+            "/v1/diagnostic-sessions",
+            post(handlers_learning::start_diagnostic_handler),
+        )
         .route(
             "/v1/diagnostics/{diagnostic_id}",
-            get(get_diagnostic_handler),
+            get(handlers_learning::get_diagnostic_handler),
         )
         .route(
             "/v1/diagnostic-sessions/{diagnostic_id}",
-            get(get_diagnostic_handler),
+            get(handlers_learning::get_diagnostic_handler),
         )
         .route(
             "/v1/diagnostics/{diagnostic_id}/attempts",
-            post(submit_diagnostic_attempt_handler),
+            post(handlers_learning::submit_diagnostic_attempt_handler),
         )
         .route(
             "/v1/diagnostic-sessions/{diagnostic_id}/attempts",
-            post(submit_diagnostic_attempt_handler),
+            post(handlers_learning::submit_diagnostic_attempt_handler),
         )
         .route(
             "/v1/diagnostics/{diagnostic_id}/stop",
-            post(stop_diagnostic_handler),
+            post(handlers_learning::stop_diagnostic_handler),
         )
         .route(
             "/v1/diagnostic-sessions/{diagnostic_id}/stop",
-            post(stop_diagnostic_handler),
+            post(handlers_learning::stop_diagnostic_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/adaptations/preview",
-            post(preview_adaptation_handler),
+            post(handlers_learning::preview_adaptation_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/adaptation-proposals",
-            post(preview_adaptation_handler),
+            post(handlers_learning::preview_adaptation_handler),
         )
         .route(
             "/v1/adaptation-proposals/{proposal_id}",
-            get(get_adaptation_proposal_handler),
+            get(handlers_learning::get_adaptation_proposal_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}",
-            get(get_syllabus_adaptation_proposal_handler),
+            get(handlers_learning::get_syllabus_adaptation_proposal_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/adaptations/accept",
-            post(accept_adaptation_body_handler),
+            post(handlers_learning::accept_adaptation_body_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/adaptation-proposals/{proposal_id}/accept",
-            post(accept_adaptation_path_handler),
+            post(handlers_learning::accept_adaptation_path_handler),
         )
 }
 
@@ -617,38 +639,44 @@ fn notification_and_lifecycle_routes() -> Router<ApiAppState> {
         // T08: Notification preferences, push subscriptions & reminder snooze
         .route(
             "/v1/me/notification-preferences",
-            get(get_notification_preferences_handler),
+            get(handlers_learning::get_notification_preferences_handler),
         )
         .route(
             "/v1/me/notification-preferences",
-            put(put_notification_preferences_handler),
+            put(handlers_learning::put_notification_preferences_handler),
         )
         .route(
             "/v1/me/push-subscriptions",
-            post(post_push_subscription_handler),
+            post(handlers_learning::post_push_subscription_handler),
         )
         .route(
             "/v1/me/push-subscriptions",
-            delete(delete_default_push_subscription_handler),
+            delete(handlers_learning::delete_default_push_subscription_handler),
         )
         .route(
             "/v1/me/push-subscriptions/{subscription_id}",
-            delete(delete_push_subscription_handler),
+            delete(handlers_learning::delete_push_subscription_handler),
         )
         .route(
             "/v1/me/reminders/{occurrence_id}/snooze",
-            post(snooze_reminder_handler),
+            post(handlers_learning::snooze_reminder_handler),
         )
         // T09 & T11: Account export, deletion requests, and external completion import
-        .route("/v1/me/exports", post(create_export_job_handler))
+        .route(
+            "/v1/me/exports",
+            post(handlers_account::create_export_job_handler),
+        )
         .route(
             "/v1/me/deletion-requests",
-            post(request_account_deletion_handler),
+            post(handlers_commerce::request_account_deletion_handler),
         )
-        .route("/v1/me", delete(request_account_deletion_handler))
+        .route(
+            "/v1/me",
+            delete(handlers_commerce::request_account_deletion_handler),
+        )
         .route(
             "/v1/me/integrations/completions",
-            post(import_external_completion_handler),
+            post(handlers_commerce::import_external_completion_handler),
         )
 }
 
@@ -657,86 +685,95 @@ fn publication_and_moderation_routes() -> Router<ApiAppState> {
         // T13: Public templates, preview sanitization, discovery, upvotes, moderation & partial adoption
         .route(
             "/v1/syllabi/{syllabus_id}/publications/preview",
-            post(preview_syllabus_publication_handler),
+            post(handlers_commerce::preview_syllabus_publication_handler),
         )
         .route(
             "/v1/publication-previews",
-            post(preview_body_publication_handler),
+            post(handlers_commerce::preview_body_publication_handler),
         )
-        .route("/v1/publications", post(publish_syllabus_handler))
-        .route("/v1/publications", get(discover_publications_handler))
+        .route(
+            "/v1/publications",
+            post(handlers_commerce::publish_syllabus_handler),
+        )
+        .route(
+            "/v1/publications",
+            get(handlers_commerce::discover_publications_handler),
+        )
         .route(
             "/v1/publications/{publication_id}",
-            get(get_public_publication_handler),
+            get(handlers_commerce::get_public_publication_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions/{publication_revision_id}",
-            get(get_public_publication_revision_handler),
+            get(handlers_commerce::get_public_publication_revision_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions",
-            post(publish_publication_revision_handler),
+            post(handlers_commerce::publish_publication_revision_handler),
         )
         .route(
             "/v1/me/publications/{publication_id}/revisions",
-            post(publish_publication_revision_handler),
+            post(handlers_commerce::publish_publication_revision_handler),
         )
-        .route("/v1/me/publications", get(list_owned_publications_handler))
+        .route(
+            "/v1/me/publications",
+            get(handlers_commerce::list_owned_publications_handler),
+        )
         .route(
             "/v1/me/publications/{publication_id}",
-            get(get_owned_publication_management_handler),
+            get(handlers_commerce::get_owned_publication_management_handler),
         )
         .route(
             "/v1/me/publications/{publication_id}/revisions",
-            get(list_owned_publication_revisions_handler),
+            get(handlers_commerce::list_owned_publication_revisions_handler),
         )
         .route(
             "/v1/me/publications/{publication_id}/unpublish",
-            post(unpublish_publication_handler),
+            post(handlers_commerce::unpublish_publication_handler),
         )
         .route(
             "/v1/me/publications/{publication_id}",
-            delete(unpublish_publication_handler),
+            delete(handlers_commerce::unpublish_publication_handler),
         )
         .route(
             "/v1/publications/{publication_id}/reports",
-            post(report_publication_handler),
+            post(handlers_commerce::report_publication_handler),
         )
         .route(
             "/v1/moderation/reports",
-            get(list_moderation_reports_handler),
+            get(handlers_commerce::list_moderation_reports_handler),
         )
         .route(
             "/v1/admin/moderation/reports",
-            get(list_moderation_reports_handler),
+            get(handlers_commerce::list_moderation_reports_handler),
         )
         .route(
             "/v1/moderation/publications/{publication_id}",
-            post(moderate_publication_handler),
+            post(handlers_commerce::moderate_publication_handler),
         )
         .route(
             "/v1/admin/publications/{publication_id}/moderation",
-            post(moderate_publication_handler),
+            post(handlers_commerce::moderate_publication_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
-            get(get_my_publication_vote_handler),
+            get(handlers_commerce::get_my_publication_vote_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
-            put(put_my_publication_vote_handler),
+            put(handlers_commerce::put_my_publication_vote_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions/{publication_revision_id}/my-vote",
-            delete(delete_my_publication_vote_handler),
+            delete(handlers_commerce::delete_my_publication_vote_handler),
         )
         .route(
             "/v1/publications/{publication_id}/adopt",
-            post(adopt_publication_body_handler),
+            post(handlers_commerce::adopt_publication_body_handler),
         )
         .route(
             "/v1/publications/{publication_id}/revisions/{publication_revision_id}/adoptions",
-            post(adopt_publication_revision_handler),
+            post(handlers_commerce::adopt_publication_revision_handler),
         )
 }
 
@@ -745,101 +782,115 @@ fn catalog_generation_and_syllabus_routes() -> Router<ApiAppState> {
         // T02: Reviewed catalog filtering, curator review & quarantine routes
         .route(
             "/v1/resources/versions",
-            get(list_or_filter_catalog_resources_handler),
+            get(handlers_catalog::list_or_filter_catalog_resources_handler),
         )
         .route(
             "/v1/catalog/resources",
-            get(list_or_filter_catalog_resources_handler),
+            get(handlers_catalog::list_or_filter_catalog_resources_handler),
         )
         .route(
             "/v1/catalog/resources/manual",
-            post(ingest_manual_catalog_resource_handler),
+            post(handlers_catalog::ingest_manual_catalog_resource_handler),
         )
         .route(
             "/v1/catalog/resources/{resource_version_id}",
-            patch(patch_catalog_resource_handler).delete(delete_catalog_resource_handler),
+            patch(handlers_catalog::patch_catalog_resource_handler)
+                .delete(handlers_catalog::delete_catalog_resource_handler),
         )
         .route(
             "/v1/catalog/resources/{resource_version_id}/reviews",
-            post(review_catalog_resource_handler),
+            post(handlers_catalog::review_catalog_resource_handler),
         )
         .route(
             "/v1/admin/resources/{resource_version_id}/reviews",
-            post(review_catalog_resource_handler),
+            post(handlers_catalog::review_catalog_resource_handler),
         )
         .route(
             "/v1/catalog/resources/{resource_version_id}/quarantine",
-            post(quarantine_catalog_resource_handler),
+            post(handlers_catalog::quarantine_catalog_resource_handler),
         )
         .route(
             "/v1/catalog/search-and-index",
-            post(search_and_index_catalog_handler),
+            post(handlers_catalog::search_and_index_catalog_handler),
         )
         .route(
             "/v1/catalog/index",
-            post(search_and_index_catalog_handler),
+            post(handlers_catalog::search_and_index_catalog_handler),
         )
         // T03: Goal intake & async syllabus generation routes
-        .route("/v1/goals/interpret", post(interpret_goal_handler))
+        .route(
+            "/v1/goals/interpret",
+            post(handlers_catalog::interpret_goal_handler),
+        )
         .route(
             "/v1/syllabi/goal-interpretations",
-            post(interpret_goal_handler),
+            post(handlers_catalog::interpret_goal_handler),
         )
-        .route("/v1/generations", post(start_generation_handler))
+        .route(
+            "/v1/generations",
+            post(handlers_catalog::start_generation_handler),
+        )
         .route(
             "/v1/syllabi/generation-jobs",
-            post(start_generation_handler),
+            post(handlers_catalog::start_generation_handler),
         )
         .route(
             "/v1/generations/{job_id}",
-            get(get_generation_job_handler),
+            get(handlers_catalog::get_generation_job_handler),
         )
         .route(
             "/v1/generation-jobs/{job_id}",
-            get(get_generation_job_handler),
+            get(handlers_catalog::get_generation_job_handler),
         )
         .route(
             "/v1/syllabi/generation-jobs/{job_id}",
-            get(get_generation_job_handler),
+            get(handlers_catalog::get_generation_job_handler),
         )
         .route(
             "/v1/generations/{job_id}/cancel",
-            post(cancel_generation_job_handler),
+            post(handlers_catalog::cancel_generation_job_handler),
         )
         .route(
             "/v1/generation-jobs/{job_id}/cancel",
-            post(cancel_generation_job_handler),
+            post(handlers_catalog::cancel_generation_job_handler),
         )
         // T04: Syllabi list, overview, revision inspection, activation & resource alerts
-        .route("/v1/syllabi", get(list_my_syllabi_handler))
-        .route("/v1/me/syllabi", get(list_my_syllabi_handler))
+        .route(
+            "/v1/syllabi",
+            get(handlers_syllabus::list_my_syllabi_handler),
+        )
+        .route(
+            "/v1/me/syllabi",
+            get(handlers_syllabus::list_my_syllabi_handler),
+        )
         .route(
             "/v1/syllabi/{syllabus_id}",
-            get(get_syllabus_overview_handler),
+            get(handlers_syllabus::get_syllabus_overview_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/revisions/{revision_id}",
-            get(get_syllabus_revision_handler),
+            get(handlers_syllabus::get_syllabus_revision_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/revisions/{revision_id}/activate",
-            post(activate_syllabus_revision_handler),
+            post(handlers_syllabus::activate_syllabus_revision_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/active-revision",
-            put(put_active_revision_handler),
+            put(handlers_syllabus::put_active_revision_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/resource-alerts",
-            get(get_syllabus_resource_alerts_handler),
+            get(handlers_syllabus::get_syllabus_resource_alerts_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/resources",
-            post(add_syllabus_resource_handler),
+            post(handlers_syllabus::add_syllabus_resource_handler),
         )
         .route(
             "/v1/syllabi/{syllabus_id}/resources/{resource_version_id}",
-            patch(patch_syllabus_resource_handler).delete(delete_syllabus_resource_handler),
+            patch(handlers_syllabus::patch_syllabus_resource_handler)
+                .delete(handlers_syllabus::delete_syllabus_resource_handler),
         )
 }
 

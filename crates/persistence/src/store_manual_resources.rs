@@ -1,11 +1,20 @@
 //! Manual learning resource catalog mutations (edit, delete, atomic TF-IDF re-indexing)
 //! and per-syllabus resource binding mutations (`add`, `edit`, `delete`).
 
+use serde_json::{json, Value};
 use syllabus_contracts::jcs::sha256_bytes_hex;
 use syllabus_security::AuthenticatedPrincipal;
-use serde_json::{json, Value};
 
-use crate::*;
+use syllabus_domain::{
+    AcquisitionPermission, CatalogAccessModel, ResourceFreshnessState, ResourceReviewStatus,
+};
+
+use crate::models::{
+    validate_manual_resource_egress_url, CatalogResourcePatchInput, CatalogResourceVersionRecord,
+    CatalogReviewEvidence, PersistenceError, SyllabusResourceBindingInput,
+    SyllabusResourceMutationReceipt, SyllabusRevisionRecord,
+};
+use crate::store::{InMemoryTransactionalStore, StoreInner};
 
 impl InMemoryTransactionalStore {
     /// Synchronizes a single [`CatalogResourceVersionRecord`] into the live in-memory
@@ -183,7 +192,9 @@ impl InMemoryTransactionalStore {
                 resource_id: resource_version_id.to_string(),
             })?;
         guard.quarantine_overlays.remove(resource_version_id);
-        guard.catalog_tfidf_index.remove_document(resource_version_id);
+        guard
+            .catalog_tfidf_index
+            .remove_document(resource_version_id);
         Ok(removed)
     }
 
@@ -194,8 +205,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         syllabus_id: &str,
         input: SyllabusResourceBindingInput,
-    ) -> Result<(SyllabusRevisionRecord, SyllabusResourceMutationReceipt), PersistenceError>
-    {
+    ) -> Result<(SyllabusRevisionRecord, SyllabusResourceMutationReceipt), PersistenceError> {
         let rv_id = input.resource_version_id.trim();
         if rv_id.is_empty() {
             return Err(PersistenceError::Validation(
@@ -204,14 +214,12 @@ impl InMemoryTransactionalStore {
         }
 
         let mut guard = self.write_inner();
-        let resource_record = guard
-            .catalog_resources
-            .get(rv_id)
-            .cloned()
-            .ok_or_else(|| PersistenceError::NotFound {
+        let resource_record = guard.catalog_resources.get(rv_id).cloned().ok_or_else(|| {
+            PersistenceError::NotFound {
                 resource_type: "catalog_resource_version",
                 resource_id: rv_id.to_string(),
-            })?;
+            }
+        })?;
 
         let mut existing_revs: Vec<SyllabusRevisionRecord> = guard
             .private_revisions
@@ -356,8 +364,7 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         syllabus_id: &str,
         resource_version_id: &str,
-    ) -> Result<(SyllabusRevisionRecord, SyllabusResourceMutationReceipt), PersistenceError>
-    {
+    ) -> Result<(SyllabusRevisionRecord, SyllabusResourceMutationReceipt), PersistenceError> {
         let rv_id = resource_version_id.trim();
         let mut guard = self.write_inner();
 
@@ -489,9 +496,7 @@ fn strip_resource_from_syllabus_payload(payload: &mut Value, rv_id: &str) -> boo
     if let Some(modules) = payload.get_mut("modules").and_then(Value::as_array_mut) {
         for module in modules.iter_mut() {
             if !empty_manual_activity_ids.is_empty() {
-                if let Some(act_ids) = module
-                    .get_mut("activity_ids")
-                    .and_then(Value::as_array_mut)
+                if let Some(act_ids) = module.get_mut("activity_ids").and_then(Value::as_array_mut)
                 {
                     act_ids.retain(|v| {
                         let id = v.as_str().unwrap_or("");
@@ -564,13 +569,20 @@ fn attach_resource_to_syllabus_payload(
     };
 
     // 1. If a specific activity_id exists in top-level `activities`, attach directly to it.
-    if let Some(target_act_id) = requested_activity_id.map(str::trim).filter(|s| !s.is_empty()) {
+    if let Some(target_act_id) = requested_activity_id
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
         if let Some(activities) = payload.get_mut("activities").and_then(Value::as_array_mut) {
-            if let Some(act) = activities.iter_mut().find(|a| {
-                a.get("activity_id").and_then(Value::as_str) == Some(target_act_id)
-            }) {
+            if let Some(act) = activities
+                .iter_mut()
+                .find(|a| a.get("activity_id").and_then(Value::as_str) == Some(target_act_id))
+            {
                 push_assignment_to_activity(act, assignment);
-                if let Some(title) = requested_activity_title.map(str::trim).filter(|s| !s.is_empty()) {
+                if let Some(title) = requested_activity_title
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
                     act["title"] = json!(title);
                 }
                 ensure_provenance_source_id(payload, rv_id);
@@ -584,7 +596,7 @@ fn attach_resource_to_syllabus_payload(
     let has_modules = payload
         .get("modules")
         .and_then(Value::as_array)
-        .map_or(false, |m| !m.is_empty());
+        .is_some_and(|m| !m.is_empty());
 
     if !has_modules {
         let fallback_act_id = format!("manual-activity-{rv_id}");
@@ -593,7 +605,11 @@ fn attach_resource_to_syllabus_payload(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("Study: {}", resource_record.title));
-        if payload.get("activities").and_then(Value::as_array).is_none() {
+        if payload
+            .get("activities")
+            .and_then(Value::as_array)
+            .is_none()
+        {
             payload["activities"] = json!([]);
         }
         if let Some(activities) = payload.get_mut("activities").and_then(Value::as_array_mut) {
@@ -646,13 +662,17 @@ fn attach_resource_to_syllabus_payload(
 
     // If top-level `activities` exists and the target module already has a non-quiz/non-review activity
     // (when no custom `activity_title` was requested), or if we create a clean dedicated manual activity:
-    if payload.get("activities").and_then(Value::as_array).is_none() {
+    if payload
+        .get("activities")
+        .and_then(Value::as_array)
+        .is_none()
+    {
         payload["activities"] = json!([]);
     }
 
     let create_new_step = requested_activity_title
         .map(str::trim)
-        .map_or(false, |s| !s.is_empty())
+        .is_some_and(|s| !s.is_empty())
         || existing_mod_act_ids.is_empty();
 
     if !create_new_step {
@@ -712,14 +732,21 @@ fn attach_resource_to_syllabus_payload(
             .iter_mut()
             .find(|m| m.get("module_id").and_then(Value::as_str) == Some(target_mod_id.as_str()))
         {
-            if target_mod.get("activity_ids").and_then(Value::as_array).is_none() {
+            if target_mod
+                .get("activity_ids")
+                .and_then(Value::as_array)
+                .is_none()
+            {
                 target_mod["activity_ids"] = json!([]);
             }
             if let Some(act_ids) = target_mod
                 .get_mut("activity_ids")
                 .and_then(Value::as_array_mut)
             {
-                if !act_ids.iter().any(|v| v.as_str() == Some(new_act_id.as_str())) {
+                if !act_ids
+                    .iter()
+                    .any(|v| v.as_str() == Some(new_act_id.as_str()))
+                {
                     act_ids.push(json!(&new_act_id));
                 }
             }
@@ -754,9 +781,7 @@ fn find_module_for_activity(payload: &Value, activity_id: &str) -> Option<String
         .find(|m| {
             m.get("activity_ids")
                 .and_then(Value::as_array)
-                .map_or(false, |ids| {
-                    ids.iter().any(|id| id.as_str() == Some(activity_id))
-                })
+                .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(activity_id)))
         })
         .and_then(|m| m.get("module_id"))
         .and_then(Value::as_str)
@@ -764,7 +789,7 @@ fn find_module_for_activity(payload: &Value, activity_id: &str) -> Option<String
 }
 
 fn ensure_provenance_source_id(payload: &mut Value, rv_id: &str) {
-    if !payload.get("provenance").map_or(false, Value::is_object) {
+    if !payload.get("provenance").is_some_and(Value::is_object) {
         payload["provenance"] = json!({
             "source_resource_version_ids": [rv_id]
         });
@@ -830,7 +855,9 @@ fn collect_open_catalog_json_files(
     Ok(())
 }
 
-pub(crate) fn parse_open_catalog_json_record(raw_json: &str) -> Option<CatalogResourceVersionRecord> {
+pub(crate) fn parse_open_catalog_json_record(
+    raw_json: &str,
+) -> Option<CatalogResourceVersionRecord> {
     let v: Value = serde_json::from_str(raw_json).ok()?;
     let rv_id = v.get("resource_version_id")?.as_str()?.trim();
     let title = v.get("title")?.as_str()?.trim();
@@ -1026,7 +1053,10 @@ impl InMemoryTransactionalStore {
         let mut guard = self.write_inner();
         let mut inserted = 0usize;
         for rec in parsed_records {
-            if !guard.catalog_resources.contains_key(&rec.resource_version_id) {
+            if !guard
+                .catalog_resources
+                .contains_key(&rec.resource_version_id)
+            {
                 Self::sync_catalog_tfidf_entry_locked(&mut guard, &rec);
                 guard
                     .catalog_resources

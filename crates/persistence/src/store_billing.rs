@@ -1,9 +1,23 @@
 //! BYOK credential vault custody, notification preferences, reminders, hosted credit wallet, and billing ledger.
 
-use syllabus_security::{verify_webhook_hmac_sha256, AuthenticatedPrincipal};
 use serde_json::Value;
+use syllabus_security::{verify_webhook_hmac_sha256, AuthenticatedPrincipal};
 
-use crate::*;
+use syllabus_domain::{
+    authorize_credit_reservation, compute_next_reminder_utc, compute_reservation_settlement,
+    evaluate_ambiguous_timeout_reconciliation, format_epoch_utc_iso, AmbiguousProviderOutcome,
+    BillingModeKind, CostBucketKind, CreditReservation, DstResolutionPolicy,
+    FourCostBucketBreakdown, LedgerEntry, LedgerEntryKind, ReminderScheduleDecision,
+    ReminderScheduleInput, ReservationStatus, UsageQuote,
+};
+
+use crate::models::{
+    evaluate_if_match, CheckoutSessionRecord, CredentialMetadataView, CreditReservationRecord,
+    HostedCreditWalletRecord, InferenceUsageRecord, NotificationPreferencesRecord,
+    PaymentWebhookReceiptRecord, PersistenceError, PushSubscriptionRecord,
+    ReminderOccurrenceRecord, StoredCredentialRecord, UsageQuoteRecord,
+};
+use crate::store::{InMemoryTransactionalStore, StoreInner};
 
 #[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
@@ -38,13 +52,12 @@ impl InMemoryTransactionalStore {
     ) -> Result<CredentialMetadataView, PersistenceError> {
         let mut guard = self.write_inner();
         let (owner_id, current_etag, current_ver) = {
-            let record = guard
-                .credentials
-                .get(credential_ref)
-                .ok_or_else(|| PersistenceError::NotFound {
+            let record = guard.credentials.get(credential_ref).ok_or_else(|| {
+                PersistenceError::NotFound {
                     resource_type: "credential",
                     resource_id: credential_ref.to_string(),
-                })?;
+                }
+            })?;
             if record.revoked {
                 return Err(PersistenceError::NotFound {
                     resource_type: "credential",
@@ -99,13 +112,14 @@ impl InMemoryTransactionalStore {
         expected_version: u64,
     ) -> Result<(String, StoredCredentialRecord), PersistenceError> {
         let guard = self.read_inner();
-        let record = guard
-            .credentials
-            .get(credential_ref)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "credential",
-                resource_id: credential_ref.to_string(),
-            })?;
+        let record =
+            guard
+                .credentials
+                .get(credential_ref)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "credential",
+                    resource_id: credential_ref.to_string(),
+                })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
         if record.revoked {
             return Err(PersistenceError::Conflict {
@@ -595,14 +609,12 @@ impl InMemoryTransactionalStore {
             }
         }
 
-        let quote_rec = guard
-            .usage_quotes
-            .get(quote_id)
-            .cloned()
-            .ok_or_else(|| PersistenceError::NotFound {
+        let quote_rec = guard.usage_quotes.get(quote_id).cloned().ok_or_else(|| {
+            PersistenceError::NotFound {
                 resource_type: "usage_quote",
                 resource_id: quote_id.to_string(),
-            })?;
+            }
+        })?;
         principal.require_learner_ownership(&quote_rec.quote.account_id)?;
 
         if now_epoch_seconds > quote_rec.quote.expires_at_epoch_seconds {
@@ -742,8 +754,9 @@ impl InMemoryTransactionalStore {
         }
 
         let reserved = existing.reservation.reserved_minor_units;
-        let (settled, released) = compute_reservation_settlement(reserved, actual_usage_minor_units)
-            .map_err(|e| PersistenceError::Validation(e.to_string()))?;
+        let (settled, released) =
+            compute_reservation_settlement(reserved, actual_usage_minor_units)
+                .map_err(|e| PersistenceError::Validation(e.to_string()))?;
 
         guard.next_seq += 1;
         let seq = guard.next_seq;
@@ -1052,9 +1065,7 @@ impl InMemoryTransactionalStore {
         guard
             .checkout_by_idempotency
             .insert(idem_key, resolved_id.clone());
-        guard
-            .checkout_sessions
-            .insert(resolved_id, record.clone());
+        guard.checkout_sessions.insert(resolved_id, record.clone());
         Ok(record)
     }
 

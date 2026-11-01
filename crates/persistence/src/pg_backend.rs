@@ -259,7 +259,10 @@ impl PersistedStoreSnapshot {
             publication_previews: self.publication_previews,
             publications: self.publications,
             publication_revisions: self.publication_revisions,
-            publication_upvotes: self.publication_upvotes.into_iter().collect::<BTreeSet<_>>(),
+            publication_upvotes: self
+                .publication_upvotes
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
             publication_reports: self.publication_reports,
             moderation_actions: self.moderation_actions,
             adopted_syllabi_by_publication: self.adopted_syllabi_by_publication,
@@ -278,7 +281,7 @@ impl PersistedStoreSnapshot {
             next_seq: self.next_seq,
         };
         let catalog = self.catalog_resources;
-        for (_, rec) in &catalog {
+        for rec in catalog.values() {
             InMemoryTransactionalStore::sync_catalog_tfidf_entry_locked(&mut inner, rec);
         }
         inner.catalog_resources = catalog;
@@ -708,8 +711,10 @@ impl PgBackendHandle {
             .map_err(PersistenceError::Validation)?;
         match raw_opt {
             Some((rev, raw_json)) => {
-                let snapshot: PersistedStoreSnapshot = serde_json::from_str(&raw_json)
-                    .map_err(|e| PersistenceError::Validation(format!("corrupt pg snapshot: {e}")))?;
+                let snapshot: PersistedStoreSnapshot =
+                    serde_json::from_str(&raw_json).map_err(|e| {
+                        PersistenceError::Validation(format!("corrupt pg snapshot: {e}"))
+                    })?;
                 self.set_last_seen_revision(rev);
                 Ok(Some(snapshot.into_store_inner()))
             }
@@ -740,8 +745,10 @@ impl PgBackendHandle {
             .map_err(PersistenceError::Validation)?;
         match raw_opt {
             Some((rev, raw_json)) => {
-                let snapshot: PersistedStoreSnapshot = serde_json::from_str(&raw_json)
-                    .map_err(|e| PersistenceError::Validation(format!("corrupt pg snapshot: {e}")))?;
+                let snapshot: PersistedStoreSnapshot =
+                    serde_json::from_str(&raw_json).map_err(|e| {
+                        PersistenceError::Validation(format!("corrupt pg snapshot: {e}"))
+                    })?;
                 Ok(Some((rev, snapshot.into_store_inner())))
             }
             None => Ok(None),
@@ -879,7 +886,9 @@ async fn ensure_migrations_applied(client: &tokio_postgres::Client) -> Result<()
             .map_err(|e| format!("postgres migration bundle failed: {e}"))
     }
     .await;
-    let _ = client.execute("SELECT pg_advisory_unlock(79112203)", &[]).await;
+    let _ = client
+        .execute("SELECT pg_advisory_unlock(79112203)", &[])
+        .await;
     res
 }
 
@@ -946,15 +955,16 @@ async fn dispatch_claimed_outbox_job(
                 .or_else(|| payload.get("to"))
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let subject = payload
-                .get("subject")
-                .and_then(Value::as_str)
-                .unwrap_or(match job_type {
-                    "study_reminder" => "Syllabus.io Study Session Reminder",
-                    "password_reset_email" => "Syllabus.io Password Recovery Code",
-                    "email_verification" => "Verify your Syllabus.io email address",
-                    _ => "Syllabus.io Notification",
-                });
+            let subject =
+                payload
+                    .get("subject")
+                    .and_then(Value::as_str)
+                    .unwrap_or(match job_type {
+                        "study_reminder" => "Syllabus.io Study Session Reminder",
+                        "password_reset_email" => "Syllabus.io Password Recovery Code",
+                        "email_verification" => "Verify your Syllabus.io email address",
+                        _ => "Syllabus.io Notification",
+                    });
             let webhook_url = std::env::var("EMAIL_WEBHOOK_URL")
                 .ok()
                 .map(|s| s.trim().to_string())
@@ -1223,15 +1233,15 @@ pub async fn run_pg_outbox_worker_tick(
         let payload_raw: String = row.get(3);
         let attempt_count: i32 = row.get(4);
         let max_attempts: i32 = row.get(5);
-        let payload: Value =
-            serde_json::from_str(&payload_raw).unwrap_or_else(|_| Value::Object(Default::default()));
+        let payload: Value = serde_json::from_str(&payload_raw)
+            .unwrap_or_else(|_| Value::Object(Default::default()));
 
         match dispatch_claimed_outbox_job(&http_client, &job_id, &account_id, &job_type, &payload)
             .await
         {
             Ok(receipt) => {
-                let detail_str =
-                    serde_json::to_string(&receipt.detail_json).unwrap_or_else(|_| "{}".to_string());
+                let detail_str = serde_json::to_string(&receipt.detail_json)
+                    .unwrap_or_else(|_| "{}".to_string());
                 client
                     .execute(
                         "INSERT INTO worker_dispatch_receipts \

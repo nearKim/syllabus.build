@@ -2,11 +2,26 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use serde_json::{json, Value};
 use syllabus_contracts::jcs::jcs_sha256_hex;
 use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
-use serde_json::{json, Value};
 
-use crate::*;
+use syllabus_domain::{
+    evaluate_assessment_attempt, evaluate_prerequisite_gate, partition_diagnostic_objectives,
+    recalculate_attempts_for_key_correction, schedule_initial_spaced_review,
+    validate_objective_waiver, AssessmentKind, AssessmentReviewStatus, AssistanceLevel,
+    DiagnosticStopReason, HistoricalAttemptForKeyCorrection, LearnerGateDecision,
+    MasteryGateEvaluation, MathDepthPreference, ObjectiveProficiencyState, PrerequisiteGateInput,
+    SpacedReviewRecord, WaiverEvidenceSource,
+};
+
+use crate::models::{
+    AdaptationProposalRecord, AssessmentAttemptRecord, AssessmentIssueReportRecord,
+    AssessmentKeyCorrectionRecord, DiagnosticSessionRecord, LearnerProficiencyProjection,
+    ObjectiveWaiverRecord, PersistenceError, PrerequisiteDecisionAuditRecord,
+    ReviewedAssessmentRecord, SyllabusRevisionRecord,
+};
+use crate::store::InMemoryTransactionalStore;
 
 #[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
@@ -147,7 +162,9 @@ impl InMemoryTransactionalStore {
             .copied()
             .unwrap_or(AssistanceLevel::Independent);
         let escalated = prev.escalate(assistance_level);
-        guard.pending_assistance_by_assessment.insert(key, escalated);
+        guard
+            .pending_assistance_by_assessment
+            .insert(key, escalated);
 
         if let Some(att_id) = attempt_id {
             if let Some(att) = guard.assessment_attempts.get_mut(att_id) {
@@ -300,13 +317,12 @@ impl InMemoryTransactionalStore {
         attempt_id: &str,
     ) -> Result<AssessmentAttemptRecord, PersistenceError> {
         let guard = self.read_inner();
-        let rec = guard
-            .assessment_attempts
-            .get(attempt_id)
-            .ok_or_else(|| PersistenceError::NotFound {
+        let rec = guard.assessment_attempts.get(attempt_id).ok_or_else(|| {
+            PersistenceError::NotFound {
                 resource_type: "assessment_attempt",
                 resource_id: attempt_id.to_string(),
-            })?;
+            }
+        })?;
         principal.require_learner_ownership(&rec.account_id)?;
         Ok(rec.clone())
     }
@@ -575,7 +591,10 @@ impl InMemoryTransactionalStore {
             .insert(principal.account_id.clone(), preference);
     }
 
-    pub fn get_math_depth_preference(&self, principal: &AuthenticatedPrincipal) -> MathDepthPreference {
+    pub fn get_math_depth_preference(
+        &self,
+        principal: &AuthenticatedPrincipal,
+    ) -> MathDepthPreference {
         let guard = self.read_inner();
         guard
             .math_depth_by_account
@@ -700,14 +719,12 @@ impl InMemoryTransactionalStore {
                     message: format!("diagnostic `{diagnostic_id}` is already `{}`", sess.status),
                 });
             }
-            let (obj_id, expected) = sess
-                .answer_key
-                .get(item_id)
-                .cloned()
-                .ok_or_else(|| PersistenceError::NotFound {
+            let (obj_id, expected) = sess.answer_key.get(item_id).cloned().ok_or_else(|| {
+                PersistenceError::NotFound {
                     resource_type: "diagnostic_item",
                     resource_id: item_id.to_string(),
-                })?;
+                }
+            })?;
 
             let answer_matches = answer.trim().eq_ignore_ascii_case(expected.trim())
                 || answer.trim().eq_ignore_ascii_case("pass")
@@ -842,13 +859,14 @@ impl InMemoryTransactionalStore {
             .unwrap_or_else(|| *revs.last().expect("at least one revision"));
         let base_syllabus_revision_id = base_cur_rev.revision_id.clone();
 
-        let base_sched = guard
-            .schedules
-            .get(syllabus_id)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "schedule",
-                resource_id: syllabus_id.to_string(),
-            })?;
+        let base_sched =
+            guard
+                .schedules
+                .get(syllabus_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "schedule",
+                    resource_id: syllabus_id.to_string(),
+                })?;
         let base_schedule_revision_id = base_sched.schedule_revision_id.clone();
         let next_rev_number = revs.len() as u32 + 1;
         let candidate_revision_id = format!("rev-{syllabus_id}-adapt-{next_rev_number}");
@@ -935,7 +953,9 @@ impl InMemoryTransactionalStore {
             .map_err(|e| PersistenceError::Validation(e.to_string()))?;
         registry
             .validate("adaptation-proposal.schema.json", &full_payload)
-            .map_err(|e| PersistenceError::Validation(format!("adaptation proposal schema error: {e}")))?;
+            .map_err(|e| {
+                PersistenceError::Validation(format!("adaptation proposal schema error: {e}"))
+            })?;
 
         let record = AdaptationProposalRecord {
             proposal_id: proposal_id.to_string(),
@@ -961,13 +981,12 @@ impl InMemoryTransactionalStore {
         proposal_id: &str,
     ) -> Result<AdaptationProposalRecord, PersistenceError> {
         let guard = self.read_inner();
-        let rec = guard
-            .adaptation_proposals
-            .get(proposal_id)
-            .ok_or_else(|| PersistenceError::NotFound {
+        let rec = guard.adaptation_proposals.get(proposal_id).ok_or_else(|| {
+            PersistenceError::NotFound {
                 resource_type: "adaptation_proposal",
                 resource_id: proposal_id.to_string(),
-            })?;
+            }
+        })?;
         principal.require_learner_ownership(&rec.account_id)?;
         Ok(rec.clone())
     }
@@ -1036,8 +1055,8 @@ impl InMemoryTransactionalStore {
         let current_cur_sha = current_cur_rev.candidate_sha256.clone();
         let next_rev_number = revs.len() as u32 + 1;
 
-        let req_base_cur = expected_base_syllabus_revision_id
-            .unwrap_or(&proposal.base_syllabus_revision_id);
+        let req_base_cur =
+            expected_base_syllabus_revision_id.unwrap_or(&proposal.base_syllabus_revision_id);
         if req_base_cur != current_cur_rev_id
             || proposal.base_syllabus_revision_id != current_cur_rev_id
         {
@@ -1126,8 +1145,7 @@ impl InMemoryTransactionalStore {
             let sched = guard.schedules.get_mut(syllabus_id).expect("checked");
             sched.etag_version += 1;
             sched.syllabus_revision_id = new_cur_rev_id.clone();
-            sched.schedule_revision_id =
-                format!("sched-{syllabus_id}-v{}", sched.etag_version);
+            sched.schedule_revision_id = format!("sched-{syllabus_id}-v{}", sched.etag_version);
             sched.etag = format!("\"sched-v{}\"", sched.etag_version);
             sched.schedule_revision_id.clone()
         };

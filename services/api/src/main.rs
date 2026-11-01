@@ -100,11 +100,7 @@ fn apply_security_and_cors_headers(
     );
 }
 
-async fn cors_and_security_middleware(
-    env: AppEnvironment,
-    req: Request,
-    next: Next,
-) -> Response {
+async fn cors_and_security_middleware(env: AppEnvironment, req: Request, next: Next) -> Response {
     let origin = req.headers().get(header::ORIGIN).cloned();
     if req.method() == Method::OPTIONS {
         let mut response = StatusCode::NO_CONTENT.into_response();

@@ -3,11 +3,27 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
+use serde_json::{json, Value};
 use syllabus_contracts::jcs::{jcs_sha256_hex, sha256_bytes_hex};
 use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
-use serde_json::{json, Value};
 
-use crate::*;
+use syllabus_domain::{
+    compute_partial_adoption_closure, evaluate_account_deletion_impact, ActivityExecutionStatus,
+    AdoptionOriginBinding, FourCostBucketBreakdown, LedgerEntry, ModerationVisibilityState,
+    ObjectiveProficiencyState, PublicSnapshotSanitizer, PublicationPreviewDigest,
+};
+
+use crate::models::{
+    evaluate_if_match, AccountDeletionReceiptRecord, AccountExportRecord, AdoptedSyllabusRecord,
+    AssessmentAttemptRecord, CredentialMetadataView, DeletionTombstone,
+    LearnerProficiencyProjection, ModerationActionRecord, OwnedPublicationManagementRecord,
+    OwnedPublicationRevisionItem, OwnedPublicationSummaryRecord, PersistenceError,
+    ProgressEventInput, ProgressEventReceiptRecord, PublicationPreviewRecord, PublicationRecord,
+    PublicationReportRecord, PublicationRevisionRecord, PublicationViewRecord,
+    PublicationVoteStateRecord, ScheduleFeasibility, ScheduleRevisionRecord, ScheduledSessionItem,
+    StoredProgressEvent, SyllabusRevisionRecord, TombstoneEntityType,
+};
+use crate::store::{InMemoryTransactionalStore, StoreInner};
 
 pub(crate) struct SanitizedPublicEnvelope {
     pub(crate) content: Value,
@@ -423,9 +439,7 @@ impl InMemoryTransactionalStore {
 
         let view = PublicationViewRecord::from_records(&pub_record, &rev_record);
 
-        guard
-            .publications
-            .insert(resolved_pub_id, pub_record);
+        guard.publications.insert(resolved_pub_id, pub_record);
         guard
             .publication_revisions
             .insert(resolved_pub_rev_id, rev_record);
@@ -453,13 +467,14 @@ impl InMemoryTransactionalStore {
                 resource_type: "publication",
                 resource_id: publication_id.to_string(),
             })?;
-        let owner_id = existing_pub
-            .owner_account_id
-            .as_deref()
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "publication",
-                resource_id: publication_id.to_string(),
-            })?;
+        let owner_id =
+            existing_pub
+                .owner_account_id
+                .as_deref()
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "publication",
+                    resource_id: publication_id.to_string(),
+                })?;
         principal.require_learner_ownership(owner_id)?;
         evaluate_if_match(if_match, &existing_pub.etag)?;
 
@@ -635,7 +650,10 @@ impl InMemoryTransactionalStore {
             if !pub_rec.visibility.is_listed_in_public_discovery() {
                 continue;
             }
-            let Some(rev) = guard.publication_revisions.get(&pub_rec.current_revision_id) else {
+            let Some(rev) = guard
+                .publication_revisions
+                .get(&pub_rec.current_revision_id)
+            else {
                 continue;
             };
             if Self::publication_has_quarantined_resource(&guard, rev) {
@@ -684,13 +702,14 @@ impl InMemoryTransactionalStore {
         publication_revision_id: Option<&str>,
     ) -> Result<PublicationViewRecord, PersistenceError> {
         let guard = self.read_inner();
-        let pub_rec = guard
-            .publications
-            .get(publication_id)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "publication",
-                resource_id: publication_id.to_string(),
-            })?;
+        let pub_rec =
+            guard
+                .publications
+                .get(publication_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "publication",
+                    resource_id: publication_id.to_string(),
+                })?;
 
         if !pub_rec.visibility.is_readable_via_direct_link() {
             return Err(PersistenceError::NotFound {
@@ -725,7 +744,9 @@ impl InMemoryTransactionalStore {
                 continue;
             }
             let readable = pub_rec.visibility.is_readable_via_direct_link();
-            let rev = guard.publication_revisions.get(&pub_rec.current_revision_id);
+            let rev = guard
+                .publication_revisions
+                .get(&pub_rec.current_revision_id);
             let title = if readable {
                 rev.and_then(|r| r.snapshot["content"]["title"].as_str())
                     .map(str::to_string)
@@ -764,13 +785,14 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
     ) -> Result<OwnedPublicationManagementRecord, PersistenceError> {
         let guard = self.read_inner();
-        let pub_rec = guard
-            .publications
-            .get(publication_id)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "publication",
-                resource_id: publication_id.to_string(),
-            })?;
+        let pub_rec =
+            guard
+                .publications
+                .get(publication_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "publication",
+                    resource_id: publication_id.to_string(),
+                })?;
         if pub_rec.owner_account_id.as_deref() != Some(principal.account_id.as_str()) {
             return Err(PersistenceError::NotFound {
                 resource_type: "publication",
@@ -778,7 +800,9 @@ impl InMemoryTransactionalStore {
             });
         }
         let readable = pub_rec.visibility.is_readable_via_direct_link();
-        let rev = guard.publication_revisions.get(&pub_rec.current_revision_id);
+        let rev = guard
+            .publication_revisions
+            .get(&pub_rec.current_revision_id);
         Ok(OwnedPublicationManagementRecord {
             publication_id: pub_rec.publication_id.clone(),
             source_syllabus_id: pub_rec.source_syllabus_id.clone(),
@@ -810,13 +834,14 @@ impl InMemoryTransactionalStore {
         publication_id: &str,
     ) -> Result<Vec<OwnedPublicationRevisionItem>, PersistenceError> {
         let guard = self.read_inner();
-        let pub_rec = guard
-            .publications
-            .get(publication_id)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "publication",
-                resource_id: publication_id.to_string(),
-            })?;
+        let pub_rec =
+            guard
+                .publications
+                .get(publication_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "publication",
+                    resource_id: publication_id.to_string(),
+                })?;
         if pub_rec.owner_account_id.as_deref() != Some(principal.account_id.as_str()) {
             return Err(PersistenceError::NotFound {
                 resource_type: "publication",
@@ -855,13 +880,12 @@ impl InMemoryTransactionalStore {
     ) -> Result<OwnedPublicationManagementRecord, PersistenceError> {
         let mut guard = self.write_inner();
         let (owner_opt, current_etag, already_withdrawn) = {
-            let pub_rec = guard
-                .publications
-                .get(publication_id)
-                .ok_or_else(|| PersistenceError::NotFound {
+            let pub_rec = guard.publications.get(publication_id).ok_or_else(|| {
+                PersistenceError::NotFound {
                     resource_type: "publication",
                     resource_id: publication_id.to_string(),
-                })?;
+                }
+            })?;
             (
                 pub_rec.owner_account_id.clone(),
                 pub_rec.etag.clone(),
@@ -986,7 +1010,9 @@ impl InMemoryTransactionalStore {
                 {
                     return Err(PersistenceError::Conflict {
                         code: "cannot_restore_withdrawn_publication",
-                        message: "moderator restore cannot override owner withdrawal or account deletion".to_string(),
+                        message:
+                            "moderator restore cannot override owner withdrawal or account deletion"
+                                .to_string(),
                     });
                 }
                 pub_rec.pre_moderation_visibility
@@ -1041,13 +1067,14 @@ impl InMemoryTransactionalStore {
         publication_revision_id: &str,
     ) -> Result<PublicationVoteStateRecord, PersistenceError> {
         let guard = self.read_inner();
-        let pub_rec = guard
-            .publications
-            .get(publication_id)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "publication",
-                resource_id: publication_id.to_string(),
-            })?;
+        let pub_rec =
+            guard
+                .publications
+                .get(publication_id)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "publication",
+                    resource_id: publication_id.to_string(),
+                })?;
         if !pub_rec.visibility.is_readable_via_direct_link() {
             return Err(PersistenceError::NotFound {
                 resource_type: "publication",
@@ -1244,8 +1271,12 @@ impl InMemoryTransactionalStore {
                     .as_str()
                     .unwrap_or("public-module-tokenization")
                     .to_string();
-                let prereqs = if let Some(arr) = m.get("prerequisite_module_ids").and_then(|v| v.as_array()) {
-                    arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()
+                let prereqs = if let Some(arr) =
+                    m.get("prerequisite_module_ids").and_then(|v| v.as_array())
+                {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
                 } else if let Some(ref p) = prev_mod {
                     vec![p.clone()]
                 } else {
@@ -1253,7 +1284,11 @@ impl InMemoryTransactionalStore {
                 };
                 let objs: Vec<String> = m["objective_ids"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(str::to_string))
+                            .collect()
+                    })
                     .unwrap_or_else(|| vec!["objective-tokenization".to_string()]);
                 module_edges.push((mid.clone(), prereqs));
                 module_objectives.insert(mid.clone(), objs);
@@ -1268,10 +1303,8 @@ impl InMemoryTransactionalStore {
                     .map(|(m, _)| m.clone())
                     .unwrap_or_else(|| "public-module-tokenization".to_string());
                 module_edges.push((sel.clone(), vec![base_mod]));
-                module_objectives.insert(
-                    sel.clone(),
-                    vec!["objective-vector-retrieval".to_string()],
-                );
+                module_objectives
+                    .insert(sel.clone(), vec!["objective-vector-retrieval".to_string()]);
             }
         }
 
@@ -1308,9 +1341,7 @@ impl InMemoryTransactionalStore {
                         .map(|o| o.lifted_at.is_none())
                         .unwrap_or(false);
                     let cat_res = guard.catalog_resources.get(rv_id);
-                    let price_minor = cat_res
-                        .and_then(|r| r.price_minor_units)
-                        .unwrap_or(0);
+                    let price_minor = cat_res.and_then(|r| r.price_minor_units).unwrap_or(0);
                     let violates_budget = (free_only && price_minor > 0)
                         || max_budget_minor_units
                             .map(|b| price_minor > b)
@@ -1626,7 +1657,10 @@ impl InMemoryTransactionalStore {
                 occ.status = "canceled_account_deleted".to_string();
             }
         }
-        if let Some(prefs) = guard.notification_preferences.get_mut(&principal.account_id) {
+        if let Some(prefs) = guard
+            .notification_preferences
+            .get_mut(&principal.account_id)
+        {
             prefs.enabled = false;
         }
         guard
