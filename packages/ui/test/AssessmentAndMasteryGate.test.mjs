@@ -219,3 +219,26 @@ test("T05 (@S15, @S18, @S51, @S81): evaluateMasteryGateInterstitial handles non-
     "unverified_prerequisite_acknowledged"
   );
 });
+
+test("submitAttempt and applyKeyCorrection propagate If-Match and Idempotency-Key headers to request descriptor", () => {
+  const controller = createAssessmentSessionController({
+    assessmentId: "anchor-test-concurrency",
+    purpose: "independent_probe",
+    contentReviewStatus: "curator_reviewed",
+  });
+  controller.selectChoice("opt-longer-sequences");
+
+  const sub = controller.submitAttempt({
+    ifMatch: "\"etag-attempt-1\"",
+    idempotencyKey: "idem-attempt-1",
+  });
+  assert.equal(sub.request.headers["If-Match"], "\"etag-attempt-1\"");
+  assert.equal(sub.request.headers["Idempotency-Key"], "idem-attempt-1");
+
+  const corr = controller.applyKeyCorrection({
+    correctionReason: "Test correction",
+    ifMatch: "\"etag-corr-1\"",
+  });
+  assert.equal(corr.request.headers["If-Match"], "\"etag-corr-1\"");
+});
+

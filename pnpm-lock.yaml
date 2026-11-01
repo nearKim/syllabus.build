@@ -52,7 +52,11 @@ importers:
 
   packages/api-client: {}
 
-  packages/ui: {}
+  packages/ui:
+    dependencies:
+      '@syllabus/api-client':
+        specifier: workspace:*
+        version: link:../api-client
 
 packages:
 

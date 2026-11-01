@@ -1,7 +1,11 @@
 /**
- * Synchronized `Plan` `Outline` + Basic Interactive `Map` Renderer & View-Model
+ * Synchronized `Plan` `Outline` + Basic Interactive `Map` Renderer & View-Model Facade
  * (`UI-001`..`UI-005`, `UI-014`, `@S17`, `@S23`, `@S25`, `@S26`, `@S75`, `@S76`).
  */
+
+export * from "./planMapTokens.ts";
+export * from "./planOutlineTree.ts";
+export * from "./planMapLayout.ts";
 
 import {
   ALLOWLISTED_ACTIVITY_TYPES,
@@ -9,320 +13,50 @@ import {
   sanitizeText,
   type AllowlistedActivityType,
 } from "./SafeActivityRenderer.ts";
-
-export const ACTIVITY_EXECUTION_STATUSES = [
-  "not_started", "in_progress", "self_reported_completed", "completed", "waived",
-] as const;
-
-export type ActivityExecutionStatus = (typeof ACTIVITY_EXECUTION_STATUSES)[number];
-
-export const OBJECTIVE_PROFICIENCY_BADGE_STATUSES = [
-  "unassessed", "self_reported", "in_progress", "needs_review", "demonstrated",
-] as const;
-
-export type ObjectiveProficiencyBadgeStatus = (typeof OBJECTIVE_PROFICIENCY_BADGE_STATUSES)[number];
-
-export const MAP_KEYBOARD_KEYS = ["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "Enter"] as const;
-export type MapKeyboardKey = (typeof MAP_KEYBOARD_KEYS)[number];
-
-export const SYNCHRONIZED_NODE_ACTIONS = [
-  "select_node", "open_details", "inspect_prerequisites", "focus_neighborhood", "study_ahead",
-] as const;
-
-export type SynchronizedNodeAction = (typeof SYNCHRONIZED_NODE_ACTIONS)[number];
-
-export interface DurationTripletView {
-  readonly min: number;
-  readonly point: number;
-  readonly max: number;
-  readonly minMinutes: number;
-  readonly pointMinutes: number;
-  readonly maxMinutes: number;
-  readonly mediaMinutesAt1x: number;
-  readonly nonMediaMinutesAt1x: number;
-  readonly playbackSpeed: number;
-  readonly rounding: "ceil_per_activity";
-  readonly rangeInterpretation: "planning_bounds_not_confidence_interval";
-}
-
-export interface ActivityExecutionBadgeView {
-  readonly layer: "activity_execution";
-  readonly status: ActivityExecutionStatus;
-  readonly label: string;
-  readonly nonColorCue: string;
-  readonly countsAsDemonstratedProficiency: false;
-}
-
-export interface ObjectiveProficiencyBadgeView {
-  readonly layer: "objective_proficiency";
-  readonly objectiveId: string;
-  readonly status: ObjectiveProficiencyBadgeStatus;
-  readonly label: string;
-  readonly nonColorCue: string;
-  readonly evidenceSupport: "none" | "limited" | "corroborated";
-  readonly evidenceRefs: readonly string[];
-  readonly selfReportedActivityCompleted: boolean;
-  readonly conflatedWithActivityCompletion: false;
-}
-
-export interface PrerequisiteBadgeView {
-  readonly edgeId: string;
-  readonly fromId: string;
-  readonly toId: string;
-  readonly kind: "module_prerequisite" | "objective_prerequisite" | "activity_prerequisite";
-  readonly relationshipLabel: string;
-  readonly textMeaning: string;
-  readonly satisfied: boolean;
-}
-
-export interface RightsBadgeView {
-  readonly basis: string;
-  readonly label: string;
-  readonly displayExcerptsAllowed: boolean;
-  readonly externalLinkOnly: boolean;
-}
-
-export interface OptionalCertificationBadgeView {
-  readonly included: boolean;
-  readonly relationship: "optional_preparation" | "none";
-  readonly label: string;
-  readonly rationale: string | null;
-  readonly verifiedIssuerUrl: string | null;
-  readonly isAccreditedQualificationGuarantee: false;
-}
-
-export interface ResourceProvenanceCardView {
-  readonly resourceVersionId: string;
-  readonly role: "primary" | "supplemental";
-  readonly title: string;
-  readonly verifiedPublisher: string;
-  readonly versionTimestamp: string;
-  readonly accessModel: string;
-  readonly rightsBadge: RightsBadgeView;
-  readonly optionalCertificationBadge: OptionalCertificationBadgeView | null;
-  readonly selectionRationale: string;
-  readonly verifiedSegments: readonly string[];
-  readonly canonicalUrl: string | null;
-  readonly omitsUnverifiedPrecision: true;
-}
-
-export interface PrerequisiteBridgeRecommendation {
-  readonly recommended: boolean;
-  readonly blocking: boolean;
-  readonly masteryGated: boolean;
-  readonly reason: string;
-  readonly unmetPrerequisiteActivityIds: readonly string[];
-  readonly unmetPrerequisiteObjectiveIds: readonly string[];
-  readonly suggestedBridgeActivityIds: readonly string[];
-}
-
-export interface OutlineActivityView {
-  readonly activityId: string;
-  readonly moduleId: string;
-  readonly title: string;
-  readonly type: AllowlistedActivityType;
-  readonly activityType: AllowlistedActivityType;
-  readonly requirementLevel: "required" | "optional";
-  readonly required: boolean;
-  readonly isOptionalEnrichment: boolean;
-  readonly objectiveIds: readonly string[];
-  readonly prerequisiteActivityIds: readonly string[];
-  readonly prerequisiteBadges: readonly PrerequisiteBadgeView[];
-  readonly durationTriplet: DurationTripletView;
-  readonly resourceProvenanceCards: readonly ResourceProvenanceCardView[];
-  readonly executionStatus: ActivityExecutionStatus;
-  readonly executionBadge: ActivityExecutionBadgeView;
-  readonly objectiveProficiencyStatus: ObjectiveProficiencyBadgeStatus;
-  readonly objectiveProficiencyBadge: ObjectiveProficiencyBadgeView;
-  readonly objectiveProficiencyBadges: readonly ObjectiveProficiencyBadgeView[];
-  readonly masteryGated: boolean;
-  readonly unmetPrerequisiteActivityIds: readonly string[];
-  readonly unmetPrerequisiteObjectiveIds: readonly string[];
-  readonly studyAheadAllowed: boolean;
-  readonly prerequisiteBridgeRecommendation: PrerequisiteBridgeRecommendation | null;
-  readonly promptSummary: string;
-  readonly availableActions: readonly SynchronizedNodeAction[];
-}
-
-export interface ObjectiveTrackView {
-  readonly objectiveId: string;
-  readonly objectiveVersionId: string;
-  readonly topicId: string;
-  readonly moduleId: string | null;
-  readonly title: string;
-  readonly description: string;
-  readonly successCriterion: string;
-  readonly level: "introductory" | "applied" | "advanced";
-  readonly requirementLevel: "required" | "optional";
-  readonly required: boolean;
-  readonly topologicalIndex: number;
-  readonly layer: number;
-  readonly column: number;
-  readonly prerequisiteObjectiveIds: readonly string[];
-  readonly dependentObjectiveIds: readonly string[];
-  readonly prerequisiteBadges: readonly PrerequisiteBadgeView[];
-  readonly assessmentActivityIds: readonly string[];
-  readonly activityIds: readonly string[];
-  readonly proficiencyStatus: ObjectiveProficiencyBadgeStatus;
-  readonly proficiencyBadge: ObjectiveProficiencyBadgeView;
-  readonly executionStatus: ActivityExecutionStatus;
-  readonly executionBadge: ActivityExecutionBadgeView;
-  readonly coverageLimitation: { readonly missingRequirement: string; readonly explanation: string } | null;
-  readonly availableActions: readonly SynchronizedNodeAction[];
-}
-
-export interface OutlineModuleView {
-  readonly moduleId: string;
-  readonly title: string;
-  readonly summary: string;
-  readonly topologicalIndex: number;
-  readonly layer: number;
-  readonly column: number;
-  readonly requirementLevel: "required" | "optional";
-  readonly required: boolean;
-  readonly objectiveIds: readonly string[];
-  readonly objectives: readonly ObjectiveTrackView[];
-  readonly activityIds: readonly string[];
-  readonly activities: readonly OutlineActivityView[];
-  readonly prerequisiteModuleIds: readonly string[];
-  readonly dependentModuleIds: readonly string[];
-  readonly prerequisiteBadges: readonly PrerequisiteBadgeView[];
-  readonly durationTriplet: DurationTripletView;
-  readonly executionStatus: ActivityExecutionStatus;
-  readonly executionBadge: ActivityExecutionBadgeView;
-  readonly proficiencyStatus: ObjectiveProficiencyBadgeStatus;
-  readonly proficiencyBadge: ObjectiveProficiencyBadgeView;
-  readonly hasMasteryGatedActivities: boolean;
-  readonly availableActions: readonly SynchronizedNodeAction[];
-}
-
-export interface MapNodeView {
-  readonly nodeId: string;
-  readonly id: string;
-  readonly kind: "module" | "objective";
-  readonly title: string;
-  readonly layer: number;
-  readonly column: number;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly required: boolean;
-  readonly requirementLevel: "required" | "optional";
-  readonly prerequisiteIds: readonly string[];
-  readonly dependentIds: readonly string[];
-  readonly prerequisiteBadges: readonly PrerequisiteBadgeView[];
-  readonly executionStatus: ActivityExecutionStatus;
-  readonly executionBadge: ActivityExecutionBadgeView;
-  readonly proficiencyStatus: ObjectiveProficiencyBadgeStatus;
-  readonly proficiencyBadge: ObjectiveProficiencyBadgeView;
-  readonly statusBadge: {
-    readonly execution: ActivityExecutionBadgeView;
-    readonly proficiency: ObjectiveProficiencyBadgeView;
-  };
-  readonly durationTriplet: DurationTripletView | null;
-  readonly selected: boolean;
-  readonly inFocusedNeighborhood: boolean;
-  readonly opaqueSurface: true;
-  readonly availableActions: readonly SynchronizedNodeAction[];
-}
-
-export interface MapEdgeView {
-  readonly edgeId: string;
-  readonly from: string;
-  readonly to: string;
-  readonly fromNodeId: string;
-  readonly toNodeId: string;
-  readonly kind: "module_prerequisite" | "objective_prerequisite";
-  readonly relationshipLabel: string;
-  readonly arrowMeaning: "prerequisite_dependency";
-  readonly textMeaning: string;
-  readonly satisfied: boolean;
-  readonly points: { readonly fromX: number; readonly fromY: number; readonly toX: number; readonly toY: number };
-}
-
-export interface SvgViewportModel {
-  readonly width: number;
-  readonly height: number;
-  readonly viewBox: string;
-  readonly zoom: number;
-  readonly panX: number;
-  readonly panY: number;
-  readonly focusedModuleId: string | null;
-  readonly focusedNodeId: string | null;
-  readonly opaqueSurface: true;
-  readonly requiresPointerDragging: false;
-  readonly controls: {
-    zoomIn(): PlanMapAndOutlineModel;
-    zoomOut(): PlanMapAndOutlineModel;
-    resetView(): PlanMapAndOutlineModel;
-    focusNeighborhood(moduleOrNodeId: string): PlanMapAndOutlineModel;
-  };
-}
-
-export interface MobileNeighborhoodView {
-  readonly isCompactMobile: boolean;
-  readonly viewportWidthPx: number;
-  readonly selectedModuleId: string | null;
-  readonly selectedModule: OutlineModuleView | null;
-  readonly immediatePrerequisiteModuleIds: readonly string[];
-  readonly immediateDependentModuleIds: readonly string[];
-  readonly neighborhoodModuleIds: readonly string[];
-  readonly verticalTaskList: readonly OutlineActivityView[];
-  readonly nextActionActivityId: string | null;
-  readonly shrinksDesktopGraph: false;
-}
-
-export interface MapOutlineEquivalenceSummary {
-  readonly isEquivalent: true;
-  readonly everyMapNodeInOutline: boolean;
-  readonly everyPrerequisiteEdgeInOutline: boolean;
-  readonly everyStatusBadgeEquivalent: boolean;
-  readonly everyActionEquivalent: boolean;
-  readonly requiresPointerDragging: false;
-}
-
-export interface CatalogResourceVectorIndexMetadata {
-  readonly status?: "indexed" | "pending_reindex" | "quarantined" | string | undefined;
-  readonly embedding_model?: string | undefined;
-  readonly dimensions?: number | undefined;
-  readonly index_type?: string | undefined;
-  readonly chunk_count?: number | undefined;
-  readonly discovered_by?: "Curator Verified" | "AI Web Search" | "Community Published" | string | undefined;
-  readonly discovered_by_handle?: string | undefined;
-  readonly last_indexed_at?: string | undefined;
-}
-
-export interface CatalogResourceMetadataInput {
-  readonly resource_version_id?: string | undefined;
-  readonly title?: string | undefined;
-  readonly canonical_url?: string | undefined;
-  readonly captured_at?: string | undefined;
-  readonly category?: "Book" | "Course" | "YouTube" | "Code Lab" | "Problem Set" | string | undefined;
-  readonly subject?: string | undefined;
-  readonly description?: string | undefined;
-  readonly topics?: readonly string[] | undefined;
-  readonly provider?: { readonly provider_id?: string | undefined; readonly display_name?: string | undefined } | undefined;
-  readonly access?: {
-    readonly model?: string | undefined;
-    readonly tier_label?: string | undefined;
-    readonly cost_label?: string | undefined;
-    readonly rights_label?: string | undefined;
-    readonly certificate_included?: boolean | undefined;
-    readonly optional_certificate_price_minor?: number | null | undefined;
-    readonly access_verified_at?: string | undefined;
-  } | undefined;
-  readonly ingestion_permissions?: {
-    readonly basis?: string | undefined;
-    readonly permissions?: { readonly display_excerpts?: string | undefined } | undefined;
-  } | undefined;
-  readonly vector_index?: CatalogResourceVectorIndexMetadata | undefined;
-  readonly segments?: readonly {
-    readonly segment_id?: string | undefined;
-    readonly title?: string | undefined;
-    readonly verified?: boolean | undefined;
-  }[] | undefined;
-}
+import {
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  LAYER_GAP_X,
+  COLUMN_GAP_Y,
+  ORIGIN_X,
+  ORIGIN_Y,
+  SYNCHRONIZED_NODE_ACTIONS,
+  PROFICIENCY_BADGE_LABELS,
+  type ActivityExecutionStatus,
+  type ObjectiveProficiencyBadgeStatus,
+  type MapKeyboardKey,
+  type ActivityExecutionBadgeView,
+  type ObjectiveProficiencyBadgeView,
+  type PrerequisiteBadgeView,
+  type ResourceProvenanceCardView,
+  normalizeExecutionStatus,
+  makeExecutionBadge,
+} from "./planMapTokens.ts";
+import {
+  type DurationTripletView,
+  type PrerequisiteBridgeRecommendation,
+  type OutlineActivityView,
+  type ObjectiveTrackView,
+  type OutlineModuleView,
+  type CatalogResourceMetadataInput,
+  type MobileNeighborhoodView,
+  asObj,
+  asStringArray,
+  makeDurationTriplet,
+  computeActivityDurationTriplet,
+  sumTriplets,
+  buildResourceLookup,
+  computeMobileNeighborhood,
+} from "./planOutlineTree.ts";
+import {
+  type MapNodeView,
+  type MapEdgeView,
+  type SvgViewportModel,
+  type MapOutlineEquivalenceSummary,
+  computeDeterministicDagLayout,
+  buildEdgesFromBadges,
+  computeMapOutlineEquivalence,
+} from "./planMapLayout.ts";
 
 export interface PlanMapAndOutlineBuildOptions {
   readonly syllabus?: Record<string, unknown>;
@@ -378,180 +112,6 @@ export interface PlanMapAndOutlineModel {
   navigateKeyboard(key: MapKeyboardKey, fromNodeId?: string): PlanMapAndOutlineModel;
 }
 
-const EXECUTION_BADGE_LABELS: Readonly<Record<ActivityExecutionStatus, { readonly label: string; readonly nonColorCue: string }>> = {
-  not_started: { label: "Not started", nonColorCue: "[ ] Not started" },
-  in_progress: { label: "In progress", nonColorCue: "[~] In progress" },
-  self_reported_completed: {
-    label: "Self-reported complete (unverified)",
-    nonColorCue: "[self] Self-reported complete — assessment required for competence",
-  },
-  completed: { label: "Completed", nonColorCue: "[✓] Completed" },
-  waived: { label: "Waived by reviewed evidence", nonColorCue: "[↦] Waived (not completed)" },
-};
-
-const PROFICIENCY_BADGE_LABELS: Readonly<Record<ObjectiveProficiencyBadgeStatus, { readonly label: string; readonly nonColorCue: string }>> = {
-  unassessed: { label: "Unassessed", nonColorCue: "○ Unassessed (no reviewed evidence)" },
-  self_reported: { label: "Self-reported only", nonColorCue: "◐ Self-reported claim (unverified)" },
-  in_progress: { label: "In progress", nonColorCue: "◔ Practice in progress" },
-  needs_review: { label: "Needs review", nonColorCue: "◑ Due for spaced review or additional practice" },
-  demonstrated: { label: "Demonstrated", nonColorCue: "● Demonstrated via reviewed assessment evidence" },
-};
-
-const asObj = (val: unknown): Record<string, unknown> =>
-  val && typeof val === "object" && !Array.isArray(val) ? (val as Record<string, unknown>) : {};
-
-const asStringArray = (val: unknown): string[] =>
-  Array.isArray(val) ? val.map((item) => sanitizeText(item)).filter(Boolean) : [];
-
-function normalizeExecutionStatus(raw: unknown, isWaived = false): ActivityExecutionStatus {
-  if (isWaived) return "waived";
-  if (typeof raw === "string" && (ACTIVITY_EXECUTION_STATUSES as readonly string[]).includes(raw)) {
-    return raw as ActivityExecutionStatus;
-  }
-  return "not_started";
-}
-
-function makeExecutionBadge(status: ActivityExecutionStatus): ActivityExecutionBadgeView {
-  const meta = EXECUTION_BADGE_LABELS[status];
-  return {
-    layer: "activity_execution",
-    status,
-    label: meta.label,
-    nonColorCue: meta.nonColorCue,
-    countsAsDemonstratedProficiency: false,
-  };
-}
-
-function makeDurationTriplet(
-  min: number,
-  point: number,
-  max: number,
-  mediaMinutesAt1x: number,
-  nonMediaMinutesAt1x: number,
-  playbackSpeed: number,
-): DurationTripletView {
-  return {
-    min,
-    point,
-    max,
-    minMinutes: min,
-    pointMinutes: point,
-    maxMinutes: max,
-    mediaMinutesAt1x,
-    nonMediaMinutesAt1x,
-    playbackSpeed,
-    rounding: "ceil_per_activity",
-    rangeInterpretation: "planning_bounds_not_confidence_interval",
-  };
-}
-
-function computeComponentDurationSum(bounds: Record<string, unknown>): {
-  readonly media: number;
-  readonly nonMedia: number;
-  readonly totalAt1x: number;
-} {
-  const num = (k: string) => (typeof bounds[k] === "number" ? Math.max(0, bounds[k] as number) : 0);
-  const media = num("media_minutes");
-  const nonMedia = num("reading_minutes") + num("practice_minutes") + num("assessment_minutes") + num("review_minutes");
-  return { media, nonMedia, totalAt1x: media + nonMedia };
-}
-
-export function computeActivityDurationTriplet(
-  rawDurationEstimate: unknown,
-  playbackSpeed: number,
-  syllabusHasMediaMinutes = false,
-): DurationTripletView {
-  const safeSpeed =
-    typeof playbackSpeed === "number" && Number.isFinite(playbackSpeed) && playbackSpeed > 0
-      ? Math.min(3, Math.max(0.5, playbackSpeed))
-      : 1;
-  const est = asObj(rawDurationEstimate);
-  const pointParts = computeComponentDurationSum(est);
-  const lowerParts = computeComponentDurationSum(est["lower_bounds"] ? asObj(est["lower_bounds"]) : est);
-  const upperParts = computeComponentDurationSum(est["upper_bounds"] ? asObj(est["upper_bounds"]) : est);
-
-  const scale = (parts: { media: number; nonMedia: number; totalAt1x: number }) => {
-    if (syllabusHasMediaMinutes || pointParts.media > 0) return Math.ceil(parts.media / safeSpeed) + parts.nonMedia;
-    return safeSpeed !== 1 ? Math.ceil(parts.totalAt1x / safeSpeed) : parts.totalAt1x;
-  };
-
-  return makeDurationTriplet(
-    scale(lowerParts),
-    scale(pointParts),
-    scale(upperParts),
-    pointParts.media,
-    pointParts.nonMedia,
-    safeSpeed,
-  );
-}
-
-interface DagLayoutPosition {
-  readonly id: string;
-  readonly layer: number;
-  readonly column: number;
-  readonly topologicalIndex: number;
-}
-
-function computeDeterministicDagLayout(
-  nodeIdsInOrder: readonly string[],
-  edges: readonly { readonly from: string; readonly to: string }[],
-): ReadonlyMap<string, DagLayoutPosition> {
-  const knownIds = new Set(nodeIdsInOrder);
-  const orderIdx = new Map(nodeIdsInOrder.map((id, idx) => [id, idx]));
-  const prereqs = new Map(nodeIdsInOrder.map((id) => [id, new Set<string>()]));
-  const deps = new Map(nodeIdsInOrder.map((id) => [id, new Set<string>()]));
-  const inDegree = new Map(nodeIdsInOrder.map((id) => [id, 0]));
-  const layerByNode = new Map(nodeIdsInOrder.map((id) => [id, 0]));
-
-  for (const { from, to } of edges) {
-    if (knownIds.has(from) && knownIds.has(to) && from !== to && !prereqs.get(to)!.has(from)) {
-      prereqs.get(to)!.add(from);
-      deps.get(from)!.add(to);
-      inDegree.set(to, (inDegree.get(to) ?? 0) + 1);
-    }
-  }
-
-  const byOrigOrder = (a: string, b: string) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0);
-  const ready = nodeIdsInOrder.filter((id) => (inDegree.get(id) ?? 0) === 0).sort(byOrigOrder);
-  const visitedOrder: string[] = [];
-  const visitedSet = new Set<string>();
-
-  while (ready.length > 0) {
-    const current = ready.shift()!;
-    if (visitedSet.has(current)) continue;
-    visitedSet.add(current);
-    visitedOrder.push(current);
-    const currentLayer = layerByNode.get(current) ?? 0;
-    for (const dep of Array.from(deps.get(current) ?? []).sort(byOrigOrder)) {
-      layerByNode.set(dep, Math.max(layerByNode.get(dep) ?? 0, currentLayer + 1));
-      const nextIn = (inDegree.get(dep) ?? 1) - 1;
-      inDegree.set(dep, nextIn);
-      if (nextIn <= 0 && !visitedSet.has(dep)) {
-        ready.push(dep);
-        ready.sort(byOrigOrder);
-      }
-    }
-  }
-
-  for (const id of nodeIdsInOrder) {
-    if (!visitedSet.has(id)) visitedOrder.push(id);
-  }
-
-  const nodesByLayer = new Map<number, string[]>();
-  for (const id of visitedOrder) {
-    const layer = layerByNode.get(id) ?? 0;
-    nodesByLayer.set(layer, [...(nodesByLayer.get(layer) ?? []), id]);
-  }
-
-  const result = new Map<string, DagLayoutPosition>();
-  let topoIdx = 0;
-  for (const layer of Array.from(nodesByLayer.keys()).sort((a, b) => a - b)) {
-    const group = (nodesByLayer.get(layer) ?? []).sort(byOrigOrder);
-    group.forEach((id, column) => result.set(id, { id, layer, column, topologicalIndex: topoIdx++ }));
-  }
-  return result;
-}
-
 function normalizeArgs(
   firstArg: Record<string, unknown> | PlanMapAndOutlineBuildOptions,
   secondArg?: Record<string, unknown> | PlanMapAndOutlineBuildOptions | null,
@@ -559,8 +119,11 @@ function normalizeArgs(
   fourthArg?: Partial<PlanMapAndOutlineBuildOptions>,
 ): { readonly syllabus: Record<string, unknown>; readonly options: PlanMapAndOutlineBuildOptions } {
   if (
-    firstArg && typeof firstArg === "object" && "syllabus" in firstArg &&
-    firstArg["syllabus"] && typeof firstArg["syllabus"] === "object" &&
+    firstArg &&
+    typeof firstArg === "object" &&
+    "syllabus" in firstArg &&
+    firstArg["syllabus"] &&
+    typeof firstArg["syllabus"] === "object" &&
     !("schema_version" in firstArg && "modules" in firstArg)
   ) {
     const opts = firstArg as PlanMapAndOutlineBuildOptions;
@@ -568,9 +131,11 @@ function normalizeArgs(
   }
   const syllabus = (firstArg as Record<string, unknown>) ?? {};
   const isOptionsObj =
-    secondArg && typeof secondArg === "object" &&
-    ["activityStates", "playbackSpeed", "viewportWidthPx", "selectedModuleId", "selectedActivityId", "proficiency", "catalogResources", "zoom"]
-      .some((k) => k in secondArg);
+    secondArg &&
+    typeof secondArg === "object" &&
+    ["activityStates", "playbackSpeed", "viewportWidthPx", "selectedModuleId", "selectedActivityId", "proficiency", "catalogResources", "zoom"].some(
+      (k) => k in secondArg,
+    );
 
   if (isOptionsObj) {
     return {
@@ -586,25 +151,6 @@ function normalizeArgs(
       ...(fourthArg ?? {}),
     },
   };
-}
-
-function buildResourceLookup(
-  rawCatalog: Readonly<Record<string, CatalogResourceMetadataInput>> | readonly CatalogResourceMetadataInput[] | undefined,
-): ReadonlyMap<string, CatalogResourceMetadataInput> {
-  const map = new Map<string, CatalogResourceMetadataInput>();
-  if (!rawCatalog) return map;
-  if (Array.isArray(rawCatalog)) {
-    for (const item of rawCatalog) {
-      if (item && typeof item === "object" && typeof item.resource_version_id === "string") {
-        map.set(item.resource_version_id, item);
-      }
-    }
-    return map;
-  }
-  for (const [k, v] of Object.entries(rawCatalog)) {
-    if (v && typeof v === "object") map.set(k, v as CatalogResourceMetadataInput);
-  }
-  return map;
 }
 
 export function buildPlanMapAndOutlineModel(
@@ -997,8 +543,13 @@ export function buildPlanMapAndOutlineModel(
 
     const contentObj = asObj(rawAct["content"]);
     const promptSummary = sanitizeText(
-      contentObj["study_prompt"] ?? contentObj["example_prompt"] ?? contentObj["task_prompt"] ??
-      contentObj["recall_prompt"] ?? contentObj["reflection_prompt"] ?? contentObj["brief"] ?? title,
+      contentObj["study_prompt"] ??
+        contentObj["example_prompt"] ??
+        contentObj["task_prompt"] ??
+        contentObj["recall_prompt"] ??
+        contentObj["reflection_prompt"] ??
+        contentObj["brief"] ??
+        title,
       title,
     );
 
@@ -1045,8 +596,10 @@ export function buildPlanMapAndOutlineModel(
 
     let rollupExec: ActivityExecutionStatus = "not_started";
     if (waiverRefSet.has(objId)) rollupExec = "waived";
-    else if (linkedActs.length > 0 && linkedActs.every((aid) => executionStatusByActivityId.get(aid) === "completed")) rollupExec = "completed";
-    else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "self_reported_completed")) rollupExec = "self_reported_completed";
+    else if (linkedActs.length > 0 && linkedActs.every((aid) => executionStatusByActivityId.get(aid) === "completed"))
+      rollupExec = "completed";
+    else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "self_reported_completed"))
+      rollupExec = "self_reported_completed";
     else if (linkedActs.some((aid) => executionStatusByActivityId.get(aid) === "in_progress")) rollupExec = "in_progress";
 
     const prereqBadges: PrerequisiteBadgeView[] = prereqIds.map((pId) => {
@@ -1101,16 +654,6 @@ export function buildPlanMapAndOutlineModel(
 
   const objectiveTrackById = new Map(objectiveTracks.map((t) => [t.objectiveId, t]));
 
-  const sumTriplets = (items: readonly OutlineActivityView[]) =>
-    makeDurationTriplet(
-      items.reduce((acc, a) => acc + a.durationTriplet.min, 0),
-      items.reduce((acc, a) => acc + a.durationTriplet.point, 0),
-      items.reduce((acc, a) => acc + a.durationTriplet.max, 0),
-      items.reduce((acc, a) => acc + a.durationTriplet.mediaMinutesAt1x, 0),
-      items.reduce((acc, a) => acc + a.durationTriplet.nonMediaMinutesAt1x, 0),
-      playbackSpeed,
-    );
-
   const outlineActivities: OutlineActivityView[] = [];
   const outlineModules: OutlineModuleView[] = sortedModuleIds.map((modId) => {
     const rawMod = rawModuleById.get(modId) ?? {};
@@ -1124,9 +667,14 @@ export function buildPlanMapAndOutlineModel(
     const required = modActivities.some((a) => a.required) || modObjectives.some((o) => o.required);
     let modExecStatus: ActivityExecutionStatus = "not_started";
     if (modActivities.length > 0 && modActivities.every((a) => a.executionStatus === "waived")) modExecStatus = "waived";
-    else if (modActivities.length > 0 && modActivities.every((a) => a.executionStatus === "completed" || a.executionStatus === "waived")) modExecStatus = "completed";
+    else if (
+      modActivities.length > 0 &&
+      modActivities.every((a) => a.executionStatus === "completed" || a.executionStatus === "waived")
+    )
+      modExecStatus = "completed";
     else if (modActivities.some((a) => a.executionStatus === "self_reported_completed")) modExecStatus = "self_reported_completed";
-    else if (modActivities.some((a) => a.executionStatus === "in_progress" || a.executionStatus === "completed")) modExecStatus = "in_progress";
+    else if (modActivities.some((a) => a.executionStatus === "in_progress" || a.executionStatus === "completed"))
+      modExecStatus = "in_progress";
 
     const primaryProfBadge = modObjectives[0]?.proficiencyBadge ?? resolveObjectiveProficiencyBadge(modId);
     const prereqModIds = prereqModulesByMod.get(modId) ?? [];
@@ -1135,7 +683,9 @@ export function buildPlanMapAndOutlineModel(
     const prereqBadges: PrerequisiteBadgeView[] = prereqModIds.map((pModId) => {
       const pTitle = sanitizeText(rawModuleById.get(pModId)?.["title"], pModId);
       const pModObjIds = asStringArray(rawModuleById.get(pModId)?.["objective_ids"]);
-      const satisfied = pModObjIds.length > 0 && pModObjIds.every((oid) => proficiencyBadgeByObjectiveId.get(oid)?.status === "demonstrated");
+      const satisfied =
+        pModObjIds.length > 0 &&
+        pModObjIds.every((oid) => proficiencyBadgeByObjectiveId.get(oid)?.status === "demonstrated");
       return {
         edgeId: `${pModId}->${modId}`,
         fromId: pModId,
@@ -1165,7 +715,7 @@ export function buildPlanMapAndOutlineModel(
       prerequisiteModuleIds: prereqModIds,
       dependentModuleIds: depModIds,
       prerequisiteBadges: prereqBadges,
-      durationTriplet: sumTriplets(modActivities),
+      durationTriplet: sumTriplets(modActivities, playbackSpeed),
       executionStatus: modExecStatus,
       executionBadge: makeExecutionBadge(modExecStatus),
       proficiencyStatus: primaryProfBadge.status,
@@ -1175,7 +725,7 @@ export function buildPlanMapAndOutlineModel(
     };
   });
 
-  const totalDurationTriplet = sumTriplets(outlineActivities);
+  const totalDurationTriplet = sumTriplets(outlineActivities, playbackSpeed);
 
   const defaultSelectedModuleId = outlineModules[0]?.moduleId ?? null;
   const selectedModuleId = options.selectedModuleId !== undefined ? options.selectedModuleId : defaultSelectedModuleId;
@@ -1185,11 +735,10 @@ export function buildPlanMapAndOutlineModel(
       ? options.selectedActivityId
       : (selectedModule?.activities[0]?.activityId ?? outlineActivities[0]?.activityId ?? null);
   const focusedNodeId =
-    options.focusedNodeId !== undefined
-      ? options.focusedNodeId
-      : (selectedModule?.moduleId ?? objectiveTracks[0]?.objectiveId ?? null);
+    options.focusedNodeId !== undefined ? options.focusedNodeId : (selectedModule?.moduleId ?? objectiveTracks[0]?.objectiveId ?? null);
 
   const viewportWidthPx = typeof options.viewportWidthPx === "number" && options.viewportWidthPx > 0 ? options.viewportWidthPx : 1280;
+
   const immediatePrerequisiteModuleIds = selectedModule ? selectedModule.prerequisiteModuleIds : [];
   const immediateDependentModuleIds = selectedModule ? selectedModule.dependentModuleIds : [];
   const neighborhoodSet = new Set<string>([
@@ -1197,31 +746,8 @@ export function buildPlanMapAndOutlineModel(
     ...(selectedModule ? [selectedModule.moduleId] : []),
     ...immediateDependentModuleIds,
   ]);
-  const verticalTaskList = selectedModule ? selectedModule.activities : outlineActivities;
-  const nextActionActivity =
-    verticalTaskList.find((a) => a.executionStatus === "not_started" || a.executionStatus === "in_progress") ??
-    verticalTaskList[0] ??
-    null;
 
-  const mobileNeighborhood: MobileNeighborhoodView = {
-    isCompactMobile: viewportWidthPx < 768,
-    viewportWidthPx,
-    selectedModuleId: selectedModule?.moduleId ?? null,
-    selectedModule,
-    immediatePrerequisiteModuleIds,
-    immediateDependentModuleIds,
-    neighborhoodModuleIds: Array.from(neighborhoodSet),
-    verticalTaskList,
-    nextActionActivityId: nextActionActivity?.activityId ?? null,
-    shrinksDesktopGraph: false,
-  };
-
-  const NODE_WIDTH = 220;
-  const NODE_HEIGHT = 88;
-  const LAYER_GAP_X = 280;
-  const COLUMN_GAP_Y = 136;
-  const ORIGIN_X = 48;
-  const ORIGIN_Y = 48;
+  const mobileNeighborhood = computeMobileNeighborhood(outlineModules, outlineActivities, selectedModule, viewportWidthPx);
 
   const moduleMapNodes: MapNodeView[] = outlineModules.map((mod) => ({
     nodeId: mod.moduleId,
@@ -1285,37 +811,9 @@ export function buildPlanMapAndOutlineModel(
   const mapNodes: MapNodeView[] = [...moduleMapNodes, ...objectiveMapNodes];
   const mapNodeById = new Map(mapNodes.map((n) => [n.nodeId, n]));
 
-  const buildEdgesFromBadges = (
-    badges: readonly PrerequisiteBadgeView[],
-    kind: "module_prerequisite" | "objective_prerequisite",
-  ): MapEdgeView[] =>
-    badges.flatMap((badge) => {
-      const fromNode = mapNodeById.get(badge.fromId);
-      const toNode = mapNodeById.get(badge.toId);
-      if (!fromNode || !toNode) return [];
-      return [{
-        edgeId: badge.edgeId,
-        from: badge.fromId,
-        to: badge.toId,
-        fromNodeId: badge.fromId,
-        toNodeId: badge.toId,
-        kind,
-        relationshipLabel: badge.relationshipLabel,
-        arrowMeaning: "prerequisite_dependency",
-        textMeaning: badge.textMeaning,
-        satisfied: badge.satisfied,
-        points: {
-          fromX: fromNode.x + fromNode.width,
-          fromY: fromNode.y + Math.floor(fromNode.height / 2),
-          toX: toNode.x,
-          toY: toNode.y + Math.floor(toNode.height / 2),
-        },
-      }];
-    });
-
   const mapEdges: MapEdgeView[] = [
-    ...outlineModules.flatMap((m) => buildEdgesFromBadges(m.prerequisiteBadges, "module_prerequisite")),
-    ...objectiveTracks.flatMap((o) => buildEdgesFromBadges(o.prerequisiteBadges, "objective_prerequisite")),
+    ...outlineModules.flatMap((m) => buildEdgesFromBadges(m.prerequisiteBadges, "module_prerequisite", mapNodeById)),
+    ...objectiveTracks.flatMap((o) => buildEdgesFromBadges(o.prerequisiteBadges, "objective_prerequisite", mapNodeById)),
   ];
 
   const keyboardOrder: readonly string[] = mapNodes.map((n) => n.nodeId);
@@ -1396,25 +894,7 @@ export function buildPlanMapAndOutlineModel(
     return rebuildWith({ selectedModuleId: targetModId, focusedNodeId: targetId });
   }
 
-  const outlineNodeIdSet = new Set<string>([
-    ...outlineModules.map((m) => m.moduleId),
-    ...objectiveTracks.map((o) => o.objectiveId),
-  ]);
-  const outlineEdgeIdSet = new Set<string>([
-    ...outlineModules.flatMap((m) => m.prerequisiteBadges.map((b) => b.edgeId)),
-    ...objectiveTracks.flatMap((o) => o.prerequisiteBadges.map((b) => b.edgeId)),
-  ]);
-
-  const everyMapNodeInOutline = mapNodes.every((n) => outlineNodeIdSet.has(n.nodeId));
-  const everyPrerequisiteEdgeInOutline = mapEdges.every((e) => outlineEdgeIdSet.has(e.edgeId));
-  const everyStatusBadgeEquivalent = mapNodes.every((n) => {
-    const item =
-      n.kind === "module"
-        ? outlineModules.find((m) => m.moduleId === n.nodeId)
-        : objectiveTracks.find((o) => o.objectiveId === n.nodeId);
-    return Boolean(item) && item!.executionStatus === n.executionStatus && item!.proficiencyStatus === n.proficiencyStatus;
-  });
-  const everyActionEquivalent = mapNodes.every((n) => n.availableActions.join(",") === SYNCHRONIZED_NODE_ACTIONS.join(","));
+  const equivalence = computeMapOutlineEquivalence(mapNodes, mapEdges, outlineModules, objectiveTracks);
 
   return {
     syllabusId,
@@ -1448,14 +928,7 @@ export function buildPlanMapAndOutlineModel(
     selectedActivityId,
     focusedNodeId,
     mobileNeighborhood,
-    equivalence: {
-      isEquivalent: true,
-      everyMapNodeInOutline,
-      everyPrerequisiteEdgeInOutline,
-      everyStatusBadgeEquivalent,
-      everyActionEquivalent,
-      requiresPointerDragging: false,
-    },
+    equivalence,
     zoomIn: controls.zoomIn,
     zoomOut: controls.zoomOut,
     resetView: controls.resetView,

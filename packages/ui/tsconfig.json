@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": "./src"
+    "rootDir": "../..",
+    "paths": {
+      "@syllabus/api-client": ["../../packages/api-client/src/index.ts"]
+    }
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "../../packages/api-client/src/**/*.ts"]
 }

@@ -17,7 +17,10 @@ export function buildOperationHeaders(
   operationId: OperationId,
   options: ConcurrencyHeaderOptions = {}
 ): Record<string, string> {
-  const spec: OperationSpec = OPENAPI_OPERATIONS[operationId];
+  const spec: OperationSpec | undefined = OPENAPI_OPERATIONS[operationId];
+  if (!spec) {
+    throw new Error(`Unknown operationId: ${String(operationId)}`);
+  }
   const headers: Record<string, string> = {
     Accept: "application/json",
   };
@@ -26,22 +29,28 @@ export function buildOperationHeaders(
     headers["Content-Type"] = "application/json";
   }
 
+  const trimmedIdempotencyKey = options.idempotencyKey?.trim();
   if (spec.requiresIdempotencyKey) {
-    if (!options.idempotencyKey || options.idempotencyKey.trim().length === 0) {
+    if (!trimmedIdempotencyKey || trimmedIdempotencyKey.length === 0) {
       throw new Error(
         `Operation ${operationId} (${spec.method} ${spec.path}) is a retriable effect-producing command and requires an Idempotency-Key header.`
       );
     }
-    headers["Idempotency-Key"] = options.idempotencyKey;
+    headers["Idempotency-Key"] = trimmedIdempotencyKey;
+  } else if (trimmedIdempotencyKey && trimmedIdempotencyKey.length > 0) {
+    headers["Idempotency-Key"] = trimmedIdempotencyKey;
   }
 
+  const trimmedIfMatch = options.ifMatch?.trim();
   if (spec.requiresIfMatch) {
-    if (!options.ifMatch || options.ifMatch.trim().length === 0) {
+    if (!trimmedIfMatch || trimmedIfMatch.length === 0) {
       throw new Error(
         `Operation ${operationId} (${spec.method} ${spec.path}) mutates a versioned resource and requires an If-Match header.`
       );
     }
-    headers["If-Match"] = options.ifMatch;
+    headers["If-Match"] = trimmedIfMatch;
+  } else if (trimmedIfMatch && trimmedIfMatch.length > 0) {
+    headers["If-Match"] = trimmedIfMatch;
   }
 
   return headers;

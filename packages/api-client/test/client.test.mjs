@@ -45,3 +45,39 @@ test("T01 HTTP concurrency policy: mutations of existing versioned mutable resou
   assert.equal(headers["If-Match"], "\"rev-1\"");
   assert.equal(headers["Idempotency-Key"], undefined);
 });
+
+test("T01 HTTP concurrency policy: optional If-Match header is forwarded when provided even if not required by spec", () => {
+  const headers = buildOperationHeaders("submitAssessmentAttempt", {
+    ifMatch: "\"attempt-v1\"",
+  });
+  assert.equal(headers["If-Match"], "\"attempt-v1\"");
+  assert.equal(headers["Accept"], "application/json");
+  assert.equal(headers["Content-Type"], "application/json");
+});
+
+test("T01 HTTP concurrency policy: optional Idempotency-Key header is forwarded when provided even if not required by spec", () => {
+  const headers = buildOperationHeaders("submitAssessmentAttempt", {
+    idempotencyKey: "test-idem-key-1",
+  });
+  assert.equal(headers["Idempotency-Key"], "test-idem-key-1");
+  assert.equal(headers["Accept"], "application/json");
+  assert.equal(headers["Content-Type"], "application/json");
+});
+
+test("T01 HTTP concurrency policy: unknown operationId throws descriptive Error", () => {
+  assert.throws(
+    () => buildOperationHeaders("unknownNonExistentOperation"),
+    /Unknown operationId: unknownNonExistentOperation/
+  );
+});
+
+test("T01 HTTP concurrency policy: whitespace on If-Match and Idempotency-Key is normalized and trimmed", () => {
+  const headers = buildOperationHeaders("activateSyllabusRevision", {
+    ifMatch: "  \"rev-1\"  ",
+    idempotencyKey: "  key-123  ",
+  });
+  assert.equal(headers["If-Match"], "\"rev-1\"");
+  assert.equal(headers["Idempotency-Key"], "key-123");
+});
+
+
