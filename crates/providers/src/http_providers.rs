@@ -5,10 +5,10 @@ use std::time::Duration;
 use serde_json::Value;
 
 use crate::{
+    build_no_redirect_http_client, handle_live_http_response, load_validated_canonical_candidate,
     CandidateGenerationOutput, CandidateGenerationRequest, InferenceAuthMode, InferenceProvider,
     NormalizedUsageReport, ProviderCapabilities, ProviderError, StructuredOutputCapability,
-    TokenLimits, UsageReportingCapability, build_no_redirect_http_client,
-    handle_live_http_response, load_validated_canonical_candidate,
+    TokenLimits, UsageReportingCapability,
 };
 
 // =============================================================================
@@ -73,7 +73,10 @@ pub enum OpenAiTransportMode {
 /// Provider-neutral alias for [`OpenAiTransportMode`].
 pub type HttpTransportMode = OpenAiTransportMode;
 
-fn validate_endpoint_egress(endpoint_url: &str, allowed_hosts: &[&str]) -> Result<(), ProviderError> {
+fn validate_endpoint_egress(
+    endpoint_url: &str,
+    allowed_hosts: &[&str],
+) -> Result<(), ProviderError> {
     syllabus_domain::validate_outbound_egress_url(endpoint_url, allowed_hosts)
         .map(|_| ())
         .map_err(|e| ProviderError::UnsafeEndpointUrl {
@@ -127,7 +130,8 @@ impl OpenAiHttpProvider {
         pinned_binding: PinnedByokBinding,
         transport_mode: OpenAiTransportMode,
     ) -> Result<Self, ProviderError> {
-        let http_client = init_pinned_http_client(endpoint_url, &OPENAI_ALLOWED_EGRESS_HOSTS, None)?;
+        let http_client =
+            init_pinned_http_client(endpoint_url, &OPENAI_ALLOWED_EGRESS_HOSTS, None)?;
 
         Ok(Self {
             endpoint_url: endpoint_url.to_string(),

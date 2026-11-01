@@ -367,8 +367,7 @@ impl OutboxJobQueue {
                             transitioned_to_dead_letter += 1;
                         } else {
                             job.state = OutboxJobState::Queued;
-                            job.last_error =
-                                Some("worker_lease_expired_requeued".to_string());
+                            job.last_error = Some("worker_lease_expired_requeued".to_string());
                             reaped_to_queued += 1;
                         }
                     }
@@ -394,8 +393,7 @@ impl OutboxJobQueue {
             insertion_order,
             ..
         } = &mut *guard;
-        let completed_cutoff_ms =
-            (config.completed_retention_days as u64) * 24 * 60 * 60 * 1_000;
+        let completed_cutoff_ms = (config.completed_retention_days as u64) * 24 * 60 * 60 * 1_000;
         let dead_letter_cutoff_ms =
             (config.dead_letter_retention_days as u64) * 24 * 60 * 60 * 1_000;
 
@@ -617,7 +615,9 @@ mod tests {
         );
 
         // Worker B commits the job; effect is recorded exactly once
-        assert!(queue.complete_job("job-crash-1", "worker-b", 65_000).unwrap());
+        assert!(queue
+            .complete_job("job-crash-1", "worker-b", 65_000)
+            .unwrap());
         assert_eq!(queue.committed_effect_count(), 1);
     }
 
@@ -678,7 +678,11 @@ mod tests {
                     let newly_committed = q
                         .complete_job(&job.job_id, &worker_id, 3_000)
                         .expect("complete leased job");
-                    assert!(newly_committed, "job {} committed more than once", job.job_id);
+                    assert!(
+                        newly_committed,
+                        "job {} committed more than once",
+                        job.job_id
+                    );
                     processed.push(job.job_id);
                 }
                 processed
@@ -697,7 +701,11 @@ mod tests {
             "all 200 jobs must be processed with 0 dropped and 0 duplicates"
         );
         let unique: BTreeSet<String> = all_processed.into_iter().collect();
-        assert_eq!(unique.len(), 200, "every job must be processed exactly once");
+        assert_eq!(
+            unique.len(),
+            200,
+            "every job must be processed exactly once"
+        );
 
         let metrics = queue.metrics_snapshot(4_000);
         assert_eq!(metrics.queued_depth, 0);

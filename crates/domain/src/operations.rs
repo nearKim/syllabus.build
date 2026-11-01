@@ -374,7 +374,6 @@ fn last_sunday_of_month(y: i32, m: u32) -> u32 {
 
 // =============================================================================
 
-
 // =============================================================================
 // T09: Account Deletion Impact & Tombstone Policy
 // =============================================================================
@@ -619,7 +618,9 @@ pub fn evaluate_delayed_retention_and_transfer_study(
         && metrics.delayed_30d_retention_bp >= 6_500
         && metrics.far_transfer_pass_rate_bp >= 6_000;
 
-    let allowed_claim_scope = if retention_and_transfer_verified && metrics.includes_control_comparison {
+    let allowed_claim_scope = if retention_and_transfer_verified
+        && metrics.includes_control_comparison
+    {
         "controlled_delayed_retention_and_transfer_demonstrated".to_string()
     } else if retention_and_transfer_verified {
         "observational_delayed_retention_and_transfer_without_causal_superiority_claim".to_string()

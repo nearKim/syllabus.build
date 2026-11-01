@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{DomainError, ObjectiveProficiencyState, validate_dag_acyclic};
+use crate::{validate_dag_acyclic, DomainError, ObjectiveProficiencyState};
 
 // =============================================================================
 // T13: Public Templates, Sanitization, Preview Digest, Moderation & Partial Adoption
@@ -140,8 +140,7 @@ impl PublicationPreviewDigest {
     ) -> Result<(), DomainError> {
         if !accept_publication_terms {
             return Err(DomainError::PublicSharingInvariantViolation(
-                "accept_publication_terms must be true to publish a syllabus template"
-                    .to_string(),
+                "accept_publication_terms must be true to publish a syllabus template".to_string(),
             ));
         }
         if expected_preview_sha256.len() != 64

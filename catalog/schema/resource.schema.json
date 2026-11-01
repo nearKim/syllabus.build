@@ -148,7 +148,7 @@
       "properties": {
         "status": {
           "type": "string",
-          "enum": ["indexed", "pending", "quarantined"]
+          "enum": ["indexed", "pending", "pending_reindex", "quarantined"]
         },
         "index_type": {
           "type": "string",

@@ -2,6 +2,7 @@
 // Canonical Specification SHA-256: 966a2e4a3556340f3bb4ccd44fa1f97496f6e8bdbc38652f322513e8071d9b0f
 
 /// Canonical SHA-256 digest of `specs/product.md`.
+#[rustfmt::skip]
 pub const CANONICAL_SPEC_SHA256: &str = "966a2e4a3556340f3bb4ccd44fa1f97496f6e8bdbc38652f322513e8071d9b0f";
 
 /// Descriptor for an embedded JSON Schema Draft 2020-12 contract.

@@ -79,6 +79,7 @@ def generate_rust_contracts(root: Path, spec_sha: str, operations, schema_names)
         f"// Canonical Specification SHA-256: {spec_sha}",
         "",
         "/// Canonical SHA-256 digest of `specs/product.md`.",
+        "#[rustfmt::skip]",
         f"pub const CANONICAL_SPEC_SHA256: &str = \"{spec_sha}\";",
         "",
         "/// Descriptor for an embedded JSON Schema Draft 2020-12 contract.",

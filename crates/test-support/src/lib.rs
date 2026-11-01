@@ -1,7 +1,7 @@
 //! Shared test fixtures and deterministic test harnesses (`T00`).
 
-use syllabus_contracts::workspace_root;
 use serde_json::Value;
+use syllabus_contracts::workspace_root;
 
 /// Loads a synthetic fixture by relative filename under `specs/001-syllabus-platform/examples/`.
 #[must_use]

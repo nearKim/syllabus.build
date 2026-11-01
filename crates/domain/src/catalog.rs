@@ -690,12 +690,12 @@ pub fn evaluate_resource_fit_and_coverage(
                     .any(|ct| ct.trim().to_ascii_lowercase() == *t_norm)
             })
             .count();
-        let sim_a_bp =
-            (tfidf_index.cosine_similarity(&composite_query, &a.resource_version_id) * 10_000.0)
-                .round() as i64;
-        let sim_b_bp =
-            (tfidf_index.cosine_similarity(&composite_query, &b.resource_version_id) * 10_000.0)
-                .round() as i64;
+        let sim_a_bp = (tfidf_index.cosine_similarity(&composite_query, &a.resource_version_id)
+            * 10_000.0)
+            .round() as i64;
+        let sim_b_bp = (tfidf_index.cosine_similarity(&composite_query, &b.resource_version_id)
+            * 10_000.0)
+            .round() as i64;
         count_b
             .cmp(&count_a)
             .then_with(|| b.supported_roles.len().cmp(&a.supported_roles.len()))
@@ -746,11 +746,9 @@ pub fn evaluate_resource_fit_and_coverage(
                 {
                     has_instruction = true;
                 }
-                if res
-                    .supported_roles
-                    .iter()
-                    .any(|r| r.eq_ignore_ascii_case("practice") || r.eq_ignore_ascii_case("assessment"))
-                    || matches!(res.resource_type.as_str(), "repository" | "project")
+                if res.supported_roles.iter().any(|r| {
+                    r.eq_ignore_ascii_case("practice") || r.eq_ignore_ascii_case("assessment")
+                }) || matches!(res.resource_type.as_str(), "repository" | "project")
                 {
                     has_practice = true;
                 }
@@ -799,33 +797,33 @@ pub fn evaluate_resource_fit_and_coverage(
     let effective_mode = requested_mode.unwrap_or(default_mode);
 
     let (web_search_bypassed, cost_badge_label) = match effective_mode {
-        ResourceFitDecisionMode::DirectPlanAdoption => (
-            true,
-            "No AI generation · No web search".to_string(),
-        ),
-        ResourceFitDecisionMode::UseSelectedOnly => (
-            true,
-            "No web search · AI synthesis required".to_string(),
-        ),
+        ResourceFitDecisionMode::DirectPlanAdoption => {
+            (true, "No AI generation · No web search".to_string())
+        }
+        ResourceFitDecisionMode::UseSelectedOnly => {
+            (true, "No web search · AI synthesis required".to_string())
+        }
         ResourceFitDecisionMode::FillGaps => {
             if missing_topics_for_search.is_empty() {
                 (true, "No web search · AI synthesis required".to_string())
             } else {
                 let n = missing_topics_for_search.len();
-                let noun = if n == 1 { "missing topic" } else { "missing topics" };
-                (
-                    false,
-                    format!("Search {n} {noun} · AI synthesis required"),
-                )
+                let noun = if n == 1 {
+                    "missing topic"
+                } else {
+                    "missing topics"
+                };
+                (false, format!("Search {n} {noun} · AI synthesis required"))
             }
         }
         ResourceFitDecisionMode::SearchAllTopics => {
             let n = req_topics_norm.len().max(1);
-            let noun = if n == 1 { "requested topic" } else { "requested topics" };
-            (
-                false,
-                format!("Search {n} {noun} · AI synthesis required"),
-            )
+            let noun = if n == 1 {
+                "requested topic"
+            } else {
+                "requested topics"
+            };
+            (false, format!("Search {n} {noun} · AI synthesis required"))
         }
     };
 

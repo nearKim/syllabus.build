@@ -51,7 +51,6 @@ pub fn validate_byok_credential_usable(
     }
 }
 
-
 // T07B & T07D: Hosted Inference Credit Ledger, Quotes, Reservations & Reconciliation
 // =============================================================================
 
@@ -367,7 +366,12 @@ pub fn evaluate_ambiguous_timeout_reconciliation(
         ));
     }
     match (committed_artifact_persisted, outcome) {
-        (true, AmbiguousProviderOutcome::ProviderConfirmedCompleted { actual_usage_minor_units }) => {
+        (
+            true,
+            AmbiguousProviderOutcome::ProviderConfirmedCompleted {
+                actual_usage_minor_units,
+            },
+        ) => {
             let (settled, released) =
                 compute_reservation_settlement(reserved_minor_units, actual_usage_minor_units)?;
             Ok((ReservationStatus::Settled, settled, released))

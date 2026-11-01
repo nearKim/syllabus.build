@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActivityComponentBreakdown, DomainError, EffortTriplet, ObjectiveProficiencyState,
-    format_epoch_utc_iso,
+    format_epoch_utc_iso, ActivityComponentBreakdown, DomainError, EffortTriplet,
+    ObjectiveProficiencyState,
 };
 
 // =============================================================================
@@ -117,7 +117,8 @@ pub fn advance_spaced_review_item(
         if passed {
             updated.status = ReviewScheduleStatus::Completed;
             updated.completed_at_iso = Some(format_epoch_utc_iso(now_epoch_seconds));
-            let next_index = (current.interval_index + 1).min(CANONICAL_SPACED_INTERVAL_DAYS.len() - 1);
+            let next_index =
+                (current.interval_index + 1).min(CANONICAL_SPACED_INTERVAL_DAYS.len() - 1);
             let next_days = CANONICAL_SPACED_INTERVAL_DAYS[next_index];
             let next_due = now_epoch_seconds + (next_days as i64) * 86_400;
             let next_session = reschedule_to_session_id
@@ -253,7 +254,9 @@ pub fn recalculate_schedule_plan(
     let base_weeks = if total_point == 0 {
         0
     } else {
-        total_point.div_ceil(weekly_cap_minutes).max(weekly_allocations.len() as u32)
+        total_point
+            .div_ceil(weekly_cap_minutes)
+            .max(weekly_allocations.len() as u32)
     };
     let missed_week_penalty = input.missed_sessions_count.div_ceil(3);
     let projected_weeks = base_weeks + missed_week_penalty;

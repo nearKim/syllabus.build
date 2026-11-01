@@ -96,9 +96,7 @@ impl ActivityComponentBreakdown {
 
 /// Validates that a directed graph `node -> prerequisites` has unique nodes,
 /// resolvable prerequisite references, and zero cycles using Kahn's algorithm.
-pub fn validate_dag_acyclic(
-    edges: &[(String, Vec<String>)],
-) -> Result<Vec<String>, DomainError> {
+pub fn validate_dag_acyclic(edges: &[(String, Vec<String>)]) -> Result<Vec<String>, DomainError> {
     let mut node_set: BTreeSet<&str> = BTreeSet::new();
     for (node, _) in edges {
         if !node_set.insert(node.as_str()) {
@@ -121,10 +119,7 @@ pub fn validate_dag_acyclic(
                 });
             }
             *in_degree.entry(node_str).or_insert(0) += 1;
-            dependents
-                .entry(prereq_str)
-                .or_default()
-                .push(node_str);
+            dependents.entry(prereq_str).or_default().push(node_str);
         }
     }
 
@@ -233,7 +228,6 @@ pub struct ReviewScheduleItem {
     pub due_at_iso: String,
     pub is_completed: bool,
 }
-
 
 /// Validates that a non-waived objective has complete pedagogical triad coverage
 /// (`instruction`, `practice`, and `assessment`) (`PED-001`, `@S10`, `@S13`).
@@ -395,8 +389,7 @@ pub fn evaluate_assessment_attempt(
     let passed = score_bp >= mastery_threshold_bp;
 
     match (kind, review_status) {
-        (AssessmentKind::AiPractice, _)
-        | (_, AssessmentReviewStatus::UnreviewedPractice) => {
+        (AssessmentKind::AiPractice, _) | (_, AssessmentReviewStatus::UnreviewedPractice) => {
             let next = derive_proficiency_transition(
                 current_state,
                 EvidenceOrigin::FormativePracticeCompletion,
@@ -422,7 +415,9 @@ pub fn evaluate_assessment_attempt(
         (AssessmentKind::ReviewedAnchor, AssessmentReviewStatus::Approved) => {
             if !passed {
                 let next = match current_state {
-                    ObjectiveProficiencyState::Demonstrated => ObjectiveProficiencyState::Demonstrated,
+                    ObjectiveProficiencyState::Demonstrated => {
+                        ObjectiveProficiencyState::Demonstrated
+                    }
                     _ => ObjectiveProficiencyState::NeedsReview,
                 };
                 let origin = if assistance_level.is_independent() {
@@ -544,7 +539,9 @@ pub fn evaluate_prerequisite_gate(
             }
         }
         Some(LearnerGateDecision::PrerequisiteOverrideRecorded) => {
-            let kind = if any_missing_active_anchor && missing.iter().all(|p| !p.has_active_reviewed_anchor) {
+            let kind = if any_missing_active_anchor
+                && missing.iter().all(|p| !p.has_active_reviewed_anchor)
+            {
                 "unverified_prerequisite_acknowledged"
             } else {
                 "prerequisite_override_recorded"

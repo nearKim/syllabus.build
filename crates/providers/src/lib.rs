@@ -6,9 +6,9 @@
 //! direct official REST APIs via `reqwest`. Provider-specific SDK or HTTP response
 //! types must never enter `syllabus-domain`.
 
-use syllabus_contracts::jcs::sha256_bytes_hex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use syllabus_contracts::jcs::sha256_bytes_hex;
 use thiserror::Error;
 
 /// Structured-output enforcement mechanism supported by a provider/model route (`D12`).
@@ -176,7 +176,8 @@ impl DeterministicFakeProvider {
     }
 }
 
-pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Value), ProviderError> {
+pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Value), ProviderError>
+{
     let root = syllabus_contracts::workspace_root();
     let candidate_path =
         root.join("specs/001-syllabus-platform/examples/syllabus-candidate.synthetic.json");
@@ -189,12 +190,11 @@ pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Va
         String::from_utf8(raw_bytes).map_err(|e| ProviderError::InvalidCandidateOutput {
             message: format!("canonical candidate is not valid UTF-8: {e}"),
         })?;
-    let parsed_candidate: Value =
-        serde_json::from_str(&raw_candidate_json).map_err(|e| {
-            ProviderError::InvalidCandidateOutput {
-                message: format!("failed to parse canonical candidate JSON: {e}"),
-            }
-        })?;
+    let parsed_candidate: Value = serde_json::from_str(&raw_candidate_json).map_err(|e| {
+        ProviderError::InvalidCandidateOutput {
+            message: format!("failed to parse canonical candidate JSON: {e}"),
+        }
+    })?;
 
     let registry = syllabus_contracts::ContractRegistry::global().map_err(|e| {
         ProviderError::InvalidCandidateOutput {
@@ -202,11 +202,7 @@ pub(crate) fn load_validated_canonical_candidate() -> Result<(String, String, Va
         }
     })?;
     registry
-        .validate_def(
-            "syllabus.schema.json",
-            "modelCandidate",
-            &parsed_candidate,
-        )
+        .validate_def("syllabus.schema.json", "modelCandidate", &parsed_candidate)
         .map_err(|e| ProviderError::InvalidCandidateOutput {
             message: e.to_string(),
         })?;
@@ -288,7 +284,6 @@ impl InferenceProvider for DeterministicFakeProvider {
         })
     }
 }
-
 
 pub mod http_providers;
 pub use http_providers::*;

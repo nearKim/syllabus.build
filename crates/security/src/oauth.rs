@@ -2,11 +2,13 @@
 
 use std::str::FromStr;
 
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{constant_time_eq, hmac_sha256, sha256_digest, SecurityError};
+use crate::principal::SecurityError;
+use crate::vault;
 
 const PBKDF2_ITERATIONS: u32 = 10_000;
 const MIN_PASSWORD_LEN: usize = 8;
@@ -193,7 +195,7 @@ pub fn compute_pkce_s256_challenge(code_verifier: &str) -> Result<String, Securi
             "PKCE code_verifier must be between 43 and 128 ASCII characters".to_string(),
         ));
     }
-    let digest = sha256_digest(code_verifier.as_bytes());
+    let digest = vault::sha256_digest(code_verifier.as_bytes());
     Ok(URL_SAFE_NO_PAD.encode(digest))
 }
 
@@ -203,7 +205,7 @@ pub fn verify_pkce_s256(code_verifier: &str, expected_challenge: &str) -> bool {
     let Ok(actual) = compute_pkce_s256_challenge(code_verifier) else {
         return false;
     };
-    constant_time_eq(actual.as_bytes(), expected_challenge.trim().as_bytes())
+    vault::constant_time_eq(actual.as_bytes(), expected_challenge.trim().as_bytes())
 }
 
 /// Derives a 32-byte RFC 8018 PBKDF2-HMAC-SHA256 key block (`dkLen = 32`).
@@ -212,10 +214,10 @@ fn pbkdf2_hmac_sha256_block(password: &[u8], salt: &[u8], iterations: u32) -> [u
     salt_block.extend_from_slice(salt);
     salt_block.extend_from_slice(&1u32.to_be_bytes());
 
-    let mut u = hmac_sha256(password, &salt_block);
+    let mut u = vault::hmac_sha256(password, &salt_block);
     let mut out = u;
     for _ in 1..iterations {
-        u = hmac_sha256(password, &u);
+        u = vault::hmac_sha256(password, &u);
         for (dst, &src) in out.iter_mut().zip(u.iter()) {
             *dst ^= src;
         }
@@ -275,5 +277,46 @@ pub fn verify_password(password: &str, encoded_hash: &str) -> bool {
         return false;
     }
     let actual = pbkdf2_hmac_sha256_block(password.as_bytes(), &salt, iterations);
-    constant_time_eq(&actual, &expected)
+    vault::constant_time_eq(&actual, &expected)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rfc7636_pkce_s256_challenge_and_oauth_authorization_url() {
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        let challenge = compute_pkce_s256_challenge(verifier).expect("valid RFC 7636 verifier");
+        assert_eq!(challenge, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+        assert!(verify_pkce_s256(verifier, &challenge));
+        assert!(!verify_pkce_s256(
+            "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXl",
+            &challenge
+        ));
+        assert!(compute_pkce_s256_challenge("too-short").is_err());
+
+        let url = OAuthProvider::Google
+            .build_authorization_url(
+                "client-123",
+                "http://127.0.0.1:3000/auth/oauth/google/callback",
+                "state-xyz",
+                &challenge,
+                None,
+            )
+            .expect("build Google authorize URL");
+        assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
+        assert!(url.contains("code_challenge_method=S256"));
+        assert!(url.contains(&format!("code_challenge={challenge}")));
+    }
+
+    #[test]
+    fn pbkdf2_password_hash_and_constant_time_verify() {
+        let encoded =
+            hash_password("CorrectHorseBatteryStaple!", b"syllabus-salt-01").expect("hash");
+        assert!(encoded.starts_with("pbkdf2-sha256$10000$"));
+        assert!(verify_password("CorrectHorseBatteryStaple!", &encoded));
+        assert!(!verify_password("WrongPassword123!", &encoded));
+        assert!(hash_password("short", b"syllabus-salt-01").is_err());
+    }
 }
