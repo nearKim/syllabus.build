@@ -36,9 +36,9 @@ test("Provider JSON responses stop at the byte limit", async () => {
 });
 
 test("Production requires a verified sign-in configuration", () => {
-  assert.throws(() => createWebAppServer({ env: { APP_ENV: "production" } }), /Configure Google or GitHub OAuth/);
-  assert.throws(() => createWebAppServer({ env: {} }), /Configure Google or GitHub OAuth/);
-  assert.throws(() => createWebAppServer({ env: { APP_ENV: "typo" } }), /Configure Google or GitHub OAuth/);
+  assert.throws(() => createWebAppServer({ env: { APP_ENV: "production" } }), /Configure Google, Apple, or GitHub OAuth/);
+  assert.throws(() => createWebAppServer({ env: {} }), /Configure Google, Apple, or GitHub OAuth/);
+  assert.throws(() => createWebAppServer({ env: { APP_ENV: "typo" } }), /Configure Google, Apple, or GitHub OAuth/);
   assert.throws(() => createWebAppServer({
     env: { APP_ENV: "production", GOOGLE_CLIENT_ID: "client", GOOGLE_CLIENT_SECRET: "secret" },
   }), /AUTH_EXCHANGE_SECRET is required/);

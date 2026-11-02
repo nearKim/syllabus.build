@@ -35,13 +35,15 @@ test("AuthDialog offers OAuth and passkeys without password or email-code contro
   const app = createSyllabusWebAppController({ authStatus: "guest", topLevel: "Explore" });
   app.openDialog("dialog-auth");
   const html = authDialogOf(app.renderHtml());
-  assert.match(html, /<h2[^>]*id="dialog-auth-title"[^>]*>Sign in<\/h2>/);
+  assert.match(html, /<h2[^>]*id="dialog-auth-title"[^>]*>Sign in or create an account<\/h2>/);
   assert.ok(html.includes('aria-describedby="dialog-auth-description"'));
-  assert.ok(html.includes('id="dialog-auth-description" class="auth-description">or create an account</p>'));
+  assert.ok(html.includes('id="dialog-auth-description" class="auth-description">Save your syllabi and progress.</p>'));
   assert.ok(html.includes("Continue with Google"));
+  assert.ok(html.includes("Continue with Apple"));
   assert.ok(html.includes("Continue with GitHub"));
   assert.ok(html.includes("Sign in with a passkey"));
   assert.ok(html.includes('href="/auth/oauth/google"'));
+  assert.ok(html.includes('href="/auth/oauth/apple"'));
   assert.ok(html.includes('href="/auth/oauth/github"'));
   assert.ok(html.includes('data-action="sign-in-passkey"'));
   assert.equal(/auth-email-input|auth-password-input|submit-sign-up|request-password-reset|confirm-email-verification/.test(html), false);

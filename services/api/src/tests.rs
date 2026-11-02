@@ -2813,7 +2813,12 @@ async fn oauth_and_passkey_exchanges_require_server_secret() {
     assert_eq!(providers.status(), StatusCode::OK);
     let provider_body = read_body_json(providers).await;
     assert_eq!(provider_body["email_password_enabled"], json!(false));
-    assert_eq!(provider_body["providers"].as_array().unwrap().len(), 2);
+    assert_eq!(provider_body["providers"].as_array().unwrap().len(), 3);
+    assert!(provider_body["providers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|p| p["provider"] == "apple"));
 
     for path in [
         "/v1/auth/signup",
@@ -2848,10 +2853,15 @@ async fn oauth_and_passkey_exchanges_require_server_secret() {
         "email": "ada@syllabus.build",
         "email_verified": true
     });
-    for secret in [None, Some("wrong-secret")] {
+    for (path, secret) in [
+        ("/v1/auth/oauth/google/callback", None),
+        ("/v1/auth/oauth/google/callback", Some("wrong-secret")),
+        ("/v1/auth/oauth/apple/callback", None),
+        ("/v1/auth/oauth/apple/callback", Some("wrong-secret")),
+    ] {
         let mut request = Request::builder()
             .method("POST")
-            .uri("/v1/auth/oauth/google/callback")
+            .uri(path)
             .header("content-type", "application/json");
         if let Some(secret) = secret {
             request = request.header("x-auth-exchange-secret", secret);
@@ -2889,6 +2899,31 @@ async fn oauth_and_passkey_exchanges_require_server_secret() {
     assert_eq!(second.status(), StatusCode::OK);
     let second_body = read_body_json(second).await;
     assert_ne!(first_body["session_token"], second_body["session_token"]);
+
+    let apple = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/oauth/apple/callback")
+                .header("content-type", "application/json")
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "provider_subject": "apple-user",
+                        "email": "apple@example.test",
+                        "email_verified": true
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(apple.status(), StatusCode::CREATED);
+    let apple_body = read_body_json(apple).await;
+    assert_eq!(apple_body["auth_provider"], json!("apple"));
+    assert_eq!(apple_body["roles"], json!(["user"]));
 
     let account_id = first_body["account_id"].as_str().unwrap();
     let principal = state

@@ -100,7 +100,7 @@ impl InMemoryTransactionalStore {
             .cloned()
     }
 
-    /// Links or creates an account from a verified OAuth 2.0 / OIDC identity (`Google` or `GitHub`)
+    /// Links or creates an account from a verified OAuth 2.0 / OIDC identity
     /// and mints a fresh `AuthSessionRecord`.
     pub fn authenticate_oauth_identity(
         &self,

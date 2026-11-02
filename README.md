@@ -31,7 +31,7 @@ Supply database values through the process environment: `POSTGRES_PASSWORD`, `DA
 
 Supply `BYOK_MASTER_KEY`, `BILLING_WEBHOOK_SECRET`, `AUTH_EXCHANGE_SECRET`, and `OAUTH_COOKIE_SECRET` at process launch.
 Encode the billing and auth exchange secrets as independent 32-byte random values, each represented by 64 hex characters.
-Supply Google or GitHub client secrets when using those providers. Do not commit secret values.
+Supply Google, GitHub, or Apple client credentials when using those providers. Do not commit secret values.
 For cloud deployments, inject machine-generated deployment secrets from that environment's secret store.
 
 ```bash
@@ -70,7 +70,7 @@ Hosted checkout is unavailable until payment events can be verified against a pr
 Run PostgreSQL 16, `syllabus-api`, `syllabus-worker`, and `syllabus-web` together:
 
 Load the required secrets into the environment of the Compose process before starting the stack.
-Configure a complete Google or GitHub OAuth client pair for production sign-in.
+Configure a complete Google, GitHub, or Apple OAuth client pair for production sign-in. Apple requires a registered HTTPS callback at `/auth/oauth/apple/callback` and a signed client secret JWT. Apple client secrets expire and must be renewed.
 
 ```bash
 docker compose --env-file /dev/null up --build -d

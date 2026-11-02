@@ -1,6 +1,5 @@
 import type { VNode } from "preact";
 import type { LearnSubDestination, TopLevelDestination } from "../navigationShell.ts";
-import { BrandMark } from "./HeaderBar.tsx";
 import { usernameOf, type Account, type AuthStatus } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 
@@ -60,6 +59,14 @@ export function GitHubMark(): VNode {
   );
 }
 
+export function AppleMark(): VNode {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+    </svg>
+  );
+}
+
 function PasskeyIcon(): VNode {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -84,11 +91,8 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
     >
       <div class="dialog-surface auth-surface">
         <div class="auth-head">
-          <BrandMark className="brand-mark auth-brand-mark" />
-          <div class="auth-heading">
-            <h2 id="dialog-auth-title" class="auth-title" tabIndex={-1} autofocus>Sign in</h2>
-            <p id="dialog-auth-description" class="auth-description">or create an account</p>
-          </div>
+          <h2 id="dialog-auth-title" class="auth-title" tabIndex={-1} autofocus>Sign in or create an account</h2>
+          <p id="dialog-auth-description" class="auth-description">Save your syllabi and progress.</p>
         </div>
 
         {returnTo ? (
@@ -103,6 +107,10 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
           <a href="/auth/oauth/google" class="auth-provider-btn" data-oauth-provider="google">
             <GoogleMark />
             <span>Continue with Google</span>
+          </a>
+          <a href="/auth/oauth/apple" class="auth-provider-btn" data-oauth-provider="apple">
+            <AppleMark />
+            <span>Continue with Apple</span>
           </a>
           <a href="/auth/oauth/github" class="auth-provider-btn" data-oauth-provider="github">
             <GitHubMark />

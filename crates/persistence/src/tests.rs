@@ -4,7 +4,7 @@ use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 
 #[test]
 fn baseline_and_t01_migrations_are_embedded_and_valid() {
-    assert_eq!(MIGRATIONS.len(), 12);
+    assert_eq!(MIGRATIONS.len(), 13);
     assert!(USER_ADMIN_ROLES_MIGRATION_SQL.contains("accounts_roles_only"));
     assert!(WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL
         .contains("CREATE TABLE IF NOT EXISTS web_account_workspaces"));
@@ -766,6 +766,20 @@ fn oauth_account_linking_and_session_lifecycle() {
     assert_eq!(first.account.account_id, second.account.account_id);
     assert_ne!(first.session.token, second.session.token);
 
+    let apple = store
+        .authenticate_oauth_identity(
+            syllabus_security::OAuthProvider::Apple,
+            "apple-sub-999",
+            "jane@example.com",
+            true,
+            None,
+            None,
+        )
+        .expect("link verified Apple identity");
+    assert!(!apple.is_new_account);
+    assert_eq!(apple.account.account_id, first.account.account_id);
+    assert_eq!(apple.account.roles, vec![PrincipalRole::User]);
+
     assert!(store
         .resolve_session_token(&format!("sess-token-1-{}", first.account.account_id))
         .is_err());
@@ -1075,6 +1089,18 @@ async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across
             .account;
         acct_id = acct.account_id.clone();
 
+        let apple = store
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Apple,
+                "pg-alice-apple",
+                "pg-alice@example.test",
+                true,
+                None,
+                None,
+            )
+            .expect("link Apple identity before restart");
+        assert_eq!(apple.account.account_id, acct_id);
+
         let principal = AuthenticatedPrincipal {
             account_id: acct_id.clone(),
             roles: vec![PrincipalRole::User],
@@ -1114,6 +1140,17 @@ async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across
             )
             .expect("OAuth identity must survive PostgreSQL restart");
         assert_eq!(logged_in.account.account_id, acct_id);
+        let apple = restarted
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Apple,
+                "pg-alice-apple",
+                "pg-alice@example.test",
+                true,
+                None,
+                None,
+            )
+            .expect("Apple identity must survive PostgreSQL restart");
+        assert_eq!(apple.account.account_id, acct_id);
         let principal = AuthenticatedPrincipal {
             account_id: acct_id.clone(),
             roles: vec![PrincipalRole::User],
@@ -1265,6 +1302,22 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     });
 
     let scoped_acct = format!("{namespace}:{}", acct.account_id);
+    pg_client
+        .execute(
+            "INSERT INTO oauth_identities (provider, provider_subject, account_id, email) VALUES ('apple', $1, $2, $3)",
+            &[&namespace, &scoped_acct, &"apple@example.test"],
+        )
+        .await
+        .expect("PostgreSQL accepts Apple identities");
+    let state_sha = format!("{namespace:0>64}");
+    let verifier = "v".repeat(43);
+    pg_client
+        .execute(
+            "INSERT INTO oauth_authorization_states (state_sha256, provider, code_verifier, expires_at) VALUES ($1, 'apple', $2, NOW() + INTERVAL '5 minutes')",
+            &[&state_sha, &verifier],
+        )
+        .await
+        .expect("PostgreSQL accepts Apple authorization states");
     let account_roles: Vec<String> = pg_client
         .query_one(
             "SELECT roles FROM accounts WHERE account_id = $1",

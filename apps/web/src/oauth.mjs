@@ -1,17 +1,18 @@
 import crypto from "node:crypto";
+import net from "node:net";
 import { h } from "preact";
 import { renderToString } from "preact-render-to-string";
-import { GitHubMark, GoogleMark, PERSONAS } from "./components/AuthDialog.tsx";
+import { AppleMark, GitHubMark, GoogleMark, PERSONAS } from "./components/AuthDialog.tsx";
 import { initialsOf, usernameOf } from "./auth.ts";
 
-export const OAUTH_PROVIDERS = ["google", "github"];
+export const OAUTH_PROVIDERS = ["google", "apple", "github"];
 
 export function isOAuthProvider(value) {
-  return value === "google" || value === "github";
+  return OAUTH_PROVIDERS.includes(value);
 }
 
 export function oauthProviderLabel(provider) {
-  return provider === "google" ? "Google" : "GitHub";
+  return { google: "Google", apple: "Apple", github: "GitHub" }[provider];
 }
 
 export function generateRandomBase64Url(byteLength = 32) {
@@ -66,8 +67,10 @@ export function verifyOAuthStateCookie(cookieValue, secret, nowMs = Date.now()) 
 }
 
 export function resolveProviderCredentials(provider, env = process.env) {
-  const clientId = (provider === "google" ? env.GOOGLE_CLIENT_ID : env.GITHUB_CLIENT_ID)?.trim() ?? "";
-  const clientSecret = (provider === "google" ? env.GOOGLE_CLIENT_SECRET : env.GITHUB_CLIENT_SECRET)?.trim() ?? "";
+  if (!isOAuthProvider(provider)) return null;
+  const prefix = provider.toUpperCase();
+  const clientId = env[`${prefix}_CLIENT_ID`]?.trim() ?? "";
+  const clientSecret = env[`${prefix}_CLIENT_SECRET`]?.trim() ?? "";
   if (!clientId || !clientSecret) return null;
   return { clientId, clientSecret };
 }
@@ -87,21 +90,33 @@ export function buildOAuthAuthorizeRedirect(options) {
   const redirectUri = buildOAuthCallbackUrl(options.publicOrigin, options.provider);
 
   if (live) {
-    const base =
-      options.provider === "google"
-        ? "https://accounts.google.com/o/oauth2/v2/auth"
-        : "https://github.com/login/oauth/authorize";
+    const base = {
+      google: "https://accounts.google.com/o/oauth2/v2/auth",
+      github: "https://github.com/login/oauth/authorize",
+      apple: "https://appleid.apple.com/auth/authorize",
+    }[options.provider];
     const url = new URL(base);
     url.searchParams.set("client_id", live.clientId);
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("response_type", "code");
     url.searchParams.set(
       "scope",
-      options.provider === "google" ? "openid email profile" : "read:user user:email",
+      options.provider === "google" ? "openid email profile" : options.provider === "apple" ? "email" : "read:user user:email",
     );
     url.searchParams.set("state", options.state);
-    url.searchParams.set("code_challenge", options.codeChallenge);
-    url.searchParams.set("code_challenge_method", "S256");
+    if (options.provider === "apple") {
+      if (!options.nonce) throw new Error("Apple sign-in requires a nonce.");
+      const callback = new URL(redirectUri);
+      const host = callback.hostname.replace(/^\[|\]$/g, "");
+      if (callback.protocol !== "https:" || host === "localhost" || host.endsWith(".localhost") || net.isIP(host)) {
+        throw new Error("Apple sign-in requires a registered HTTPS domain for its callback.");
+      }
+      url.searchParams.set("nonce", options.nonce);
+      url.searchParams.set("response_mode", "form_post");
+    } else {
+      url.searchParams.set("code_challenge", options.codeChallenge);
+      url.searchParams.set("code_challenge_method", "S256");
+    }
     if (options.provider === "google") {
       url.searchParams.set("prompt", "select_account");
     }
@@ -120,7 +135,7 @@ export function buildOAuthAuthorizeRedirect(options) {
   sandboxUrl.searchParams.set("response_type", "code");
   sandboxUrl.searchParams.set(
     "scope",
-    options.provider === "google" ? "openid email profile" : "read:user user:email",
+    options.provider === "google" ? "openid email profile" : options.provider === "apple" ? "email" : "read:user user:email",
   );
   sandboxUrl.searchParams.set("state", options.state);
   sandboxUrl.searchParams.set("code_challenge", options.codeChallenge);
@@ -150,11 +165,81 @@ async function readOAuthJson(response) {
   }
 }
 
+async function verifyAppleIdentityToken(token, nonce, clientId, fetchFn) {
+  if (typeof token !== "string" || token.length > 16_384 || typeof nonce !== "string" || !nonce) {
+    throw new Error("Apple identity token is missing or invalid.");
+  }
+  const parts = token.split(".");
+  if (parts.length !== 3 || parts.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))) {
+    throw new Error("Apple identity token is malformed.");
+  }
+  let header;
+  let claims;
+  try {
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    claims = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  } catch {
+    throw new Error("Apple identity token is malformed.");
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (!header || header.alg !== "RS256" || typeof header.kid !== "string" || header.crit ||
+      !claims || claims.iss !== "https://appleid.apple.com" || claims.aud !== clientId ||
+      claims.nonce !== nonce || !Number.isSafeInteger(claims.exp) || claims.exp <= now ||
+      !Number.isSafeInteger(claims.iat) || claims.iat > now + 120 || claims.exp <= claims.iat ||
+      (claims.nbf !== undefined && (!Number.isSafeInteger(claims.nbf) || claims.nbf > now)) ||
+      typeof claims.sub !== "string" || !claims.sub.trim() || claims.sub.length > 256) {
+    throw new Error("Apple identity token claims are invalid.");
+  }
+  if (typeof claims.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(claims.email) ||
+      claims.email.length > 254 || ![true, "true"].includes(claims.email_verified)) {
+    throw new Error("Apple did not provide a verified email address.");
+  }
+
+  const keysRes = await fetchFn("https://appleid.apple.com/auth/keys", { headers: { Accept: "application/json" } });
+  if (!keysRes.ok) throw new Error("Apple signing keys are unavailable.");
+  const keys = await readOAuthJson(keysRes);
+  const matches = Array.isArray(keys?.keys) ? keys.keys.filter((key) =>
+    key && key.kid === header.kid && key.kty === "RSA" && key.alg === "RS256" && key.use === "sig"
+  ) : [];
+  if (matches.length !== 1) throw new Error("Apple signing key is invalid.");
+  let validSignature = false;
+  try {
+    const publicKey = crypto.createPublicKey({ key: matches[0], format: "jwk" });
+    validSignature = crypto.verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), publicKey, Buffer.from(parts[2], "base64url"));
+  } catch {
+    throw new Error("Apple signing key is invalid.");
+  }
+  if (!validSignature) throw new Error("Apple identity token signature is invalid.");
+  return {
+    provider: "apple",
+    providerSubject: claims.sub,
+    email: claims.email.trim().toLowerCase(),
+    emailVerified: true,
+  };
+}
+
 export async function exchangeLiveOAuthCode(options) {
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
   const creds = resolveProviderCredentials(options.provider, options.env);
   if (!creds) {
     throw new Error(`Missing OAuth client credentials for ${options.provider}`);
+  }
+
+  if (options.provider === "apple") {
+    const tokenRes = await fetchFn("https://appleid.apple.com/auth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+      body: new URLSearchParams({
+        code: options.code,
+        client_id: creds.clientId,
+        client_secret: creds.clientSecret,
+        redirect_uri: options.redirectUri,
+        grant_type: "authorization_code",
+      }).toString(),
+    });
+    if (!tokenRes.ok) throw new Error(`Apple token exchange failed (${tokenRes.status})`);
+    const tokenJson = await readOAuthJson(tokenRes);
+    return verifyAppleIdentityToken(tokenJson.id_token, options.nonce, creds.clientId, fetchFn);
   }
 
   if (options.provider === "google") {
@@ -313,10 +398,9 @@ const CHEVRON_SVG =
  */
 export function renderDevOAuthConsentHtml(params) {
   const label = escapeAttr(oauthProviderLabel(params.provider));
-  const envPrefix = params.provider === "google" ? "GOOGLE" : "GITHUB";
   const theme = params.theme === "dark" ? "dark" : "light";
   const action = `/auth/dev-idp/${escapeAttr(params.provider)}/authorize`;
-  const providerMark = renderToString(h(params.provider === "google" ? GoogleMark : GitHubMark, {}));
+  const providerMark = renderToString(h({ google: GoogleMark, github: GitHubMark, apple: AppleMark }[params.provider], {}));
   const flowFields = `<input type="hidden" name="redirect_uri" value="${escapeAttr(params.redirectUri)}" />
           <input type="hidden" name="state" value="${escapeAttr(params.state)}" />
           <input type="hidden" name="code_challenge" value="${escapeAttr(params.codeChallenge)}" />`;
@@ -383,7 +467,7 @@ export function renderDevOAuthConsentHtml(params) {
       </div>
     </section>
     <p class="dev-oauth-note">
-      Local OAuth 2.0 sandbox with PKCE (S256). Set <code>${envPrefix}_CLIENT_ID</code> and <code>${envPrefix}_CLIENT_SECRET</code> in <code>.env</code> to sign in with live ${label}.
+      This account chooser is for local testing.
     </p>
   </main>
 </body>

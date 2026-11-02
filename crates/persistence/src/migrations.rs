@@ -27,6 +27,7 @@ pub const WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL: &str =
     include_str!("../migrations/0010_web_workspaces_and_worker_dispatch.sql");
 pub const USER_ADMIN_ROLES_MIGRATION_SQL: &str =
     include_str!("../migrations/0011_user_admin_roles.sql");
+pub const APPLE_OAUTH_MIGRATION_SQL: &str = include_str!("../migrations/0012_apple_oauth.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,7 +38,7 @@ pub struct SqlMigration {
 }
 
 /// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
-pub const MIGRATIONS: [SqlMigration; 12] = [
+pub const MIGRATIONS: [SqlMigration; 13] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -97,6 +98,11 @@ pub const MIGRATIONS: [SqlMigration; 12] = [
         version: 11,
         name: "0011_user_admin_roles.sql",
         sql: USER_ADMIN_ROLES_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 12,
+        name: "0012_apple_oauth.sql",
+        sql: APPLE_OAUTH_MIGRATION_SQL,
     },
 ];
 

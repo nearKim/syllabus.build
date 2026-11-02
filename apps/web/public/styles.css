@@ -521,8 +521,8 @@ section[id] {
 
 /* Authentication dialog. */
 #dialog-auth {
-  max-width: min(23rem, calc(100vw - 32px));
-  padding: 28px 28px 20px;
+  max-width: min(24.5rem, calc(100vw - 32px));
+  padding: 32px 32px 24px;
   border-radius: var(--radius-surface);
   transition: opacity 200ms var(--ease-out), translate 280ms var(--ease-out), scale 280ms var(--ease-out);
 }
@@ -552,26 +552,9 @@ section[id] {
 
 .auth-head {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  padding-inline-end: 32px;
-}
-
-.auth-brand-mark {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-}
-
-.auth-brand-mark .brand-mark-svg {
-  width: 24px;
-  height: 24px;
-}
-
-.auth-heading {
-  display: grid;
-  gap: 2px;
+  gap: 8px;
+  padding-inline: 28px;
+  text-align: center;
 }
 
 .auth-title {
@@ -805,7 +788,8 @@ section[id] {
 
 .auth-provider-btn {
   position: relative;
-  display: flex;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -814,8 +798,8 @@ section[id] {
   padding: 0 16px;
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-surface-secondary);
-  color: var(--color-text-primary);
+  background: var(--color-action-fill);
+  color: var(--color-action-text);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -825,14 +809,17 @@ section[id] {
 }
 
 .auth-provider-btn svg {
-  flex: none;
   width: 20px;
   height: 20px;
 }
 
+.auth-provider-btn span {
+  text-align: center;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .auth-provider-btn:hover {
-    background: color-mix(in srgb, var(--color-surface-secondary) 94%, var(--color-text-primary));
+    background: color-mix(in srgb, var(--color-action-fill) 88%, var(--color-surface));
     text-decoration: none;
   }
 }
@@ -841,7 +828,7 @@ section[id] {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 12px;
   width: 100%;
   min-height: 48px;
@@ -966,7 +953,7 @@ section[id] {
   }
 
   #dialog-auth {
-    padding: 24px 24px 16px;
+    padding: 28px 24px 20px;
   }
 }
 

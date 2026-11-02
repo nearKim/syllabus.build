@@ -109,6 +109,8 @@ pub(crate) struct OAuthAuthorizeQueryDto {
     pub(crate) code_challenge: Option<String>,
     #[serde(default)]
     pub(crate) code_verifier: Option<String>,
+    #[serde(default)]
+    pub(crate) nonce: Option<String>,
 }
 
 /// Request payload for `POST /v1/auth/oauth/{provider}/callback`.
@@ -165,6 +167,7 @@ pub(crate) async fn oauth_authorize_url_handler(
     let env_client_id = match provider {
         OAuthProvider::Google => std::env::var("GOOGLE_CLIENT_ID").ok(),
         OAuthProvider::Github => std::env::var("GITHUB_CLIENT_ID").ok(),
+        OAuthProvider::Apple => std::env::var("APPLE_CLIENT_ID").ok(),
     }
     .filter(|v| !v.trim().is_empty());
 
@@ -199,6 +202,7 @@ pub(crate) async fn oauth_authorize_url_handler(
             &query.state,
             &challenge,
             override_url.as_deref(),
+            query.nonce.as_deref(),
         )
         .map_err(PersistenceError::Security)?;
 
@@ -208,7 +212,7 @@ pub(crate) async fn oauth_authorize_url_handler(
             "provider": provider.as_str(),
             "mode": mode,
             "authorize_url": authorize_url,
-            "code_challenge_method": "S256",
+            "code_challenge_method": if provider == OAuthProvider::Apple && mode == "live" { None } else { Some("S256") },
         })),
     )
         .into_response())

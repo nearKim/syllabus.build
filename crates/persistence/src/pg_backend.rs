@@ -890,6 +890,16 @@ async fn schema_already_at_latest(client: &tokio_postgres::Client) -> Result<boo
                  AND to_regclass('public.web_auth_recovery_tokens') IS NOT NULL \
                  AND EXISTS ( \
                      SELECT 1 FROM pg_constraint \
+                     WHERE conname = 'oauth_identities_apple_provider_check' \
+                       AND conrelid = to_regclass('public.oauth_identities') \
+                 ) \
+                 AND EXISTS ( \
+                     SELECT 1 FROM pg_constraint \
+                     WHERE conname = 'oauth_authorization_states_apple_provider_check' \
+                       AND conrelid = to_regclass('public.oauth_authorization_states') \
+                 ) \
+                 AND EXISTS ( \
+                     SELECT 1 FROM pg_constraint \
                      WHERE conname = 'accounts_roles_only' \
                        AND conrelid = to_regclass('public.accounts') \
                  ) \

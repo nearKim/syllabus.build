@@ -53,6 +53,7 @@ import {
   generateRandomBase64Url,
   isLocalDevEnv,
   isOAuthProvider,
+  OAUTH_PROVIDERS,
   oauthProviderLabel,
   renderDevOAuthConsentHtml,
   resolveProviderCredentials,
@@ -295,12 +296,12 @@ ${fallbackScript}
   // Marks a sign-in control as pending until the server answers, so a second click cannot submit again.
   // The returned function clears the mark when the request fails and the dialog stays.
   function markAuthPending(control) {
-    const form = control.closest("form");
-    if (!form || form.dataset.pending) return null;
-    form.dataset.pending = "true";
+    const surface = control.closest(".auth-surface");
+    if (!surface || surface.dataset.pending) return null;
+    surface.dataset.pending = "true";
     control.setAttribute("aria-busy", "true");
     return () => {
-      delete form.dataset.pending;
+      delete surface.dataset.pending;
       control.removeAttribute("aria-busy");
     };
   }
@@ -658,7 +659,7 @@ ${fallbackScript}
   // A page restored from the back-forward cache drops the pending mark of a provider link it left through.
   window.addEventListener("pageshow", (event) => {
     if (!event.persisted) return;
-    root.querySelectorAll("form[data-pending]").forEach((form) => delete form.dataset.pending);
+    root.querySelectorAll(".auth-surface[data-pending]").forEach((surface) => delete surface.dataset.pending);
     root.querySelectorAll('#dialog-auth [aria-busy="true"]').forEach((el) => el.removeAttribute("aria-busy"));
   });
 
@@ -1191,8 +1192,8 @@ export function createWebAppServer(options = {}) {
     throw new Error("AUTH_EXCHANGE_SECRET must be 32 bytes encoded as 64 hex characters.");
   }
   if (!isLocalDevEnv(env)) {
-    if (!resolveProviderCredentials("google", env) && !resolveProviderCredentials("github", env)) {
-      throw new Error("Configure Google or GitHub OAuth before starting the web server.");
+    if (!OAUTH_PROVIDERS.some((provider) => resolveProviderCredentials(provider, env))) {
+      throw new Error("Configure Google, Apple, or GitHub OAuth before starting the web server.");
     }
     if (!env.AUTH_EXCHANGE_SECRET) {
       throw new Error("AUTH_EXCHANGE_SECRET is required for verified sign-in.");
@@ -1659,8 +1660,8 @@ export function createWebAppServer(options = {}) {
   }
 
   // An unknown or missing cookie gets a new random session, so a client cannot choose its session id.
-  function sessionFor(req, res) {
-    let sid = cookieOf(req, SESSION_COOKIE);
+  function sessionFor(req, res, restoredSid = null) {
+    let sid = restoredSid ?? cookieOf(req, SESSION_COOKIE);
     const savedSession = sid && store.data.sessions[sid];
     const tokenRecord = sid && sessionApiTokens.get(sid);
     if (savedSession?.authStatus === "authenticated" &&
@@ -1672,6 +1673,8 @@ export function createWebAppServer(options = {}) {
     }
     if (!sid || !(controllers.has(sid) || store.data.sessions[sid])) {
       sid = crypto.randomUUID();
+      appendSetCookie(res, `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax${cookieSecureAttr}`);
+    } else if (restoredSid && cookieOf(req, SESSION_COOKIE) !== sid) {
       appendSetCookie(res, `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax${cookieSecureAttr}`);
     }
     refreshOpenCatalogIntoStore();
@@ -1868,7 +1871,8 @@ export function createWebAppServer(options = {}) {
     }
 
     if (req.method === "POST" && pathname !== "/api/billing/webhook") {
-      if (isCrossOriginMutatingRequest(req)) {
+      const appleCallback = pathname === "/auth/oauth/apple/callback";
+      if (!appleCallback && isCrossOriginMutatingRequest(req)) {
         res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: "Cross-origin request blocked." }));
         return;
@@ -1889,7 +1893,7 @@ export function createWebAppServer(options = {}) {
 
     if (pathname === "/auth/providers" && req.method === "GET") {
       const origin = publicOriginOf(req);
-      const providers = ["google", "github"].map((p) => {
+      const providers = OAUTH_PROVIDERS.map((p) => {
         const live = Boolean(resolveProviderCredentials(p, env));
         return {
           provider: p,
@@ -1905,7 +1909,7 @@ export function createWebAppServer(options = {}) {
       return;
     }
 
-    const oauthStartMatch = pathname.match(/^\/auth\/oauth\/(google|github)$/);
+    const oauthStartMatch = pathname.match(/^\/auth\/oauth\/(google|github|apple)$/);
     if (oauthStartMatch && req.method === "GET") {
       const provider = oauthStartMatch[1];
       if (isOAuthProvider(provider)) {
@@ -1913,20 +1917,22 @@ export function createWebAppServer(options = {}) {
         try {
           const state = generateRandomBase64Url(24);
           const { codeVerifier, codeChallenge } = generatePkcePair();
+          const nonce = provider === "apple" ? generateRandomBase64Url(24) : undefined;
           const redirect = buildOAuthAuthorizeRedirect({
             provider,
             publicOrigin: publicOriginOf(req),
             state,
             codeChallenge,
+            nonce,
             env,
           });
           const signedCookie = signOAuthStateCookie(
-            { state, provider, codeVerifier, exp: Date.now() + 10 * 60 * 1000 },
+            { state, provider, codeVerifier, ...(provider === "apple" ? { nonce, sid } : {}), exp: Date.now() + 10 * 60 * 1000 },
             oauthSecret,
           );
           appendSetCookie(
             res,
-            `${OAUTH_STATE_COOKIE}=${signedCookie}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${cookieSecureAttr}`,
+            `${OAUTH_STATE_COOKIE}=${signedCookie}; Path=/; HttpOnly; Max-Age=600${provider === "apple" && redirect.mode === "live" ? "; SameSite=None; Secure" : `; SameSite=Lax${cookieSecureAttr}`}`,
           );
           persist(sid, controller);
           res.writeHead(302, { Location: redirect.url, "Cache-Control": "no-store" });
@@ -1941,7 +1947,7 @@ export function createWebAppServer(options = {}) {
       }
     }
 
-    const devIdpMatch = pathname.match(/^\/auth\/dev-idp\/(google|github)\/authorize$/);
+    const devIdpMatch = pathname.match(/^\/auth\/dev-idp\/(google|github|apple)\/authorize$/);
     if (devIdpMatch && !localDev) {
       res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: "Not found." }));
@@ -2004,21 +2010,51 @@ export function createWebAppServer(options = {}) {
       }
     }
 
-    const oauthCallbackMatch = pathname.match(/^\/auth\/oauth\/(google|github)\/callback$/);
-    if (oauthCallbackMatch && req.method === "GET") {
+    const oauthCallbackMatch = pathname.match(/^\/auth\/oauth\/(google|github|apple)\/callback$/);
+    if (oauthCallbackMatch && (req.method === "GET" && (oauthCallbackMatch[1] !== "apple" || localDev) ||
+        req.method === "POST" && oauthCallbackMatch[1] === "apple")) {
       const provider = oauthCallbackMatch[1];
       if (isOAuthProvider(provider)) {
-        let { sid, controller } = sessionFor(req, res);
-        appendSetCookie(res, `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${cookieSecureAttr}`);
-
+        let callbackParams = parsedUrl.searchParams;
+        if (req.method === "POST") {
+          if (String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase() !== "application/x-www-form-urlencoded") {
+            res.writeHead(415, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: "Expected an Apple form response." }));
+            return;
+          }
+          const rawBody = await readRequestBody(req).catch((err) => {
+            res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: err.message }));
+            return null;
+          });
+          if (rawBody === null) return;
+          callbackParams = new URLSearchParams(rawBody);
+        }
         const oauthCookie = verifyOAuthStateCookie(cookieOf(req, OAUTH_STATE_COOKIE), oauthSecret);
-        const queryState = parsedUrl.searchParams.get("state") ?? "";
-        const queryError = parsedUrl.searchParams.get("error");
-        const code = parsedUrl.searchParams.get("code") ?? "";
+        const queryState = callbackParams.get("state") ?? "";
+        const queryError = callbackParams.get("error");
+        const code = callbackParams.get("code") ?? "";
+        const stateMatches = Boolean(oauthCookie && oauthCookie.provider === provider && oauthCookie.state === queryState && queryState);
+        if (!stateMatches && provider === "apple" && req.method === "POST") {
+          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+          res.end(JSON.stringify({ error: "Your sign-in session expired or did not match. Try again." }));
+          return;
+        }
+        const restoredSid = provider === "apple" && req.method === "POST" && stateMatches && typeof oauthCookie.sid === "string" ? oauthCookie.sid : null;
+        let { sid, controller } = sessionFor(req, res, restoredSid);
 
+        if (!stateMatches) {
+          controller.failExternalAuth("Your sign-in session expired or did not match. Try again.");
+          persist(sid, controller);
+          res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
+          res.end();
+          return;
+        }
+        const clearCookiePolicy = provider === "apple" && req.method === "POST" && !localDev ? "; SameSite=None; Secure" : `; SameSite=Lax${cookieSecureAttr}`;
+        appendSetCookie(res, `${OAUTH_STATE_COOKIE}=; Path=/; HttpOnly; Max-Age=0${clearCookiePolicy}`);
         if (queryError) {
           const msg =
-            queryError === "access_denied"
+            ["access_denied", "user_cancelled_authorize"].includes(queryError)
               ? `${oauthProviderLabel(provider)} sign-in was canceled.`
               : `${oauthProviderLabel(provider)} sign-in failed (${queryError}).`;
           controller.failExternalAuth(msg);
@@ -2028,7 +2064,7 @@ export function createWebAppServer(options = {}) {
           return;
         }
 
-        if (!oauthCookie || oauthCookie.provider !== provider || oauthCookie.state !== queryState || !code) {
+        if (!code) {
           controller.failExternalAuth("Your sign-in session expired or did not match. Try again.");
           persist(sid, controller);
           res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
@@ -2050,6 +2086,7 @@ export function createWebAppServer(options = {}) {
                   provider,
                   code,
                   codeVerifier: oauthCookie.codeVerifier,
+                  nonce: oauthCookie.nonce,
                   redirectUri,
                   env,
                   fetchImpl,

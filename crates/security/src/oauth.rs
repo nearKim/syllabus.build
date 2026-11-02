@@ -19,6 +19,7 @@ const MIN_PASSWORD_LEN: usize = 8;
 pub enum OAuthProvider {
     Google,
     Github,
+    Apple,
 }
 
 impl OAuthProvider {
@@ -28,6 +29,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "google",
             Self::Github => "github",
+            Self::Apple => "apple",
         }
     }
 
@@ -37,6 +39,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "Google",
             Self::Github => "GitHub",
+            Self::Apple => "Apple",
         }
     }
 
@@ -46,6 +49,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://accounts.google.com/o/oauth2/v2/auth",
             Self::Github => "https://github.com/login/oauth/authorize",
+            Self::Apple => "https://appleid.apple.com/auth/authorize",
         }
     }
 
@@ -55,15 +59,17 @@ impl OAuthProvider {
         match self {
             Self::Google => "https://oauth2.googleapis.com/token",
             Self::Github => "https://github.com/login/oauth/access_token",
+            Self::Apple => "https://appleid.apple.com/auth/token",
         }
     }
 
     /// Upstream OIDC / OAuth 2.0 user profile endpoint URL.
     #[must_use]
-    pub const fn userinfo_url(self) -> &'static str {
+    pub const fn userinfo_url(self) -> Option<&'static str> {
         match self {
-            Self::Google => "https://openidconnect.googleapis.com/v1/userinfo",
-            Self::Github => "https://api.github.com/user",
+            Self::Google => Some("https://openidconnect.googleapis.com/v1/userinfo"),
+            Self::Github => Some("https://api.github.com/user"),
+            Self::Apple => None,
         }
     }
 
@@ -73,10 +79,11 @@ impl OAuthProvider {
         match self {
             Self::Google => "openid email profile",
             Self::Github => "read:user user:email",
+            Self::Apple => "email",
         }
     }
 
-    /// Constructs the RFC 6749 + RFC 7636 (`S256`) authorization redirect URL.
+    /// Constructs the authorization redirect URL for the provider.
     pub fn build_authorization_url(
         self,
         client_id: &str,
@@ -84,6 +91,7 @@ impl OAuthProvider {
         state: &str,
         code_challenge: &str,
         override_authorize_url: Option<&str>,
+        nonce: Option<&str>,
     ) -> Result<String, SecurityError> {
         if client_id.trim().is_empty() || redirect_uri.trim().is_empty() || state.trim().is_empty()
         {
@@ -108,8 +116,18 @@ impl OAuthProvider {
             pairs.append_pair("response_type", "code");
             pairs.append_pair("scope", self.default_scopes());
             pairs.append_pair("state", state.trim());
-            pairs.append_pair("code_challenge", code_challenge.trim());
-            pairs.append_pair("code_challenge_method", "S256");
+            if self == Self::Apple && override_authorize_url.is_none() {
+                let nonce = nonce
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or_else(|| {
+                        SecurityError::InvalidOAuthGrant("Apple requires a nonce".to_string())
+                    })?;
+                pairs.append_pair("nonce", nonce.trim());
+                pairs.append_pair("response_mode", "form_post");
+            } else {
+                pairs.append_pair("code_challenge", code_challenge.trim());
+                pairs.append_pair("code_challenge_method", "S256");
+            }
             if self == Self::Google && override_authorize_url.is_none() {
                 pairs.append_pair("prompt", "select_account");
             }
@@ -125,6 +143,7 @@ impl FromStr for OAuthProvider {
         match raw.trim().to_ascii_lowercase().as_str() {
             "google" => Ok(Self::Google),
             "github" => Ok(Self::Github),
+            "apple" => Ok(Self::Apple),
             other => Err(SecurityError::InvalidOAuthGrant(format!(
                 "unsupported OAuth provider `{other}`"
             ))),
@@ -132,7 +151,7 @@ impl FromStr for OAuthProvider {
     }
 }
 
-/// Environment-driven OAuth 2.0 client configuration for Google and GitHub.
+/// Environment-driven OAuth 2.0 client configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OAuthProviderStatus {
     pub provider: OAuthProvider,
@@ -150,41 +169,29 @@ pub fn resolve_oauth_provider_statuses(
     is_local_dev: bool,
 ) -> Vec<OAuthProviderStatus> {
     let origin = public_web_origin.trim_end_matches('/');
-    let google_live = std::env::var("GOOGLE_CLIENT_ID")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .is_some()
-        && std::env::var("GOOGLE_CLIENT_SECRET")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .is_some();
-    let github_live = std::env::var("GITHUB_CLIENT_ID")
-        .ok()
-        .filter(|v| !v.trim().is_empty())
-        .is_some()
-        && std::env::var("GITHUB_CLIENT_SECRET")
-            .ok()
-            .filter(|v| !v.trim().is_empty())
-            .is_some();
-
-    vec![
-        OAuthProviderStatus {
-            provider: OAuthProvider::Google,
-            display_name: OAuthProvider::Google.display_name().to_string(),
-            configured_live: google_live,
-            dev_sandbox_enabled: !google_live && is_local_dev,
-            start_path: "/auth/oauth/google".to_string(),
-            callback_url: format!("{origin}/auth/oauth/google/callback"),
-        },
-        OAuthProviderStatus {
-            provider: OAuthProvider::Github,
-            display_name: OAuthProvider::Github.display_name().to_string(),
-            configured_live: github_live,
-            dev_sandbox_enabled: !github_live && is_local_dev,
-            start_path: "/auth/oauth/github".to_string(),
-            callback_url: format!("{origin}/auth/oauth/github/callback"),
-        },
+    [
+        OAuthProvider::Google,
+        OAuthProvider::Apple,
+        OAuthProvider::Github,
     ]
+    .into_iter()
+    .map(|provider| {
+        let prefix = provider.as_str().to_ascii_uppercase();
+        let live = ["CLIENT_ID", "CLIENT_SECRET"].iter().all(|suffix| {
+            std::env::var(format!("{prefix}_{suffix}"))
+                .ok()
+                .is_some_and(|value| !value.trim().is_empty())
+        });
+        OAuthProviderStatus {
+            provider,
+            display_name: provider.display_name().to_string(),
+            configured_live: live,
+            dev_sandbox_enabled: !live && is_local_dev,
+            start_path: format!("/auth/oauth/{}", provider.as_str()),
+            callback_url: format!("{origin}/auth/oauth/{}/callback", provider.as_str()),
+        }
+    })
+    .collect()
 }
 
 /// Computes an RFC 7636 `S256` PKCE `code_challenge` (`BASE64URL-ENCODE(SHA256(ASCII(code_verifier)))`).
@@ -303,11 +310,27 @@ mod tests {
                 "state-xyz",
                 &challenge,
                 None,
+                None,
             )
             .expect("build Google authorize URL");
         assert!(url.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
         assert!(url.contains("code_challenge_method=S256"));
         assert!(url.contains(&format!("code_challenge={challenge}")));
+
+        let apple = OAuthProvider::Apple
+            .build_authorization_url(
+                "apple-service-id",
+                "https://example.test/auth/oauth/apple/callback",
+                "state-xyz",
+                &challenge,
+                None,
+                Some("nonce-xyz"),
+            )
+            .expect("build Apple authorize URL");
+        assert!(apple.starts_with("https://appleid.apple.com/auth/authorize?"));
+        assert!(apple.contains("response_mode=form_post"));
+        assert!(apple.contains("nonce=nonce-xyz"));
+        assert!(!apple.contains("code_challenge="));
     }
 
     #[test]
