@@ -1,0 +1,1514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Syllabus.io Architecture &amp; Class Reference</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+      --canvas: #ffffff;
+      --surface: #f5f5f7;
+      --card: #ffffff;
+      --nav-bg: rgba(255, 255, 255, 0.84);
+      --nav-rim: rgba(255, 255, 255, 0.72);
+
+      --ink: #1d1d1f;
+      --ink-secondary: #515154;
+      --hairline: #d2d2d7;
+      --border-strong: #86868b;
+
+      --blue: #0066cc;
+      --blue-tint: #eef5fc;
+      --blue-ink: #004c99;
+
+      --pine: #1b6e32;
+      --pine-tint: #edf7f0;
+      --pine-ink: #145326;
+
+      --amber: #9a4a00;
+      --amber-tint: #fdf4eb;
+      --amber-ink: #7a3a00;
+
+      --crimson: #b3261e;
+      --crimson-tint: #fceeee;
+      --crimson-ink: #8c1d18;
+
+      --edge-neutral: #6e6e73;
+
+      --radius-frame: 14px;
+      --radius-box: 8px;
+      --radius-token: 5px;
+      --radius-pill: 999px;
+
+      --shadow-frame: 0 1px 2px rgba(29, 29, 31, 0.04), 0 8px 24px rgba(29, 29, 31, 0.035);
+      --max-width: 72rem;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-scheme="light"]) {
+        --canvas: #000000;
+        --surface: #141416;
+        --card: #1d1d1f;
+        --nav-bg: rgba(20, 20, 22, 0.82);
+        --nav-rim: rgba(255, 255, 255, 0.08);
+
+        --ink: #f5f5f7;
+        --ink-secondary: #a1a1a6;
+        --hairline: #38383a;
+        --border-strong: #8e8e93;
+
+        --blue: #5ac8fa;
+        --blue-tint: #102436;
+        --blue-ink: #8fd8ff;
+
+        --pine: #5dd879;
+        --pine-tint: #112918;
+        --pine-ink: #8ce8a0;
+
+        --amber: #ffb340;
+        --amber-tint: #2c1e0c;
+        --amber-ink: #ffd085;
+
+        --crimson: #ff6961;
+        --crimson-tint: #301515;
+        --crimson-ink: #ffa39e;
+
+        --edge-neutral: #98989d;
+        --shadow-frame: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
+      }
+    }
+
+    :root[data-scheme="dark"] {
+      --canvas: #000000;
+      --surface: #141416;
+      --card: #1d1d1f;
+      --nav-bg: rgba(20, 20, 22, 0.82);
+      --nav-rim: rgba(255, 255, 255, 0.08);
+
+      --ink: #f5f5f7;
+      --ink-secondary: #a1a1a6;
+      --hairline: #38383a;
+      --border-strong: #8e8e93;
+
+      --blue: #5ac8fa;
+      --blue-tint: #102436;
+      --blue-ink: #8fd8ff;
+
+      --pine: #5dd879;
+      --pine-tint: #112918;
+      --pine-ink: #8ce8a0;
+
+      --amber: #ffb340;
+      --amber-tint: #2c1e0c;
+      --amber-ink: #ffd085;
+
+      --crimson: #ff6961;
+      --crimson-tint: #301515;
+      --crimson-ink: #ffa39e;
+
+      --edge-neutral: #98989d;
+      --shadow-frame: 0 1px 2px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 100%;
+      scroll-behavior: smooth;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      font-size: 1rem;
+      line-height: 1.55;
+      color: var(--ink);
+      background-color: var(--canvas);
+      overflow-wrap: break-word;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    ::selection {
+      background: color-mix(in srgb, var(--blue) 22%, transparent);
+    }
+
+    .visually-hidden:where(:not(:focus-within, :active)) {
+      position: absolute !important;
+      clip-path: inset(50%) !important;
+      overflow: hidden !important;
+      width: 1px !important;
+      height: 1px !important;
+      margin: -1px !important;
+      padding: 0 !important;
+      border: 0 !important;
+      white-space: nowrap !important;
+    }
+
+    .skip-link:focus {
+      position: fixed;
+      top: 0.75rem;
+      left: 1rem;
+      z-index: 200;
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-pill);
+      background: var(--ink);
+      color: var(--canvas);
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    :where(a:any-link, button):focus-visible {
+      outline: 2.5px solid var(--blue);
+      outline-offset: 3px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 80;
+      background: var(--nav-bg);
+      backdrop-filter: saturate(180%) blur(18px);
+      -webkit-backdrop-filter: saturate(180%) blur(18px);
+      border-bottom: 1px solid var(--hairline);
+      box-shadow: inset 0 1px 0 var(--nav-rim);
+    }
+
+    @supports not (backdrop-filter: blur(1px)) {
+      .topbar {
+        background: var(--canvas);
+      }
+    }
+
+    @media (prefers-reduced-transparency: reduce) {
+      .topbar {
+        background: var(--canvas);
+        backdrop-filter: none;
+        -webkit-backdrop-filter: none;
+      }
+    }
+
+    .topbar-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 1.75rem;
+      min-height: 3.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      letter-spacing: -0.015em;
+    }
+
+    .brand-glyph {
+      display: inline-grid;
+      place-items: center;
+      width: 1.625rem;
+      height: 1.625rem;
+      border-radius: 6px;
+      background: var(--ink);
+      color: var(--canvas);
+    }
+
+    .nav-cluster {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      flex-wrap: wrap;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .nav-links a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 2.25rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: var(--radius-pill);
+      color: var(--ink-secondary);
+      text-decoration: none;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      transition: color 140ms ease, background-color 140ms ease;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+      .nav-links a:hover {
+        color: var(--ink);
+        background: var(--surface);
+      }
+    }
+
+    .scheme-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.75rem;
+      min-height: 2.25rem;
+      padding: 0.25rem 0.75rem;
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-pill);
+      background: var(--card);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    @media (pointer: coarse) {
+      .nav-links a,
+      .scheme-btn {
+        min-height: 2.75rem;
+      }
+    }
+
+    .container {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      padding: 0 1.75rem;
+    }
+
+    header.doc-header {
+      padding: 4.25rem 0 2.75rem;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.125rem, 1.5rem + 2.4vw, 3.125rem);
+      font-weight: 600;
+      line-height: 1.08;
+      letter-spacing: -0.03em;
+      color: var(--ink);
+      text-wrap: balance;
+    }
+
+    h1:focus {
+      outline: none;
+    }
+
+    .lead {
+      margin: 1rem 0 0;
+      max-width: 66ch;
+      font-size: clamp(1.0625rem, 1rem + 0.35vw, 1.25rem);
+      font-weight: 400;
+      line-height: 1.5;
+      color: var(--ink-secondary);
+      text-wrap: pretty;
+    }
+
+    .spec-meta {
+      margin: 1.5rem 0 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      color: var(--ink-secondary);
+    }
+
+    .spec-meta strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    section.doc-section {
+      padding: 3.5rem 0;
+      border-bottom: 1px solid var(--hairline);
+      scroll-margin-top: 4rem;
+    }
+
+    section.doc-section:last-of-type {
+      border-bottom: none;
+    }
+
+    h2 {
+      margin: 0 0 0.625rem;
+      font-size: clamp(1.5rem, 1.25rem + 1vw, 1.9375rem);
+      font-weight: 600;
+      line-height: 1.2;
+      letter-spacing: -0.022em;
+      color: var(--ink);
+      text-wrap: balance;
+    }
+
+    h3 {
+      margin: 2rem 0 0.625rem;
+      font-size: 1.125rem;
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+      text-wrap: balance;
+    }
+
+    .section-copy {
+      margin: 0 0 1.75rem;
+      max-width: 70ch;
+      font-size: 1rem;
+      color: var(--ink-secondary);
+      text-wrap: pretty;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.84em;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-token);
+      padding: 0.1em 0.38em;
+      color: var(--ink);
+    }
+
+    figure.diagram-figure {
+      margin: 0;
+    }
+
+    .diagram-frame {
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: var(--radius-frame);
+      padding: 1.5rem;
+      box-shadow: var(--shadow-frame);
+      overflow-x: auto;
+    }
+
+    .diagram-frame svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-width: 58rem;
+    }
+
+    figcaption {
+      margin-top: 0.875rem;
+      font-size: 0.8125rem;
+      line-height: 1.5;
+      color: var(--ink-secondary);
+      max-width: 74ch;
+    }
+
+    figcaption strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.375rem;
+      margin-top: 0.875rem;
+      padding: 0;
+      list-style: none;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--ink-secondary);
+    }
+
+    .legend li {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .swatch {
+      width: 0.8rem;
+      height: 0.8rem;
+      border-radius: 3px;
+      border: 1.5px solid;
+      flex-shrink: 0;
+    }
+
+    .swatch.blue { border-color: var(--blue); background: var(--blue-tint); }
+    .swatch.pine { border-color: var(--pine); background: var(--pine-tint); }
+    .swatch.amber { border-color: var(--amber); background: var(--amber-tint); }
+    .swatch.crimson { border-color: var(--crimson); background: var(--crimson-tint); }
+    .swatch.ink { border-color: var(--border-strong); background: var(--card); }
+
+    /* Themeable SVG Architecture & UML Primitives */
+    .svg-box { fill: var(--card); stroke: var(--border-strong); stroke-width: 1.35; }
+    .svg-box.blue { stroke: var(--blue); }
+    .svg-box.pine { stroke: var(--pine); }
+    .svg-box.amber { stroke: var(--amber); }
+    .svg-box.crimson { stroke: var(--crimson); }
+
+    .svg-box.tint-blue { fill: var(--blue-tint); stroke: var(--blue); }
+    .svg-box.tint-pine { fill: var(--pine-tint); stroke: var(--pine); }
+    .svg-box.tint-amber { fill: var(--amber-tint); stroke: var(--amber); }
+    .svg-box.tint-crimson { fill: var(--crimson-tint); stroke: var(--crimson); }
+
+    .svg-panel { fill: var(--card); stroke: var(--hairline); stroke-width: 1.2; }
+    .svg-divider { stroke: var(--hairline); stroke-width: 1; }
+
+    .svg-stereo { font-family: var(--font-mono); font-size: 0.75rem; font-weight: 600; fill: var(--ink-secondary); }
+    .svg-stereo.blue { fill: var(--blue-ink); }
+    .svg-stereo.pine { fill: var(--pine-ink); }
+    .svg-stereo.amber { fill: var(--amber-ink); }
+    .svg-stereo.crimson { fill: var(--crimson-ink); }
+
+    .svg-title { font-family: var(--font-sans); font-size: 0.9375rem; font-weight: 600; fill: var(--ink); }
+    .svg-sub { font-family: var(--font-mono); font-size: 0.75rem; fill: var(--ink-secondary); }
+    .svg-member { font-family: var(--font-mono); font-size: 0.75rem; fill: var(--ink); }
+    .svg-member-muted { font-family: var(--font-mono); font-size: 0.75rem; fill: var(--ink-secondary); }
+    .svg-group-title { font-family: var(--font-sans); font-size: 0.875rem; font-weight: 600; fill: var(--ink); }
+
+    .svg-edge { fill: none; stroke: var(--edge-neutral); stroke-width: 1.45; }
+    .svg-edge.blue { stroke: var(--blue); }
+    .svg-edge.pine { stroke: var(--pine); }
+    .svg-edge.amber { stroke: var(--amber); }
+    .svg-edge.crimson { stroke: var(--crimson); }
+    .svg-edge.dashed { stroke-dasharray: 5 4; }
+
+    .svg-label { font-family: var(--font-mono); font-size: 0.75rem; fill: var(--ink-secondary); }
+    .svg-label.blue { fill: var(--blue-ink); }
+    .svg-label.pine { fill: var(--pine-ink); }
+    .svg-label.amber { fill: var(--amber-ink); }
+    .svg-label.crimson { fill: var(--crimson-ink); }
+
+    .marker-neutral { fill: var(--edge-neutral); }
+    .marker-blue { fill: var(--blue); }
+    .marker-pine { fill: var(--pine); }
+    .marker-amber { fill: var(--amber); }
+    .marker-crimson { fill: var(--crimson); }
+    .marker-hollow-pine { fill: var(--surface); stroke: var(--pine); stroke-width: 1.5; }
+    .marker-hollow-blue { fill: var(--surface); stroke: var(--blue); stroke-width: 1.5; }
+
+    /* Accessible Apple-Hairline Reference Tables */
+    .table-scroll {
+      margin-top: 1.75rem;
+      overflow-x: auto;
+    }
+
+    table.ref-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      text-align: start;
+      border-bottom: 1px solid var(--hairline);
+    }
+
+    table.ref-table caption {
+      padding: 0 0 0.625rem;
+      text-align: start;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      color: var(--ink);
+    }
+
+    table.ref-table th,
+    table.ref-table td {
+      padding: 0.6875rem 0.875rem;
+      border-top: 1px solid var(--hairline);
+      vertical-align: top;
+    }
+
+    table.ref-table thead th {
+      border-top: 1px solid var(--border-strong);
+      border-bottom: 1px solid var(--border-strong);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--ink-secondary);
+      text-wrap: balance;
+    }
+
+    table.ref-table tbody th {
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--ink);
+      white-space: nowrap;
+      padding-inline-start: 0;
+    }
+
+    table.ref-table thead th:first-child {
+      padding-inline-start: 0;
+    }
+
+    table.ref-table td {
+      color: var(--ink-secondary);
+    }
+
+    footer.doc-footer {
+      padding: 2.5rem 0 3.75rem;
+      border-top: 1px solid var(--hairline);
+      font-size: 0.8125rem;
+      color: var(--ink-secondary);
+    }
+
+    .footer-inner {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.75rem 2rem;
+    }
+
+    @media (max-width: 52rem) {
+      .nav-links {
+        display: none;
+      }
+      header.doc-header {
+        padding: 3rem 0 2rem;
+      }
+      section.doc-section {
+        padding: 2.5rem 0;
+      }
+      .diagram-frame {
+        padding: 1rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      *,
+      *::before,
+      *::after {
+        transition-duration: 0ms !important;
+      }
+    }
+
+    @media (forced-colors: active) {
+      .diagram-frame,
+      .scheme-btn {
+        border: 1px solid CanvasText;
+        box-shadow: none;
+      }
+      .svg-box,
+      .svg-panel {
+        fill: Canvas !important;
+        stroke: CanvasText !important;
+      }
+      .svg-edge {
+        stroke: CanvasText !important;
+      }
+      .svg-title,
+      .svg-member,
+      .svg-sub,
+      .svg-stereo,
+      .svg-label {
+        fill: CanvasText !important;
+      }
+    }
+
+    @media print {
+      .topbar {
+        display: none;
+      }
+      section.doc-section {
+        break-inside: avoid;
+      }
+      .diagram-frame {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main-title" class="skip-link visually-hidden">Skip to main content</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#main-title">
+        <span class="brand-glyph" aria-hidden="true">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.8 5C14 5 8 5.6 8 9.2c0 5.4 8 2.2 8 7.6 0 3.2-5.4 3.8-9.8 3.2" />
+            <circle cx="17.8" cy="5" r="1.8" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+        <span>Syllabus.io Architecture</span>
+      </a>
+      <div class="nav-cluster">
+        <nav aria-label="Document sections">
+          <ul class="nav-links" role="list">
+            <li><a href="#system-overview">System</a></li>
+            <li><a href="#rust-classes">Rust Classes &amp; Traits</a></li>
+            <li><a href="#ts-classes">TypeScript Classes &amp; Interfaces</a></li>
+            <li><a href="#dependency-dag">Dependency DAG</a></li>
+            <li><a href="#synthesis-pipeline">Validation Pipeline</a></li>
+          </ul>
+        </nav>
+        <button type="button" class="scheme-btn" id="scheme-toggle" aria-label="Toggle light and dark appearance">Theme</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <header class="doc-header">
+      <h1 id="main-title" tabindex="-1">Syllabus.io System &amp; Class Architecture</h1>
+      <p class="lead">
+        Engineering reference for the multi-language Syllabus.io monorepo: hexagonal Rust domain and persistence crates, contract-driven OpenAPI code generation, and zero-cycle TypeScript packages and web client collaborators.
+      </p>
+      <ul class="spec-meta" role="list">
+        <li><strong>Rust Workspace:</strong> 10 crates · Edition 2021 · Axum + PostgreSQL 16</li>
+        <li><strong>TypeScript Workspace:</strong> 3 packages · 70 web modules · 0 circular dependencies</li>
+        <li><strong>Contracts:</strong> <code>specs/product.md</code> · 71 OpenAPI operations · 18 open catalog entries</li>
+      </ul>
+    </header>
+
+    <!-- SECTION 1: SYSTEM OVERVIEW -->
+    <section class="doc-section" id="system-overview">
+      <h2>Monorepo Layered &amp; Hexagonal Overview</h2>
+      <p class="section-copy">
+        <code>specs/product.md</code> drives all OpenAPI schemas, Rust contract descriptors, and TypeScript client/token artifacts. Runtime execution splits cleanly across the Node/Preact web application, the Axum HTTP API service, and the outbox lease worker, all converging on pure Rust domain invariants and transactional PostgreSQL 16 storage.
+      </p>
+
+      <figure class="diagram-figure">
+        <div class="diagram-frame">
+          <svg viewBox="0 0 1200 552" role="img" aria-labelledby="fig1-title fig1-desc">
+            <title id="fig1-title">Syllabus.io Monorepo System Architecture</title>
+            <desc id="fig1-desc">Four-tier architecture diagram showing the specification pipeline at top feeding generated contracts into the TypeScript web stack on the left, the Rust Axum API and hexagonal domain core in the center, and the worker, LLM providers, and PostgreSQL 16 persistence adapters on the right.</desc>
+            <defs>
+              <marker id="f1-arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-neutral" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f1-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-blue" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f1-pine" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-pine" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f1-amber" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-amber" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f1-impl" viewBox="0 0 12 12" refX="10.5" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="marker-hollow-pine" d="M1,1 L11,6 L1,11 z" /></marker>
+            </defs>
+
+            <!-- Row 1: Spec & Contract Generation Plane (y=24..90; cols x=32, 432, 832, w=336) -->
+            <rect class="svg-box amber" x="32" y="24" width="336" height="66" rx="8" />
+            <text class="svg-stereo amber" x="200" y="44" text-anchor="middle">«source-of-truth»</text>
+            <text class="svg-title" x="200" y="63" text-anchor="middle">specs/product.md &amp; catalog/*.json</text>
+            <text class="svg-sub" x="200" y="80" text-anchor="middle">SHA-256 pinned · 18 open resources</text>
+
+            <path class="svg-edge amber" d="M368,57 H430" marker-end="url(#f1-amber)" />
+            <text class="svg-label amber" x="400" y="48" text-anchor="middle">extract</text>
+
+            <rect class="svg-box amber" x="432" y="24" width="336" height="66" rx="8" />
+            <text class="svg-stereo amber" x="600" y="44" text-anchor="middle">«validator»</text>
+            <text class="svg-title" x="600" y="63" text-anchor="middle">extract_spec &amp; check_contracts</text>
+            <text class="svg-sub" x="600" y="80" text-anchor="middle">OpenAPI 3.1 · JSON Schema Draft 2020-12</text>
+
+            <path class="svg-edge amber" d="M768,57 H830" marker-end="url(#f1-amber)" />
+            <text class="svg-label amber" x="800" y="48" text-anchor="middle">codegen</text>
+
+            <rect class="svg-box tint-amber" x="832" y="24" width="336" height="66" rx="8" />
+            <text class="svg-stereo amber" x="1000" y="44" text-anchor="middle">«generator»</text>
+            <text class="svg-title" x="1000" y="63" text-anchor="middle">generate_contracts.py</text>
+            <text class="svg-sub" x="1000" y="80" text-anchor="middle">generated.rs · generated.ts · tokens.css</text>
+
+            <!-- Corridor 1->2 (y=90..150, bus at y=120) -->
+            <path class="svg-edge amber dashed" d="M1000,90 V120 H200 V148" marker-end="url(#f1-amber)" />
+            <path class="svg-edge amber dashed" d="M600,120 V148" marker-end="url(#f1-amber)" />
+            <text class="svg-label amber" x="400" y="112" text-anchor="middle">emits typed schemas &amp; UI tokens</text>
+
+            <!-- Row 2: Runtime Entrypoints (y=150..236) -->
+            <rect class="svg-box blue" x="32" y="150" width="336" height="86" rx="8" />
+            <text class="svg-stereo blue" x="200" y="171" text-anchor="middle">«web-service»</text>
+            <text class="svg-title" x="200" y="191" text-anchor="middle">apps/web (Node BFF &amp; SSR/Preact)</text>
+            <text class="svg-sub" x="200" y="209" text-anchor="middle">server.mjs · OAuth/WebAuthn · MiniSearch</text>
+            <text class="svg-sub" x="200" y="225" text-anchor="middle">browserAppController · renderWebAppHtml</text>
+
+            <path class="svg-edge blue" d="M368,193 H430" marker-end="url(#f1-blue)" />
+            <text class="svg-label blue" x="400" y="184" text-anchor="middle">REST</text>
+
+            <rect class="svg-box blue" x="432" y="150" width="336" height="86" rx="8" />
+            <text class="svg-stereo blue" x="600" y="171" text-anchor="middle">«http-api»</text>
+            <text class="svg-title" x="600" y="191" text-anchor="middle">services/api (Axum HTTP)</text>
+            <text class="svg-sub" x="600" y="209" text-anchor="middle">71 OpenAPI ops · Idempotency-Key · ETag</text>
+            <text class="svg-sub" x="600" y="225" text-anchor="middle">handlers_{auth,account,syllabus,catalog}</text>
+
+            <path class="svg-edge" d="M768,193 H830" marker-end="url(#f1-arr)" />
+            <text class="svg-label" x="800" y="184" text-anchor="middle">enqueues</text>
+
+            <rect class="svg-box" x="832" y="150" width="336" height="86" rx="8" />
+            <text class="svg-stereo" x="1000" y="171" text-anchor="middle">«daemon»</text>
+            <text class="svg-title" x="1000" y="191" text-anchor="middle">services/worker</text>
+            <text class="svg-sub" x="1000" y="209" text-anchor="middle">Transactional outbox poller</text>
+            <text class="svg-sub" x="1000" y="225" text-anchor="middle">Lease heartbeats &amp; stale-lease reaper</text>
+
+            <!-- Corridor 2->3 (y=236..290) -->
+            <path class="svg-edge blue" d="M200,236 V288" marker-end="url(#f1-blue)" />
+            <path class="svg-edge blue" d="M600,236 V288" marker-end="url(#f1-blue)" />
+            <path class="svg-edge" d="M1000,236 V288" marker-end="url(#f1-arr)" />
+
+            <!-- Row 3: Application Use Cases, Shared Packages & Provider Adapters (y=290..378) -->
+            <rect class="svg-box blue" x="32" y="290" width="336" height="88" rx="8" />
+            <text class="svg-stereo blue" x="200" y="311" text-anchor="middle">«ts-packages»</text>
+            <text class="svg-title" x="200" y="331" text-anchor="middle">@syllabus/ui &amp; @syllabus/api-client</text>
+            <text class="svg-sub" x="200" y="349" text-anchor="middle">ThemeController · SafeActivityRenderer</text>
+            <text class="svg-sub" x="200" y="365" text-anchor="middle">PlanMapAndOutline · MasteryGate · Headers</text>
+
+            <rect class="svg-box pine" x="432" y="290" width="336" height="88" rx="8" />
+            <text class="svg-stereo pine" x="600" y="311" text-anchor="middle">«application-ring»</text>
+            <text class="svg-title" x="600" y="331" text-anchor="middle">syllabus-application</text>
+            <text class="svg-sub" x="600" y="349" text-anchor="middle">ports · goal_interpreter · search_pipeline</text>
+            <text class="svg-sub" x="600" y="365" text-anchor="middle">validation (6 gates) · job_runner</text>
+
+            <path class="svg-edge blue" d="M768,322 H830" marker-end="url(#f1-blue)" />
+            <text class="svg-label blue" x="800" y="313" text-anchor="middle">LLM port</text>
+
+            <rect class="svg-box" x="832" y="290" width="336" height="88" rx="8" />
+            <text class="svg-stereo" x="1000" y="311" text-anchor="middle">«adapters»</text>
+            <text class="svg-title" x="1000" y="331" text-anchor="middle">syllabus-providers &amp; syllabus-jobs</text>
+            <text class="svg-sub" x="1000" y="349" text-anchor="middle">OpenAI · Anthropic · Gemini (BYOK/Hosted)</text>
+            <text class="svg-sub" x="1000" y="365" text-anchor="middle">OutboxJobRecord · QueueMetricsSnapshot</text>
+
+            <!-- Corridor 3->4 (y=378..438) -->
+            <path class="svg-edge blue" d="M200,378 V436" marker-end="url(#f1-blue)" />
+            <path class="svg-edge pine" d="M600,378 V436" marker-end="url(#f1-pine)" />
+            <path class="svg-edge" d="M1000,378 V436" marker-end="url(#f1-arr)" />
+
+            <!-- Persistence implements Application Ports via clean corridor x=800, y=356..470 -->
+            <path class="svg-edge pine dashed" d="M832,470 H800 V356 H770" marker-end="url(#f1-impl)" />
+
+            <!-- Row 4: Browser Runtime, Pure Rust Core & PostgreSQL 16 (y=438..530) -->
+            <rect class="svg-box" x="32" y="438" width="336" height="92" rx="8" />
+            <text class="svg-stereo" x="200" y="459" text-anchor="middle">«browser-surface»</text>
+            <text class="svg-title" x="200" y="479" text-anchor="middle">Interactive DOM &amp; Offline PWA</text>
+            <text class="svg-sub" x="200" y="497" text-anchor="middle">Native &lt;dialog&gt; · SVG Prerequisite DAG</text>
+            <text class="svg-sub" x="200" y="513" text-anchor="middle">KaTeX MathML · Offline Replay Queue</text>
+
+            <rect class="svg-box tint-pine" x="432" y="438" width="336" height="92" rx="8" />
+            <text class="svg-stereo pine" x="600" y="459" text-anchor="middle">«pure-core»</text>
+            <text class="svg-title" x="600" y="479" text-anchor="middle">domain · contracts · security</text>
+            <text class="svg-sub" x="600" y="497" text-anchor="middle">Syllabus AST · BM25 · Billing · Mastery</text>
+            <text class="svg-sub" x="600" y="513" text-anchor="middle">ContractRegistry · CredentialVault (AEAD)</text>
+
+            <path class="svg-edge pine" d="M832,500 H770" marker-end="url(#f1-pine)" />
+            <text class="svg-label pine" x="801" y="517" text-anchor="middle">inward</text>
+
+            <rect class="svg-box" x="832" y="438" width="336" height="92" rx="8" />
+            <text class="svg-stereo" x="1000" y="459" text-anchor="middle">«persistence»</text>
+            <text class="svg-title" x="1000" y="479" text-anchor="middle">syllabus-persistence &amp; PostgreSQL 16</text>
+            <text class="svg-sub" x="1000" y="497" text-anchor="middle">8 domain sub-stores · pg_backend</text>
+            <text class="svg-sub" x="1000" y="513" text-anchor="middle">Advisory-locked migrations · FTS catalog</text>
+          </svg>
+        </div>
+        <ul class="legend" role="list">
+          <li><span class="swatch amber" aria-hidden="true"></span>Specification &amp; Codegen</li>
+          <li><span class="swatch blue" aria-hidden="true"></span>HTTP / Frontend Services</li>
+          <li><span class="swatch pine" aria-hidden="true"></span>Hexagonal Application &amp; Pure Core</li>
+          <li><span class="swatch ink" aria-hidden="true"></span>Infrastructure &amp; Storage Adapters</li>
+        </ul>
+        <figcaption>
+          <strong>Figure 1.</strong> System topology across specification generation, web BFF/SPA, Rust HTTP &amp; worker services, and PostgreSQL 16 persistence. Dashed hollow-triangle arrow denotes port trait realization (<code>syllabus-persistence</code> implementing <code>syllabus-application::ports</code>).
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- SECTION 2: RUST UML CLASS & TRAIT DIAGRAM -->
+    <section class="doc-section" id="rust-classes">
+      <h2>Rust Backend Class, Trait &amp; Collaborator Diagram</h2>
+      <p class="section-copy">
+        Following the Google Rust Style Guide and collaborator decomposition, <code>ApiAppState</code> wires concrete adapters into stateless <code>ApplicationService</code> workflows. Persistence and LLM execution depend strictly inward on port traits (<code>CatalogRetrievalPort</code>, <code>SyllabusRevisionPersistencePort</code>, <code>GenerationJobRepositoryPort</code>, <code>InferenceProvider</code>, and <code>AuthVerifier</code>).
+      </p>
+
+      <figure class="diagram-figure">
+        <div class="diagram-frame">
+          <svg viewBox="0 0 1200 736" role="img" aria-labelledby="fig2-title fig2-desc">
+            <title id="fig2-title">Rust Backend UML Class and Trait Diagram</title>
+            <desc id="fig2-desc">UML class diagram depicting ApiAppState, ApplicationService, ValidationSuite collaborators, port traits AuthVerifier, Persistence Ports, and InferenceProvider, and concrete implementations InMemoryTransactionalStore, HTTP LLM Providers, and pure domain structs.</desc>
+            <defs>
+              <marker id="f2-dep" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-neutral" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f2-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-blue" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f2-pine" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-pine" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f2-impl" viewBox="0 0 12 12" refX="10.5" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="marker-hollow-pine" d="M1,1 L11,6 L1,11 z" /></marker>
+              <marker id="f2-impl-b" viewBox="0 0 12 12" refX="10.5" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path class="marker-hollow-blue" d="M1,1 L11,6 L1,11 z" /></marker>
+            </defs>
+
+            <!-- ROW 1 (y=24..196; cols x=28, 428, 828, w=344) -->
+            <!-- R1C1: ApiAppState -->
+            <rect class="svg-box blue" x="28" y="24" width="344" height="172" rx="8" />
+            <text class="svg-stereo blue" x="200" y="43" text-anchor="middle">«struct» services/api</text>
+            <text class="svg-title" x="200" y="61" text-anchor="middle">ApiAppState</text>
+            <line class="svg-divider" x1="28" y1="71" x2="372" y2="71" />
+            <text class="svg-member" x="42" y="89">+ store: InMemoryTransactionalStore</text>
+            <text class="svg-member" x="42" y="106">+ registry: Arc&lt;ContractRegistry&gt;</text>
+            <text class="svg-member" x="42" y="123">+ vault: Arc&lt;CredentialVault&gt;</text>
+            <text class="svg-member" x="42" y="140">+ verifier: Arc&lt;dyn AuthVerifier&gt;</text>
+            <line class="svg-divider" x1="28" y1="150" x2="372" y2="150" />
+            <text class="svg-member-muted" x="42" y="168">+ build_router(Self) -&gt; axum::Router</text>
+            <text class="svg-member-muted" x="42" y="184">+ handlers_{auth,account,syllabus,catalog}</text>
+
+            <path class="svg-edge blue dashed" d="M372,110 H426" marker-end="url(#f2-blue)" />
+            <text class="svg-label blue" x="400" y="101" text-anchor="middle">calls</text>
+
+            <!-- R1C2: ApplicationService -->
+            <rect class="svg-box pine" x="428" y="24" width="344" height="172" rx="8" />
+            <text class="svg-stereo pine" x="600" y="43" text-anchor="middle">«struct» syllabus-application</text>
+            <text class="svg-title" x="600" y="61" text-anchor="middle">ApplicationService</text>
+            <line class="svg-divider" x1="428" y1="71" x2="772" y2="71" />
+            <text class="svg-member" x="442" y="89">+ GoalIntakeInput (value object)</text>
+            <text class="svg-member" x="442" y="106">+ SearchAndIndexPipelineParams</text>
+            <line class="svg-divider" x1="428" y1="117" x2="772" y2="117" />
+            <text class="svg-member-muted" x="442" y="135">+ interpret_goal_request(&amp;GoalIntakeInput)</text>
+            <text class="svg-member-muted" x="442" y="151">+ run_search_and_index(&amp;Params)</text>
+            <text class="svg-member-muted" x="442" y="167">+ validate_candidate_and_promote(...)</text>
+            <text class="svg-member-muted" x="442" y="183">+ evaluate_system_readiness() -&gt; Report</text>
+
+            <path class="svg-edge pine" d="M772,110 H826" marker-end="url(#f2-pine)" />
+            <text class="svg-label pine" x="800" y="101" text-anchor="middle">uses</text>
+
+            <!-- R1C3: Validation Collaborator Suite -->
+            <rect class="svg-box pine" x="828" y="24" width="344" height="172" rx="8" />
+            <text class="svg-stereo pine" x="1000" y="43" text-anchor="middle">«collaborators» application::validation</text>
+            <text class="svg-title" x="1000" y="61" text-anchor="middle">CandidateValidationSuite</text>
+            <line class="svg-divider" x1="828" y1="71" x2="1172" y2="71" />
+            <text class="svg-member" x="842" y="89">+ ctx: CandidateValidationContext</text>
+            <text class="svg-member" x="842" y="106">+ archiver: CandidateArchiver&lt;&apos;a, S&gt;</text>
+            <line class="svg-divider" x1="828" y1="117" x2="1172" y2="117" />
+            <text class="svg-member-muted" x="842" y="135">+ CandidateSecurityValidator::validate()</text>
+            <text class="svg-member-muted" x="842" y="151">+ CandidateSchemaValidator::validate()</text>
+            <text class="svg-member-muted" x="842" y="167">+ ObjectiveDagValidator::check_acyclic()</text>
+            <text class="svg-member-muted" x="842" y="183">+ PedagogicalTriadValidator &amp; Promoter</text>
+
+            <!-- Corridor Row 1 -> Row 2 (y=196..266) -->
+            <path class="svg-edge blue" d="M200,196 V264" marker-end="url(#f2-blue)" />
+            <text class="svg-label blue" x="210" y="234">holds Arc&lt;dyn&gt;</text>
+
+            <path class="svg-edge pine dashed" d="M600,196 V264" marker-end="url(#f2-pine)" />
+            <text class="svg-label pine" x="610" y="234">requires ports</text>
+
+            <path class="svg-edge blue dashed" d="M730,196 V228 H1000 V264" marker-end="url(#f2-blue)" />
+            <text class="svg-label blue" x="865" y="220" text-anchor="middle">dispatches generation</text>
+
+            <!-- ApplicationService -> Pure Domain down dedicated empty corridor x=400 -->
+            <path class="svg-edge pine dashed" d="M468,196 V236 H400 V584 H374" marker-end="url(#f2-pine)" />
+
+            <!-- ROW 2 (y=266..448): Security Traits | Application Port Traits | InferenceProvider Trait -->
+            <!-- R2C1: AuthVerifier & CredentialVault -->
+            <rect class="svg-box tint-amber" x="28" y="266" width="344" height="182" rx="8" />
+            <text class="svg-stereo amber" x="200" y="285" text-anchor="middle">«trait &amp; vault» syllabus-security</text>
+            <text class="svg-title" x="200" y="303" text-anchor="middle">AuthVerifier &amp; CredentialVault</text>
+            <line class="svg-divider" x1="28" y1="313" x2="372" y2="313" />
+            <text class="svg-member" x="42" y="331">PrincipalRole { Learner..Operator }</text>
+            <text class="svg-member" x="42" y="348">OAuthProvider { Google, GitHub, Apple }</text>
+            <text class="svg-member" x="42" y="365">SealedCredentialEnvelope (AEAD)</text>
+            <line class="svg-divider" x1="28" y1="376" x2="372" y2="376" />
+            <text class="svg-member-muted" x="42" y="394">+ verify_bearer(&amp;str) -&gt; Principal</text>
+            <text class="svg-member-muted" x="42" y="411">+ seal_credential() / unseal_credential()</text>
+            <text class="svg-member-muted" x="42" y="428">+ DevFixedIdentityAuthVerifier (impl)</text>
+
+            <!-- R2C2: Application Ports -->
+            <rect class="svg-box tint-pine" x="428" y="266" width="344" height="182" rx="8" />
+            <text class="svg-stereo pine" x="600" y="285" text-anchor="middle">«traits» application::ports</text>
+            <text class="svg-title" x="600" y="303" text-anchor="middle">Persistence &amp; Retrieval Ports</text>
+            <line class="svg-divider" x1="428" y1="313" x2="772" y2="313" />
+            <text class="svg-member" x="442" y="331">«trait» CatalogRetrievalPort</text>
+            <text class="svg-member" x="442" y="348">«trait» SyllabusRevisionPersistencePort</text>
+            <text class="svg-member" x="442" y="365">«trait» GenerationJobRepositoryPort</text>
+            <line class="svg-divider" x1="428" y1="376" x2="772" y2="376" />
+            <text class="svg-member-muted" x="442" y="394">+ list_eligible_catalog_resources(&amp;self)</text>
+            <text class="svg-member-muted" x="442" y="411">+ archive_candidate() / promote_revision()</text>
+            <text class="svg-member-muted" x="442" y="428">+ mark_job_running() / complete_job()</text>
+
+            <!-- R2C3: InferenceProvider -->
+            <rect class="svg-box tint-blue" x="828" y="266" width="344" height="182" rx="8" />
+            <text class="svg-stereo blue" x="1000" y="285" text-anchor="middle">«trait» syllabus-providers</text>
+            <text class="svg-title" x="1000" y="303" text-anchor="middle">InferenceProvider: Send + Sync</text>
+            <line class="svg-divider" x1="828" y1="313" x2="1172" y2="313" />
+            <text class="svg-member" x="842" y="331">InferenceAuthMode { Hosted, Byok }</text>
+            <text class="svg-member" x="842" y="348">ProviderCapabilities · TokenLimits</text>
+            <text class="svg-member" x="842" y="365">PinnedByokBinding (zero-log transient)</text>
+            <line class="svg-divider" x1="828" y1="376" x2="1172" y2="376" />
+            <text class="svg-member-muted" x="842" y="394">+ provider_id(&amp;self) -&gt; &amp;&apos;static str</text>
+            <text class="svg-member-muted" x="842" y="411">+ capabilities(&amp;self) -&gt; Capabilities</text>
+            <text class="svg-member-muted" x="842" y="428">+ generate_candidate(&amp;Request) -&gt; Output</text>
+
+            <!-- Corridor Row 2 <-> Row 3 (y=448..524): UML Realization (implements) pointing UP -->
+            <path class="svg-edge pine dashed" d="M600,524 V450" marker-end="url(#f2-impl)" />
+            <text class="svg-label pine" x="610" y="490">implements 3 ports</text>
+
+            <path class="svg-edge blue dashed" d="M1000,524 V450" marker-end="url(#f2-impl-b)" />
+            <text class="svg-label blue" x="1010" y="490">implements trait</text>
+
+            <!-- ROW 3 (y=524..714): Pure Domain & Contracts | Transactional Store | HTTP Providers & Outbox -->
+            <!-- R3C1: Pure Domain & ContractRegistry -->
+            <rect class="svg-box pine" x="28" y="524" width="344" height="190" rx="8" />
+            <text class="svg-stereo pine" x="200" y="543" text-anchor="middle">«domain &amp; contracts» pure leaf crates</text>
+            <text class="svg-title" x="200" y="561" text-anchor="middle">Domain Aggregates &amp; Registry</text>
+            <line class="svg-divider" x1="28" y1="571" x2="372" y2="571" />
+            <text class="svg-member" x="42" y="589">+ GoalSpecification · EffortTriplet</text>
+            <text class="svg-member" x="42" y="606">+ TfIdfCorpusIndex (BM25 retrieval)</text>
+            <text class="svg-member" x="42" y="623">+ MasteryGateEvaluation · SpacedReview</text>
+            <text class="svg-member" x="42" y="640">+ UsageQuote · CreditReservation · Ledger</text>
+            <line class="svg-divider" x1="28" y1="651" x2="372" y2="651" />
+            <text class="svg-member-muted" x="42" y="669">+ ContractRegistry::validate_value()</text>
+            <text class="svg-member-muted" x="42" y="685">+ PublicSnapshotSanitizer::sanitize()</text>
+            <text class="svg-member-muted" x="42" y="701">+ PartialAdoptionClosure::compute()</text>
+
+            <!-- Store -> Pure Domain at y=656 -->
+            <path class="svg-edge" d="M428,656 H374" marker-end="url(#f2-dep)" />
+            <text class="svg-label" x="401" y="673" text-anchor="middle">models</text>
+
+            <!-- R3C2: InMemoryTransactionalStore + pg_backend -->
+            <rect class="svg-box" x="428" y="524" width="344" height="190" rx="8" />
+            <text class="svg-stereo" x="600" y="543" text-anchor="middle">«struct» syllabus-persistence</text>
+            <text class="svg-title" x="600" y="561" text-anchor="middle">InMemoryTransactionalStore</text>
+            <line class="svg-divider" x1="428" y1="571" x2="772" y2="571" />
+            <text class="svg-member" x="442" y="589">- store_auth · store_syllabus</text>
+            <text class="svg-member" x="442" y="606">- store_catalog · store_lifecycle</text>
+            <text class="svg-member" x="442" y="623">- store_learning · store_billing</text>
+            <text class="svg-member" x="442" y="640">- store_sharing · store_manual_resources</text>
+            <line class="svg-divider" x1="428" y1="651" x2="772" y2="651" />
+            <text class="svg-member-muted" x="442" y="669">+ open_postgres(url) -&gt; Result&lt;Self&gt;</text>
+            <text class="svg-member-muted" x="442" y="685">+ ensure_migrations_applied(advisory_lock)</text>
+            <text class="svg-member-muted" x="442" y="701">+ begin_idempotent_operation(key, hash)</text>
+
+            <!-- Outbox -> Store at y=656 -->
+            <path class="svg-edge" d="M828,656 H774" marker-end="url(#f2-dep)" />
+            <text class="svg-label" x="801" y="673" text-anchor="middle">leases</text>
+
+            <!-- R3C3: Concrete Providers & Outbox Queue -->
+            <rect class="svg-box" x="828" y="524" width="344" height="190" rx="8" />
+            <text class="svg-stereo" x="1000" y="543" text-anchor="middle">«structs» providers &amp; jobs</text>
+            <text class="svg-title" x="1000" y="561" text-anchor="middle">HttpProviders &amp; OutboxQueue</text>
+            <line class="svg-divider" x1="828" y1="571" x2="1172" y2="571" />
+            <text class="svg-member" x="842" y="589">+ OpenAiHttpProvider (Responses API)</text>
+            <text class="svg-member" x="842" y="606">+ AnthropicHttpProvider (Messages API)</text>
+            <text class="svg-member" x="842" y="623">+ GeminiHttpProvider (GenerateContent)</text>
+            <text class="svg-member" x="842" y="640">+ DeterministicFakeProvider (Fault test)</text>
+            <line class="svg-divider" x1="828" y1="651" x2="1172" y2="651" />
+            <text class="svg-member-muted" x="842" y="669">+ OutboxJobRecord · OutboxQueueConfig</text>
+            <text class="svg-member-muted" x="842" y="685">+ reap_expired_leases() -&gt; ReapReport</text>
+            <text class="svg-member-muted" x="842" y="701">+ prune_terminal_jobs() -&gt; PruneReport</text>
+          </svg>
+        </div>
+        <ul class="legend" role="list">
+          <li><span class="swatch pine" aria-hidden="true"></span>Dashed Hollow Triangle = Trait Realization (<code>impl Trait for Struct</code>)</li>
+          <li><span class="swatch blue" aria-hidden="true"></span>Solid Arrow = Composition / Ownership</li>
+          <li><span class="swatch ink" aria-hidden="true"></span>Dashed Open Arrow = Call / Parameter Dependency</li>
+        </ul>
+        <figcaption>
+          <strong>Figure 2.</strong> Rust UML class and trait diagram across <code>services/api</code>, <code>syllabus-application</code>, <code>syllabus-security</code>, <code>syllabus-persistence</code>, <code>syllabus-providers</code>, <code>syllabus-jobs</code>, <code>syllabus-domain</code>, and <code>syllabus-contracts</code>.
+        </figcaption>
+      </figure>
+
+      <div class="table-scroll">
+        <table class="ref-table">
+          <caption>Key Rust Traits, Structs &amp; Module Locations</caption>
+          <thead>
+            <tr>
+              <th scope="col">Symbol</th>
+              <th scope="col">Kind</th>
+              <th scope="col">Crate / Module</th>
+              <th scope="col">Architectural Responsibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">ApplicationService</th>
+              <td><code>struct</code></td>
+              <td><code>crates/application/src/lib.rs</code></td>
+              <td>Coordinates goal intake, BM25 + web discovery, candidate validation, and revision promotion.</td>
+            </tr>
+            <tr>
+              <th scope="row">CatalogRetrievalPort</th>
+              <td><code>trait</code></td>
+              <td><code>crates/application/src/ports.rs</code></td>
+              <td>Decouples candidate eligibility and search pipelines from concrete PostgreSQL storage.</td>
+            </tr>
+            <tr>
+              <th scope="row">SyllabusRevisionPersistencePort</th>
+              <td><code>trait</code></td>
+              <td><code>crates/application/src/ports.rs</code></td>
+              <td>Persists candidate archives and promotes validated syllabus revisions atomically.</td>
+            </tr>
+            <tr>
+              <th scope="row">InferenceProvider</th>
+              <td><code>trait</code></td>
+              <td><code>crates/providers/src/lib.rs</code></td>
+              <td>Unified contract for OpenAI, Anthropic, Gemini, and deterministic fault-injection test providers.</td>
+            </tr>
+            <tr>
+              <th scope="row">InMemoryTransactionalStore</th>
+              <td><code>struct</code></td>
+              <td><code>crates/persistence/src/store.rs</code></td>
+              <td>Transactional domain store backed by 8 domain sub-modules and <code>pg_backend.rs</code> (PostgreSQL 16).</td>
+            </tr>
+            <tr>
+              <th scope="row">AuthVerifier &amp; CredentialVault</th>
+              <td><code>trait / struct</code></td>
+              <td><code>crates/security/src/{principal,vault}.rs</code></td>
+              <td>Verifies session principals/roles and seals transient or persisted BYOK provider credentials.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 3: TYPESCRIPT UML CLASS & INTERFACE DIAGRAM -->
+    <section class="doc-section" id="ts-classes">
+      <h2>TypeScript Frontend &amp; Packages Class, Interface &amp; Collaborator Diagram</h2>
+      <p class="section-copy">
+        The former 5,330-line <code>browserApp.ts</code> god module is split into three single-responsibility collaborators (<code>mountBrowserApp.ts</code>, <code>browserAppController.ts</code>, and <code>renderWebAppHtml.ts</code>) plus <code>navigationShell.ts</code>, yielding strictly zero circular dependencies across all 70 modules while consuming typed contracts from <code>@syllabus/api-client</code> and <code>@syllabus/ui</code>.
+      </p>
+
+      <figure class="diagram-figure">
+        <div class="diagram-frame">
+          <svg viewBox="0 0 1200 716" role="img" aria-labelledby="fig3-title fig3-desc">
+            <title id="fig3-title">TypeScript Frontend and Shared Packages UML Diagram</title>
+            <desc id="fig3-desc">UML diagram of TypeScript interfaces, controllers, and collaborators across apps/web, @syllabus/ui, and @syllabus/api-client.</desc>
+            <defs>
+              <marker id="f3-arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-neutral" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f3-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-blue" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f3-pine" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-pine" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f3-amber" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-amber" d="M0,1 L10,5 L0,9 z" /></marker>
+            </defs>
+
+            <!-- ROW 1 (y=24..192; cols x=28, 428, 828, w=344) -->
+            <rect class="svg-box blue" x="28" y="24" width="344" height="168" rx="8" />
+            <text class="svg-stereo blue" x="200" y="43" text-anchor="middle">«binder» apps/web/src</text>
+            <text class="svg-title" x="200" y="61" text-anchor="middle">mountBrowserApp</text>
+            <line class="svg-divider" x1="28" y1="71" x2="372" y2="71" />
+            <text class="svg-member" x="42" y="89">«interface» MountableRootElement</text>
+            <text class="svg-member" x="42" y="106">+ browserApp.ts (compat facade)</text>
+            <line class="svg-divider" x1="28" y1="117" x2="372" y2="117" />
+            <text class="svg-member-muted" x="42" y="135">+ mountSyllabusWebApp(root, state)</text>
+            <text class="svg-member-muted" x="42" y="151">+ openMarkedDialogs() -&gt; showModal()</text>
+            <text class="svg-member-muted" x="42" y="167">+ bindDelegatedEvents(root, ctrl)</text>
+
+            <path class="svg-edge blue" d="M372,108 H426" marker-end="url(#f3-blue)" />
+            <text class="svg-label blue" x="400" y="99" text-anchor="middle">drives</text>
+
+            <rect class="svg-box tint-blue" x="428" y="24" width="344" height="168" rx="8" />
+            <text class="svg-stereo blue" x="600" y="43" text-anchor="middle">«controller» apps/web/src</text>
+            <text class="svg-title" x="600" y="61" text-anchor="middle">SyllabusWebAppController</text>
+            <line class="svg-divider" x1="428" y1="71" x2="772" y2="71" />
+            <text class="svg-member" x="442" y="89">+ state: SyllabusWebAppResolvedState</text>
+            <text class="svg-member" x="442" y="106">+ shell: navigationShell (0-cycle leaf)</text>
+            <line class="svg-divider" x1="428" y1="117" x2="772" y2="117" />
+            <text class="svg-member-muted" x="442" y="135">+ navigateTopLevel(TopLevelDestination)</text>
+            <text class="svg-member-muted" x="442" y="151">+ applyUiAction(actionId, payload)</text>
+            <text class="svg-member-muted" x="442" y="167">+ exportScheduleIcs() / adoptTemplate()</text>
+
+            <path class="svg-edge blue" d="M772,108 H826" marker-end="url(#f3-blue)" />
+            <text class="svg-label blue" x="800" y="99" text-anchor="middle">renders</text>
+
+            <rect class="svg-box blue" x="828" y="24" width="344" height="168" rx="8" />
+            <text class="svg-stereo blue" x="1000" y="43" text-anchor="middle">«renderer» apps/web/src</text>
+            <text class="svg-title" x="1000" y="61" text-anchor="middle">renderWebAppHtml</text>
+            <line class="svg-divider" x1="828" y1="71" x2="1172" y2="71" />
+            <text class="svg-member" x="842" y="89">«interface» SyllabusWebAppStateInput</text>
+            <text class="svg-member" x="842" y="106">«interface» PasskeySummaryItem</text>
+            <line class="svg-divider" x1="828" y1="117" x2="1172" y2="117" />
+            <text class="svg-member-muted" x="842" y="135">+ renderSyllabusWebAppHtml() -&gt; string</text>
+            <text class="svg-member-muted" x="842" y="151">+ renderPlanDagSvgHtml(planModel)</text>
+            <text class="svg-member-muted" x="842" y="167">+ buildTodayFor() · resolveConceptCheck()</text>
+
+            <!-- Corridor Row 1 -> Row 2 (y=192..256) -->
+            <path class="svg-edge blue" d="M495,192 V224 H200 V254" marker-end="url(#f3-blue)" />
+            <text class="svg-label blue" x="348" y="216" text-anchor="middle">mutates signals &amp; slices</text>
+
+            <path class="svg-edge blue" d="M935,192 V224 H600 V254" marker-end="url(#f3-blue)" />
+            <path class="svg-edge blue" d="M935,224 H1000 V254" marker-end="url(#f3-blue)" />
+            <text class="svg-label blue" x="768" y="216" text-anchor="middle">composes Preact views</text>
+
+            <!-- ROW 2 (y=256..438): Signal Store & Domain Slices | Intake/Inspector/Marketplace | Editor/Diagnostics -->
+            <rect class="svg-box" x="28" y="256" width="344" height="182" rx="8" />
+            <text class="svg-stereo" x="200" y="275" text-anchor="middle">«interface» apps/web/src/state</text>
+            <text class="svg-title" x="200" y="293" text-anchor="middle">SyllabusSignalStore &amp; Slices</text>
+            <line class="svg-divider" x1="28" y1="303" x2="372" y2="303" />
+            <text class="svg-member" x="42" y="321">+ goalIntake · revisionActivation · today</text>
+            <text class="svg-member" x="42" y="338">+ byokCustody · billingWallet · auth</text>
+            <text class="svg-member" x="42" y="355">+ publicationLifecycle · publicAdoption</text>
+            <text class="svg-member" x="42" y="372">+ scheduleEditor · offlineQueue · tutor</text>
+            <line class="svg-divider" x1="28" y1="383" x2="372" y2="383" />
+            <text class="svg-member-muted" x="42" y="401">+ createSyllabusSignalStore(initial)</text>
+            <text class="svg-member-muted" x="42" y="418">+ getSnapshot() / patchState() / subscribe()</text>
+
+            <rect class="svg-box" x="428" y="256" width="344" height="182" rx="8" />
+            <text class="svg-stereo" x="600" y="275" text-anchor="middle">«components» apps/web/src/components</text>
+            <text class="svg-title" x="600" y="293" text-anchor="middle">Intake, Inspector &amp; Marketplace</text>
+            <line class="svg-divider" x1="428" y1="303" x2="772" y2="303" />
+            <text class="svg-member" x="442" y="321">+ newSyllabus/: Taxonomy · IndexView</text>
+            <text class="svg-member" x="442" y="338">+ inspector/: UnitView · Practice · Subtasks</text>
+            <text class="svg-member" x="442" y="355">+ marketplace/: FilterBar · CardGrid · Adopt</text>
+            <text class="svg-member" x="442" y="372">+ StudyFlowBoard · HeaderBar · MathText</text>
+            <line class="svg-divider" x1="428" y1="383" x2="772" y2="383" />
+            <text class="svg-member-muted" x="442" y="401">+ filterEngine · pipeline · indexing</text>
+            <text class="svg-member-muted" x="442" y="418">+ ResourcesView · AdminResourcesView</text>
+
+            <rect class="svg-box" x="828" y="256" width="344" height="182" rx="8" />
+            <text class="svg-stereo" x="1000" y="275" text-anchor="middle">«components» components/syllabusEditor</text>
+            <text class="svg-title" x="1000" y="293" text-anchor="middle">Editor, Diagnostics &amp; Auth Dialogs</text>
+            <line class="svg-divider" x1="828" y1="303" x2="1172" y2="303" />
+            <text class="svg-member" x="842" y="321">+ SyllabusStructureEditorDialog</text>
+            <text class="svg-member" x="842" y="338">+ DiagnosticCheckDialog</text>
+            <text class="svg-member" x="842" y="355">+ DeleteSyllabusDialog (last-plan guard)</text>
+            <text class="svg-member" x="842" y="372">+ AuthDialog · ResourceEditorDialog</text>
+            <line class="svg-divider" x1="828" y1="383" x2="1172" y2="383" />
+            <text class="svg-member-muted" x="842" y="401">+ astMutations.ts (pure AST edits)</text>
+            <text class="svg-member-muted" x="842" y="418">+ diagnosticEngine.ts (adaptive checks)</text>
+
+            <!-- Corridor Row 2 -> Row 3 (y=438..504) -->
+            <path class="svg-edge amber" d="M200,438 V502" marker-end="url(#f3-amber)" />
+            <text class="svg-label amber" x="210" y="474">typed fetch &amp; ETag</text>
+
+            <path class="svg-edge pine" d="M600,438 V502" marker-end="url(#f3-pine)" />
+            <text class="svg-label pine" x="610" y="474">DAG &amp; mastery models</text>
+
+            <path class="svg-edge pine" d="M1000,438 V502" marker-end="url(#f3-pine)" />
+            <text class="svg-label pine" x="1010" y="474">tokens &amp; WCAG audit</text>
+
+            <!-- ROW 3 (y=504..694): @syllabus/api-client | @syllabus/ui Plan/Mastery | @syllabus/ui Theme/A11y -->
+            <rect class="svg-box tint-amber" x="28" y="504" width="344" height="190" rx="8" />
+            <text class="svg-stereo amber" x="200" y="523" text-anchor="middle">«package» @syllabus/api-client</text>
+            <text class="svg-title" x="200" y="541" text-anchor="middle">ContractClient &amp; Generated Specs</text>
+            <line class="svg-divider" x1="28" y1="551" x2="372" y2="551" />
+            <text class="svg-member" x="42" y="569">«type» OperationId (71 operations)</text>
+            <text class="svg-member" x="42" y="586">«interface» OperationSpec</text>
+            <text class="svg-member" x="42" y="603">«interface» ConcurrencyHeaderOptions</text>
+            <text class="svg-member" x="42" y="620">+ CANONICAL_SPEC_SHA256</text>
+            <line class="svg-divider" x1="28" y1="631" x2="372" y2="631" />
+            <text class="svg-member-muted" x="42" y="649">+ buildOperationHeaders(opId, opts)</text>
+            <text class="svg-member-muted" x="42" y="665">+ assertIfMatchRequired(opSpec)</text>
+            <text class="svg-member-muted" x="42" y="681">+ assertIdempotencyKeyRequired(opSpec)</text>
+
+            <!-- @syllabus/ui -> @syllabus/api-client -->
+            <path class="svg-edge amber" d="M428,600 H374" marker-end="url(#f3-amber)" />
+            <text class="svg-label amber" x="401" y="591" text-anchor="middle">headers</text>
+
+            <rect class="svg-box tint-pine" x="428" y="504" width="344" height="190" rx="8" />
+            <text class="svg-stereo pine" x="600" y="523" text-anchor="middle">«package» @syllabus/ui (core)</text>
+            <text class="svg-title" x="600" y="541" text-anchor="middle">PlanMap, Mastery &amp; SafeRenderer</text>
+            <line class="svg-divider" x1="428" y1="551" x2="772" y2="551" />
+            <text class="svg-member" x="442" y="569">«interface» AssessmentSessionController</text>
+            <text class="svg-member" x="442" y="586">+ planMapLayout · planMapTokens</text>
+            <text class="svg-member" x="442" y="603">+ planOutlineTree (1:1 DAG parity)</text>
+            <text class="svg-member" x="442" y="620">+ masteryEvaluation · gatekeeperUI</text>
+            <line class="svg-divider" x1="428" y1="631" x2="772" y2="631" />
+            <text class="svg-member-muted" x="442" y="649">+ renderSafeSyllabus() (fail-closed)</text>
+            <text class="svg-member-muted" x="442" y="665">+ isSafeResourceUrl(https | mailto)</text>
+            <text class="svg-member-muted" x="442" y="681">+ projectPlanMapAndOutline(ast)</text>
+
+            <rect class="svg-box pine" x="828" y="504" width="344" height="190" rx="8" />
+            <text class="svg-stereo pine" x="1000" y="523" text-anchor="middle">«interface» @syllabus/ui (design)</text>
+            <text class="svg-title" x="1000" y="541" text-anchor="middle">ThemeController &amp; A11yAudit</text>
+            <line class="svg-divider" x1="828" y1="551" x2="1172" y2="551" />
+            <text class="svg-member" x="842" y="569">«interface» ThemeController</text>
+            <text class="svg-member" x="842" y="586">«interface» ResolvedSurfaceStyle</text>
+            <text class="svg-member" x="842" y="603">«interface» ResolvedMotionPolicy</text>
+            <text class="svg-member" x="842" y="620">+ UI_TOKENS (light &amp; dark palettes)</text>
+            <line class="svg-divider" x1="828" y1="631" x2="1172" y2="631" />
+            <text class="svg-member-muted" x="842" y="649">+ createThemeController(prefs, env)</text>
+            <text class="svg-member-muted" x="842" y="665">+ evaluateThemeTokenContrast(mode)</text>
+            <text class="svg-member-muted" x="842" y="681">+ runAutomatedAccessibilityAudit()</text>
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 3.</strong> TypeScript frontend and package collaborator structure. Extracting <code>navigationShell.ts</code> and normalizing workspace imports to <code>@syllabus/ui</code> and <code>@syllabus/api-client</code> eliminated all circular dependencies across <code>apps/web/src</code>.
+        </figcaption>
+      </figure>
+
+      <div class="table-scroll">
+        <table class="ref-table">
+          <caption>Key TypeScript Interfaces, Controllers &amp; Package Locations</caption>
+          <thead>
+            <tr>
+              <th scope="col">Symbol</th>
+              <th scope="col">Kind</th>
+              <th scope="col">Package / File</th>
+              <th scope="col">Architectural Responsibility</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th scope="row">mountSyllabusWebApp</th>
+              <td><code>function</code></td>
+              <td><code>apps/web/src/mountBrowserApp.ts</code></td>
+              <td>Binds delegated DOM events, native <code>&lt;dialog&gt;.showModal()</code> focus lifecycle, and vendor enhancements.</td>
+            </tr>
+            <tr>
+              <th scope="row">SyllabusWebAppController</th>
+              <td><code>controller</code></td>
+              <td><code>apps/web/src/browserAppController.ts</code></td>
+              <td>Handles top-level destination transitions, syllabus mutations, template adoption, and ICS schedule export.</td>
+            </tr>
+            <tr>
+              <th scope="row">SyllabusSignalStore</th>
+              <td><code>interface</code></td>
+              <td><code>apps/web/src/state/store.ts</code></td>
+              <td>Reactive signal store aggregating 14 domain slices including BYOK custody, wallet, and offline replay queue.</td>
+            </tr>
+            <tr>
+              <th scope="row">ThemeController</th>
+              <td><code>interface</code></td>
+              <td><code>packages/ui/src/ThemeController.ts</code></td>
+              <td>Resolves light/dark tokens, elevation surfaces, and <code>prefers-reduced-motion</code> policy without layout shifts.</td>
+            </tr>
+            <tr>
+              <th scope="row">AssessmentSessionController</th>
+              <td><code>interface</code></td>
+              <td><code>packages/ui/src/mastery/gatekeeperUI.ts</code></td>
+              <td>Drives rubric-locked mastery gates, spaced-review scheduling, and remedial prerequisite unlocks.</td>
+            </tr>
+            <tr>
+              <th scope="row">buildOperationHeaders</th>
+              <td><code>function</code></td>
+              <td><code>packages/api-client/src/headers.ts</code></td>
+              <td>Enforces compile-time and runtime <code>If-Match</code> and <code>Idempotency-Key</code> preconditions across 71 operations.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- SECTION 4: WORKSPACE DEPENDENCY DAG -->
+    <section class="doc-section" id="dependency-dag">
+      <h2>Workspace Package &amp; Crate Dependency DAG</h2>
+      <p class="section-copy">
+        Every dependency edge in <code>Cargo.toml</code> and <code>pnpm-workspace.yaml</code> flows strictly downward from delivery binaries and web entrypoints into pure leaf packages without cycles.
+      </p>
+
+      <figure class="diagram-figure">
+        <div class="diagram-frame">
+          <svg viewBox="0 0 1120 472" role="img" aria-labelledby="fig4-title fig4-desc">
+            <title id="fig4-title">Rust Crate and TypeScript Package Dependency DAG</title>
+            <desc id="fig4-desc">Left panel shows the 10 Rust workspace crates arranged in 4 topological tiers ending at leaf crates syllabus-domain, syllabus-contracts, and syllabus-security. Right panel shows @syllabus/web depending on @syllabus/ui and @syllabus/api-client.</desc>
+            <defs>
+              <marker id="f4-arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-neutral" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f4-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-blue" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f4-pine" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-pine" d="M0,1 L10,5 L0,9 z" /></marker>
+            </defs>
+
+            <!-- Left Panel: Rust Cargo Workspace (10 Crates) -->
+            <rect class="svg-panel" x="16" y="16" width="684" height="440" rx="10" />
+            <text class="svg-group-title" x="36" y="40">Rust Cargo Workspace (10 Crates · Topological Tiers 3 → 0)</text>
+
+            <!-- Tier 3 (y=58..112) -->
+            <rect class="svg-box blue" x="110" y="58" width="210" height="54" rx="8" />
+            <text class="svg-title" x="215" y="82" text-anchor="middle">services/api</text>
+            <text class="svg-sub" x="215" y="99" text-anchor="middle">syllabus-api binary</text>
+
+            <rect class="svg-box blue" x="410" y="58" width="210" height="54" rx="8" />
+            <text class="svg-title" x="515" y="82" text-anchor="middle">services/worker</text>
+            <text class="svg-sub" x="515" y="99" text-anchor="middle">syllabus-worker binary</text>
+
+            <!-- Edges Tier 3 -> Tier 2 (y=112..156) -->
+            <path class="svg-edge blue" d="M215,112 V154" marker-end="url(#f4-blue)" />
+            <path class="svg-edge blue" d="M275,112 V134 H465 V154" marker-end="url(#f4-blue)" />
+            <path class="svg-edge blue" d="M515,112 V154" marker-end="url(#f4-blue)" />
+
+            <!-- Tier 2 (y=156..210) -->
+            <rect class="svg-box pine" x="110" y="156" width="210" height="54" rx="8" />
+            <text class="svg-title" x="215" y="180" text-anchor="middle">syllabus-application</text>
+            <text class="svg-sub" x="215" y="197" text-anchor="middle">use-cases &amp; ports</text>
+
+            <rect class="svg-box" x="410" y="156" width="210" height="54" rx="8" />
+            <text class="svg-title" x="515" y="180" text-anchor="middle">syllabus-jobs</text>
+            <text class="svg-sub" x="515" y="197" text-anchor="middle">outbox &amp; lease queue</text>
+
+            <!-- Edges Tier 2 -> Tier 1 (y=210..258) -->
+            <path class="svg-edge pine" d="M170,210 V234 H140 V256" marker-end="url(#f4-pine)" />
+            <path class="svg-edge pine" d="M260,210 V234 H330 V256" marker-end="url(#f4-pine)" />
+            <path class="svg-edge" d="M515,210 V234 H400 V256" marker-end="url(#f4-arr)" />
+
+            <!-- Tier 1 (y=258..312) -->
+            <rect class="svg-box" x="45" y="258" width="190" height="54" rx="8" />
+            <text class="svg-title" x="140" y="282" text-anchor="middle">syllabus-providers</text>
+            <text class="svg-sub" x="140" y="299" text-anchor="middle">LLM HTTP adapters</text>
+
+            <rect class="svg-box" x="265" y="258" width="200" height="54" rx="8" />
+            <text class="svg-title" x="365" y="282" text-anchor="middle">syllabus-persistence</text>
+            <text class="svg-sub" x="365" y="299" text-anchor="middle">PostgreSQL 16 &amp; stores</text>
+
+            <rect class="svg-box" x="495" y="258" width="185" height="54" rx="8" />
+            <text class="svg-title" x="587" y="282" text-anchor="middle">syllabus-test-support</text>
+            <text class="svg-sub" x="587" y="299" text-anchor="middle">contract fixtures</text>
+
+            <!-- Edges Tier 1 -> Tier 0 (y=312..366, planar K_{2,2} embedding via outer bottom lane y=440) -->
+            <path class="svg-edge pine" d="M140,312 V364" marker-end="url(#f4-pine)" />
+            <path class="svg-edge pine" d="M315,312 V338 H185 V364" marker-end="url(#f4-pine)" />
+            <path class="svg-edge pine" d="M365,312 V364" marker-end="url(#f4-pine)" />
+            <path class="svg-edge pine" d="M415,312 V338 H545 V364" marker-end="url(#f4-pine)" />
+            <path class="svg-edge" d="M587,312 V350 H415 V364" marker-end="url(#f4-arr)" />
+            <path class="svg-edge pine" d="M45,285 H28 V440 H365 V422" marker-end="url(#f4-pine)" />
+
+            <!-- Tier 0: Leaf Crates (y=366..420) -->
+            <rect class="svg-box tint-pine" x="45" y="366" width="190" height="54" rx="8" />
+            <text class="svg-title" x="140" y="390" text-anchor="middle">syllabus-domain</text>
+            <text class="svg-sub" x="140" y="407" text-anchor="middle">0 internal deps</text>
+
+            <rect class="svg-box tint-amber" x="265" y="366" width="200" height="54" rx="8" />
+            <text class="svg-title" x="365" y="390" text-anchor="middle">syllabus-contracts</text>
+            <text class="svg-sub" x="365" y="407" text-anchor="middle">0 internal deps</text>
+
+            <rect class="svg-box tint-amber" x="495" y="366" width="185" height="54" rx="8" />
+            <text class="svg-title" x="587" y="390" text-anchor="middle">syllabus-security</text>
+            <text class="svg-sub" x="587" y="407" text-anchor="middle">0 internal deps</text>
+
+            <!-- Right Panel: TypeScript pnpm Workspace (3 Packages) -->
+            <rect class="svg-panel" x="720" y="16" width="384" height="440" rx="10" />
+            <text class="svg-group-title" x="740" y="40">TypeScript Workspace (0 Cycles)</text>
+
+            <rect class="svg-box blue" x="748" y="84" width="292" height="68" rx="8" />
+            <text class="svg-title" x="894" y="112" text-anchor="middle">@syllabus/web</text>
+            <text class="svg-sub" x="894" y="131" text-anchor="middle">apps/web · 70 files · 0 SCC cycles</text>
+
+            <path class="svg-edge blue" d="M894,152 V216" marker-end="url(#f4-blue)" />
+            <text class="svg-label blue" x="904" y="188">imports UI &amp; tokens</text>
+
+            <rect class="svg-box tint-pine" x="748" y="218" width="292" height="68" rx="8" />
+            <text class="svg-title" x="894" y="246" text-anchor="middle">@syllabus/ui</text>
+            <text class="svg-sub" x="894" y="265" text-anchor="middle">packages/ui · DAG, mastery, theme</text>
+
+            <path class="svg-edge pine" d="M894,286 V350" marker-end="url(#f4-pine)" />
+            <text class="svg-label pine" x="904" y="322">concurrency headers</text>
+
+            <rect class="svg-box tint-amber" x="748" y="352" width="292" height="68" rx="8" />
+            <text class="svg-title" x="894" y="380" text-anchor="middle">@syllabus/api-client</text>
+            <text class="svg-sub" x="894" y="399" text-anchor="middle">packages/api-client · 0 internal deps</text>
+
+            <!-- Direct @syllabus/web -> @syllabus/api-client along right margin corridor x=1072 -->
+            <path class="svg-edge blue" d="M1040,118 H1072 V386 H1042" marker-end="url(#f4-blue)" />
+          </svg>
+        </div>
+        <figcaption>
+          <strong>Figure 4.</strong> Complete workspace dependency DAG derived from <code>Cargo.toml</code> and <code>package.json</code> manifests. Leaf crates (<code>syllabus-domain</code>, <code>syllabus-contracts</code>, <code>syllabus-security</code>) and <code>@syllabus/api-client</code> carry zero internal workspace dependencies.
+        </figcaption>
+      </figure>
+    </section>
+
+    <!-- SECTION 5: CANDIDATE VALIDATION & PROMOTION PIPELINE -->
+    <section class="doc-section" id="synthesis-pipeline">
+      <h2>Syllabus Synthesis, 6-Gate Validation &amp; Fail-Closed Promotion Pipeline</h2>
+      <p class="section-copy">
+        No LLM output is ever rendered directly or promoted without passing six deterministic domain and contract validators. Any failure drops onto the fail-closed rejection bus, archiving the rejected payload for audit, releasing reserved hosted credits, and leaving the learner's active syllabus revision untouched.
+      </p>
+
+      <figure class="diagram-figure">
+        <div class="diagram-frame">
+          <svg viewBox="0 0 1160 320" role="img" aria-labelledby="fig5-title fig5-desc">
+            <title id="fig5-title">Syllabus Synthesis and Fail-Closed Validation Pipeline</title>
+            <desc id="fig5-desc">Five-stage horizontal pipeline from GoalIntakeInput through BM25 Retrieval, InferenceProvider, 6-Gate Validator Suite, and RevisionPromoter, with a shared bottom failure bus routing any stage error to CandidateArchiver and credit release.</desc>
+            <defs>
+              <marker id="f5-arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-neutral" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f5-pine" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-pine" d="M0,1 L10,5 L0,9 z" /></marker>
+              <marker id="f5-red" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="marker-crimson" d="M0,1 L10,5 L0,9 z" /></marker>
+            </defs>
+
+            <!-- Stage 1 -->
+            <rect class="svg-box blue" x="24" y="52" width="192" height="86" rx="8" />
+            <text class="svg-stereo blue" x="120" y="73" text-anchor="middle">«intake»</text>
+            <text class="svg-title" x="120" y="93" text-anchor="middle">GoalIntakeInput</text>
+            <text class="svg-sub" x="120" y="111" text-anchor="middle">interpret_goal_request</text>
+            <text class="svg-sub" x="120" y="127" text-anchor="middle">horizon &amp; effort budget</text>
+
+            <path class="svg-edge" d="M216,95 H244" marker-end="url(#f5-arr)" />
+
+            <!-- Stage 2 -->
+            <rect class="svg-box blue" x="246" y="52" width="192" height="86" rx="8" />
+            <text class="svg-stereo blue" x="342" y="73" text-anchor="middle">«retrieval»</text>
+            <text class="svg-title" x="342" y="93" text-anchor="middle">BM25 &amp; Discovery</text>
+            <text class="svg-sub" x="342" y="111" text-anchor="middle">TfIdfCorpusIndex</text>
+            <text class="svg-sub" x="342" y="127" text-anchor="middle">rights-verified catalog</text>
+
+            <path class="svg-edge" d="M438,95 H466" marker-end="url(#f5-arr)" />
+
+            <!-- Stage 3 -->
+            <rect class="svg-box amber" x="468" y="52" width="196" height="86" rx="8" />
+            <text class="svg-stereo amber" x="566" y="73" text-anchor="middle">«synthesis»</text>
+            <text class="svg-title" x="566" y="93" text-anchor="middle">InferenceProvider</text>
+            <text class="svg-sub" x="566" y="111" text-anchor="middle">BYOK transient key or</text>
+            <text class="svg-sub" x="566" y="127" text-anchor="middle">UsageQuote reservation</text>
+
+            <path class="svg-edge" d="M664,95 H692" marker-end="url(#f5-arr)" />
+
+            <!-- Stage 4 -->
+            <rect class="svg-box amber" x="694" y="52" width="224" height="86" rx="8" />
+            <text class="svg-stereo amber" x="806" y="73" text-anchor="middle">«6-gate-validator»</text>
+            <text class="svg-title" x="806" y="93" text-anchor="middle">ValidationSuite</text>
+            <text class="svg-sub" x="806" y="111" text-anchor="middle">Security · JSON Schema · DAG</text>
+            <text class="svg-sub" x="806" y="127" text-anchor="middle">Catalog · Duration · Triad</text>
+
+            <path class="svg-edge pine" d="M918,95 H946" marker-end="url(#f5-pine)" />
+
+            <!-- Stage 5 -->
+            <rect class="svg-box tint-pine" x="948" y="52" width="188" height="86" rx="8" />
+            <text class="svg-stereo pine" x="1042" y="73" text-anchor="middle">«commit»</text>
+            <text class="svg-title" x="1042" y="93" text-anchor="middle">RevisionPromoter</text>
+            <text class="svg-sub" x="1042" y="111" text-anchor="middle">immutable revision</text>
+            <text class="svg-sub" x="1042" y="127" text-anchor="middle">PostgreSQL 16 commit</text>
+
+            <!-- Fail-Closed Fan-In Bus at y=194 -->
+            <path class="svg-edge crimson dashed" d="M342,138 V194" />
+            <path class="svg-edge crimson dashed" d="M566,138 V194" />
+            <path class="svg-edge crimson dashed" d="M806,138 V194" />
+            <path class="svg-edge crimson dashed" d="M342,194 H806" />
+            <path class="svg-edge crimson dashed" d="M574,194 V228" marker-end="url(#f5-red)" />
+            <text class="svg-label crimson" x="690" y="185" text-anchor="middle">any gate or provider failure</text>
+
+            <rect class="svg-box tint-crimson" x="334" y="230" width="480" height="66" rx="8" />
+            <text class="svg-stereo crimson" x="574" y="250" text-anchor="middle">«fail-closed-rollback»</text>
+            <text class="svg-title" x="574" y="269" text-anchor="middle">CandidateArchiver &amp; Credit Reservation Release</text>
+            <text class="svg-sub" x="574" y="287" text-anchor="middle">Active learner revision preserved · Typed DomainError returned</text>
+          </svg>
+        </div>
+        <ul class="legend" role="list">
+          <li><span class="swatch amber" aria-hidden="true"></span>Synthesis &amp; Deterministic Gate</li>
+          <li><span class="swatch pine" aria-hidden="true"></span>Promoted Revision Commit</li>
+          <li><span class="swatch crimson" aria-hidden="true"></span>Fail-Closed Rejection Bus</li>
+        </ul>
+        <figcaption>
+          <strong>Figure 5.</strong> Candidate validation and promotion pipeline in <code>crates/application/src/validation.rs</code>. Fan-in bus guarantees uniform credit release and candidate audit archiving across retrieval, provider, and validation failures.
+        </figcaption>
+      </figure>
+    </section>
+  </main>
+
+  <footer class="doc-footer">
+    <div class="container footer-inner">
+      <span>Syllabus.io System &amp; Class Architecture Reference</span>
+      <span>Synchronized with <code>specs/product.md</code> · Rust 1.92 &amp; TypeScript Workspace</span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var btn = document.getElementById("scheme-toggle");
+      if (!btn) return;
+      var root = document.documentElement;
+      function currentEffective() {
+        var explicit = root.getAttribute("data-scheme");
+        if (explicit === "light" || explicit === "dark") return explicit;
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      function syncLabel() {
+        var mode = currentEffective();
+        btn.textContent = mode === "dark" ? "Light" : "Dark";
+        btn.setAttribute("aria-label", "Switch to " + (mode === "dark" ? "light" : "dark") + " appearance");
+      }
+      syncLabel();
+      btn.addEventListener("click", function () {
+        var next = currentEffective() === "dark" ? "light" : "dark";
+        root.setAttribute("data-scheme", next);
+        syncLabel();
+      });
+    })();
+  </script>
+</body>
+</html>
