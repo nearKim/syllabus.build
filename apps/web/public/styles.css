@@ -519,11 +519,11 @@ section[id] {
   border-radius: inherit;
 }
 
-/* Authentication dialog. Centered emblem and headline, email + password first, primary CTA, then federated/passkey alternatives. */
+/* Authentication dialog. */
 #dialog-auth {
-  max-width: min(24.5rem, calc(100vw - 32px));
-  padding: 32px 32px 22px;
-  border-radius: 22px;
+  max-width: min(25rem, calc(100vw - 32px));
+  padding: 32px;
+  border-radius: var(--radius-surface);
   transition: opacity 200ms var(--ease-out), translate 280ms var(--ease-out), scale 280ms var(--ease-out);
 }
 
@@ -552,39 +552,26 @@ section[id] {
 
 .auth-head {
   display: grid;
-  justify-items: center;
-  text-align: center;
-}
-
-.auth-head .brand-cluster {
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.auth-head .brand-mark {
-  width: 32px;
-  height: 32px;
-  flex-basis: 32px;
-  border-radius: 9px;
-}
-
-.auth-head .brand-mark-svg {
-  width: 20px;
-  height: 20px;
-}
-
-.auth-head .brand-title {
-  font-size: 16px;
+  gap: 8px;
+  padding-inline-end: 24px;
 }
 
 .auth-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.025em;
   color: var(--color-text-primary);
   text-wrap: balance;
+}
+
+.auth-description {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
 }
 
 .auth-return {
@@ -792,59 +779,77 @@ section[id] {
   letter-spacing: -0.01em;
 }
 
-.auth-alt-block {
+.auth-provider-list {
   display: grid;
   gap: 10px;
-  margin-top: 22px;
+  margin-top: 28px;
 }
 
-.auth-alt-label {
-  margin: 0;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--color-text-secondary);
-}
-
-.auth-alt-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.auth-oauth-btn {
+.auth-provider-btn {
   position: relative;
-  display: inline-flex;
-  flex: 1 1 5.75rem;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 20px;
   align-items: center;
-  justify-content: center;
-  gap: 7px;
+  gap: 10px;
+  width: 100%;
   min-width: 0;
-  min-height: var(--layout-touch-target-min);
-  padding: 0 10px;
-  border: 1px solid var(--color-border-subtle);
+  min-height: 52px;
+  padding: 0 16px;
+  border: 1px solid var(--color-border-control);
   border-radius: var(--radius-control);
   background: var(--color-surface);
   color: var(--color-text-primary);
-  font-size: 13.5px;
+  font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
   text-decoration: none;
-  white-space: nowrap;
   cursor: pointer;
-  transition: background-color 160ms ease, border-color 160ms ease, transform 120ms var(--ease-out);
+  transition: background-color 160ms ease;
 }
 
-.auth-oauth-btn:active {
-  transform: scale(0.98);
+.auth-provider-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.auth-provider-btn span {
+  text-align: center;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .auth-oauth-btn:hover {
-    border-color: var(--color-border-control);
-    background: color-mix(in srgb, var(--color-surface) 95%, var(--color-text-primary));
+  .auth-provider-btn:hover {
+    background: color-mix(in srgb, var(--color-surface) 94%, var(--color-text-primary));
     text-decoration: none;
+  }
+}
+
+.auth-passkey-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--layout-touch-target-min);
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.auth-passkey-action svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-passkey-action:hover {
+    color: var(--color-text-primary);
+    text-decoration: underline;
+    text-underline-offset: 3px;
   }
 }
 
@@ -951,7 +956,7 @@ section[id] {
   }
 
   #dialog-auth {
-    padding: 28px 24px 16px;
+    padding: 28px 24px;
   }
 
   .auth-close-btn {

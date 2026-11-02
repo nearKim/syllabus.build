@@ -1,6 +1,5 @@
 import type { VNode } from "preact";
 import type { LearnSubDestination, TopLevelDestination } from "../navigationShell.ts";
-import { BrandLockup } from "./HeaderBar.tsx";
 import { usernameOf, type Account, type AuthStatus } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 
@@ -83,8 +82,8 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
     >
       <div class="dialog-surface auth-surface">
         <div class="auth-head">
-          <BrandLockup />
-          <h2 id="dialog-auth-title" class="auth-title">Sign in</h2>
+          <h2 id="dialog-auth-title" class="auth-title">Continue to Syllabus.build</h2>
+          <p class="auth-description">Sign in or create an account to save your syllabi and progress.</p>
           {returnTo ? (
             <p class="auth-return" role="status">
               After you sign in, you return to <strong>{returnTo.label}</strong>. Nothing is voted, published, adopted, or bought on your behalf.
@@ -94,23 +93,20 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
 
         {authNotice ? <p class="field-error" role="alert">{authNotice}</p> : null}
 
-        <div class="auth-alt-block">
-          <p class="auth-alt-label">Continue with</p>
-          <div class="auth-alt-grid">
-            <a href="/auth/oauth/google" class="auth-oauth-btn" data-oauth-provider="google">
-              <GoogleMark />
-              <span>Google</span>
-            </a>
-            <a href="/auth/oauth/github" class="auth-oauth-btn" data-oauth-provider="github">
-              <GitHubMark />
-              <span>GitHub</span>
-            </a>
-            <button type="button" class="auth-oauth-btn auth-passkey-btn" data-action="sign-in-passkey">
-              <PasskeyIcon />
-              <span>Passkey</span>
-            </button>
-          </div>
+        <div class="auth-provider-list">
+          <a href="/auth/oauth/google" class="auth-provider-btn" data-oauth-provider="google">
+            <GoogleMark />
+            <span>Continue with Google</span>
+          </a>
+          <a href="/auth/oauth/github" class="auth-provider-btn" data-oauth-provider="github">
+            <GitHubMark />
+            <span>Continue with GitHub</span>
+          </a>
         </div>
+        <button type="button" class="auth-passkey-action" data-action="sign-in-passkey">
+          <PasskeyIcon />
+          <span>Use a passkey</span>
+        </button>
 
         <button type="button" class="auth-close-btn" data-action="close-dialog" aria-label="Close">
           <SfIcon name="close" />
