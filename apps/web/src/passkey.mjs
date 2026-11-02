@@ -6,7 +6,7 @@ import {
   verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 
-const RP_NAME = "Syllabus.io";
+const RP_NAME = "Syllabus.build";
 const CEREMONY_TTL_MS = 5 * 60 * 1000;
 
 // Well-known AAGUIDs used strictly for UX labels in Profile & Settings (never for security or access decisions).

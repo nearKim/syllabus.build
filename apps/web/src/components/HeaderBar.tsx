@@ -83,12 +83,12 @@ export function BrandMark({ className = "brand-mark" }: { readonly className?: s
   );
 }
 
-// The Syllabus.io mark and wordmark.
+// The Syllabus.build mark and wordmark.
 export function BrandLockup(): VNode {
   return (
     <div class="brand-cluster">
       <BrandMark />
-      <span class="brand-title">Syllabus.io</span>
+      <span class="brand-title">Syllabus.build</span>
     </div>
   );
 }

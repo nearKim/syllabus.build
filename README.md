@@ -1,6 +1,6 @@
-# Syllabus.io
+# Syllabus.build
 
-**Syllabus.io** is an adaptive self-study syllabus builder, DAG planner, and open learning-resource workspace built with a Rust transactional API + outbox worker (`syllabus-api`, `syllabus-worker`), PostgreSQL 16, and an SSR + signal-hydrated Preact/TypeScript web application (`@syllabus/web`).
+**Syllabus.build** is an adaptive self-study syllabus builder, DAG planner, and open learning-resource workspace built with a Rust transactional API + outbox worker (`syllabus-api`, `syllabus-worker`), PostgreSQL 16, and an SSR + signal-hydrated Preact/TypeScript web application (`@syllabus/web`).
 
 ---
 

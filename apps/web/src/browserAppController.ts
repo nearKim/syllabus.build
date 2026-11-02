@@ -1039,10 +1039,10 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       const lines: string[] = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
-        "PRODID:-//Syllabus.io//Study Schedule//EN",
+        "PRODID:-//Syllabus.build//Study Schedule//EN",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        "X-WR-CALNAME:Syllabus.io Study Schedule",
+        "X-WR-CALNAME:Syllabus.build Study Schedule",
         `X-WR-TIMEZONE:${escIcs(reminderTimezone)}`,
       ];
       for (const plan of currentPlans()) {
@@ -1079,7 +1079,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
               ? `Syllabus: ${planTitle}\nActivities:\n- ${actTitles.join("\n- ")}`
               : `Syllabus: ${planTitle}`;
           lines.push("BEGIN:VEVENT");
-          lines.push(`UID:${escIcs(`${plan.syllabusId}-${sessId}@syllabus.io`)}`);
+          lines.push(`UID:${escIcs(`${plan.syllabusId}-${sessId}@syllabus.build`)}`);
           lines.push(`DTSTAMP:${nowStamp}`);
           lines.push(`DTSTART:${fmtUtc(startDt)}`);
           lines.push(`DTEND:${fmtUtc(endDt)}`);

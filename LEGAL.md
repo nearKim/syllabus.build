@@ -13,7 +13,7 @@ The application source code in this repository is **OSI-approved open-source sof
 When users configure their own third-party AI provider API keys (such as OpenAI, Anthropic, or Google Gemini):
 
 1. **Direct Account Holder Responsibility:** You act directly as the customer and API account holder with your chosen AI provider. Your use of that provider's models is governed by the provider's own Terms of Service, Usage Policies, and API Data Privacy terms.
-2. **Direct Provider Billing & Rate Limits:** All token consumption, model inference costs, and rate limits incurred through your BYOK credentials are metered and billed directly by your external AI provider to your provider account. Syllabus.io does not mark up, intermediary-bill, or insure third-party BYOK usage.
+2. **Direct Provider Billing & Rate Limits:** All token consumption, model inference costs, and rate limits incurred through your BYOK credentials are metered and billed directly by your external AI provider to your provider account. Syllabus.build does not mark up, intermediary-bill, or insure third-party BYOK usage.
 3. **Encrypted Custody & Key Deletion:**
    - When server-custody mode is used to execute background syllabus synthesis and diagnostic jobs, API keys are transmitted over TLS and sealed at rest using per-credential authenticated envelope encryption (`AES-256-GCM`) bound to your account context.
    - Raw API keys are never written to browser `localStorage`, `sessionStorage`, `IndexedDB`, URLs, or application logs.

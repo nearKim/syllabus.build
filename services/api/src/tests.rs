@@ -2641,7 +2641,7 @@ async fn oauth_pkce_and_email_signup_login_http_endpoints() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.io",
+                        "email": "maya@syllabus.build",
                         "password": "MayaPassword2026!",
                         "display_name": "Maya Lin"
                     }))
@@ -2667,7 +2667,7 @@ async fn oauth_pkce_and_email_signup_login_http_endpoints() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.io",
+                        "email": "maya@syllabus.build",
                         "password": "WrongPassword!"
                     }))
                     .unwrap(),
@@ -2687,7 +2687,7 @@ async fn oauth_pkce_and_email_signup_login_http_endpoints() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.io",
+                        "email": "maya@syllabus.build",
                         "password": "MayaPassword2026!"
                     }))
                     .unwrap(),
@@ -2730,7 +2730,7 @@ async fn oauth_pkce_and_email_signup_login_http_endpoints() {
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "provider_subject": "google-uid-777",
-                        "email": "maya@syllabus.io",
+                        "email": "maya@syllabus.build",
                         "email_verified": true,
                         "display_name": "Maya Lin",
                         "code_verifier": verifier,

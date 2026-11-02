@@ -243,7 +243,7 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
 
     const signup = await postUi(ownerJar, {
       action: "submit-sign-up",
-      email: "maya@syllabus.so",
+      email: "maya@syllabus.build",
       password: "MayaPasskeyPassword!",
     });
     assert.equal(signup.state.authStatus, "authenticated");
@@ -363,7 +363,7 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
     assert.equal(loginVerified.verified, true);
     assert.equal(loginVerified.state.authStatus, "authenticated");
     assert.equal(loginVerified.state.account.accountId, mayaAccountId);
-    assert.equal(loginVerified.state.account.email, "maya@syllabus.so");
+    assert.equal(loginVerified.state.account.email, "maya@syllabus.build");
     assert.equal(loginVerified.state.account.username, "maya");
     assert.equal(loginVerified.state.passkeys.length, 1);
     assert.ok(loginVerified.state.passkeys[0].lastUsedAt > 0);

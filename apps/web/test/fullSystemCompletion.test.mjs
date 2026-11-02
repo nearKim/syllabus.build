@@ -119,7 +119,7 @@ test("Live BYOK AI concept checks, hints, worked solutions, interactive diagnost
     // 1. Sign up learner & configure BYOK OpenAI key
     const signup = await postUi({
       action: "submit-sign-up",
-      email: "tutor-learner@syllabus.so",
+      email: "tutor-learner@syllabus.build",
       password: "TutorPassword123!",
     });
     assert.equal(signup.state.authStatus, "authenticated");
@@ -280,7 +280,7 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
     // 1. Sign up -> request email verification -> read dev outbox -> verify via code & GET link
     await postUi({
       action: "submit-sign-up",
-      email: "recovery-user@syllabus.so",
+      email: "recovery-user@syllabus.build",
       password: "OriginalPassword123!",
     });
 
@@ -291,7 +291,7 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
     assert.equal(outboxRes1.status, 200);
     const outbox1 = await outboxRes1.json();
     const verifyMsg = outbox1.messages.find(
-      (m) => m.kind === "email_verification" && m.email === "recovery-user@syllabus.so",
+      (m) => m.kind === "email_verification" && m.email === "recovery-user@syllabus.build",
     );
     assert.ok(verifyMsg?.code);
 
@@ -370,17 +370,17 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
 
     await postUi({
       action: "request-password-reset",
-      email: "recovery-user@syllabus.so",
+      email: "recovery-user@syllabus.build",
     });
     const outbox3 = await (await fetch(`${baseUrl}/auth/dev-outbox`)).json();
     const resetMsg = outbox3.messages
-      .filter((m) => m.kind === "password_reset" && m.email === "recovery-user@syllabus.so")
+      .filter((m) => m.kind === "password_reset" && m.email === "recovery-user@syllabus.build")
       .at(-1);
     assert.ok(resetMsg?.code);
 
     const resetDone = await postUi({
       action: "confirm-password-reset",
-      email: "recovery-user@syllabus.so",
+      email: "recovery-user@syllabus.build",
       code: resetMsg.code,
       password: "RotatedPassword999!",
     });
@@ -458,7 +458,7 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
   }
 
   const sharedMasterKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-  const uniqueEmail = `e2e-stateless-${Date.now()}@syllabus.so`;
+  const uniqueEmail = `e2e-stateless-${Date.now()}@syllabus.build`;
   const pgNamespace = `e2e-web-${Date.now()}`;
 
   const spawnApi = async () => {

@@ -35,7 +35,7 @@ test("AuthDialog toggles between Log in and Sign up modes with Email + Password 
   app.openDialog("dialog-auth", "login");
   let html = authDialogOf(app.renderHtml());
   // Centered brand lockup and headline. No header bar, horizontal divider, or Name field.
-  assert.match(html, /<div class="auth-head"><div class="brand-cluster">[\s\S]*?<span class="brand-title">Syllabus\.io<\/span><\/div><h2 id="dialog-auth-title" class="auth-title">Sign in with email<\/h2><\/div>/);
+  assert.match(html, /<div class="auth-head"><div class="brand-cluster">[\s\S]*?<span class="brand-title">Syllabus\.build<\/span><\/div><h2 id="dialog-auth-title" class="auth-title">Sign in with email<\/h2><\/div>/);
   assert.equal(/<hr|dialog-header|auth-divider|auth-name-input/.test(html), false);
   assert.ok(html.includes('data-action="submit-sign-in" novalidate'), "the product's own messages replace browser bubbles");
   assert.ok(html.includes('autocomplete="current-password"'));
@@ -101,7 +101,7 @@ test("Local Dev OAuth 2.0 + PKCE S256 sandbox completes full redirect, consent, 
     assert.ok(consentHtml.includes("Continue with Google"));
     // An account chooser: each dev persona is one row that posts the flow fields, plus another account and Cancel.
     assert.ok(consentHtml.includes('<html lang="en" data-theme="light">'));
-    for (const persona of ["alex@syllabus.io", "ada@syllabus.io", "mo@syllabus.io"]) {
+    for (const persona of ["alex@syllabus.build", "ada@syllabus.build", "mo@syllabus.build"]) {
       assert.ok(consentHtml.includes(`name="email" value="${persona}"`), `${persona} has no row`);
     }
     assert.equal(consentHtml.match(/action="\/auth\/dev-idp\/google\/authorize"/g)?.length, 4);

@@ -235,7 +235,7 @@ export async function exchangeLiveOAuthCode(options) {
   const ghHeaders = {
     Authorization: `Bearer ${tokenJson.access_token}`,
     Accept: "application/vnd.github+json",
-    "User-Agent": "Syllabus.io-OAuth",
+    "User-Agent": "Syllabus.build-OAuth",
   };
   const userRes = await fetchFn("https://api.github.com/user", { headers: ghHeaders });
   if (!userRes.ok) {
@@ -362,7 +362,7 @@ export function renderDevOAuthConsentHtml(params) {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="${theme}" />
-  <title>Continue with ${label} · Syllabus.io</title>
+  <title>Continue with ${label} · Syllabus.build</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   <link rel="stylesheet" href="/styles.css" />
@@ -372,7 +372,7 @@ export function renderDevOAuthConsentHtml(params) {
     <section class="dev-oauth-card" aria-labelledby="dev-oauth-title">
       <span class="dev-oauth-provider-mark" aria-hidden="true">${providerMark}</span>
       <h1 id="dev-oauth-title" class="dev-oauth-title">Continue with ${label}</h1>
-      <p class="dev-oauth-lede">Choose an account for <strong>Syllabus.io</strong>.</p>
+      <p class="dev-oauth-lede">Choose an account for <strong>Syllabus.build</strong>.</p>
 
       <ul class="dev-oauth-accounts">${personaRows}
         <li>

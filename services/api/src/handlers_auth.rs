@@ -431,7 +431,7 @@ pub(crate) async fn request_password_reset_handler(
             "password_reset_email",
             json!({
                 "email": issued.email,
-                "subject": "Syllabus.io Password Recovery Code",
+                "subject": "Syllabus.build Password Recovery Code",
                 "expires_at_ms": issued.expires_at_ms,
                 "recovery_code": issued.token,
             }),
@@ -497,7 +497,7 @@ pub(crate) async fn request_email_verification_handler(
         "email_verification",
         json!({
             "email": issued.email,
-            "subject": "Verify your Syllabus.io email address",
+            "subject": "Verify your Syllabus.build email address",
             "expires_at_ms": issued.expires_at_ms,
             "verification_code": issued.token,
         }),

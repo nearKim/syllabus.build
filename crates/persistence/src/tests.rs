@@ -955,7 +955,7 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
         .expect("open replica_b against PostgreSQL");
 
     let (acct, _sess) = replica_a
-        .register_email_account("replica-maya@syllabus.so", "InitialPass123!", Some("Maya"))
+        .register_email_account("replica-maya@syllabus.build", "InitialPass123!", Some("Maya"))
         .expect("register account on replica_a");
     let principal = AuthenticatedPrincipal {
         account_id: acct.account_id.clone(),
@@ -1015,12 +1015,12 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     assert!(verified_acct.email_verified);
 
     let reset_issued = replica_b
-        .issue_password_reset_token("replica-maya@syllabus.so", 1_776_000_000_400, 900_000)
+        .issue_password_reset_token("replica-maya@syllabus.build", 1_776_000_000_400, 900_000)
         .expect("issue password reset on replica_b")
         .expect("account exists");
     let (_reset_acct, _reset_sess) = replica_a
         .confirm_password_reset_token(
-            "replica-maya@syllabus.so",
+            "replica-maya@syllabus.build",
             &reset_issued.token,
             "RotatedReplicaPass456!",
             1_776_000_000_500,
@@ -1028,7 +1028,7 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
         .expect("confirm password reset on replica_a");
 
     let (_relogin_acct, _) = replica_b
-        .login_email_account("replica-maya@syllabus.so", "RotatedReplicaPass456!")
+        .login_email_account("replica-maya@syllabus.build", "RotatedReplicaPass456!")
         .expect("login with reset password on replica_b");
 
     // 3. Verify normalized row-level SQL tables & worker_dispatch_receipts directly in PostgreSQL
@@ -1038,7 +1038,7 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
         &email_job_id,
         &acct.account_id,
         "email_verification",
-        &json!({ "email": "replica-maya@syllabus.so", "code": "654321" }),
+        &json!({ "email": "replica-maya@syllabus.build", "code": "654321" }),
     )
     .await
     .expect("enqueue email_verification job");

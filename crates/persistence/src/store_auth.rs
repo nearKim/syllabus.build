@@ -166,8 +166,8 @@ impl InMemoryTransactionalStore {
 
     fn default_roles_for_email(email: &str) -> Vec<PrincipalRole> {
         match email {
-            "ada@syllabus.io" | "curator@example.test" => vec![PrincipalRole::Curator],
-            "mo@syllabus.io" | "moderator@example.test" => vec![PrincipalRole::Moderator],
+            "ada@syllabus.build" | "curator@example.test" => vec![PrincipalRole::Curator],
+            "mo@syllabus.build" | "moderator@example.test" => vec![PrincipalRole::Moderator],
             "operator@example.test" => vec![PrincipalRole::Operator],
             _ => vec![PrincipalRole::Learner],
         }

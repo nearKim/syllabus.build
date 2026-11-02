@@ -1221,7 +1221,7 @@ test("My Publications thanks the author, states its totals in one sentence, and 
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
   // A learner with no publication sees an invitation instead of an empty summary.
-  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@syllabus.io", role: "Learner" } }));
+  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "Learner" } }));
   assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another syllabus") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
   assert.ok(newcomer.includes('<div class="publish-invite"><div><h3>'));
   assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first syllabus$/);
@@ -1236,7 +1236,7 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.ok(
     header().includes('class="navbar-theme-toggle"') &&
       header().includes('<span class="navbar-dropdown-name">@alex</span>') &&
-      header().includes('<span class="account-email">alex@syllabus.io</span>') &&
+      header().includes('<span class="account-email">alex@syllabus.build</span>') &&
       header().includes('data-destination="Settings"') &&
       header().includes('data-action="sign-out"') &&
       !header().includes("Switch account"),
@@ -1293,7 +1293,7 @@ test("the header shows the navbar avatar menu, signing out purges private state,
 
   submit("update-profile", {
     "#profile-handle-input": { value: "alex.chen" },
-    "#profile-email-input": { value: "alex@syllabus.io" },
+    "#profile-email-input": { value: "alex@syllabus.build" },
   });
   assert.ok(header().includes('<span class="navbar-dropdown-name">@alex.chen</span>'));
   assert.equal(header().includes('class="navbar-user-name"'), false);
@@ -1323,7 +1323,7 @@ test("the header shows the navbar avatar menu, signing out purges private state,
   assert.equal(app.getState().authStatus, "guest");
 
   // Signing in restores the place and its dialog, never the action.
-  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Syllabus.io" } });
+  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Syllabus.build" } });
   const back = app.getState();
   assert.deepEqual([back.authStatus, back.topLevel, back.openDialogId, back.adoptPublicationId, back.adoptions.length, back.votes.length],
     ["authenticated", "Explore", "dialog-partial-adoption", "publication-statmech-001", 0, 0]);
@@ -1354,7 +1354,7 @@ test("an expired session keeps the view for the same account and starts clean fo
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
   click({ action: "simulate-session-expired" });
   click({ action: "switch-persona", persona: "curator" });
-  assert.ok(root.innerHTML.includes('<span class="account-email">ada@syllabus.io</span>'));
+  assert.ok(root.innerHTML.includes('<span class="account-email">ada@syllabus.build</span>'));
   assert.ok(root.innerHTML.includes('<span class="navbar-dropdown-name">@ada</span>'));
   assert.equal(root.innerHTML.includes('class="navbar-user-name"'), false);
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'));
@@ -1492,7 +1492,7 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(signedOut.html.includes('id="panel-learn"'), false);
     const learn = await post({ action: "navigate-top", destination: "Learn" });
     assert.deepEqual([learn.state.openDialogId, learn.state.returnTo.label], ["dialog-auth", "Learn › Plan"]);
-    const signedIn = await post({ action: "submit-sign-in", email: "alex@syllabus.io" });
+    const signedIn = await post({ action: "submit-sign-in", email: "alex@syllabus.build" });
     assert.deepEqual([signedIn.state.authStatus, signedIn.state.topLevel], ["authenticated", "Learn"]);
     assert.ok(clientJs.includes('root.querySelector(\'.syllabus-app-shell[data-auth-status="authenticated"]\')'));
     assert.ok(clientJs.includes("new FormData(form).forEach"));
@@ -1527,13 +1527,13 @@ test("the navbar shows Learn and Explore, and Admin opens only at its protected 
       await new Promise((resolve) => server.close(resolve));
     }
   };
-  const curator = { account: { accountId: "curator-ada", email: "ada@syllabus.io", displayName: "Ada Lovelace", role: "Curator" } };
+  const curator = { account: { accountId: "curator-ada", email: "ada@syllabus.build", displayName: "Ada Lovelace", role: "Curator" } };
   const admin = await fetchWith(curator, "/admin");
   assert.equal(admin.status, 200);
   assert.ok(admin.html.includes('data-admin-authorized="true"'));
   assert.equal((await fetchWith(curator, "/?topLevel=Admin")).status, 200);
   assert.equal((await fetchWith({}, "/admin")).status, 403, "the default learner is not an admin");
-  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@syllabus.io", role: "Learner" } };
+  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@syllabus.build", role: "Learner" } };
   const denied = await fetchWith(learner, "/admin");
   assert.equal(denied.status, 403);
   assert.ok(denied.html.includes("403 Unauthorized Role"));
@@ -2094,7 +2094,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   // 2. Admin is a role. The default learner gets the 403 boundary, and the curator persona opens the console.
   click({ action: "open-admin-resources" });
   assert.ok(root.innerHTML.includes("403 Unauthorized Role"));
-  app.applyUiAction("submit-sign-in", { email: "ada@syllabus.io" });
+  app.applyUiAction("submit-sign-in", { email: "ada@syllabus.build" });
   click({ action: "open-admin-resources" });
   assert.equal(app.getState().adminConsoleOpen, true);
   const adminPanel = root.innerHTML.slice(
@@ -2157,7 +2157,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   );
 
   // 6. Non-admin learner accounts receive a 403 role boundary if they view Admin
-  app.applyUiAction("submit-sign-in", { email: "sam@syllabus.io" });
+  app.applyUiAction("submit-sign-in", { email: "sam@syllabus.build" });
   app.applyUiAction("open-admin-resources");
   const unauthorizedAdminPanel = root.innerHTML.slice(
     root.innerHTML.indexOf('id="panel-admin-resources"'),

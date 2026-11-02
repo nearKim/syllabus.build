@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://syllabus.io/catalog/schema/resource.schema.json",
+  "$id": "https://syllabus.build/catalog/schema/resource.schema.json",
   "title": "Syllabus Open Catalog Resource",
   "description": "A human-editable, Git-tracked learning resource entry (book, course, lecture video, code lab, or problem set) indexed by Syllabus.",
   "type": "object",

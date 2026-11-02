@@ -102,7 +102,7 @@ function getWebAuthnPolyfillJs() {
 
 function buildBrowserHydrationClientJs() {
   const fallbackScript = getDialogLightDismissFallbackScript();
-  return `// Syllabus.io Interactive Browser Hydration Controller
+  return `// Syllabus.build Interactive Browser Hydration Controller
 import "/vendor/webauthn-polyfills.js";
 ${fallbackScript}
 
@@ -1316,8 +1316,8 @@ function readRequestBody(req) {
 }
 
 function defaultRoleForEmail(email) {
-  if (email === "ada@syllabus.io" || email === "curator@example.test") return "Curator";
-  if (email === "mo@syllabus.io" || email === "moderator@example.test") return "Moderator";
+  if (email === "ada@syllabus.build" || email === "curator@example.test") return "Curator";
+  if (email === "mo@syllabus.build" || email === "moderator@example.test") return "Moderator";
   return "Learner";
 }
 
@@ -1667,7 +1667,7 @@ export function createWebAppServer(options = {}) {
     }
     const persona = Object.values(PERSONAS).find((p) => p.accountId === storedCred.passkeyUserId || p.email === storedCred.email);
     if (persona) return persona;
-    const email = (storedCred.email || "learner@syllabus.io").trim().toLowerCase();
+    const email = (storedCred.email || "learner@syllabus.build").trim().toLowerCase();
     return {
       accountId: storedCred.passkeyUserId,
       email,
@@ -1940,9 +1940,9 @@ export function createWebAppServer(options = {}) {
         store.data.accountWorkspaces[wsKey] = nextWs;
         workspaceChanged = true;
       }
-      // Mirror unauthenticated default-persona demo progress to `learner-default` unless `alex@syllabus.io` is a password-protected account,
-      // so signing out of demo mode and signing back in as alex@syllabus.io restores pre-signout work while keeping forged cookies isolated.
-      if (!explicitAuth && account.accountId === "learner-default" && !store.data.accounts["alex@syllabus.io"]?.passwordHash) {
+      // Mirror unauthenticated default-persona demo progress to `learner-default` unless `alex@syllabus.build` is a password-protected account,
+      // so signing out of demo mode and signing back in as alex@syllabus.build restores pre-signout work while keeping forged cookies isolated.
+      if (!explicitAuth && account.accountId === "learner-default" && !store.data.accounts["alex@syllabus.build"]?.passwordHash) {
         const prevDemoWs = store.data.accountWorkspaces["learner-default"];
         if (JSON.stringify(nextWs) !== JSON.stringify(prevDemoWs)) {
           store.data.accountWorkspaces["learner-default"] = nextWs;
@@ -2089,7 +2089,7 @@ export function createWebAppServer(options = {}) {
         success_url: `${reqOrigin}/?topLevel=Settings&billing=success`,
         cancel_url: `${reqOrigin}/?topLevel=Settings&billing=canceled`,
         "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": "Syllabus.io Hosted AI Credits",
+        "line_items[0][price_data][product_data][name]": "Syllabus.build Hosted AI Credits",
         "line_items[0][price_data][unit_amount]": String(amountMinor),
         "line_items[0][quantity]": "1",
         client_reference_id: prevState.account.accountId,
@@ -2601,10 +2601,10 @@ export function createWebAppServer(options = {}) {
           pkSessRes.ok && pkSessRes.data?.account_id
             ? {
                 accountId: pkSessRes.data.account_id,
-                email: pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.io",
+                email: pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build",
                 username:
                   pkSessRes.data.display_name ||
-                  defaultUsernameOfEmail(pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.io"),
+                  defaultUsernameOfEmail(pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build"),
                 ...(pkSessRes.data.avatar_url ? { avatarUrl: pkSessRes.data.avatar_url } : {}),
                 role: defaultRoleForEmail(pkSessRes.data.email || result.storedCredential.email || ""),
               }
@@ -3808,7 +3808,7 @@ if (isMainModule) {
   const bindHost = host === "localhost" ? "127.0.0.1" : host;
   server.listen(port, bindHost, () => {
     console.log(
-      `Syllabus.io Interactive Web App listening at http://${host}:${port}`
+      `Syllabus.build Interactive Web App listening at http://${host}:${port}`
     );
   });
   if (host === "localhost") {

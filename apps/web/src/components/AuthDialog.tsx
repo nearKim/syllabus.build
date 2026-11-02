@@ -9,9 +9,9 @@ export const AUTH_MODES = ["login", "signup", "reset", "reset_confirm"] as const
 export type AuthMode = (typeof AUTH_MODES)[number];
 
 export const PERSONAS = {
-  learner: { accountId: "learner-default", email: "alex@syllabus.io", username: "alex", role: "Learner" },
-  curator: { accountId: "curator-ada", email: "ada@syllabus.io", username: "ada", role: "Curator" },
-  moderator: { accountId: "moderator-mo", email: "mo@syllabus.io", username: "mo", role: "Moderator" },
+  learner: { accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "Learner" },
+  curator: { accountId: "curator-ada", email: "ada@syllabus.build", username: "ada", role: "Curator" },
+  moderator: { accountId: "moderator-mo", email: "mo@syllabus.build", username: "mo", role: "Moderator" },
 } as const satisfies Readonly<Record<string, Account>>;
 
 export const PERSONA_CHOICES = ["learner", "curator", "moderator", "guest"] as const;

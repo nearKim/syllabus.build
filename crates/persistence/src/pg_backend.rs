@@ -960,10 +960,10 @@ async fn dispatch_claimed_outbox_job(
                     .get("subject")
                     .and_then(Value::as_str)
                     .unwrap_or(match job_type {
-                        "study_reminder" => "Syllabus.io Study Session Reminder",
-                        "password_reset_email" => "Syllabus.io Password Recovery Code",
-                        "email_verification" => "Verify your Syllabus.io email address",
-                        _ => "Syllabus.io Notification",
+                        "study_reminder" => "Syllabus.build Study Session Reminder",
+                        "password_reset_email" => "Syllabus.build Password Recovery Code",
+                        "email_verification" => "Verify your Syllabus.build email address",
+                        _ => "Syllabus.build Notification",
                     });
             let webhook_url = std::env::var("EMAIL_WEBHOOK_URL")
                 .ok()
