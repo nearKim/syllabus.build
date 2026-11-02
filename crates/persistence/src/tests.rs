@@ -4,7 +4,8 @@ use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 
 #[test]
 fn baseline_and_t01_migrations_are_embedded_and_valid() {
-    assert_eq!(MIGRATIONS.len(), 11);
+    assert_eq!(MIGRATIONS.len(), 12);
+    assert!(USER_ADMIN_ROLES_MIGRATION_SQL.contains("accounts_roles_only"));
     assert!(WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL
         .contains("CREATE TABLE IF NOT EXISTS web_account_workspaces"));
     assert!(WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL
@@ -1264,6 +1265,15 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     });
 
     let scoped_acct = format!("{namespace}:{}", acct.account_id);
+    let account_roles: Vec<String> = pg_client
+        .query_one(
+            "SELECT roles FROM accounts WHERE account_id = $1",
+            &[&scoped_acct],
+        )
+        .await
+        .expect("query normalized account roles")
+        .get(0);
+    assert_eq!(account_roles, vec!["user"]);
     let ws_row = pg_client
         .query_opt(
             "SELECT revision FROM web_account_workspaces WHERE account_id = $1",

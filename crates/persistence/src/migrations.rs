@@ -25,6 +25,8 @@ pub const RUNTIME_STORE_AND_OPEN_CATALOG_MIGRATION_SQL: &str =
     include_str!("../migrations/0009_runtime_store_and_open_catalog.sql");
 pub const WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL: &str =
     include_str!("../migrations/0010_web_workspaces_and_worker_dispatch.sql");
+pub const USER_ADMIN_ROLES_MIGRATION_SQL: &str =
+    include_str!("../migrations/0011_user_admin_roles.sql");
 
 /// Embedded PostgreSQL migration descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,7 +37,7 @@ pub struct SqlMigration {
 }
 
 /// Ordered registry of embedded PostgreSQL migrations (`T00`–`T14`).
-pub const MIGRATIONS: [SqlMigration; 11] = [
+pub const MIGRATIONS: [SqlMigration; 12] = [
     SqlMigration {
         version: 0,
         name: "0000_t00_baseline.sql",
@@ -90,6 +92,11 @@ pub const MIGRATIONS: [SqlMigration; 11] = [
         version: 10,
         name: "0010_web_workspaces_and_worker_dispatch.sql",
         sql: WEB_WORKSPACES_AND_WORKER_DISPATCH_MIGRATION_SQL,
+    },
+    SqlMigration {
+        version: 11,
+        name: "0011_user_admin_roles.sql",
+        sql: USER_ADMIN_ROLES_MIGRATION_SQL,
     },
 ];
 

@@ -13,7 +13,7 @@ use syllabus_providers::{DeterministicFakeProvider, InferenceProvider};
 
 const DEFAULT_WORKER_ID: &str = "worker-main";
 const INITIAL_TICK_NOW_MS: u64 = 1_000;
-const EXPECTED_MIGRATION_COUNT: usize = 11;
+const EXPECTED_MIGRATION_COUNT: usize = 12;
 const DEFAULT_MAX_DEAD_TUPLE_RATIO: f64 = 0.20;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 2_000;
 

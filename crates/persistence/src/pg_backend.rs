@@ -19,7 +19,7 @@ use syllabus_domain::{
     validate_outbound_egress_url, AssistanceLevel, LedgerEntry, MathDepthPreference,
     SpacedReviewRecord,
 };
-use syllabus_security::{CredentialVault, OAuthProvider, SealedCredentialEnvelope};
+use syllabus_security::{CredentialVault, OAuthProvider, PrincipalRole, SealedCredentialEnvelope};
 use tokio_postgres::NoTls;
 
 use crate::store::{credential_map_key, StoreInner};
@@ -358,7 +358,7 @@ enum PgCommand {
     },
     Save {
         snapshot_json: String,
-        accounts: Vec<(String, String, bool)>,
+        accounts: Vec<(String, String, bool, Vec<String>)>,
         workspaces: Vec<(String, String, String, i64)>,
         passkeys: Vec<(String, String, String, String)>,
         recovery_tokens: Vec<(String, String, String, String, i64, Option<i64>)>,
@@ -506,7 +506,7 @@ impl PgBackendHandle {
                                     .await
                                     .map_err(|e| format!("upsert runtime_store_snapshots failed: {e}"))?;
 
-                                    for (account_id, email, email_verified) in &accounts {
+                                    for (account_id, email, email_verified, roles) in &accounts {
                                         let scoped_acct = scope_row_key(&ns_for_thread, account_id);
                                         if !(3..=128).contains(&scoped_acct.len()) || email.trim().is_empty() {
                                             continue;
@@ -517,16 +517,17 @@ impl PgBackendHandle {
                                             format!("{ns_for_thread}+{email}")
                                         };
                                         txn.execute(
-                                            "INSERT INTO accounts (account_id, email, email_verified) \
-                                             SELECT $1, $2, $3 \
+                                            "INSERT INTO accounts (account_id, email, email_verified, roles) \
+                                             SELECT $1, $2, $3, $4 \
                                              WHERE NOT EXISTS ( \
                                                  SELECT 1 FROM accounts existing \
                                                  WHERE existing.email = $2 AND existing.account_id <> $1 \
                                              ) \
                                              ON CONFLICT (account_id) DO UPDATE SET \
                                                  email = EXCLUDED.email, \
-                                                 email_verified = EXCLUDED.email_verified",
-                                            &[&scoped_acct, &scoped_email, email_verified],
+                                                 email_verified = EXCLUDED.email_verified, \
+                                                 roles = EXCLUDED.roles",
+                                            &[&scoped_acct, &scoped_email, email_verified, roles],
                                         )
                                         .await
                                         .map_err(|e| format!("upsert accounts `{scoped_acct}` failed: {e}"))?;
@@ -777,11 +778,26 @@ impl PgBackendHandle {
         let snapshot = PersistedStoreSnapshot::from_store_inner(inner);
         let snapshot_json = serde_json::to_string(&snapshot)
             .map_err(|e| PersistenceError::Validation(format!("serialize snapshot failed: {e}")))?;
-        let accounts: Vec<(String, String, bool)> = inner
+        let accounts: Vec<(String, String, bool, Vec<String>)> = inner
             .accounts
             .values()
             .filter(|a| a.deleted_at_ms.is_none())
-            .map(|a| (a.account_id.clone(), a.email.clone(), a.email_verified))
+            .map(|a| {
+                let roles = a
+                    .roles
+                    .iter()
+                    .map(|role| match role {
+                        PrincipalRole::User => "user".to_string(),
+                        PrincipalRole::Admin => "admin".to_string(),
+                    })
+                    .collect();
+                (
+                    a.account_id.clone(),
+                    a.email.clone(),
+                    a.email_verified,
+                    roles,
+                )
+            })
             .collect();
         let workspaces: Vec<(String, String, String, i64)> = inner
             .web_workspaces
@@ -872,6 +888,16 @@ async fn schema_already_at_latest(client: &tokio_postgres::Client) -> Result<boo
                  AND to_regclass('public.web_account_workspaces') IS NOT NULL \
                  AND to_regclass('public.web_passkey_credentials') IS NOT NULL \
                  AND to_regclass('public.web_auth_recovery_tokens') IS NOT NULL \
+                 AND EXISTS ( \
+                     SELECT 1 FROM pg_constraint \
+                     WHERE conname = 'accounts_roles_only' \
+                       AND conrelid = to_regclass('public.accounts') \
+                 ) \
+                 AND EXISTS ( \
+                     SELECT 1 FROM pg_constraint \
+                     WHERE conname = 'auth_sessions_roles_only' \
+                       AND conrelid = to_regclass('public.auth_sessions') \
+                 ) \
                  AND EXISTS ( \
                      SELECT 1 FROM information_schema.columns \
                      WHERE table_schema = 'public' \
