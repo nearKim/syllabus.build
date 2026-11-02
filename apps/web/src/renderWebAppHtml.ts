@@ -2397,6 +2397,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                 <div class="row-actions">
                   ${myPlan ? `<button type="button" class="btn-secondary" data-action="open-syllabus-plan" data-syllabus-id="${escapeHtml(myPlan.syllabusId)}">Open plan</button>` : ""}
                   <button type="button" class="btn-secondary" data-action="navigate-top" data-destination="Explore">View in Explore</button>
+                  <button type="button" class="unpublish-btn" data-action="open-dialog" data-dialog-id="dialog-unpublish" data-publication-id="${escapeHtml(listing.publicationId)}" aria-label="Unpublish ${escapeHtml(title)}">Unpublish</button>
                 </div>
               </li>`;
               }).join("\n")}

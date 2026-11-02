@@ -1143,7 +1143,7 @@ test("Dialogs pin an icon close button and a right-aligned footer, and a re-rend
   assert.deepEqual([next.open, next.scrollTop], [true, 0]);
 });
 
-test("Share with Community previews the public projection, then publishes it to Explore and My Publications", () => {
+test("Share with Community previews the public projection, then publishes it to Explore and Profile & settings", () => {
   const { app, root, click } = mountWithClicks();
   const dialog = () => root.innerHTML.slice(root.innerHTML.indexOf('<dialog id="dialog-publication-preview"'), root.innerHTML.indexOf("</dialog>", root.innerHTML.indexOf('<dialog id="dialog-publication-preview"')));
   // The default plan is already the learner's listing, so it cannot be published twice.
@@ -1167,52 +1167,53 @@ test("Share with Community previews the public projection, then publishes it to 
   assert.equal(JSON.stringify(published[0].schedule).includes("start_at"), false, "session dates stay private");
   assert.equal(JSON.stringify(published[0].syllabus).includes("learner-default"), false, "the account id stays private");
   assert.equal(app.getState().topLevel, "Explore");
+  const explorePanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-explore"'), root.innerHTML.indexOf('id="panel-settings"'));
+  assert.equal(explorePanel.includes("my-publications"), false, "Explore must not render My Publications");
   const card = root.innerHTML.match(/<article class="marketplace-card public-template-card" data-publication-id="publication-syllabus-tolstoy-lit-003-learner-default"[\s\S]*?<\/article>/)?.[0] ?? "";
   assert.match(card, /@alex<\/span> · based on @tolstoy_seminar · 2 units · 0 adopted[\s\S]*?aria-label="Upvote \(0\)"[\s\S]*?<span class="owned-badge">Yours<\/span>/);
-  const mine = root.innerHTML.slice(root.innerHTML.indexOf('<section class="surface-panel my-publications"'));
-  assert.ok(mine.includes("<li data-publication-id=\"publication-syllabus-tolstoy-lit-003-learner-default\"><strong>Tolstoy's Major Novels: War &amp; Peace and Anna Karenina</strong>"));
+  const mine = root.innerHTML.slice(root.innerHTML.indexOf('id="settings-community"'), root.innerHTML.indexOf('id="settings-ai"'));
+  const fresh = mine.match(/<li class="contribution-row" data-publication-id="publication-syllabus-tolstoy-lit-003-learner-default">[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.ok(fresh.includes('<h3 class="contribution-title">Tolstoy&#39;s Major Novels: War &amp; Peace and Anna Karenina</h3>'));
+  assert.ok(fresh.includes('<span class="status-text" data-status="public">Public · Revision 1</span>'));
   // A new publication has no adoptions yet, so its row welcomes the first learner instead of listing zeros.
-  const fresh = mine.match(/<li data-publication-id="publication-syllabus-tolstoy-lit-003-learner-default">[\s\S]*?<\/li>/)?.[0] ?? "";
-  assert.ok(fresh.includes('</strong><span class="publication-revision">Public · Revision 1</span>'));
-  assert.match(fresh, /<p class="publication-impact"><span class="impact-pill"><svg[\s\S]*?<\/svg><span>Live in Explore and ready for its first learner<\/span><\/span><\/p>/);
+  assert.ok(fresh.includes('<span class="row-meta">Live in Explore and ready for its first learner</span>'));
   app.openDialog("dialog-publication-preview");
   assert.ok(dialog().includes("This plan is already shared with the Community as revision 1."));
 });
 
-test("My Publications thanks the author, states its totals in one sentence, and invites a first share", () => {
+test("Profile & settings › Your contributions thanks the author, states its totals in one sentence, and invites a first share", () => {
   const text = (html) => html.replace(/<svg[\s\S]*?<\/svg>/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   const sectionOf = (html) => {
-    const start = html.indexOf('<section class="surface-panel my-publications"');
+    const start = html.indexOf('<section class="settings-section" id="settings-community"');
     return html.slice(start, html.indexOf("</section>", start));
   };
   const impactOf = (html) => text(sectionOf(html).match(/<p class="impact-summary">[\s\S]*?<\/p>/)?.[0] ?? "");
-  const rowOf = (html, id) => sectionOf(html).match(new RegExp(`<li data-publication-id="${id}">[\\s\\S]*?</li>`))?.[0] ?? "";
+  const rowOf = (html, id) => sectionOf(html).match(new RegExp(`<li class="contribution-row" data-publication-id="${id}">[\\s\\S]*?</li>`))?.[0] ?? "";
 
-  // The header thanks the author, names the license, and offers the next share. The totals are one plain sentence,
-  // the same one Settings uses, with no metric cards and no decorative art.
-  // Study hours are 98 estimated minutes × 142 adoptions ≈ 232 hours.
-  const mine = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore" }));
-  assert.ok(mine.includes("Thank you for teaching in the open. Every adoption is a learner who studies your syllabus for free under CC BY 4.0."));
-  assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another syllabus</button>'));
+  // Explore never renders My Publications; Profile & settings › Your contributions holds the author summary and rows.
+  const exploreHtml = renderSyllabusWebAppHtml({ topLevel: "Explore" });
+  const exploreSection = exploreHtml.slice(exploreHtml.indexOf('id="panel-explore"'), exploreHtml.indexOf('id="panel-settings"'));
+  assert.equal(exploreSection.includes("My Publications") || exploreSection.includes("Your shared plan reached"), false);
+
+  const mine = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings" }));
+  assert.ok(mine.includes("Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open."));
+  assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another syllabus</button>'));
   assert.equal(impactOf(mine), "Your shared plan reached 142 learners , who planned about 232 study hours with it. 14 people upvoted your work.");
   for (const removed of ["philanthropy", "impact-hero", "impact-icon-badge", "<dl"]) {
-    assert.equal(mine.includes(removed), false, `My Publications still renders ${removed}`);
+    assert.equal(mine.includes(removed), false, `Your contributions still renders ${removed}`);
   }
 
-  // Each row shows the subject icon, the revision, the topics, its own impact pills, Open for a plan the learner has,
-  // and a quiet Unpublish.
+  // Each row shows the revision, CC BY 4.0, metrics, Open plan, View in Explore, and a quiet Unpublish.
   const row = rowOf(mine, "publication-synthetic-001");
-  assert.equal(text(row), "Build and Evaluate RAG Systems in Python Public · Revision 1 Python RAG Attention Linear Algebra 142 learners 232 study hours 14 upvotes Open Unpublish");
-  assert.equal(row.match(/<span class="impact-pill"><svg class="sf-icon"/g)?.length, 3);
-  assert.ok(row.includes('<span class="marketplace-card-icon" data-subject="Engineering" aria-hidden="true"><svg class="sf-icon"'));
-  assert.ok(row.includes('data-action="open-syllabus-plan" data-syllabus-id="syllabus-rag-python-001">Open</button>'));
-  assert.ok(row.includes('<button type="button" class="unpublish-btn" data-action="open-dialog" data-dialog-id="dialog-unpublish" aria-label="Unpublish Build and Evaluate RAG Systems in Python">Unpublish</button>'));
+  assert.equal(text(row), "Public · Revision 1 · CC BY 4.0 Build and Evaluate RAG Systems in Python 142 adoptions 14 upvotes 232 study hours Open plan View in Explore Unpublish");
+  assert.ok(row.includes('data-action="open-syllabus-plan" data-syllabus-id="syllabus-rag-python-001">Open plan</button>'));
+  assert.ok(row.includes('<button type="button" class="unpublish-btn" data-action="open-dialog" data-dialog-id="dialog-unpublish" data-publication-id="publication-synthetic-001" aria-label="Unpublish Build and Evaluate RAG Systems in Python">Unpublish</button>'));
   for (const removed of ["btn-danger", "warning-copy", "never cached"]) {
-    assert.equal(mine.includes(removed), false, `My Publications still shows ${removed}`);
+    assert.equal(mine.includes(removed), false, `Your contributions still shows ${removed}`);
   }
 
   // The totals follow live votes, and Unpublish opens the dialog that states the full consequences.
-  const { app, root, click } = mountWithClicks({ topLevel: "Explore" });
+  const { app, root, click } = mountWithClicks({ topLevel: "Settings" });
   click({ action: "toggle-upvote", revisionId: "public-revision-synthetic-001" });
   assert.ok(impactOf(root.innerHTML).endsWith("15 people upvoted your work."));
   click(buttonsIn(rowOf(root.innerHTML, "publication-synthetic-001")).find((button) => button.label === "Unpublish").data);
@@ -1221,10 +1222,10 @@ test("My Publications thanks the author, states its totals in one sentence, and 
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
   // A learner with no publication sees an invitation instead of an empty summary.
-  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Explore", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "Learner" } }));
+  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "Learner" } }));
   assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another syllabus") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
-  assert.ok(newcomer.includes('<div class="publish-invite"><div><h3>'));
-  assert.match(text(newcomer), /^My Publications Help the next learner start where you did Publishing shares your plan's structure under CC BY 4\.0, .+ stay private\. Share your first syllabus$/);
+  assert.ok(newcomer.includes('<div class="settings-card">'));
+  assert.match(text(newcomer), /^Your contributions Share a plan and any self-learner can adopt it for free\. .+ stay private\. Share your first syllabus$/);
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 

@@ -15,7 +15,6 @@ import {
 } from "./marketplace/filterEngine.ts";
 import { MarketplaceFilterBar } from "./marketplace/MarketplaceFilterBar.tsx";
 import { MarketplaceCardGrid } from "./marketplace/MarketplaceCardGrid.tsx";
-import { CreatorDashboard } from "./marketplace/CreatorDashboard.tsx";
 
 export { asRecord, rawListOf };
 
@@ -163,15 +162,6 @@ export function ExploreMarketplace({
         signedOut={signedOut}
         account={account}
         loadMoreNote={loadMoreNote}
-      />
-
-      <CreatorDashboard
-        signedOut={signedOut}
-        account={account}
-        listings={listings}
-        myPlans={myPlans}
-        votes={votes}
-        adoptions={adoptions}
       />
     </section>
   );
