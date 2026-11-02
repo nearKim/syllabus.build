@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MIGRATIONS_DIR="${REPO_ROOT}/crates/persistence/migrations"
-: "${DATABASE_URL:?Set DATABASE_URL from Bitwarden before running migrations}"
+: "${DATABASE_URL:?Set DATABASE_URL before running migrations}"
 
 if ! command -v psql >/dev/null 2>&1; then
   echo "error: psql client is required to apply migrations" >&2

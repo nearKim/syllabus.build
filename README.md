@@ -26,12 +26,12 @@
 
 ### 1. Start PostgreSQL 16 & Apply Migrations
 
-Load database values from Bitwarden into the process environment: `POSTGRES_PASSWORD`, `DATABASE_URL`, and `DATABASE_URL_CONTAINER`.
+Supply database values through the process environment: `POSTGRES_PASSWORD`, `DATABASE_URL`, and `DATABASE_URL_CONTAINER`.
 `DATABASE_URL` connects host tools to `127.0.0.1`. `DATABASE_URL_CONTAINER` connects containers to `postgres`.
 
-Load `BYOK_MASTER_KEY`, `BILLING_WEBHOOK_SECRET`, `AUTH_EXCHANGE_SECRET`, and `OAUTH_COOKIE_SECRET` from Bitwarden at process launch.
+Supply `BYOK_MASTER_KEY`, `BILLING_WEBHOOK_SECRET`, `AUTH_EXCHANGE_SECRET`, and `OAUTH_COOKIE_SECRET` at process launch.
 Encode the billing and auth exchange secrets as independent 32-byte random values, each represented by 64 hex characters.
-Load Google or GitHub client secrets from Bitwarden when using those providers. Do not copy secrets into `.env`.
+Supply Google or GitHub client secrets when using those providers. Do not commit secret values.
 For cloud deployments, inject machine-generated deployment secrets from that environment's secret store.
 
 ```bash
