@@ -317,10 +317,15 @@ ${fallbackScript}
     const previous = openDialogScroll();
     const rail = root.querySelector(".today-syllabi-grid");
     const railLeft = rail ? rail.scrollLeft : 0;
+    const settingsSection = root.querySelector('input[name="settings-section"]:checked')?.value;
     destroyDatepickers();
     destroyPlanSelects();
     destroyAvatarCropper();
     root.innerHTML = payload.html;
+    const nextSettingsSection = action === "open-ai-settings" ? "ai" : settingsSection;
+    const settingsChoice = Array.from(root.querySelectorAll('input[name="settings-section"]'))
+      .find((input) => input.value === nextSettingsSection);
+    if (settingsChoice) settingsChoice.checked = true;
     const nextRail = root.querySelector(".today-syllabi-grid");
     if (nextRail) nextRail.scrollLeft = railLeft;
     if (payload.state && payload.state.themePreference) {

@@ -1230,6 +1230,38 @@ test("Profile & settings › Your contributions thanks the author, states its to
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 
+test("settings keep the selected section after an action and open AI settings from the intake", () => {
+  const listeners = {};
+  let html = "";
+  let selected = "profile";
+  let choices = [];
+  const root = {
+    get innerHTML() { return html; },
+    set innerHTML(value) {
+      html = value;
+      selected = "profile";
+      choices = ["profile", "passkeys", "ai", "schedule", "community", "privacy"].map((name) => ({
+        value: name,
+        get checked() { return selected === name; },
+        set checked(value) { if (value) selected = name; },
+      }));
+    },
+    querySelector: (selector) => selector === 'input[name="settings-section"]:checked' ? choices.find((choice) => choice.checked) : null,
+    querySelectorAll: (selector) => selector === 'input[name="settings-section"]' ? choices : [],
+    addEventListener: (type, listener) => { listeners[type] = listener; },
+  };
+  mountSyllabusWebApp(root, { topLevel: "Settings" });
+  assert.match(html, /id="settings-choice-profile" value="profile" checked/);
+  choices.find((choice) => choice.value === "ai").checked = true;
+  listeners.click({ target: { closest: () => ({ dataset: { action: "edit-provider-key", providerId: "openai" } }) } });
+  assert.equal(selected, "ai");
+  assert.ok(html.includes('id="byok-key"'));
+
+  choices.find((choice) => choice.value === "profile").checked = true;
+  listeners.click({ target: { closest: () => ({ dataset: { action: "open-ai-settings" } }) } });
+  assert.equal(selected, "ai");
+});
+
 test("the header shows the clickable navbar avatar button, signing out from Profile & settings purges private state, and guests sign in to return where they were", () => {
   const { app, root, click, submit } = mountWithClicks();
   const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));

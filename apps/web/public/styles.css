@@ -6650,6 +6650,52 @@ ul.adopt-resources {
   gap: var(--space-7);
 }
 
+.settings-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-5);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.settings-nav label {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--layout-touch-target-min);
+  color: var(--color-text-secondary);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.settings-nav input:checked + label {
+  color: var(--color-text-primary);
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}
+
+.settings-nav input:focus-visible + label {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 4px;
+}
+
+.settings-stack > .settings-section {
+  display: none;
+}
+
+.settings-stack:has(#settings-choice-profile:checked) > #settings-profile,
+.settings-stack:has(#settings-choice-passkeys:checked) > #settings-passkeys,
+.settings-stack:has(#settings-choice-ai:checked) > #settings-ai,
+.settings-stack:has(#settings-choice-schedule:checked) > #settings-schedule,
+.settings-stack:has(#settings-choice-community:checked) > #settings-community,
+.settings-stack:has(#settings-choice-privacy:checked) > #settings-privacy {
+  display: grid;
+}
+
 .settings-section {
   display: grid;
   gap: var(--space-4);

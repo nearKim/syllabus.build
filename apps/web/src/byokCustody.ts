@@ -34,7 +34,7 @@ export interface ByokHttpRequest<TPayload> {
 }
 
 const SERVER_CUSTODY_DISCLOSURE =
-  "Server custody disclosure: Your API key is transmitted over TLS, encrypted at rest in server custody for background generation jobs, and is never stored in browser localStorage, sessionStorage, IndexedDB, or URLs.";
+  "Server custody disclosure: Keys are sent to the server and encrypted at rest for background jobs. They are not saved in browser storage or URLs.";
 const EXTERNAL_BILLING_DISCLOSURE =
   "External billing disclosure: BYOK generation requests execute against your external provider account and incur usage charges directly on your provider billing plan. Silent fallback to hosted inference is disabled.";
 

@@ -78,12 +78,17 @@ export function mountSyllabusWebApp(
 
   // A render replaces every element. When the same dialog stays open, it keeps its scroll position and focused control.
   // Without this, checking a unit far down in Details jumps back to the top and moves focus to the close button.
-  function syncDom(): void {
+  function syncDom(action?: string): void {
     const railLeft = getRail()?.scrollLeft ?? 0;
+    const settingsSection = (rootElement.querySelector?.('input[name="settings-section"]:checked') as { value?: string } | null | undefined)?.value;
     const shown = rootElement.querySelector?.("dialog[open]") as MountedDialog | null | undefined;
     const shownTop = shown?.scrollTop ?? 0;
     const focused = focusedControlSelector();
     rootElement.innerHTML = controller.renderHtml();
+    const nextSettingsSection = action === "open-ai-settings" ? "ai" : settingsSection;
+    const settingsChoices = Array.from(rootElement.querySelectorAll?.('input[name="settings-section"]') ?? []) as Array<{ value?: string; checked: boolean }>;
+    const settingsChoice = settingsChoices.find((input) => input.value === nextSettingsSection);
+    if (settingsChoice) settingsChoice.checked = true;
     const nextRail = getRail();
     if (nextRail) nextRail.scrollLeft = railLeft;
     bindDialogs();
@@ -162,7 +167,7 @@ export function mountSyllabusWebApp(
       const submittedChoice = data["practiceChoice"] ?? null;
       if (!action || !controller.applyUiAction(action, data, submittedChoice).handled) return;
     }
-    syncDom();
+    syncDom(action);
   });
 
   rootElement.addEventListener?.("keydown", (rawEvent: unknown) => {

@@ -2266,8 +2266,17 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
           <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
         </div>
         <div class="settings-stack">
-          <section class="settings-section profile-identity" aria-labelledby="settings-profile-title" data-opaque-surface="true">
-            <h2 class="st-sr" id="settings-profile-title">Profile</h2>
+          <fieldset class="settings-nav">
+            <legend class="st-sr">Settings sections</legend>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-profile" value="profile" checked><label for="settings-choice-profile">Profile</label>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-passkeys" value="passkeys"><label for="settings-choice-passkeys">Passkeys</label>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-ai" value="ai"><label for="settings-choice-ai">AI providers</label>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-schedule" value="schedule"><label for="settings-choice-schedule">Reminders</label>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-community" value="community"><label for="settings-choice-community">Contributions</label>
+            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-privacy" value="privacy"><label for="settings-choice-privacy">Privacy</label>
+          </fieldset>
+          <section class="settings-section profile-identity" id="settings-profile" aria-labelledby="settings-profile-title" data-opaque-surface="true">
+            <h2 id="settings-profile-title">Profile</h2>
             <div class="profile-layout-grid">
               <div class="profile-photo-stack">
                 <button type="button" class="profile-avatar-trigger" data-action="open-dialog" data-dialog-id="dialog-avatar-cropper" aria-label="Edit profile photo">
@@ -2408,7 +2417,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-                <p class="section-lede">Save your API key, choose your preferred model per provider, and mark one Primary provider for synthesis, diagnostics, and native web search grounding.</p>
+                <p class="section-lede">Choose a model and add an API key for each provider.</p>
                 <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
               </div>
             </div>
@@ -2520,7 +2529,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                 </tbody>
               </table>
             </div>
-            ${activeByokCredentials.length === 0 ? `<p class="provider-empty-banner" role="status">No API keys configured. Click <strong>+ Add key</strong> on OpenAI, Anthropic, or Google Gemini above to enable AI syllabus synthesis and web search grounding.</p>` : ""}${"\n            "}${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
+            ${activeByokCredentials.length === 0 ? `<p class="provider-empty-banner" role="status">No API keys configured. Add a key above to use AI features.</p>` : ""}${"\n            "}${keyActionNote ? `<p class="section-lede" role="status">${escapeHtml(keyActionNote)}</p>` : ""}
             <details class="settings-disclosure" id="byok-add">
               <summary>Custody, rotation &amp; billing details</summary>
               <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} You act directly as the API account holder with your chosen provider (OpenAI, Anthropic, or Google) under their respective Terms of Service and direct billing. Saving a key does not run a chargeable test. Applying a new key updates future jobs while queued jobs stay on their active key version. Removing a key deletes this app's encrypted copy and does not revoke the key at the issuer.</p>
@@ -2532,10 +2541,10 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
             </details>
           </section>
 
-          <section class="settings-section settings-card" id="settings-schedule" data-opaque-surface="true">
+          <section class="settings-section settings-card" id="settings-schedule" aria-labelledby="settings-schedule-title" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
-                <h2>Reminders</h2>
+                <h2 id="settings-schedule-title">Reminders</h2>
                 <p class="row-meta">${escapeHtml(timezoneLabel)} (<code>${escapeHtml(reminderState.timezone)}</code>)</p>
               </div>
               <label class="switch-field switch-field-inline"><span>Enable reminders</span><input type="checkbox" class="ui-switch" data-action="toggle-reminders"${remindersOn ? " checked" : ""}></label>
@@ -2567,10 +2576,10 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
             </div>
           </section>
 
-          <section class="settings-section settings-card" id="settings-privacy" data-opaque-surface="true">
+          <section class="settings-section settings-card" id="settings-privacy" aria-labelledby="settings-privacy-title" data-opaque-surface="true">
             <div class="settings-privacy-row">
               <div>
-                <h2>Privacy &amp; account</h2>
+                <h2 id="settings-privacy-title">Privacy &amp; account</h2>
                 <p class="row-meta">Download a portable archive of your syllabi and study history, or permanently delete your account.</p>
               </div>
               <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
