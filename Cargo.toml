@@ -36,6 +36,8 @@ tokio-postgres = "0.7"
 tower = "0.5"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 bm25 = "2.3"
+getrandom = "0.3"
+time = { version = "0.3", features = ["formatting", "parsing"] }
 
 syllabus-domain = { path = "crates/domain" }
 syllabus-application = { path = "crates/application" }

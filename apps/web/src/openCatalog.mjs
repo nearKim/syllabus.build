@@ -7,19 +7,6 @@ export const DEFAULT_OPEN_CATALOG_DIR = path.resolve(
   "../../../catalog",
 );
 
-const VALID_SUBJECT_SLUGS = Object.freeze({
-  engineering: "Engineering",
-  systems: "Systems",
-  mathematics: "Mathematics",
-  physics: "Physics",
-  literature: "Literature",
-});
-
-export function subjectToCatalogDirSlug(subject) {
-  const normalized = String(subject ?? "engineering").trim().toLowerCase();
-  return VALID_SUBJECT_SLUGS[normalized] ? normalized : "engineering";
-}
-
 function stripSchemaFields(raw) {
   const { $schema: _s, catalog_collection: _c, ...entry } = raw;
   return entry;
@@ -131,30 +118,4 @@ export function serializeOpenCatalogEntry(entry, collection = "community_discove
     })),
   };
   return `${JSON.stringify(ordered, null, 2)}\n`;
-}
-
-/**
- * Writes an entry directly to `catalog/resources/<subject>/<id>.json` when local open-catalog
- * contribution is requested. Returns the relative repo path written.
- */
-export function writeOpenCatalogResourceFile(
-  catalogRootDir,
-  entry,
-  collection = "community_discovered",
-) {
-  const subjectSlug = subjectToCatalogDirSlug(entry.subject);
-  const safeId = String(entry.resource_version_id ?? "manual-resource-v1")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const targetDir = path.join(catalogRootDir, "resources", subjectSlug);
-  fs.mkdirSync(targetDir, { recursive: true });
-  const targetFile = path.join(targetDir, `${safeId}.json`);
-  fs.writeFileSync(
-    targetFile,
-    serializeOpenCatalogEntry({ ...entry, resource_version_id: safeId }, collection),
-    "utf8",
-  );
-  return path.posix.join("catalog", "resources", subjectSlug, `${safeId}.json`);
 }

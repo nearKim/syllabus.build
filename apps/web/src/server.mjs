@@ -5,18 +5,19 @@
  *   (configurable via `WEB_PORT` and `WEB_HOST`).
  * - Server-renders the initial HTML using `renderSyllabusWebAppHtml` and hydrates client
  *   interactivity in the browser via `/client.js`.
- * - Proxies `/v1/*` API calls to `API_BASE_URL` (default `http://127.0.0.1:8080`) when available,
- *   or serves deterministic synthetic state for instant local inspection.
+ * - Proxies `/v1/*` API calls to `API_BASE_URL` (default `http://127.0.0.1:8080`).
  * - Gives each visitor a session cookie and a controller of their own. Resources that any session indexes
  *   go to one shared store, saved to `.data/web-store.json`, so every session can find them at once.
- * - Generates syllabi with a live model call when the server environment holds the provider's key
- *   (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `GEMINI_API_KEY`). Without a key the fixture provider runs.
+ * - Generates syllabi with a live model call when the signed-in account has a provider key.
  */
 
 import crypto from "node:crypto";
+import dns from "node:dns";
 import http from "node:http";
+import https from "node:https";
+import net from "node:net";
 import fs from "node:fs";
-import os from "node:os";
+import { Readable } from "node:stream";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildSync } from "esbuild";
@@ -26,7 +27,6 @@ import {
   renderSyllabusWebAppHtml,
 } from "./browserApp.ts";
 import {
-  DEFAULT_CREDENTIAL_META,
   openByokApiKey,
   resolveByokMasterKey,
   sealByokApiKey,
@@ -36,15 +36,14 @@ import {
   DEFAULT_OPEN_CATALOG_DIR,
   loadOpenCatalogFromDisk,
   serializeOpenCatalogEntry,
-  writeOpenCatalogResourceFile,
 } from "./openCatalog.mjs";
 import { isAdminAccount } from "./components/AdminResourcesView.tsx";
 import { PERSONAS } from "./components/AuthDialog.tsx";
 import { defaultUsernameOfEmail } from "./auth.ts";
 import catalogResourcesJson from "./data/catalogResources.json" with { type: "json" };
-import { PROVIDER_KEY_ENV, requestLiveDraft } from "./liveDraft.ts";
+import { requestLiveDraft } from "./liveDraft.ts";
 import { requestLiveConceptCheck } from "./liveTutor.ts";
-import { analyzeManualResourceWithAi } from "./resourceAnalyzer.ts";
+import { analyzeManualResourceWithAi, isSafePublicHttpsUrl } from "./resourceAnalyzer.ts";
 import {
   buildOAuthAuthorizeRedirect,
   buildOAuthCallbackUrl,
@@ -52,15 +51,12 @@ import {
   exchangeLiveOAuthCode,
   generatePkcePair,
   generateRandomBase64Url,
-  hashAccountPassword,
   isLocalDevEnv,
   isOAuthProvider,
-  loadDotEnvIfPresent,
   oauthProviderLabel,
   renderDevOAuthConsentHtml,
   resolveProviderCredentials,
   signOAuthStateCookie,
-  verifyAccountPassword,
   verifyOAuthStateCookie,
 } from "./oauth.mjs";
 import {
@@ -73,15 +69,10 @@ import {
 } from "./passkey.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-loadDotEnvIfPresent(path.resolve(__dirname, "../../../.env"));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
 const FLATPICKR_DIST_DIR = path.resolve(__dirname, "../node_modules/flatpickr/dist");
 const TOM_SELECT_DIST_DIR = path.resolve(__dirname, "../node_modules/tom-select/dist");
 const CROPPER_DIST_DIR = path.resolve(__dirname, "../node_modules/cropperjs/dist");
-const EXAMPLES_DIR = path.resolve(
-  __dirname,
-  "../../../specs/001-syllabus-platform/examples"
-);
 const WEBAUTHN_POLYFILLS_ENTRY = path.resolve(__dirname, "../node_modules/webauthn-polyfills/esm/index.js");
 
 let cachedWebAuthnPolyfillJs = null;
@@ -301,54 +292,6 @@ ${fallbackScript}
     }
   }
 
-  function showAuthPassword(show) {
-    const input = root.querySelector("#auth-password-input");
-    const eye = root.querySelector('[data-action="toggle-auth-password"]');
-    if (!input || !eye) return;
-    input.type = show ? "text" : "password";
-    eye.setAttribute("aria-pressed", String(show));
-    eye.setAttribute("aria-label", show ? "Hide password" : "Show password");
-  }
-
-  // What the learner typed in the open sign-in dialog. A re-render (a mode switch or a failed submit) puts it back.
-  function authDraft() {
-    const dialog = root.querySelector("#dialog-auth[open]");
-    if (!dialog) return null;
-    const values = {};
-    dialog.querySelectorAll("input[id]").forEach((input) => {
-      values[input.id] = input.value;
-    });
-    const password = dialog.querySelector("#auth-password-input");
-    return { values, passwordShown: Boolean(password && password.type === "text") };
-  }
-
-  // Restores the draft, then focuses the first field that still needs input. With every field valid after a
-  // failed sign-in, the password takes focus with its text selected, ready to type again.
-  // After a failed submit the form is marked, so its invalid fields show the error state. A provider error does not mark them.
-  function restoreAuthDraft(draft, action) {
-    const dialog = root.querySelector('#dialog-auth[data-open="true"]');
-    if (!draft || !dialog) return;
-    if (
-      action === "submit-sign-in" ||
-      action === "submit-sign-up" ||
-      action === "request-password-reset" ||
-      action === "confirm-password-reset"
-    ) {
-      const formEl = dialog.querySelector("form");
-      if (formEl) formEl.dataset.submitted = "true";
-    }
-    const inputs = Array.from(dialog.querySelectorAll("input[id]"));
-    inputs.forEach((input) => {
-      if (draft.values[input.id] !== undefined) input.value = draft.values[input.id];
-    });
-    showAuthPassword(draft.passwordShown);
-    const password = dialog.querySelector("#auth-password-input");
-    const next = inputs.find((input) => !input.validity.valid) || password;
-    if (!next) return;
-    next.focus({ preventScroll: true });
-    if (next === password && dialog.querySelector(".field-error")) password.select();
-  }
-
   // Marks a sign-in control as pending until the server answers, so a second click cannot submit again.
   // The returned function clears the mark when the request fails and the dialog stays.
   function markAuthPending(control) {
@@ -370,7 +313,6 @@ ${fallbackScript}
     const goalSelStart = goalSnapshot ? goalSnapshot.goalSelStart : (isGoalFocused && typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null);
     const goalSelEnd = goalSnapshot ? goalSnapshot.goalSelEnd : (isGoalFocused && typeof activeEl.selectionEnd === "number" ? activeEl.selectionEnd : null);
     const focusedKey = goalSnapshot ? goalSnapshot.focusedKey : keyFor(activeEl);
-    const draft = goalSnapshot ? goalSnapshot.draft : authDraft();
     const previous = openDialogScroll();
     const rail = root.querySelector(".today-syllabi-grid");
     const railLeft = rail ? rail.scrollLeft : 0;
@@ -390,9 +332,7 @@ ${fallbackScript}
     initPlanSelects();
     initAvatarCropper();
     syncPasskeyCapabilityButtons();
-    maybeArmConditionalAutofill();
     if (!focusKey(focusedKey) && action === "close-study-detail") focusKey(inspectorOpenerKey);
-    restoreAuthDraft(draft, action);
     if (isGoalFocused) {
       const nextGoal = root.querySelector("#intake-goal");
       if (nextGoal) {
@@ -414,7 +354,6 @@ ${fallbackScript}
       goalSelStart: isGoalFocused && typeof activeEl.selectionStart === "number" ? activeEl.selectionStart : null,
       goalSelEnd: isGoalFocused && typeof activeEl.selectionEnd === "number" ? activeEl.selectionEnd : null,
       focusedKey: keyFor(activeEl),
-      draft: authDraft(),
     };
     let payload;
     try {
@@ -434,7 +373,6 @@ ${fallbackScript}
 
   // WebAuthn Passkeys: native browser APIs for registration, explicit sign-in, and Conditional UI autofill.
   let autofillAbortController = new AbortController();
-  let conditionalAutofillActive = false;
 
   function showAuthDialogError(message) {
     const dialog = root.querySelector("#dialog-auth");
@@ -444,8 +382,8 @@ ${fallbackScript}
       errEl = document.createElement("p");
       errEl.className = "field-error";
       errEl.setAttribute("role", "alert");
-      const actions = dialog.querySelector(".auth-actions");
-      if (actions && actions.parentNode) actions.parentNode.insertBefore(errEl, actions);
+      const providers = dialog.querySelector(".auth-alt-block");
+      if (providers && providers.parentNode) providers.parentNode.insertBefore(errEl, providers);
     }
     errEl.textContent = message;
   }
@@ -479,7 +417,7 @@ ${fallbackScript}
     try {
       const capabilities = await PublicKeyCredential.getClientCapabilities();
       const hasAuthenticator = Boolean(capabilities.passkeyPlatformAuthenticator ?? capabilities.userVerifyingPlatformAuthenticator);
-      if (!hasAuthenticator || !capabilities.conditionalGet) {
+      if (!hasAuthenticator) {
         registerBtns.forEach((btn) => {
           btn.disabled = true;
           btn.title = "Passkeys require a supported platform authenticator on this device.";
@@ -488,97 +426,6 @@ ${fallbackScript}
     } catch {
       // Leave buttons enabled if capability inspection fails transiently.
     }
-  }
-
-  async function initializeConditionalAutofill() {
-    if (conditionalAutofillActive) return;
-    if (typeof window.PublicKeyCredential === "undefined" || typeof PublicKeyCredential.getClientCapabilities !== "function") return;
-    if (window.location.hostname === "127.0.0.1") return;
-    const signedIn = Boolean(root.querySelector('.syllabus-app-shell[data-auth-status="authenticated"]'));
-    const authEmailInput = root.querySelector('#dialog-auth[data-auth-mode="login"] #auth-email-input');
-    if (signedIn || !authEmailInput) return;
-
-    let capabilities;
-    try {
-      capabilities = await PublicKeyCredential.getClientCapabilities();
-    } catch {
-      return;
-    }
-    if (capabilities.conditionalGet !== true) return;
-
-    conditionalAutofillActive = true;
-    autofillAbortController = new AbortController();
-    let rpId = window.location.hostname;
-    let publicKey;
-    try {
-      const optRes = await fetch("/auth/passkey/login/options", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      if (!optRes.ok) {
-        conditionalAutofillActive = false;
-        return;
-      }
-      const optPayload = await optRes.json();
-      rpId = optPayload.rpId || rpId;
-      publicKey = PublicKeyCredential.parseRequestOptionsFromJSON(optPayload.options);
-    } catch {
-      conditionalAutofillActive = false;
-      return;
-    }
-
-    let credential;
-    try {
-      credential = await navigator.credentials.get({
-        publicKey,
-        signal: autofillAbortController.signal,
-        mediation: "conditional",
-      });
-    } catch (err) {
-      conditionalAutofillActive = false;
-      if (err && ["NotAllowedError", "AbortError"].includes(err.name)) return;
-      return;
-    }
-    conditionalAutofillActive = false;
-    if (!credential) return;
-
-    const encoded = credential.toJSON();
-    try {
-      const verifyRes = await fetch("/auth/passkey/login/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(encoded),
-      });
-      if (!verifyRes.ok) {
-        if (verifyRes.status === 404 && PublicKeyCredential.signalUnknownCredential) {
-          await PublicKeyCredential.signalUnknownCredential({
-            rpId,
-            credentialId: encoded.id,
-          });
-        }
-        const errJson = await verifyRes.json().catch(() => ({}));
-        showAuthDialogError(errJson.error || "Passkey sign-in could not be verified.");
-        return;
-      }
-      const payload = await verifyRes.json();
-      applyServerPayload(payload, "sign-in-passkey", null);
-    } catch {
-      showAuthDialogError("Passkey verification request failed.");
-    }
-  }
-
-  function maybeArmConditionalAutofill() {
-    const dialog = root.querySelector('#dialog-auth[data-open="true"][data-auth-mode="login"]');
-    const signedIn = Boolean(root.querySelector('.syllabus-app-shell[data-auth-status="authenticated"]'));
-    if (signedIn || !dialog) {
-      if (conditionalAutofillActive) {
-        autofillAbortController.abort();
-        conditionalAutofillActive = false;
-      }
-      return;
-    }
-    initializeConditionalAutofill();
   }
 
   async function triggerPasskeyButtonSignIn(buttonEl) {
@@ -592,9 +439,7 @@ ${fallbackScript}
       return;
     }
 
-    // Abort any pending Conditional Get call before triggering an explicit WebAuthn prompt.
     autofillAbortController.abort();
-    conditionalAutofillActive = false;
     autofillAbortController = new AbortController();
 
     const clear = markAuthPending(buttonEl);
@@ -635,12 +480,10 @@ ${fallbackScript}
       } else if (!err || !["NotAllowedError", "AbortError"].includes(err.name)) {
         showAuthDialogError("No passkey was selected or available on this device.");
       }
-      initializeConditionalAutofill();
       return;
     }
     if (!credential) {
       clear();
-      initializeConditionalAutofill();
       return;
     }
 
@@ -661,14 +504,12 @@ ${fallbackScript}
         }
         clear();
         showAuthDialogError(payload.error || "Passkey could not be verified.");
-        initializeConditionalAutofill();
-        return;
+          return;
       }
       applyServerPayload(payload, "sign-in-passkey", null);
     } catch {
       clear();
       showAuthDialogError("Passkey verification request failed.");
-      initializeConditionalAutofill();
     }
   }
 
@@ -685,7 +526,7 @@ ${fallbackScript}
     try {
       const capabilities = await PublicKeyCredential.getClientCapabilities();
       const hasAuthenticator = Boolean(capabilities.passkeyPlatformAuthenticator ?? capabilities.userVerifyingPlatformAuthenticator);
-      if (!hasAuthenticator || !capabilities.conditionalGet) {
+      if (!hasAuthenticator) {
         buttonEl.disabled = true;
         showSettingsPasskeyNotice("This browser or device does not support passkey registration.");
         return;
@@ -778,12 +619,6 @@ ${fallbackScript}
   initPlanSelects();
   initAvatarCropper();
   syncPasskeyCapabilityButtons();
-  maybeArmConditionalAutofill();
-
-  // The eye button keeps focus and the caret in the password field.
-  root.addEventListener("mousedown", (event) => {
-    if (event.target && event.target.closest && event.target.closest('[data-action="toggle-auth-password"]')) event.preventDefault();
-  });
 
   // Post-interaction validation for dialog and inline verification forms (syncs aria-invalid on blur and clears immediately when valid).
   root.addEventListener(
@@ -794,7 +629,7 @@ ${fallbackScript}
         !input ||
         (input.localName !== "input" && input.localName !== "textarea") ||
         !input.closest ||
-        !input.closest("#dialog-auth, #dialog-resource-editor, #dialog-syllabus-editor, .email-verify-form")
+        !input.closest("#dialog-resource-editor, #dialog-syllabus-editor")
       ) {
         return;
       }
@@ -810,7 +645,7 @@ ${fallbackScript}
       !input ||
       (input.localName !== "input" && input.localName !== "textarea") ||
       !input.closest ||
-      !input.closest("#dialog-auth, #dialog-resource-editor, #dialog-syllabus-editor, .email-verify-form")
+      !input.closest("#dialog-resource-editor, #dialog-syllabus-editor")
     ) {
       return;
     }
@@ -843,19 +678,9 @@ ${fallbackScript}
     if (action === "open-dialog" && target.dataset.dialogId) {
       // Without a session the server answers with the sign-in dialog instead, so only open other dialogs when signed in.
       const signedIn = Boolean(root.querySelector('.syllabus-app-shell[data-auth-status="authenticated"]'));
-      // The sign-in dialog opens at once only when it already shows the requested mode. Otherwise the server's render
-      // opens it, so Log in never flashes the Sign up form.
       const dialog = document.getElementById(target.dataset.dialogId);
-      const sameMode = !target.dataset.authMode || dialog?.dataset.authMode === target.dataset.authMode;
-      if (dialog && !dialog.open && (signedIn || dialog.id === "dialog-auth") && sameMode) dialog.showModal();
-      dispatchServerRender({ action: "open-dialog", dialogId: target.dataset.dialogId, authMode: target.dataset.authMode });
-      return;
-    }
-
-    if (action === "toggle-auth-password") {
-      event.preventDefault();
-      const pwInput = root.querySelector("#auth-password-input");
-      if (pwInput) showAuthPassword(pwInput.type === "password");
+      if (dialog && !dialog.open && (signedIn || dialog.id === "dialog-auth")) dialog.showModal();
+      dispatchServerRender({ action: "open-dialog", dialogId: target.dataset.dialogId });
       return;
     }
 
@@ -987,7 +812,7 @@ ${fallbackScript}
     }
   });
 
-  // The sign-in form, the Marketplace search, and the topic finder send their fields under the form's own data-action.
+  // The Marketplace search and topic finder send their fields under the form's own data-action.
   root.addEventListener("submit", (event) => {
     const form = event.target && event.target.closest ? event.target.closest("form[data-action]") : null;
     if (!form) return;
@@ -1022,13 +847,7 @@ ${fallbackScript}
         return;
       }
     }
-    const submitButton = form.closest("#dialog-auth") ? form.querySelector('button[type="submit"]:not([data-action])') : null;
-    if (!submitButton) {
-      dispatchServerRender(patch);
-      return;
-    }
-    const clear = markAuthPending(submitButton);
-    if (clear) dispatchServerRender(patch).then((ok) => ok || clear());
+    dispatchServerRender(patch);
   });
 
   // A topic picked from the finder's list applies at once. A pick fires an input event with no inputType or with
@@ -1130,24 +949,68 @@ ${fallbackScript}
 `;
 }
 
-function readSyntheticExampleOrFallback(fileName, fallback) {
-  try {
-    return JSON.parse(
-      fs.readFileSync(path.join(EXAMPLES_DIR, fileName), "utf8")
-    );
-  } catch {
-    return fallback;
-  }
+function isPublicIpv4(address) {
+  if (net.isIP(address) !== 4) return false;
+  const [a, b, c] = address.split(".").map(Number);
+  return !(
+    a === 0 || a === 10 || a === 127 || a >= 224 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    (a === 192 && b === 0 && c === 2) ||
+    (a === 198 && b === 51 && c === 100) ||
+    (a === 203 && b === 0 && c === 113)
+  );
 }
 
-function proxyOrFallbackApiRequest(req, res, apiBaseUrl) {
-  const targetUrl = new URL(req.url ?? "/v1/health", apiBaseUrl);
+export function fetchPublicResourcePage(rawUrl, init = {}) {
+  if (!isSafePublicHttpsUrl(rawUrl)) return Promise.reject(new Error("Resource URL is not public HTTPS."));
+  return new Promise((resolve, reject) => {
+    const request = https.request(rawUrl, {
+      method: "GET",
+      headers: init.headers,
+      signal: init.signal,
+      lookup(hostname, _options, callback) {
+        // IPv6 answers are never selected for this request, including IPv4-mapped IPv6.
+        dns.lookup(hostname, { all: true }, (err, addresses) => {
+          if (err) return callback(err);
+          const ipv4 = addresses.filter(({ address, family }) => family === 4 && net.isIP(address) === 4);
+          if (!ipv4.length || ipv4.some(({ address }) => !isPublicIpv4(address))) {
+            callback(new Error("Resource host resolves to a non-public address."));
+            return;
+          }
+          callback(null, ipv4[0].address, 4);
+        });
+      },
+    }, (upstream) => {
+      const headers = new Headers();
+      for (const key of ["content-type", "location"]) {
+        if (typeof upstream.headers[key] === "string") headers.set(key, upstream.headers[key]);
+      }
+      resolve({
+        ok: upstream.statusCode >= 200 && upstream.statusCode < 300,
+        status: upstream.statusCode,
+        url: rawUrl,
+        headers,
+        body: Readable.toWeb(upstream),
+      });
+    });
+    request.on("error", reject);
+    request.end();
+  });
+}
+
+function proxyApiRequest(req, res, apiBaseUrl, pathAndSearch) {
+  const targetUrl = new URL(pathAndSearch, apiBaseUrl);
+  const { "x-auth-exchange-secret": _clientExchangeSecret, ...proxyHeaders } = req.headers;
   const proxyReq = http.request(
     targetUrl,
     {
       method: req.method,
       headers: {
-        ...req.headers,
+        ...proxyHeaders,
         host: targetUrl.host,
       },
       timeout: 1500,
@@ -1158,52 +1021,14 @@ function proxyOrFallbackApiRequest(req, res, apiBaseUrl) {
     }
   );
 
+  proxyReq.on("timeout", () => proxyReq.destroy(new Error("API upstream timed out.")));
   proxyReq.on("error", () => {
-    // Fallback deterministic synthetic state when local Rust API is not running
-    const urlPath = (req.url ?? "").split("?")[0];
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.setHeader("X-Syllabus-Synthetic-Fallback", "true");
-
-    if (urlPath.includes("/schedule")) {
-      res.writeHead(200);
-      res.end(
-        JSON.stringify(
-          readSyntheticExampleOrFallback("schedule.synthetic.json", {
-            status: "ok",
-          })
-        )
-      );
+    if (res.headersSent) {
+      res.destroy();
       return;
     }
-    if (urlPath.includes("/proficiency")) {
-      res.writeHead(200);
-      res.end(
-        JSON.stringify(
-          readSyntheticExampleOrFallback("proficiency.synthetic.json", {
-            status: "ok",
-          })
-        )
-      );
-      return;
-    }
-    if (urlPath.includes("/syllabi")) {
-      res.writeHead(200);
-      res.end(
-        JSON.stringify(
-          readSyntheticExampleOrFallback("syllabus.synthetic.json", {
-            status: "ok",
-          })
-        )
-      );
-      return;
-    }
-    res.writeHead(200);
-    res.end(
-      JSON.stringify({
-        status: "synthetic_fallback_ready",
-        path: urlPath,
-      })
-    );
+    res.writeHead(502, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ error: "API upstream unavailable." }));
   });
 
   req.pipe(proxyReq);
@@ -1223,7 +1048,7 @@ function openStore(storePath, openCatalogDir = DEFAULT_OPEN_CATALOG_DIR) {
   for (const [sid, rawSess] of Object.entries(saved.sessions ?? {})) {
     if (!rawSess || typeof rawSess !== "object") continue;
     const explicitAuth = Boolean(rawSess.explicitAuth);
-    const authStatus = rawSess.authStatus ?? "authenticated";
+    const authStatus = rawSess.authStatus ?? "guest";
     const account = rawSess.account ?? null;
     const accountId = rawSess.accountId ?? account?.accountId ?? null;
     if ("generatedPlans" in rawSess || "syllabusOverrides" in rawSess || "userLibraryResourceIds" in rawSess) {
@@ -1256,8 +1081,10 @@ function openStore(storePath, openCatalogDir = DEFAULT_OPEN_CATALOG_DIR) {
     resources: {
       ...catalogResourcesJson.global_discovered_resources,
       ...openCatalog.all,
-      ...saved.resources,
+      ...Object.fromEntries(Object.entries(saved.resources ?? {}).filter(([id]) => saved.globalAdminResourceIds?.includes(id))),
     },
+    globalAdminResourceIds: saved.globalAdminResourceIds ?? [],
+    globalRemovedResourceIds: saved.globalRemovedResourceIds ?? [],
     accounts: saved.accounts ?? {},
     oauthIdentities: saved.oauthIdentities ?? {},
     passkeys: saved.passkeys ?? {},
@@ -1297,10 +1124,19 @@ function appendSetCookie(res, cookieHeaderValue) {
   }
 }
 
+const MAX_REQUEST_BODY_BYTES = 8 * 1024 * 1024;
+
 function readRequestBody(req) {
   return new Promise((resolve, reject) => {
     let body = "";
+    let bytes = 0;
     req.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_REQUEST_BODY_BYTES) {
+        body = "";
+        reject(Object.assign(new Error("Request body is too large."), { statusCode: 413 }));
+        return;
+      }
       body += chunk;
     });
     req.on("end", () => resolve(body));
@@ -1308,21 +1144,42 @@ function readRequestBody(req) {
   });
 }
 
-function defaultRoleForEmail(email) {
-  if (email === "ada@syllabus.build" || email === "curator@example.test") return "Curator";
-  if (email === "mo@syllabus.build" || email === "moderator@example.test") return "Moderator";
-  return "Learner";
+async function readBoundedResponseText(response, maxBytes = 8 * 1024 * 1024) {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("Remote response is too large.");
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    reader.releaseLock();
+  }
 }
 
-async function syncBackendAuth(apiBaseUrl, endpointPath, payload, fetchImpl = globalThis.fetch) {
+function defaultAccountRole() {
+  return "User";
+}
+
+async function syncBackendAuth(apiBaseUrl, endpointPath, payload, exchangeSecret, fetchImpl = globalThis.fetch) {
+  if (!exchangeSecret) return null;
   try {
     const res = await fetchImpl(`${apiBaseUrl.replace(/\/+$/, "")}${endpointPath}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-auth-exchange-secret": exchangeSecret },
       body: JSON.stringify(payload),
     });
     if (!res.ok) return null;
-    return await res.json();
+    return JSON.parse(await readBoundedResponseText(res));
   } catch {
     return null;
   }
@@ -1330,21 +1187,26 @@ async function syncBackendAuth(apiBaseUrl, endpointPath, payload, fetchImpl = gl
 
 export function createWebAppServer(options = {}) {
   const env = options.env ?? process.env;
+  if (env.AUTH_EXCHANGE_SECRET && !/^[0-9a-fA-F]{64}$/.test(env.AUTH_EXCHANGE_SECRET)) {
+    throw new Error("AUTH_EXCHANGE_SECRET must be 32 bytes encoded as 64 hex characters.");
+  }
+  if (!isLocalDevEnv(env)) {
+    if (!resolveProviderCredentials("google", env) && !resolveProviderCredentials("github", env)) {
+      throw new Error("Configure Google or GitHub OAuth before starting the web server.");
+    }
+    if (!env.AUTH_EXCHANGE_SECRET) {
+      throw new Error("AUTH_EXCHANGE_SECRET is required for verified sign-in.");
+    }
+  }
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const apiBaseUrl =
     options.apiBaseUrl ?? env.API_BASE_URL ?? "http://127.0.0.1:8080";
   const oauthSecret =
     options.oauthCookieSecret ?? env.OAUTH_COOKIE_SECRET ?? crypto.randomBytes(32).toString("hex");
   const openCatalogDir = options.openCatalogDir ?? DEFAULT_OPEN_CATALOG_DIR;
-  const allowOpenCatalogDiskWrite =
-    options.allowOpenCatalogDiskWrite ??
-    Boolean(options.openCatalogDir || (options.storePath && !String(options.storePath).includes(os.tmpdir())));
-  const byokMasterKeyPath =
-    options.byokMasterKeyPath ??
-    (options.storePath ? path.join(path.dirname(options.storePath), "byok-master.key") : undefined);
   const byokMasterKey = resolveByokMasterKey({
     envKey: options.byokMasterKey ?? env.BYOK_MASTER_KEY,
-    keyFilePath: byokMasterKeyPath,
+    persistent: Boolean(options.storePath) || !isLocalDevEnv(env),
   });
   const store = openStore(options.storePath, openCatalogDir);
   const devIdpCodes = createDevIdpCodeStore();
@@ -1360,20 +1222,6 @@ export function createWebAppServer(options = {}) {
   const passkeyCeremonies = new Map();
   const sessionApiTokens = new Map();
   const rateLimitBuckets = new Map();
-  const localRecoveryTokens = new Map();
-  const devAuthOutbox = [];
-
-  function sha256Hex(text) {
-    return crypto.createHash("sha256").update(text).digest("hex");
-  }
-
-  function pushDevOutboxMessage(msg) {
-    if (!isLocalDevEnv(env)) return;
-    devAuthOutbox.push(msg);
-    if (devAuthOutbox.length > 100) {
-      devAuthOutbox.splice(0, devAuthOutbox.length - 100);
-    }
-  }
 
   function touchSessionCache(sid) {
     const now = Date.now();
@@ -1483,7 +1331,7 @@ export function createWebAppServer(options = {}) {
       if (res.status >= 500) {
         return { reachable: false, ok: false, status: res.status, data: null };
       }
-      const text = await res.text();
+      const text = await readBoundedResponseText(res);
       let data = null;
       if (text) {
         try {
@@ -1501,61 +1349,25 @@ export function createWebAppServer(options = {}) {
   function refreshOpenCatalogIntoStore() {
     const diskCatalog = loadOpenCatalogFromDisk(openCatalogDir);
     for (const [id, entry] of Object.entries(diskCatalog.all)) {
-      if (!store.data.resources[id]) {
+      if (!store.data.resources[id] && !store.data.globalRemovedResourceIds.includes(id)) {
         store.data.resources[id] = entry;
       }
     }
     return diskCatalog;
   }
 
-  function resolveByokCredentialsForAccount(accountId, workspace = {}) {
+  function resolveByokCredentialsForAccount(accountId) {
     if (options.initialState?.byokCredentials && (!accountId || !store.data.byokVault[accountId])) {
       return [...options.initialState.byokCredentials];
     }
-    const disabledEnv = new Set(workspace?.disabledEnvProviders ?? []);
     const vaultForAccount = (accountId && store.data.byokVault[accountId]) || {};
-    const out = [];
-    for (const providerId of ["openai", "anthropic", "google_gemini"]) {
-      const envlp = vaultForAccount[providerId];
-      if (envlp) {
-        out.push(toMaskedCredentialRecord(envlp));
-        continue;
-      }
-      if (!disabledEnv.has(providerId)) {
-        const envKey = env[PROVIDER_KEY_ENV[providerId]]?.trim();
-        if (envKey && envKey.length >= 4) {
-          const meta = DEFAULT_CREDENTIAL_META[providerId];
-          const suffix = envKey.slice(-4);
-          out.push({
-            credential_ref: meta.credentialRef,
-            provider_id: providerId,
-            label: `${meta.label} (Server Env)`,
-            status: "active",
-            credential_version_ref: `${meta.credentialRef}-env-v1`,
-            masked_hint: `••••${suffix}`,
-            masked_suffix: suffix,
-            version: 1,
-            etag: `"credential-${meta.credentialRef}-env-v1"`,
-            updated_at: "2026-01-01T00:00:00.000Z",
-          });
-        }
-      }
-    }
-    return out;
+    return Object.values(vaultForAccount).map(toMaskedCredentialRecord);
   }
 
-  function resolveRuntimeApiKeyForAccount(accountId, providerId, workspace = {}) {
+  function resolveRuntimeApiKeyForAccount(accountId, providerId) {
     if (!providerId) return undefined;
     const envlp = accountId ? store.data.byokVault[accountId]?.[providerId] : undefined;
-    if (envlp) {
-      return openByokApiKey({ masterKey: byokMasterKey, accountId, envelope: envlp });
-    }
-    const disabledEnv = new Set(workspace?.disabledEnvProviders ?? []);
-    if (!disabledEnv.has(providerId)) {
-      const envKey = env[PROVIDER_KEY_ENV[providerId]]?.trim();
-      if (envKey) return envKey;
-    }
-    return undefined;
+    return envlp ? openByokApiKey({ masterKey: byokMasterKey, accountId, envelope: envlp }) : undefined;
   }
 
   function workspaceKeyFor(sid, sessionMeta) {
@@ -1608,7 +1420,6 @@ export function createWebAppServer(options = {}) {
       reminderLeadMinutes: s.reminderLeadMinutes,
       providerModels: s.providerModels,
       primaryCredentialRef: s.primaryCredentialRef,
-      disabledEnvProviders: prevWorkspace?.disabledEnvProviders ?? [],
     };
   }
 
@@ -1639,34 +1450,12 @@ export function createWebAppServer(options = {}) {
       email,
       username: account.username ?? defaultUsernameOfEmail(email),
       ...(account.avatarUrl ? { avatarUrl: account.avatarUrl } : {}),
-      role: account.role ?? defaultRoleForEmail(email),
+      role: account.role ?? defaultAccountRole(),
       oauthProviders: [],
     };
     store.data.accounts[email] = record;
     store.save();
     return record;
-  }
-
-  function resolveAccountForPasskey(storedCred) {
-    const byId = Object.values(store.data.accounts).find((a) => a && a.accountId === storedCred.passkeyUserId);
-    if (byId) {
-      return {
-        accountId: byId.accountId,
-        email: byId.email,
-        username: byId.username ?? defaultUsernameOfEmail(byId.email),
-        ...(byId.avatarUrl ? { avatarUrl: byId.avatarUrl } : {}),
-        role: byId.role ?? defaultRoleForEmail(byId.email),
-      };
-    }
-    const persona = Object.values(PERSONAS).find((p) => p.accountId === storedCred.passkeyUserId || p.email === storedCred.email);
-    if (persona) return persona;
-    const email = (storedCred.email || "learner@syllabus.build").trim().toLowerCase();
-    return {
-      accountId: storedCred.passkeyUserId,
-      email,
-      username: defaultUsernameOfEmail(email),
-      role: defaultRoleForEmail(email),
-    };
   }
 
   function publicOriginOf(req) {
@@ -1684,7 +1473,7 @@ export function createWebAppServer(options = {}) {
 
   function hydrateControllerForSession(sid) {
     const savedSess = store.data.sessions[sid];
-    const initialAuthStatus = savedSess?.authStatus ?? options.initialState?.authStatus ?? "authenticated";
+    const initialAuthStatus = savedSess?.authStatus ?? "guest";
     const initialAccount =
       savedSess?.account ??
       options.initialState?.account ??
@@ -1699,8 +1488,8 @@ export function createWebAppServer(options = {}) {
     const wsKey = workspaceKeyFor(sid, meta);
     const savedWorkspace = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
     const creds =
-      initialAuthStatus === "authenticated"
-        ? resolveByokCredentialsForAccount(initialAccount.accountId, savedWorkspace)
+      initialAuthStatus === "authenticated" && explicitAuth
+        ? resolveByokCredentialsForAccount(initialAccount.accountId)
         : [];
     return createSyllabusWebAppController({
       ...options.initialState,
@@ -1720,7 +1509,7 @@ export function createWebAppServer(options = {}) {
     const pendingReturnTo = prevState.returnTo;
     const wasGuest = prevState.authStatus === "guest";
     const savedWorkspace = store.data.accountWorkspaces[resolvedAccount.accountId] ?? {};
-    const creds = resolveByokCredentialsForAccount(resolvedAccount.accountId, savedWorkspace);
+    const creds = resolveByokCredentialsForAccount(resolvedAccount.accountId);
     const targetTopLevel = pendingReturnTo
       ? pendingReturnTo.topLevel
       : wasGuest
@@ -1747,7 +1536,8 @@ export function createWebAppServer(options = {}) {
     });
     nextController.syncCatalogResources(
       store.data.resources,
-      nextController.getState().adminRemovedResourceIds,
+      [...store.data.globalRemovedResourceIds, ...nextController.getState().adminRemovedResourceIds],
+      savedWorkspace.libraryResourcesSnapshot ?? {},
     );
     syncControllerPasskeys(nextController, null);
     controllers.set(sid, nextController);
@@ -1768,14 +1558,25 @@ export function createWebAppServer(options = {}) {
     sid,
     prevController,
     resolvedAccount,
-    apiToken = null,
+    apiToken,
     backendEmailVerified = false,
+    expiresAt,
   ) {
+    const expiryMs = Date.parse(expiresAt ?? "");
+    if (typeof apiToken !== "string" || !apiToken || !Number.isFinite(expiryMs) || expiryMs <= Date.now()) {
+      throw new Error("Verified backend session is unavailable.");
+    }
     const accountId = resolvedAccount.accountId;
-    const normalizedEmail = resolvedAccount.email.trim().toLowerCase();
+    const sessionRes = await callBackendJson("GET", "/v1/auth/session", { token: apiToken });
+    const checkedExpiryMs = Date.parse(sessionRes.data?.expires_at ?? "");
+    if (!sessionRes.ok || sessionRes.data?.account_id !== accountId ||
+        !Number.isFinite(checkedExpiryMs) || checkedExpiryMs <= Date.now() ||
+        !Array.isArray(sessionRes.data?.roles) ||
+        sessionRes.data.roles.includes("admin") !== (resolvedAccount.role === "Admin")) {
+      throw new Error("Verified backend session is unavailable.");
+    }
+    sessionApiTokens.set(sid, { token: apiToken, expiresAt: Math.min(expiryMs, checkedExpiryMs) });
     if (typeof apiToken === "string" && apiToken) {
-      sessionApiTokens.set(sid, apiToken);
-      backendTokenByEmail.set(normalizedEmail, apiToken);
       const [wsRes, pkRes, walletRes] = await Promise.all([
         callBackendJson("GET", "/v1/me/workspace", { token: apiToken }),
         callBackendJson("GET", "/v1/me/passkeys", { token: apiToken }),
@@ -1793,16 +1594,10 @@ export function createWebAppServer(options = {}) {
             ...(store.data.byokVault[accountId] ?? {}),
           };
         }
-        if (libraryResourcesSnapshot && typeof libraryResourcesSnapshot === "object") {
-          for (const [resId, entry] of Object.entries(libraryResourcesSnapshot)) {
-            if (entry && typeof entry === "object" && !store.data.resources[resId]) {
-              store.data.resources[resId] = entry;
-            }
-          }
-        }
         store.data.accountWorkspaces[accountId] = {
           ...(store.data.accountWorkspaces[accountId] ?? {}),
           ...remoteWorkspace,
+          ...(libraryResourcesSnapshot && typeof libraryResourcesSnapshot === "object" ? { libraryResourcesSnapshot } : {}),
         };
       }
       if (pkRes.ok && Array.isArray(pkRes.data?.items)) {
@@ -1812,24 +1607,25 @@ export function createWebAppServer(options = {}) {
           }
         }
       }
-      if (
-        walletRes.ok &&
-        walletRes.data &&
-        typeof walletRes.data.available_minor_units === "number" &&
-        walletRes.data.lifetime_purchased_minor_units > 0 &&
-        !store.data.accountWorkspaces[accountId]?.wallet
-      ) {
-        store.data.accountWorkspaces[accountId] = {
-          ...(store.data.accountWorkspaces[accountId] ?? {}),
-          wallet: {
+      const remoteWallet = walletRes.ok && typeof walletRes.data?.available_minor_units === "number"
+        ? {
             currency: walletRes.data.currency || "USD",
             available_minor: walletRes.data.available_minor_units,
             reserved_minor: walletRes.data.reserved_minor_units || 0,
-            live_billing_enabled: true,
+            live_billing_enabled: false,
             updated_at: walletRes.data.updated_at || new Date().toISOString(),
-          },
-        };
-      }
+          }
+        : {
+            currency: "USD",
+            available_minor: 0,
+            reserved_minor: 0,
+            live_billing_enabled: false,
+            updated_at: new Date().toISOString(),
+          };
+      store.data.accountWorkspaces[accountId] = {
+        ...(store.data.accountWorkspaces[accountId] ?? {}),
+        wallet: remoteWallet,
+      };
     }
     if (backendEmailVerified) {
       store.data.accountWorkspaces[accountId] = {
@@ -1865,6 +1661,15 @@ export function createWebAppServer(options = {}) {
   // An unknown or missing cookie gets a new random session, so a client cannot choose its session id.
   function sessionFor(req, res) {
     let sid = cookieOf(req, SESSION_COOKIE);
+    const savedSession = sid && store.data.sessions[sid];
+    const tokenRecord = sid && sessionApiTokens.get(sid);
+    if (savedSession?.authStatus === "authenticated" &&
+        (!savedSession.explicitAuth || !tokenRecord || tokenRecord.expiresAt <= Date.now())) {
+      controllers.delete(sid);
+      sessionApiTokens.delete(sid);
+      delete store.data.sessions[sid];
+      sid = null;
+    }
     if (!sid || !(controllers.has(sid) || store.data.sessions[sid])) {
       sid = crypto.randomUUID();
       appendSetCookie(res, `${SESSION_COOKIE}=${sid}; Path=/; HttpOnly; SameSite=Lax${cookieSecureAttr}`);
@@ -1876,40 +1681,24 @@ export function createWebAppServer(options = {}) {
       controllers.set(sid, controller);
     }
     touchSessionCache(sid);
+    const accountId = store.data.sessions[sid]?.accountId;
+    const localEntries = accountId ? store.data.accountWorkspaces[accountId]?.libraryResourcesSnapshot ?? {} : {};
     controller.syncCatalogResources(
       store.data.resources,
-      controller.getState().adminRemovedResourceIds,
+      [...store.data.globalRemovedResourceIds, ...controller.getState().adminRemovedResourceIds],
+      localEntries,
     );
     syncControllerPasskeys(controller);
     return { sid, controller };
   }
 
-  // Saves global catalog additions, session auth metadata, and (only while authenticated) the account's workspace.
+  // Saves session auth metadata and the authenticated account's workspace.
   function persist(sid, controller) {
     const state = controller.getState();
     const {
-      catalogResources,
-      userLibraryResourceIds,
-      adminRemovedResourceIds,
       authStatus,
       account,
     } = state;
-    const userLibSet = new Set(userLibraryResourceIds);
-    let resourcesChanged = false;
-    for (const [id, entry] of Object.entries(catalogResources)) {
-      if (id.startsWith("discovered-") || id.startsWith("manual-") || userLibSet.has(id)) {
-        if (JSON.stringify(store.data.resources[id]) !== JSON.stringify(entry)) {
-          store.data.resources[id] = entry;
-          resourcesChanged = true;
-        }
-      }
-    }
-    for (const removedId of adminRemovedResourceIds) {
-      if (removedId in store.data.resources) {
-        delete store.data.resources[removedId];
-        resourcesChanged = true;
-      }
-    }
 
     const prevSession = store.data.sessions[sid];
     const explicitAuth = authStatus === "authenticated" ? Boolean(prevSession?.explicitAuth) : false;
@@ -1933,31 +1722,38 @@ export function createWebAppServer(options = {}) {
         store.data.accountWorkspaces[wsKey] = nextWs;
         workspaceChanged = true;
       }
-      // Mirror unauthenticated default-persona demo progress to `learner-default` unless `alex@syllabus.build` is a password-protected account,
-      // so signing out of demo mode and signing back in as alex@syllabus.build restores pre-signout work while keeping forged cookies isolated.
-      if (!explicitAuth && account.accountId === "learner-default" && !store.data.accounts["alex@syllabus.build"]?.passwordHash) {
-        const prevDemoWs = store.data.accountWorkspaces["learner-default"];
-        if (JSON.stringify(nextWs) !== JSON.stringify(prevDemoWs)) {
-          store.data.accountWorkspaces["learner-default"] = nextWs;
-          workspaceChanged = true;
-        }
-      }
     }
 
-    if (!resourcesChanged && !sessionChanged && !workspaceChanged) return false;
+    if (!sessionChanged && !workspaceChanged) return false;
     store.data.sessions[sid] = nextSessionMeta;
     store.save();
     return true;
   }
 
+  function requireCatalogBackendSuccess(sid, result) {
+    if (result.ok) return;
+    controllers.delete(sid);
+    const statusCode = result.status >= 400 && result.status < 500 ? result.status : 502;
+    throw Object.assign(new Error("Global catalog change was rejected by the backend."), { statusCode });
+  }
+
+  function commitGlobalResource(id, entry) {
+    store.data.resources[id] = entry;
+    if (!store.data.globalAdminResourceIds.includes(id)) store.data.globalAdminResourceIds.push(id);
+    store.data.globalRemovedResourceIds = store.data.globalRemovedResourceIds.filter((removedId) => removedId !== id);
+    store.save();
+  }
+
+  function removeGlobalResource(id) {
+    delete store.data.resources[id];
+    store.data.globalAdminResourceIds = store.data.globalAdminResourceIds.filter((savedId) => savedId !== id);
+    if (!store.data.globalRemovedResourceIds.includes(id)) store.data.globalRemovedResourceIds.push(id);
+    store.save();
+  }
+
   function apiTokenForSession(sid, controller) {
-    const direct = sessionApiTokens.get(sid);
-    if (direct) return direct;
-    const st = controller?.getState?.();
-    if (st?.authStatus === "authenticated" && st.account?.email) {
-      return backendTokenByEmail.get(st.account.email.trim().toLowerCase()) ?? null;
-    }
-    return null;
+    const record = sessionApiTokens.get(sid);
+    return store.data.sessions[sid]?.explicitAuth && record?.expiresAt > Date.now() ? record.token : null;
   }
 
   async function persistAsync(sid, controller, forceRemote = false) {
@@ -1981,24 +1777,11 @@ export function createWebAppServer(options = {}) {
     });
   }
 
-  const backendTokenByEmail = new Map();
-  async function syncBackendResourceEndpoint(email, method, endpointPath, payload, extraHeaders = {}) {
-    if (!email) return null;
+  async function syncBackendResourceEndpoint(sid, method, endpointPath, payload, extraHeaders = {}) {
+    const token = apiTokenForSession(sid);
+    if (!token) return null;
     const base = apiBaseUrl.replace(/\/+$/, "");
     try {
-      let token = backendTokenByEmail.get(email);
-      if (!token) {
-        const sessRes = await fetchImpl(`${base}/v1/auth/sessions`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, authentication_code: "123456" }),
-        });
-        if (!sessRes.ok) return null;
-        const sessJson = await sessRes.json();
-        token = sessJson?.session_token;
-        if (typeof token === "string" && token) backendTokenByEmail.set(email, token);
-      }
-      if (!token) return null;
       const res = await fetchImpl(`${base}${endpointPath}`, {
         method,
         headers: {
@@ -2009,7 +1792,7 @@ export function createWebAppServer(options = {}) {
         ...(payload !== undefined ? { body: JSON.stringify(payload) } : {}),
       });
       if (!res.ok) return null;
-      const text = await res.text();
+      const text = await readBoundedResponseText(res);
       return text ? JSON.parse(text) : null;
     } catch {
       return null;
@@ -2019,14 +1802,10 @@ export function createWebAppServer(options = {}) {
   async function runServerManualResourceAnalysis(sid, controller, data) {
     const state = controller.getState();
     const aiModel = controller.designatedAiModel();
-    const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
-    const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
     const apiKey =
-      aiModel && state.authStatus === "authenticated"
-        ? resolveRuntimeApiKeyForAccount(state.account.accountId, aiModel.providerId, ws)
-        : aiModel
-          ? env[PROVIDER_KEY_ENV[aiModel.providerId]]
-          : undefined;
+      aiModel && store.data.sessions[sid]?.explicitAuth && state.authStatus === "authenticated"
+        ? resolveRuntimeApiKeyForAccount(state.account.accountId, aiModel.providerId)
+        : undefined;
     return analyzeManualResourceWithAi({
       rawText: data.rawText ?? "",
       explicitUrl: data.explicitUrl,
@@ -2034,24 +1813,22 @@ export function createWebAppServer(options = {}) {
       modelId: aiModel?.modelId,
       apiKey,
       fetchImpl,
+      pageFetchImpl: options.fetchImpl ? fetchImpl : fetchPublicResourcePage,
     });
   }
 
-  function resolveOrCreateOAuthAccount(profile, backendAccountId) {
+  function resolveOrCreateOAuthAccount(profile, backendAccountId, backendRoles = []) {
     const identityKey = `${profile.provider}:${profile.providerSubject}`;
     const linkedEmail = store.data.oauthIdentities[identityKey];
     const email = profile.email.trim().toLowerCase();
     const existing = (linkedEmail && store.data.accounts[linkedEmail]) || (profile.emailVerified ? store.data.accounts[email] : undefined);
-    const persona = Object.values(PERSONAS).find((p) => p.email === email);
-
     const providers = Array.from(new Set([...(existing?.oauthProviders ?? []), profile.provider]));
     const record = {
-      accountId: existing?.accountId ?? backendAccountId ?? persona?.accountId ?? `usr-${crypto.randomUUID().slice(0, 12)}`,
+      accountId: backendAccountId,
       email,
-      username: existing?.username ?? persona?.username ?? defaultUsernameOfEmail(email),
+      username: existing?.username ?? defaultUsernameOfEmail(email),
       avatarUrl: existing?.avatarUrl ?? profile.avatarUrl,
-      role: existing?.role ?? persona?.role ?? defaultRoleForEmail(email),
-      passwordHash: existing?.passwordHash,
+      role: backendRoles.includes("admin") ? "Admin" : "User",
       oauthProviders: providers,
     };
     store.data.accounts[email] = record;
@@ -2063,111 +1840,6 @@ export function createWebAppServer(options = {}) {
       username: record.username,
       ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
       role: record.role,
-    };
-  }
-
-  function signWebhookPayloadHex(rawJson) {
-    const secret = env.BILLING_WEBHOOK_SECRET || "whsec_syllabus_io_dev_secret_key_2026";
-    return crypto.createHmac("sha256", secret).update(rawJson).digest("hex");
-  }
-
-  async function executeHostedTopUp(sid, controller, requestedAmountMinor, reqOrigin) {
-    const rawNum = Number.parseInt(String(requestedAmountMinor ?? "1000"), 10);
-    const amountMinor = Number.isFinite(rawNum) && rawNum >= 100 ? Math.min(rawNum, 100_000) : 1000;
-    const prevState = controller.getState();
-    const stripeKey = env.STRIPE_SECRET_KEY?.trim();
-    if (stripeKey) {
-      const form = new URLSearchParams({
-        mode: "payment",
-        success_url: `${reqOrigin}/?topLevel=Settings&billing=success`,
-        cancel_url: `${reqOrigin}/?topLevel=Settings&billing=canceled`,
-        "line_items[0][price_data][currency]": "usd",
-        "line_items[0][price_data][product_data][name]": "Syllabus.build Hosted AI Credits",
-        "line_items[0][price_data][unit_amount]": String(amountMinor),
-        "line_items[0][quantity]": "1",
-        client_reference_id: prevState.account.accountId,
-      });
-      const stripeRes = await fetchImpl("https://api.stripe.com/v1/checkout/sessions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${stripeKey}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: form.toString(),
-      });
-      const stripeJson = await stripeRes.json();
-      if (!stripeRes.ok) {
-        throw new Error(stripeJson?.error?.message || `Stripe checkout failed (${stripeRes.status})`);
-      }
-      controller.setWallet(
-        prevState.wallet,
-        `Redirecting to Stripe Checkout for $${(amountMinor / 100).toFixed(2)} hosted credit top-up.`,
-      );
-      await persistAsync(sid, controller);
-      return {
-        mode: "stripe",
-        checkout_session_id: stripeJson.id,
-        checkout_url: stripeJson.url,
-        wallet: controller.getState().wallet,
-      };
-    }
-
-    let apiToken = apiTokenForSession(sid, controller);
-    if (!apiToken && prevState.authStatus === "authenticated") {
-      const sessRes = await callBackendJson("POST", "/v1/auth/sessions", {
-        body: { email: prevState.account.email, authentication_code: "123456" },
-      });
-      if (sessRes.ok && typeof sessRes.data?.session_token === "string") {
-        apiToken = sessRes.data.session_token;
-        backendTokenByEmail.set(prevState.account.email.trim().toLowerCase(), apiToken);
-      }
-    }
-
-    let checkoutSessionId = `cs_hosted_${crypto.randomUUID().slice(0, 12)}`;
-    if (apiToken) {
-      const idemKey = `idem-topup-${crypto.randomUUID()}`;
-      const csRes = await callBackendJson("POST", "/v1/billing/checkout-sessions", {
-        token: apiToken,
-        headers: { "Idempotency-Key": idemKey },
-        body: {
-          checkout_session_id: checkoutSessionId,
-          package_id: "pkg-hosted-topup",
-          amount_minor_units: amountMinor,
-          credit_minor_units: amountMinor,
-          success_url: `${reqOrigin}/?topLevel=Settings&billing=success`,
-          cancel_url: `${reqOrigin}/?topLevel=Settings&billing=canceled`,
-        },
-      });
-      if (csRes.ok && csRes.data?.checkout_session_id) {
-        checkoutSessionId = csRes.data.checkout_session_id;
-        const rawWebhook = JSON.stringify({
-          provider_event_id: `evt_${crypto.randomUUID().replace(/-/g, "")}`,
-          event_type: "checkout.session.completed",
-          checkout_session_id: checkoutSessionId,
-          amount_minor_units: amountMinor,
-        });
-        const sigHex = signWebhookPayloadHex(rawWebhook);
-        await callBackendJson("POST", "/v1/billing/webhooks", {
-          rawBody: rawWebhook,
-          headers: { "X-Billing-Signature": `sha256=${sigHex}` },
-        });
-      }
-    }
-
-    const nextWallet = {
-      ...prevState.wallet,
-      available_minor: prevState.wallet.available_minor + amountMinor,
-      updated_at: new Date().toISOString(),
-    };
-    controller.setWallet(
-      nextWallet,
-      `Added $${(amountMinor / 100).toFixed(2)} to your hosted AI credit wallet. New available balance: $${(nextWallet.available_minor / 100).toFixed(2)}.`,
-    );
-    await persistAsync(sid, controller);
-    return {
-      mode: "settled",
-      checkout_session_id: checkoutSessionId,
-      wallet: controller.getState().wallet,
     };
   }
 
@@ -2191,7 +1863,7 @@ export function createWebAppServer(options = {}) {
     }
 
     if (pathname.startsWith("/v1/")) {
-      proxyOrFallbackApiRequest(req, res, apiBaseUrl);
+      proxyApiRequest(req, res, apiBaseUrl, `${pathname}${parsedUrl.search}`);
       return;
     }
 
@@ -2215,50 +1887,6 @@ export function createWebAppServer(options = {}) {
       }
     }
 
-    if (pathname === "/auth/dev-outbox" && req.method === "GET") {
-      if (!localDev) {
-        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ error: "Not found." }));
-        return;
-      }
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ messages: devAuthOutbox }));
-      return;
-    }
-
-    if (pathname === "/auth/verify-email" && req.method === "GET") {
-      const { sid, controller } = sessionFor(req, res);
-      const code = (parsedUrl.searchParams.get("token") ?? parsedUrl.searchParams.get("code") ?? "").trim();
-      if (code) {
-        const apiRes = await callBackendJson("POST", "/v1/auth/email-verification/confirm", {
-          body: { code },
-        });
-        if (apiRes.reachable) {
-          if (apiRes.ok) {
-            const verifiedEmail = apiRes.data?.email || controller.getState().account?.email || "your email";
-            controller.setEmailVerificationState(true, false, `Verified ${verifiedEmail}.`);
-            await persistAsync(sid, controller, true);
-          } else {
-            controller.setEmailVerificationState(false, true, "Invalid or expired verification link.");
-            await persistAsync(sid, controller);
-          }
-        } else {
-          const rec = localRecoveryTokens.get(sha256Hex(`email_verification:${code}`));
-          if (rec && !rec.consumed && rec.expiresAt > Date.now()) {
-            rec.consumed = true;
-            controller.setEmailVerificationState(true, false, `Verified ${rec.email}.`);
-            await persistAsync(sid, controller, true);
-          } else {
-            controller.setEmailVerificationState(false, true, "Invalid or expired verification link.");
-            await persistAsync(sid, controller);
-          }
-        }
-      }
-      res.writeHead(302, { Location: "/?topLevel=Settings", "Cache-Control": "no-store" });
-      res.end();
-      return;
-    }
-
     if (pathname === "/auth/providers" && req.method === "GET") {
       const origin = publicOriginOf(req);
       const providers = ["google", "github"].map((p) => {
@@ -2273,7 +1901,7 @@ export function createWebAppServer(options = {}) {
         };
       });
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-      res.end(JSON.stringify({ providers, email_password_enabled: true, passkey_enabled: true }));
+      res.end(JSON.stringify({ providers, email_password_enabled: false, passkey_enabled: true }));
       return;
     }
 
@@ -2314,6 +1942,11 @@ export function createWebAppServer(options = {}) {
     }
 
     const devIdpMatch = pathname.match(/^\/auth\/dev-idp\/(google|github)\/authorize$/);
+    if (devIdpMatch && !localDev) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: "Not found." }));
+      return;
+    }
     if (devIdpMatch && localDev) {
       const provider = devIdpMatch[1];
       if (isOAuthProvider(provider)) {
@@ -2328,7 +1961,12 @@ export function createWebAppServer(options = {}) {
           return;
         }
         if (req.method === "POST") {
-          const rawBody = await readRequestBody(req);
+          const rawBody = await readRequestBody(req).catch((err) => {
+            res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8" });
+            res.end(JSON.stringify({ error: err.message }));
+            return null;
+          });
+          if (rawBody === null) return;
           const form = new URLSearchParams(rawBody);
           const redirectUri = form.get("redirect_uri") ?? buildOAuthCallbackUrl(publicOriginOf(req), provider);
           const state = form.get("state") ?? "";
@@ -2427,15 +2065,20 @@ export function createWebAppServer(options = {}) {
               display_name: profile.displayName ?? null,
               avatar_url: profile.avatarUrl ?? null,
             },
+            env.AUTH_EXCHANGE_SECRET,
             fetchImpl,
           );
-          const resolvedAccount = resolveOrCreateOAuthAccount(profile, backendSession?.account_id);
+          if (!backendSession?.account_id || !backendSession?.session_token) {
+            throw new Error("Verified backend session is unavailable.");
+          }
+          const resolvedAccount = resolveOrCreateOAuthAccount(profile, backendSession?.account_id, backendSession?.roles);
           controller = await authenticateAndHydrateFromBackend(
             sid,
             controller,
             resolvedAccount,
-            backendSession?.session_token ?? null,
+            backendSession.session_token,
             Boolean(profile.emailVerified || backendSession?.email_verified),
+            backendSession.expires_at,
           );
           await persistAsync(sid, controller, true);
           res.writeHead(302, { Location: "/", "Cache-Control": "no-store" });
@@ -2455,7 +2098,7 @@ export function createWebAppServer(options = {}) {
     if (pathname === "/auth/passkey/register/options" && req.method === "POST") {
       const { sid, controller } = sessionFor(req, res);
       const { authStatus, account } = controller.getState();
-      if (authStatus !== "authenticated") {
+      if (authStatus !== "authenticated" || !store.data.sessions[sid]?.explicitAuth) {
         res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: "Sign in before registering a passkey." }));
         return;
@@ -2491,7 +2134,7 @@ export function createWebAppServer(options = {}) {
     if (pathname === "/auth/passkey/register/verify" && req.method === "POST") {
       const { sid, controller } = sessionFor(req, res);
       const { authStatus, account } = controller.getState();
-      if (authStatus !== "authenticated") {
+      if (authStatus !== "authenticated" || !store.data.sessions[sid]?.explicitAuth) {
         res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: "Sign in before registering a passkey." }));
         return;
@@ -2505,16 +2148,20 @@ export function createWebAppServer(options = {}) {
           ceremony,
           account,
         });
+        const apiToken = apiTokenForSession(sid, controller);
+        if (!apiToken) {
+          throw Object.assign(new Error("Verified backend session is unavailable."), { statusCode: 401 });
+        }
+        const stored = await callBackendJson("PUT", `/v1/me/passkeys/${encodeURIComponent(storedCredential.id)}`, {
+          token: apiToken,
+          body: { credential_json: storedCredential },
+        });
+        if (!stored.ok) {
+          throw Object.assign(new Error("Passkey registration could not be saved."), { statusCode: 502 });
+        }
         ensureStoredAccountRecord(account);
         store.data.passkeys[storedCredential.id] = storedCredential;
         store.save();
-        const apiToken = apiTokenForSession(sid, controller);
-        if (apiToken) {
-          await callBackendJson("PUT", `/v1/me/passkeys/${encodeURIComponent(storedCredential.id)}`, {
-            token: apiToken,
-            body: { credential_json: storedCredential },
-          });
-        }
         syncControllerPasskeys(controller, `Added ${storedCredential.name} for passwordless sign-in.`);
         await persistAsync(sid, controller);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -2527,7 +2174,7 @@ export function createWebAppServer(options = {}) {
           }),
         );
       } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
@@ -2543,7 +2190,7 @@ export function createWebAppServer(options = {}) {
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ options: authOptions, rpId: rpConfig.rpID }));
       } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(
           JSON.stringify({
             error: err instanceof Error ? err.message : String(err),
@@ -2564,6 +2211,7 @@ export function createWebAppServer(options = {}) {
           const remotePk = await callBackendJson(
             "GET",
             `/v1/auth/passkeys/${encodeURIComponent(String(assertionResponse.id))}`,
+            { headers: env.AUTH_EXCHANGE_SECRET ? { "x-auth-exchange-secret": env.AUTH_EXCHANGE_SECRET } : {} },
           );
           if (remotePk.ok && remotePk.data?.credential_json && typeof remotePk.data.credential_json === "object") {
             store.data.passkeys[String(assertionResponse.id)] = remotePk.data.credential_json;
@@ -2584,30 +2232,34 @@ export function createWebAppServer(options = {}) {
         result.storedCredential.lastUsedAt = Date.now();
         store.save();
 
-        const pkSessRes = await callBackendJson("POST", "/v1/auth/passkeys/session", {
-          body: {
-            credential_id: result.storedCredential.id,
-            counter: result.authenticationInfo.newCounter,
-          },
-        });
-        const resolvedAccount =
-          pkSessRes.ok && pkSessRes.data?.account_id
-            ? {
-                accountId: pkSessRes.data.account_id,
-                email: pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build",
-                username:
-                  pkSessRes.data.display_name ||
-                  defaultUsernameOfEmail(pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build"),
-                ...(pkSessRes.data.avatar_url ? { avatarUrl: pkSessRes.data.avatar_url } : {}),
-                role: defaultRoleForEmail(pkSessRes.data.email || result.storedCredential.email || ""),
-              }
-            : resolveAccountForPasskey(result.storedCredential);
+        const pkSessRes = env.AUTH_EXCHANGE_SECRET
+          ? await callBackendJson("POST", "/v1/auth/passkeys/session", {
+              headers: { "x-auth-exchange-secret": env.AUTH_EXCHANGE_SECRET },
+              body: {
+                credential_id: result.storedCredential.id,
+                counter: result.authenticationInfo.newCounter,
+              },
+            })
+          : { ok: false, data: null };
+        if (!pkSessRes.ok || !pkSessRes.data?.account_id || !pkSessRes.data?.session_token) {
+          throw new Error("Verified backend session is unavailable.");
+        }
+        const resolvedAccount = {
+          accountId: pkSessRes.data.account_id,
+          email: pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build",
+          username:
+            pkSessRes.data.display_name ||
+            defaultUsernameOfEmail(pkSessRes.data.email || result.storedCredential.email || "learner@syllabus.build"),
+          ...(pkSessRes.data.avatar_url ? { avatarUrl: pkSessRes.data.avatar_url } : {}),
+          role: pkSessRes.data.roles?.includes("admin") ? "Admin" : "User",
+        };
         controller = await authenticateAndHydrateFromBackend(
           sid,
           controller,
           resolvedAccount,
-          pkSessRes.ok ? pkSessRes.data?.session_token ?? null : null,
+          pkSessRes.data.session_token,
           Boolean(pkSessRes.data?.email_verified),
+          pkSessRes.data.expires_at,
         );
         await persistAsync(sid, controller);
         res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
@@ -2619,7 +2271,7 @@ export function createWebAppServer(options = {}) {
           }),
         );
       } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
         res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
@@ -2759,7 +2411,8 @@ export function createWebAppServer(options = {}) {
         ...store.data.resources,
       };
       const entries = Object.values(merged)
-        .filter((e) => e && typeof e === "object" && typeof e.resource_version_id === "string")
+        .filter((e) => e && typeof e === "object" && typeof e.resource_version_id === "string" &&
+          !store.data.globalRemovedResourceIds.includes(e.resource_version_id))
         .sort((a, b) => a.resource_version_id.localeCompare(b.resource_version_id));
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",
@@ -2784,6 +2437,11 @@ export function createWebAppServer(options = {}) {
     const singleCatalogMatch = pathname.match(/^\/catalog\/resources\/([a-zA-Z0-9._-]+)\.json$/);
     if (singleCatalogMatch && req.method === "GET") {
       const requestedId = decodeURIComponent(singleCatalogMatch[1]);
+      if (store.data.globalRemovedResourceIds.includes(requestedId)) {
+        res.writeHead(404, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: `Resource '${requestedId}' is not in the global catalog.` }));
+        return;
+      }
       const diskCatalog = refreshOpenCatalogIntoStore();
       const entry =
         store.data.resources[requestedId] ??
@@ -2918,34 +2576,18 @@ export function createWebAppServer(options = {}) {
     }
 
     if (pathname === "/api/billing/checkout" && req.method === "POST") {
-      const { sid, controller } = sessionFor(req, res);
-      const state = controller.getState();
-      if (state.authStatus !== "authenticated") {
-        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ error: "Sign in before purchasing hosted AI credits." }));
-        return;
-      }
-      try {
-        const rawBody = await readRequestBody(req);
-        const payload = rawBody ? JSON.parse(rawBody) : {};
-        const amountMinor = payload.amountMinor ?? payload.amount_minor_units ?? 1000;
-        const outcome = await executeHostedTopUp(sid, controller, amountMinor, publicOriginOf(req));
-        res.writeHead(201, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(
-          JSON.stringify({
-            ...outcome,
-            state: controller.getState(),
-          }),
-        );
-      } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
-      }
+      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ error: "Hosted checkout is unavailable." }));
       return;
     }
 
     if (pathname === "/api/billing/webhook" && req.method === "POST") {
-      const rawBody = await readRequestBody(req);
+      const rawBody = await readRequestBody(req).catch((err) => {
+        res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ error: err.message }));
+        return null;
+      });
+      if (rawBody === null) return;
       const sigHeader = String(
         req.headers["x-billing-signature"] ?? req.headers["stripe-signature"] ?? "",
       ).trim();
@@ -2961,28 +2603,21 @@ export function createWebAppServer(options = {}) {
         res.end(JSON.stringify(apiRes.data ?? { received: apiRes.ok }));
         return;
       }
-      const normalized = sigHeader.replace(/^(sha256=|v1=)/, "");
-      const expected = signWebhookPayloadHex(rawBody);
-      const valid =
-        normalized.length === expected.length &&
-        crypto.timingSafeEqual(Buffer.from(normalized, "utf8"), Buffer.from(expected, "utf8"));
-      if (!valid) {
-        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-        res.end(JSON.stringify({ error: "Invalid webhook HMAC signature." }));
-        return;
-      }
-      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
-      res.end(JSON.stringify({ received: true }));
+      res.writeHead(503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ error: "Billing backend is unavailable." }));
       return;
     }
 
     if (pathname === "/api/resources/manual" && req.method === "POST") {
       const { sid, controller } = sessionFor(req, res);
+      if (controller.getState().authStatus !== "authenticated" || !store.data.sessions[sid]?.explicitAuth) {
+        res.writeHead(401, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ error: "Sign in before adding a resource." }));
+        return;
+      }
       try {
         const rawBody = await readRequestBody(req);
         const payload = rawBody ? JSON.parse(rawBody) : {};
-        const wantOpenCatalog =
-          payload.saveToOpenCatalog === true || payload.saveToOpenCatalog === "true";
         const data = {
           rawText: typeof payload.rawText === "string" ? payload.rawText : (typeof payload.raw_text === "string" ? payload.raw_text : ""),
           explicitUrl: typeof payload.explicitUrl === "string" ? payload.explicitUrl : (typeof payload.url === "string" ? payload.url : undefined),
@@ -3002,17 +2637,18 @@ export function createWebAppServer(options = {}) {
         controller.applyUiAction("ingest-manual-resource", data, null, null, analyzedOutcome);
         const nextState = controller.getState();
         const createdEntry = nextState.catalogResources[analyzedOutcome.resourceVersionId];
-        let openCatalogPath = null;
-        if (wantOpenCatalog && allowOpenCatalogDiskWrite && createdEntry) {
-          openCatalogPath = writeOpenCatalogResourceFile(openCatalogDir, createdEntry, "community_discovered");
-        }
-        if (nextState.authStatus === "authenticated") {
-          await syncBackendResourceEndpoint(nextState.account.email, "POST", "/v1/catalog/resources/manual", {
-            resource_version_id: analyzedOutcome.resourceVersionId,
-            raw_text: data.rawText,
-            url: analyzedOutcome.canonicalUrl,
-            title_override: analyzedOutcome.title,
+        if (createdEntry && nextState.authStatus === "authenticated" && store.data.sessions[sid]?.explicitAuth && isAdminAccount(nextState.account)) {
+          const result = await callBackendJson("POST", "/v1/catalog/resources/manual", {
+            token: apiTokenForSession(sid),
+            body: {
+              resource_version_id: analyzedOutcome.resourceVersionId,
+              raw_text: data.rawText,
+              url: analyzedOutcome.canonicalUrl,
+              title_override: analyzedOutcome.title,
+            },
           });
+          requireCatalogBackendSuccess(sid, result);
+          commitGlobalResource(analyzedOutcome.resourceVersionId, createdEntry);
         }
         await persistAsync(sid, controller);
         res.writeHead(201, { "Content-Type": "application/json; charset=utf-8" });
@@ -3020,12 +2656,11 @@ export function createWebAppServer(options = {}) {
           JSON.stringify({
             analyzedDraft: analyzedOutcome,
             resource: createdEntry,
-            ...(openCatalogPath ? { openCatalogPath } : {}),
             state: nextState,
           }),
         );
       } catch (err) {
-        res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8" });
         res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
       }
       return;
@@ -3033,16 +2668,18 @@ export function createWebAppServer(options = {}) {
 
     if (pathname === "/api/ui-state" && req.method === "POST") {
       let { sid, controller } = sessionFor(req, res);
-      let body = "";
-      req.on("data", (chunk) => {
-        body += chunk;
-      });
-      req.on("end", async () => {
-        try {
+      try {
+          const body = await readRequestBody(req);
           const cmd = body ? JSON.parse(body) : {};
+          if (["admin-remove-resource", "admin-verify-resource", "admin-reindex-resource", "admin-reindex-all"].includes(cmd.action) &&
+              !(store.data.sessions[sid]?.explicitAuth && controller.getState().authStatus === "authenticated" && isAdminAccount(controller.getState().account))) {
+            res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+            res.end(JSON.stringify({ error: "Admin role required." }));
+            return;
+          }
           if (
             !localDev &&
-            (cmd.action === "switch-persona" || cmd.action === "simulate-session-expired")
+            cmd.action === "simulate-session-expired"
           ) {
             res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
             res.end(JSON.stringify({ error: "Debug session actions are disabled outside local development." }));
@@ -3069,316 +2706,11 @@ export function createWebAppServer(options = {}) {
           } else if (cmd.action === "toggle-upvote") {
             controller.toggleUpvote(cmd.revisionId);
           } else if (cmd.action === "open-dialog" && cmd.dialogId) {
-            controller.openDialog(cmd.dialogId, cmd.authMode, cmd.publicationId);
+            controller.openDialog(cmd.dialogId, cmd.publicationId);
           } else if (cmd.action === "close-dialog") {
             controller.closeDialog();
-          } else if (cmd.action === "submit-sign-up") {
-            const email = String(cmd.email ?? "").trim().toLowerCase();
-            const password = String(cmd.password ?? "");
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              controller.failExternalAuth("Enter a valid email address.", "signup");
-            } else if (password.length < 8) {
-              controller.failExternalAuth("Use a password with at least 8 characters.", "signup");
-            } else if (store.data.accounts[email]?.passwordHash) {
-              controller.failExternalAuth("An account with that email already exists. Log in instead.", "signup");
-            } else {
-              const username = defaultUsernameOfEmail(email);
-              const apiRes = await callBackendJson("POST", "/v1/auth/signup", {
-                body: { email, password, display_name: username },
-              });
-              if (apiRes.reachable && !apiRes.ok) {
-                const dupMsg =
-                  apiRes.status === 409
-                    ? "An account with that email already exists. Log in instead."
-                    : apiRes.data?.error?.message || "Could not create account.";
-                controller.failExternalAuth(dupMsg, "signup");
-              } else {
-                const backend = apiRes.data;
-                const existing = store.data.accounts[email];
-                const record = {
-                  accountId: existing?.accountId ?? backend?.account_id ?? `usr-${crypto.randomUUID().slice(0, 12)}`,
-                  email,
-                  username: existing?.username ?? backend?.display_name ?? username,
-                  avatarUrl: existing?.avatarUrl ?? backend?.avatar_url ?? undefined,
-                  role: existing?.role ?? defaultRoleForEmail(email),
-                  passwordHash: hashAccountPassword(password),
-                  oauthProviders: existing?.oauthProviders ?? [],
-                };
-                store.data.accounts[email] = record;
-                store.save();
-                controller = await authenticateAndHydrateFromBackend(
-                  sid,
-                  controller,
-                  {
-                    accountId: record.accountId,
-                    email: record.email,
-                    username: record.username,
-                    ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
-                    role: record.role,
-                  },
-                  backend?.session_token ?? null,
-                  Boolean(backend?.email_verified),
-                );
-              }
-            }
-          } else if (cmd.action === "submit-sign-in") {
-            const email = String(cmd.email ?? "").trim().toLowerCase();
-            const password = String(cmd.password ?? "");
-            const stored = store.data.accounts[email];
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              controller.failExternalAuth("Enter a valid email address.", "login");
-            } else if (stored && !stored.passwordHash) {
-              const hasPasskey = passkeysForAccount(stored.accountId).length > 0;
-              const linked = (stored.oauthProviders ?? []).map(oauthProviderLabel).join(" or ");
-              if (hasPasskey && !linked) {
-                controller.failExternalAuth("This account signs in with a passkey. Click Passkey below.", "login");
-              } else {
-                const providerText = linked || "OAuth";
-                controller.failExternalAuth(`This account signs in with ${providerText}. Continue with ${providerText} below.`, "login");
-              }
-            } else if (password.length > 0) {
-              const apiRes = await callBackendJson("POST", "/v1/auth/login", {
-                body: { email, password },
-              });
-              if (apiRes.reachable && apiRes.ok && apiRes.data?.account_id) {
-                const backend = apiRes.data;
-                const record = {
-                  accountId: backend.account_id,
-                  email,
-                  username: backend.display_name || stored?.username || defaultUsernameOfEmail(email),
-                  ...(backend.avatar_url || stored?.avatarUrl ? { avatarUrl: backend.avatar_url || stored?.avatarUrl } : {}),
-                  role: stored?.role ?? defaultRoleForEmail(email),
-                  passwordHash: hashAccountPassword(password),
-                  oauthProviders: stored?.oauthProviders ?? [],
-                };
-                store.data.accounts[email] = record;
-                store.save();
-                controller = await authenticateAndHydrateFromBackend(
-                  sid,
-                  controller,
-                  {
-                    accountId: record.accountId,
-                    email: record.email,
-                    username: record.username,
-                    ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
-                    role: record.role,
-                  },
-                  backend.session_token ?? null,
-                  Boolean(backend.email_verified),
-                );
-              } else if (!apiRes.reachable && stored?.passwordHash && verifyAccountPassword(password, stored.passwordHash)) {
-                controller = authenticateSessionAsAccount(sid, controller, {
-                  accountId: stored.accountId,
-                  email: stored.email,
-                  username: stored.username ?? defaultUsernameOfEmail(stored.email),
-                  ...(stored.avatarUrl ? { avatarUrl: stored.avatarUrl } : {}),
-                  role: stored.role,
-                });
-              } else if (apiRes.reachable && !apiRes.ok && stored?.passwordHash && verifyAccountPassword(password, stored.passwordHash)) {
-                controller = authenticateSessionAsAccount(sid, controller, {
-                  accountId: stored.accountId,
-                  email: stored.email,
-                  username: stored.username ?? defaultUsernameOfEmail(stored.email),
-                  ...(stored.avatarUrl ? { avatarUrl: stored.avatarUrl } : {}),
-                  role: stored.role,
-                });
-              } else {
-                controller.failExternalAuth("Incorrect email or password.", "login");
-              }
-            } else if (stored?.passwordHash) {
-              controller.failExternalAuth("Incorrect email or password.", "login");
-            } else {
-              const fallbackAccount =
-                Object.values(PERSONAS).find((p) => p.email === email) ?? {
-                  accountId: `account-${email}`,
-                  email,
-                  username: defaultUsernameOfEmail(email),
-                  role: defaultRoleForEmail(email),
-                };
-              controller = authenticateSessionAsAccount(sid, controller, fallbackAccount);
-            }
-          } else if (cmd.action === "request-password-reset") {
-            const email = String(cmd.email ?? "").trim().toLowerCase();
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              controller.failExternalAuth("Enter a valid email address.", "reset");
-            } else {
-              const apiRes = await callBackendJson("POST", "/v1/auth/password-reset/request", {
-                body: { email },
-              });
-              let issuedCode =
-                apiRes.ok && typeof apiRes.data?.dev_recovery_code === "string"
-                  ? apiRes.data.dev_recovery_code
-                  : null;
-              if (!apiRes.reachable) {
-                const acct = store.data.accounts[email];
-                if (acct) {
-                  issuedCode = String(crypto.randomInt(100000, 1000000));
-                  localRecoveryTokens.set(sha256Hex(`password_reset:${email}:${issuedCode}`), {
-                    kind: "password_reset",
-                    email,
-                    accountId: acct.accountId,
-                    expiresAt: Date.now() + 15 * 60_000,
-                    consumed: false,
-                  });
-                }
-              }
-              if (issuedCode) {
-                pushDevOutboxMessage({
-                  kind: "password_reset",
-                  email,
-                  code: issuedCode,
-                  created_at: new Date().toISOString(),
-                });
-              }
-              controller.advancePasswordReset(
-                email,
-                `If an account exists for ${email}, a 6-digit recovery code has been sent.`,
-              );
-            }
-          } else if (cmd.action === "confirm-password-reset") {
-            const email = String(cmd.email || controller.getState().authResetEmail || "")
-              .trim()
-              .toLowerCase();
-            const code = String(cmd.code ?? "").trim();
-            const nextPassword = String(cmd.password ?? "");
-            if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-              controller.failExternalAuth("Enter a valid email address.", "reset_confirm");
-            } else if (!/^[0-9]{6}$/.test(code)) {
-              controller.failExternalAuth("Enter the 6-digit recovery code.", "reset_confirm");
-            } else if (nextPassword.length < 8) {
-              controller.failExternalAuth("Use a new password with at least 8 characters.", "reset_confirm");
-            } else {
-              const apiRes = await callBackendJson("POST", "/v1/auth/password-reset/confirm", {
-                body: { email, code, new_password: nextPassword },
-              });
-              if (apiRes.reachable) {
-                if (!apiRes.ok || !apiRes.data?.account_id) {
-                  controller.failExternalAuth("Invalid or expired recovery code.", "reset_confirm");
-                } else {
-                  const backend = apiRes.data;
-                  const existing = store.data.accounts[email];
-                  const record = {
-                    accountId: backend.account_id,
-                    email,
-                    username: backend.display_name || existing?.username || defaultUsernameOfEmail(email),
-                    ...(backend.avatar_url || existing?.avatarUrl ? { avatarUrl: backend.avatar_url || existing?.avatarUrl } : {}),
-                    role: existing?.role ?? defaultRoleForEmail(email),
-                    passwordHash: hashAccountPassword(nextPassword),
-                    oauthProviders: existing?.oauthProviders ?? [],
-                  };
-                  store.data.accounts[email] = record;
-                  store.save();
-                  controller = await authenticateAndHydrateFromBackend(
-                    sid,
-                    controller,
-                    {
-                      accountId: record.accountId,
-                      email: record.email,
-                      username: record.username,
-                      ...(record.avatarUrl ? { avatarUrl: record.avatarUrl } : {}),
-                      role: record.role,
-                    },
-                    backend.session_token ?? null,
-                    Boolean(backend.email_verified),
-                  );
-                }
-              } else {
-                const tokenEntry = localRecoveryTokens.get(sha256Hex(`password_reset:${email}:${code}`));
-                const existing = store.data.accounts[email];
-                if (!tokenEntry || tokenEntry.consumed || tokenEntry.expiresAt <= Date.now() || !existing) {
-                  controller.failExternalAuth("Invalid or expired recovery code.", "reset_confirm");
-                } else {
-                  tokenEntry.consumed = true;
-                  existing.passwordHash = hashAccountPassword(nextPassword);
-                  store.save();
-                  controller = authenticateSessionAsAccount(sid, controller, {
-                    accountId: existing.accountId,
-                    email: existing.email,
-                    username: existing.username ?? defaultUsernameOfEmail(existing.email),
-                    ...(existing.avatarUrl ? { avatarUrl: existing.avatarUrl } : {}),
-                    role: existing.role ?? defaultRoleForEmail(existing.email),
-                  });
-                }
-              }
-            }
-          } else if (cmd.action === "request-email-verification") {
-            const st = controller.getState();
-            if (st.authStatus === "authenticated") {
-              const apiToken = apiTokenForSession(sid, controller);
-              const apiRes = apiToken
-                ? await callBackendJson("POST", "/v1/auth/email-verification/request", { token: apiToken })
-                : { reachable: false, ok: false, data: null };
-              let issuedCode =
-                apiRes.ok && typeof apiRes.data?.dev_verification_code === "string"
-                  ? apiRes.data.dev_verification_code
-                  : null;
-              if (!issuedCode && (!apiRes.reachable || !apiToken)) {
-                issuedCode = String(crypto.randomInt(100000, 1000000));
-                localRecoveryTokens.set(sha256Hex(`email_verification:${issuedCode}`), {
-                  kind: "email_verification",
-                  email: st.account.email,
-                  accountId: st.account.accountId,
-                  expiresAt: Date.now() + 24 * 60 * 60_000,
-                  consumed: false,
-                });
-              }
-              if (issuedCode) {
-                pushDevOutboxMessage({
-                  kind: "email_verification",
-                  email: st.account.email,
-                  code: issuedCode,
-                  verify_url: `${publicOriginOf(req)}/auth/verify-email?token=${encodeURIComponent(issuedCode)}`,
-                  created_at: new Date().toISOString(),
-                });
-              }
-              controller.setEmailVerificationState(
-                false,
-                true,
-                `Sent a 6-digit verification code to ${st.account.email}.`,
-              );
-            }
-          } else if (cmd.action === "confirm-email-verification") {
-            const st = controller.getState();
-            const code = String(cmd.code ?? "").trim();
-            if (st.authStatus === "authenticated") {
-              if (!/^[0-9]{6}$/.test(code)) {
-                controller.setEmailVerificationState(false, true, "Enter a valid 6-digit verification code.");
-              } else {
-                const apiRes = await callBackendJson("POST", "/v1/auth/email-verification/confirm", {
-                  body: { code },
-                });
-                if (apiRes.reachable) {
-                  if (apiRes.ok) {
-                    controller.setEmailVerificationState(
-                      true,
-                      false,
-                      `Email address ${st.account.email} verified.`,
-                    );
-                  } else {
-                    controller.setEmailVerificationState(false, true, "Invalid or expired verification code.");
-                  }
-                } else {
-                  const rec = localRecoveryTokens.get(sha256Hex(`email_verification:${code}`));
-                  if (rec && !rec.consumed && rec.expiresAt > Date.now()) {
-                    rec.consumed = true;
-                    controller.setEmailVerificationState(
-                      true,
-                      false,
-                      `Email address ${st.account.email} verified.`,
-                    );
-                  } else {
-                    controller.setEmailVerificationState(false, true, "Invalid or expired verification code.");
-                  }
-                }
-              }
-            }
           } else if (cmd.action === "start-hosted-checkout") {
-            const st = controller.getState();
-            if (st.authStatus === "authenticated") {
-              await executeHostedTopUp(sid, controller, cmd.amountMinor ?? 1000, publicOriginOf(req));
-            } else {
-              controller.applyUiAction("start-hosted-checkout", { amountMinor: String(cmd.amountMinor ?? "1000") });
-            }
+            throw new Error("Hosted checkout is unavailable.");
           } else if (cmd.action === "sign-out") {
             const apiToken = apiTokenForSession(sid, controller);
             if (apiToken) {
@@ -3386,13 +2718,6 @@ export function createWebAppServer(options = {}) {
             }
             controller.applyUiAction("sign-out");
             detachSessionToGuest(sid, controller);
-          } else if (cmd.action === "switch-persona" && typeof cmd.persona === "string") {
-            if (cmd.persona === "guest") {
-              controller.applyUiAction("switch-persona", { persona: "guest" });
-              detachSessionToGuest(sid, controller);
-            } else if (PERSONAS[cmd.persona]) {
-              controller = authenticateSessionAsAccount(sid, controller, PERSONAS[cmd.persona]);
-            }
           } else if (cmd.action === "confirm-delete-account") {
             const { authStatus, account } = controller.getState();
             if (authStatus === "authenticated") {
@@ -3427,13 +2752,12 @@ export function createWebAppServer(options = {}) {
                   delete store.data.passkeys[pkId];
                 }
               }
-              backendTokenByEmail.delete(deletedEmail);
               controller.applyUiAction("confirm-delete-account");
               detachSessionToGuest(sid, controller);
             }
           } else if (cmd.action === "replace-key") {
             const beforeState = controller.getState();
-            if (beforeState.authStatus === "authenticated") {
+            if (beforeState.authStatus === "authenticated" && store.data.sessions[sid]?.explicitAuth) {
               const accountId = beforeState.account.accountId;
               const providerId = String(cmd.providerId ?? beforeState.editingCredentialProviderId ?? "openai").trim();
               const rawKey = String(cmd.keyValue ?? "").trim();
@@ -3459,13 +2783,8 @@ export function createWebAppServer(options = {}) {
                   store.data.byokVault[accountId] = {};
                 }
                 store.data.byokVault[accountId][providerId] = envelope;
-                const nextDisabled = (prevWs.disabledEnvProviders ?? []).filter((p) => p !== providerId);
-                store.data.accountWorkspaces[wsKey] = {
-                  ...prevWs,
-                  disabledEnvProviders: nextDisabled,
-                };
                 store.save();
-                const nextCreds = resolveByokCredentialsForAccount(accountId, store.data.accountWorkspaces[wsKey]);
+                const nextCreds = resolveByokCredentialsForAccount(accountId);
                 const nextPrimary =
                   beforeState.primaryCredentialRef &&
                   nextCreds.some((c) => c.credential_ref === beforeState.primaryCredentialRef)
@@ -3478,7 +2797,7 @@ export function createWebAppServer(options = {}) {
                 );
                 if (envelope.version === 1) {
                   await syncBackendResourceEndpoint(
-                    beforeState.account.email,
+                    sid,
                     "POST",
                     "/v1/me/credentials",
                     {
@@ -3490,7 +2809,7 @@ export function createWebAppServer(options = {}) {
                   );
                 } else {
                   await syncBackendResourceEndpoint(
-                    beforeState.account.email,
+                    sid,
                     "PATCH",
                     `/v1/me/credentials/${encodeURIComponent(envelope.credential_ref)}`,
                     {
@@ -3504,7 +2823,7 @@ export function createWebAppServer(options = {}) {
             }
           } else if (cmd.action === "delete-connection") {
             const beforeState = controller.getState();
-            if (beforeState.authStatus === "authenticated") {
+            if (beforeState.authStatus === "authenticated" && store.data.sessions[sid]?.explicitAuth) {
               const accountId = beforeState.account.accountId;
               const targetRef = typeof cmd.credentialRef === "string" ? cmd.credentialRef : "";
               const providerId =
@@ -3517,15 +2836,8 @@ export function createWebAppServer(options = {}) {
               }
               const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]) ?? accountId;
               const prevWs = store.data.accountWorkspaces[wsKey] ?? extractWorkspaceSnapshot(controller);
-              const nextDisabled = providerId
-                ? Array.from(new Set([...(prevWs.disabledEnvProviders ?? []), providerId]))
-                : (prevWs.disabledEnvProviders ?? []);
-              store.data.accountWorkspaces[wsKey] = {
-                ...prevWs,
-                disabledEnvProviders: nextDisabled,
-              };
               store.save();
-              const nextCreds = resolveByokCredentialsForAccount(accountId, store.data.accountWorkspaces[wsKey]);
+              const nextCreds = resolveByokCredentialsForAccount(accountId);
               controller.setByokCredentials(
                 nextCreds,
                 undefined,
@@ -3534,7 +2846,7 @@ export function createWebAppServer(options = {}) {
               const credRefToRevoke = prevEnvelope?.credential_ref || targetRef;
               if (credRefToRevoke && prevEnvelope) {
                 await syncBackendResourceEndpoint(
-                  beforeState.account.email,
+                  sid,
                   "DELETE",
                   `/v1/me/credentials/${encodeURIComponent(credRefToRevoke)}`,
                   undefined,
@@ -3546,14 +2858,18 @@ export function createWebAppServer(options = {}) {
             const { authStatus, account } = controller.getState();
             const existing = store.data.passkeys[cmd.credentialId];
             if (authStatus === "authenticated" && existing && existing.passkeyUserId === account.accountId) {
+              const apiToken = apiTokenForSession(sid, controller);
+              if (!apiToken) {
+                throw Object.assign(new Error("Verified backend session is unavailable."), { statusCode: 401 });
+              }
+              const deleted = await callBackendJson("DELETE", `/v1/me/passkeys/${encodeURIComponent(cmd.credentialId)}`, {
+                token: apiToken,
+              });
+              if (!deleted.ok) {
+                throw Object.assign(new Error("Passkey deletion could not be saved."), { statusCode: 502 });
+              }
               delete store.data.passkeys[cmd.credentialId];
               store.save();
-              const apiToken = apiTokenForSession(sid, controller);
-              if (apiToken) {
-                await callBackendJson("DELETE", `/v1/me/passkeys/${encodeURIComponent(cmd.credentialId)}`, {
-                  token: apiToken,
-                });
-              }
               syncControllerPasskeys(controller, "Passkey removed from your account.");
             } else {
               controller.applyUiAction("delete-passkey", { credentialId: cmd.credentialId });
@@ -3571,7 +2887,7 @@ export function createWebAppServer(options = {}) {
               const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
               const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
               const apiKey =
-                request && beforeState.authStatus === "authenticated"
+                request && beforeState.authStatus === "authenticated" && store.data.sessions[sid]?.explicitAuth
                   ? resolveRuntimeApiKeyForAccount(beforeState.account.accountId, request.providerId, ws)
                   : undefined;
               if (request && apiKey) {
@@ -3583,7 +2899,7 @@ export function createWebAppServer(options = {}) {
               const wsKey = workspaceKeyFor(sid, store.data.sessions[sid]);
               const ws = (wsKey && store.data.accountWorkspaces[wsKey]) || {};
               const apiKey =
-                tutorReq && beforeState.authStatus === "authenticated"
+                tutorReq && beforeState.authStatus === "authenticated" && store.data.sessions[sid]?.explicitAuth
                   ? resolveRuntimeApiKeyForAccount(beforeState.account.accountId, tutorReq.providerId, ws)
                   : undefined;
               if (tutorReq && apiKey) {
@@ -3595,7 +2911,9 @@ export function createWebAppServer(options = {}) {
                 }
               }
             } else if (cmd.action === "ingest-manual-resource") {
-              analyzedOutcome = await runServerManualResourceAnalysis(sid, controller, data);
+              if (store.data.sessions[sid]?.explicitAuth) {
+                analyzedOutcome = await runServerManualResourceAnalysis(sid, controller, data);
+              }
             }
             controller.applyUiAction(
               cmd.action,
@@ -3607,46 +2925,27 @@ export function createWebAppServer(options = {}) {
             );
 
             const afterState = controller.getState();
-            if (
-              cmd.action === "ingest-manual-resource" &&
-              data.saveToOpenCatalog === "true" &&
-              allowOpenCatalogDiskWrite &&
-              analyzedOutcome &&
-              !("error" in analyzedOutcome)
-            ) {
-              const createdEntry = afterState.catalogResources[analyzedOutcome.resourceVersionId];
-              if (createdEntry) {
-                writeOpenCatalogResourceFile(openCatalogDir, createdEntry, "community_discovered");
-              }
-            } else if (
-              cmd.action === "save-resource-edit" &&
-              data.saveToOpenCatalog === "true" &&
-              allowOpenCatalogDiskWrite &&
-              data.resourceVersionId &&
-              !afterState.resourceEditorError
-            ) {
-              const updatedEntry = afterState.catalogResources[data.resourceVersionId];
-              if (updatedEntry) {
-                writeOpenCatalogResourceFile(openCatalogDir, updatedEntry, "community_discovered");
-              }
-            }
-
             if (afterState.authStatus === "authenticated") {
-              if (cmd.action === "ingest-manual-resource" && analyzedOutcome && !("error" in analyzedOutcome)) {
-                await syncBackendResourceEndpoint(afterState.account.email, "POST", "/v1/catalog/resources/manual", {
-                  resource_version_id: analyzedOutcome.resourceVersionId,
-                  raw_text: data.rawText ?? "",
-                  url: analyzedOutcome.canonicalUrl,
-                  title_override: analyzedOutcome.title,
+              const verifiedAdmin = store.data.sessions[sid]?.explicitAuth && isAdminAccount(afterState.account);
+              if (cmd.action === "ingest-manual-resource" && verifiedAdmin && analyzedOutcome && !("error" in analyzedOutcome)) {
+                const result = await callBackendJson("POST", "/v1/catalog/resources/manual", {
+                  token: apiTokenForSession(sid),
+                  body: {
+                    resource_version_id: analyzedOutcome.resourceVersionId,
+                    raw_text: data.rawText ?? "",
+                    url: analyzedOutcome.canonicalUrl,
+                    title_override: analyzedOutcome.title,
+                  },
                 });
-              } else if (cmd.action === "save-resource-edit" && data.resourceVersionId && !afterState.resourceEditorError) {
+                requireCatalogBackendSuccess(sid, result);
+                const added = afterState.catalogResources[analyzedOutcome.resourceVersionId];
+                if (added) commitGlobalResource(analyzedOutcome.resourceVersionId, added);
+              } else if (cmd.action === "save-resource-edit" && verifiedAdmin && data.resourceVersionId && !afterState.resourceEditorError) {
                 const updated = afterState.catalogResources[data.resourceVersionId];
                 if (updated) {
-                  await syncBackendResourceEndpoint(
-                    afterState.account.email,
-                    "PATCH",
-                    `/v1/catalog/resources/${encodeURIComponent(data.resourceVersionId)}`,
-                    {
+                  const result = await callBackendJson("PATCH", `/v1/catalog/resources/${encodeURIComponent(data.resourceVersionId)}`, {
+                    token: apiTokenForSession(sid),
+                    body: {
                       title: updated.title,
                       canonical_url: updated.canonical_url,
                       provider_display_name: updated.provider?.display_name,
@@ -3657,17 +2956,19 @@ export function createWebAppServer(options = {}) {
                       topics: updated.topics,
                       segment_titles: (updated.segments ?? []).map((s) => s.title).filter(Boolean),
                     },
-                  );
+                  });
+                  requireCatalogBackendSuccess(sid, result);
+                  commitGlobalResource(data.resourceVersionId, updated);
                 }
-              } else if (cmd.action === "delete-library-resource" && data.resourceId) {
-                await syncBackendResourceEndpoint(
-                  afterState.account.email,
-                  "DELETE",
-                  `/v1/catalog/resources/${encodeURIComponent(data.resourceId)}`,
-                );
+              } else if ((cmd.action === "delete-library-resource" || cmd.action === "admin-remove-resource") && verifiedAdmin && data.resourceId) {
+                const result = await callBackendJson("DELETE", `/v1/catalog/resources/${encodeURIComponent(data.resourceId)}`, {
+                  token: apiTokenForSession(sid),
+                });
+                requireCatalogBackendSuccess(sid, result);
+                removeGlobalResource(data.resourceId);
               } else if (cmd.action === "link-library-resource" && data.resourceVersionId && data.targetSyllabusId) {
                 await syncBackendResourceEndpoint(
-                  afterState.account.email,
+                  sid,
                   "POST",
                   `/v1/syllabi/${encodeURIComponent(data.targetSyllabusId)}/resources`,
                   {
@@ -3679,7 +2980,7 @@ export function createWebAppServer(options = {}) {
                 );
               } else if (cmd.action === "unlink-syllabus-resource" && data.resourceId && data.syllabusId) {
                 await syncBackendResourceEndpoint(
-                  afterState.account.email,
+                  sid,
                   "DELETE",
                   `/v1/syllabi/${encodeURIComponent(data.syllabusId)}/resources/${encodeURIComponent(data.resourceId)}`,
                 );
@@ -3715,10 +3016,7 @@ export function createWebAppServer(options = {}) {
               }
             }
           }
-          const forceRemoteSync =
-            cmd.action === "replace-key" ||
-            cmd.action === "delete-connection" ||
-            cmd.action === "submit-sign-up";
+          const forceRemoteSync = cmd.action === "replace-key" || cmd.action === "delete-connection";
           await persistAsync(sid, controller, forceRemoteSync);
 
           res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
@@ -3729,10 +3027,15 @@ export function createWebAppServer(options = {}) {
             })
           );
         } catch (err) {
-          res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
+          res.writeHead(err?.statusCode ?? 400, { "Content-Type": "application/json; charset=utf-8" });
           res.end(JSON.stringify({ error: String(err) }));
         }
-      });
+      return;
+    }
+
+    if (pathname.startsWith("/auth/")) {
+      res.writeHead(404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ error: "Not found." }));
       return;
     }
 
@@ -3755,7 +3058,7 @@ export function createWebAppServer(options = {}) {
       controller.navigateTopLevel(topParam);
     }
     if (openDialogParam === "dialog-auth") {
-      controller.openDialog("dialog-auth", "login");
+      controller.openDialog("dialog-auth");
     }
     if (
       subParam === "Today" ||

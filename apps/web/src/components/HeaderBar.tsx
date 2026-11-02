@@ -193,21 +193,12 @@ export function HeaderBar({
           <div class="navbar-guest-actions" data-auth-status="guest">
             <button
               type="button"
-              class="header-login-btn"
+              class="btn-primary header-btn"
               data-action="open-dialog"
               data-dialog-id="dialog-auth"
               data-auth-mode="login"
             >
-              Log in
-            </button>
-            <button
-              type="button"
-              class="btn-primary header-btn"
-              data-action="open-dialog"
-              data-dialog-id="dialog-auth"
-              data-auth-mode="signup"
-            >
-              Sign up
+              Sign in
             </button>
           </div>
         )}

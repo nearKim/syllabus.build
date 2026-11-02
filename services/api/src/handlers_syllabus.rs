@@ -286,10 +286,13 @@ pub(crate) async fn patch_syllabus_resource_handler(
     Json(dto): Json<PatchSyllabusResourceDto>,
 ) -> ApiResult {
     let updated_resource = if let Some(cat_patch) = dto.catalog_patch {
+        state
+            .store
+            .get_syllabus_overview(&principal, &syllabus_id)?;
         Some(
             state
                 .store
-                .update_catalog_resource(&resource_version_id, cat_patch)?,
+                .update_catalog_resource(&principal, &resource_version_id, cat_patch)?,
         )
     } else {
         None

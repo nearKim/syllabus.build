@@ -16,3 +16,5 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-postgres.workspace = true
 reqwest.workspace = true
+getrandom.workspace = true
+time.workspace = true

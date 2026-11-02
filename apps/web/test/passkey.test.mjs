@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import test from "node:test";
 import { createSyllabusWebAppController } from "../src/index.ts";
 import { createWebAppServer } from "../src/server.mjs";
+import { backendSessionResponse, signInWithDevOAuth } from "./helpers/devOAuth.mjs";
 
 function parseCookies(res, jar = new Map()) {
   const setCookies = typeof res.headers.getSetCookie === "function"
@@ -149,16 +150,13 @@ function createSyntheticWebAuthnAuthenticator({ rpId, origin, aaguid = "fbfc3007
   };
 }
 
-test("Brand logo assets, favicon, webauthn-polyfills bundle, and Conditional UI autocomplete render cleanly", async () => {
+test("Brand assets, favicon, polyfills, and explicit passkey sign-in render cleanly", async () => {
   const app = createSyllabusWebAppController({ authStatus: "guest", topLevel: "Explore" });
-  app.openDialog("dialog-auth", "login");
+  app.openDialog("dialog-auth");
   const loginHtml = app.renderHtml();
-  assert.ok(loginHtml.includes('autocomplete="username webauthn"'), "login email input exposes webauthn conditional autofill");
+  assert.ok(loginHtml.includes('data-action="sign-in-passkey"'));
+  assert.equal(loginHtml.includes('autocomplete="username webauthn"'), false);
   assert.ok(loginHtml.includes('class="brand-mark-svg"'), "BrandLockup renders Pathway S vector mark");
-
-  app.applyUiAction("switch-auth-mode", { authMode: "signup" });
-  const signupHtml = app.renderHtml();
-  assert.ok(signupHtml.includes('id="auth-email-input" type="email" name="email" autocomplete="username"'));
 
   const { server } = createWebAppServer({
     initialState: { authStatus: "guest", topLevel: "Explore" },
@@ -191,16 +189,66 @@ test("Brand logo assets, favicon, webauthn-polyfills bundle, and Conditional UI 
     assert.ok(clientJs.includes('import "/vendor/webauthn-polyfills.js";'));
     assert.ok(clientJs.includes("PublicKeyCredential.getClientCapabilities()"));
     assert.ok(clientJs.includes("PublicKeyCredential.signalUnknownCredential"));
-    assert.ok(clientJs.includes('mediation: "conditional"'));
+    assert.ok(clientJs.includes('action === "sign-in-passkey"'));
+
+    const functionStart = clientJs.indexOf("async function triggerPasskeyRegistration(");
+    const functionEnd = clientJs.indexOf("\n  bindDialogs();", functionStart);
+    assert.ok(functionStart >= 0 && functionEnd > functionStart);
+    const credentialApi = {
+      getClientCapabilities: async () => ({ passkeyPlatformAuthenticator: true, conditionalGet: false }),
+    };
+    const registrationRequests = [];
+    const createRegistration = new Function(
+      "window", "PublicKeyCredential", "fetch", "navigator", "showSettingsPasskeyNotice", "applyServerPayload",
+      `${clientJs.slice(functionStart, functionEnd)}; return triggerPasskeyRegistration;`,
+    );
+    const register = createRegistration(
+      { location: { hostname: "localhost" }, PublicKeyCredential: credentialApi },
+      credentialApi,
+      async (url) => {
+        registrationRequests.push(url);
+        return { ok: false, json: async () => ({ error: "Stop after options request." }) };
+      },
+      { credentials: {} },
+      () => {},
+      () => {},
+    );
+    const button = { disabled: false, setAttribute() {}, removeAttribute() {} };
+    await register(button);
+    assert.deepEqual(registrationRequests, ["/auth/passkey/register/options"]);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 });
 
 test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings management, discoverable login, and 404 signal status", async () => {
+  let passkeySessionAvailable = true;
+  let passkeyMutationAvailable = true;
+  const mockFetch = async (url, init) => {
+    const path = String(url);
+    if (path.includes("/v1/me/passkeys/") && (init.method === "PUT" || init.method === "DELETE")) {
+      return new Response("{}", { status: passkeyMutationAvailable ? 200 : 503 });
+    }
+    if (path.endsWith("/v1/auth/session")) return backendSessionResponse("maya-backend-account");
+    if (path.endsWith("/v1/auth/oauth/google/callback") || path.endsWith("/v1/auth/passkeys/session")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      if (path.endsWith("/v1/auth/passkeys/session") && !passkeySessionAvailable) {
+        return new Response("{}", { status: 503 });
+      }
+      return new Response(JSON.stringify({
+        account_id: "maya-backend-account",
+        session_token: "maya-backend-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+        email: "maya@syllabus.build",
+      }), { status: 200 });
+    }
+    return new Response("{}", { status: 503 });
+  };
   const { server } = createWebAppServer({
     initialState: { authStatus: "guest", topLevel: "Explore" },
-    env: { APP_ENV: "development" },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
+    fetchImpl: mockFetch,
     apiBaseUrl: "http://127.0.0.1:9",
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -228,7 +276,7 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
     });
     assert.equal(unauthReg.status, 401);
 
-    // 2. Sign up Maya Lin via email/password
+    // 2. Sign in through the verified development OAuth flow.
     const homeRes = await fetch(`${baseUrl}/`);
     parseCookies(homeRes, ownerJar);
 
@@ -241,14 +289,11 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
       return res.json();
     };
 
-    const signup = await postUi(ownerJar, {
-      action: "submit-sign-up",
-      email: "maya@syllabus.build",
-      password: "MayaPasskeyPassword!",
-    });
-    assert.equal(signup.state.authStatus, "authenticated");
-    assert.equal(signup.state.account.username, "maya");
-    const mayaAccountId = signup.state.account.accountId;
+    await signInWithDevOAuth(baseUrl, ownerJar, "maya@syllabus.build");
+    const signedIn = await postUi(ownerJar, { action: "close-dialog" });
+    assert.equal(signedIn.state.authStatus, "authenticated");
+    assert.equal(signedIn.state.account.username, "maya");
+    const mayaAccountId = signedIn.state.account.accountId;
 
     // 3. Request registration options (Settings management flow vs promotion flow)
     const promoOptRes = await fetch(`${baseUrl}/auth/passkey/register/options`, {
@@ -316,6 +361,18 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
     assert.equal(regOpt2.options.excludeCredentials.length, 1);
     assert.equal(regOpt2.options.excludeCredentials[0].id, authenticator.credentialId);
 
+    passkeyMutationAvailable = false;
+    const failedAuthenticator = createSyntheticWebAuthnAuthenticator({ rpId: "localhost", origin: webAuthnOrigin });
+    const failedRegistration = await fetch(`${baseUrl}/auth/passkey/register/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader(ownerJar), Origin: webAuthnOrigin },
+      body: JSON.stringify(failedAuthenticator.buildAttestation(regOpt2.options.challenge)),
+    });
+    assert.equal(failedRegistration.status, 502);
+    assert.match((await failedRegistration.json()).error, /could not be saved/);
+    assert.equal((await postUi(ownerJar, { action: "noop" })).state.passkeys.length, 1);
+    passkeyMutationAvailable = true;
+
     // 5. Fresh guest browser session: discoverable passkey authentication (no email entered!)
     const guestJar = new Map();
     const guestInit = await fetch(`${baseUrl}/`);
@@ -368,7 +425,36 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
     assert.equal(loginVerified.state.passkeys.length, 1);
     assert.ok(loginVerified.state.passkeys[0].lastUsedAt > 0);
 
+    // A valid assertion cannot create a web session when the backend exchange fails.
+    passkeySessionAvailable = false;
+    const rejectedJar = new Map();
+    const rejectedOptionsRes = await fetch(`${baseUrl}/auth/passkey/login/options`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: webAuthnOrigin },
+      body: "{}",
+    });
+    parseCookies(rejectedOptionsRes, rejectedJar);
+    const rejectedOptions = await rejectedOptionsRes.json();
+    const rejectedLogin = await fetch(`${baseUrl}/auth/passkey/login/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader(rejectedJar), Origin: webAuthnOrigin },
+      body: JSON.stringify(authenticator.buildAssertion(rejectedOptions.options.challenge, { counter: 2, userHandle: mayaAccountId })),
+    });
+    assert.equal(rejectedLogin.status, 400);
+    assert.match((await rejectedLogin.json()).error, /Verified backend session is unavailable/);
+    assert.equal((await fetch(`${baseUrl}/api/account/export`, { headers: { Cookie: cookieHeader(rejectedJar) } })).status, 401);
+    passkeySessionAvailable = true;
+
     // 6. Remove passkey in Settings -> subsequent login with removed passkey returns 404
+    passkeyMutationAvailable = false;
+    const failedDeletion = await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader(guestJar) },
+      body: JSON.stringify({ action: "delete-passkey", credentialId: authenticator.credentialId }),
+    });
+    assert.equal(failedDeletion.status, 502);
+    assert.equal((await postUi(guestJar, { action: "noop" })).state.passkeys.length, 1);
+    passkeyMutationAvailable = true;
     const afterDelete = await postUi(guestJar, {
       action: "delete-passkey",
       credentialId: authenticator.credentialId,
@@ -386,7 +472,7 @@ test("End-to-end FIDO2 WebAuthn passkey registration, exclusion, Settings manage
     const postDeleteVerify = await fetch(`${baseUrl}/auth/passkey/login/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookieHeader(guestJar), Origin: webAuthnOrigin },
-      body: JSON.stringify(authenticator.buildAssertion(postDeleteOpt.options.challenge, { counter: 2 })),
+      body: JSON.stringify(authenticator.buildAssertion(postDeleteOpt.options.challenge, { counter: 3 })),
     });
     assert.equal(postDeleteVerify.status, 404);
   } finally {

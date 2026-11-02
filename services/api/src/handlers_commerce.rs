@@ -24,8 +24,6 @@ use crate::{
 // Ledger, Payment Checkout Sessions & Signed Webhooks
 // =============================================================================
 
-pub(crate) const DEFAULT_WEBHOOK_SIGNING_SECRET: &[u8] = b"whsec_syllabus_io_dev_secret_key_2026";
-
 const DEFAULT_BILLING_MODE: &str = "hosted_credits";
 const DEFAULT_OPERATION_KIND: &str = "syllabus_generation";
 const DEFAULT_PROVIDER_ID: &str = "openai";
@@ -168,9 +166,11 @@ fn reservation_wallet_response<R: Serialize, W: Serialize>(reservation: R, walle
 pub(crate) async fn settle_credit_reservation_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
+    headers: HeaderMap,
     Path(reservation_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let actual_minor = json_i64(
         &payload,
         &[
@@ -195,9 +195,11 @@ pub(crate) async fn settle_credit_reservation_handler(
 pub(crate) async fn release_credit_reservation_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
+    headers: HeaderMap,
     Path(reservation_id): Path<String>,
     payload: Option<Json<Value>>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let body = payload.map_or_else(|| json!({}), |Json(v)| v);
     let reason = json_str(&body, &["reason"]).unwrap_or(DEFAULT_RELEASE_REASON);
     let now_epoch =
@@ -234,10 +236,12 @@ fn parse_ambiguous_provider_outcome(payload: &Value) -> AmbiguousProviderOutcome
 
 pub(crate) async fn reconcile_ambiguous_timeout_handler(
     State(state): State<ApiAppState>,
-    AuthPrincipal(_principal): AuthPrincipal,
+    AuthPrincipal(principal): AuthPrincipal,
+    headers: HeaderMap,
     Path(reservation_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let committed_artifact_persisted =
         json_bool(&payload, &["committed_artifact_persisted"]).unwrap_or(false);
     let outcome = parse_ambiguous_provider_outcome(&payload);
@@ -245,6 +249,7 @@ pub(crate) async fn reconcile_ambiguous_timeout_handler(
         json_i64(&payload, &["now_epoch_seconds"]).unwrap_or(DEFAULT_RECONCILE_NOW_EPOCH_SECONDS);
 
     let (resv, wallet) = state.store.reconcile_ambiguous_provider_timeout(
+        &principal,
         &reservation_id,
         committed_artifact_persisted,
         outcome,
@@ -305,15 +310,19 @@ pub(crate) async fn process_payment_webhook_handler(
     headers: HeaderMap,
     body_bytes: axum::body::Bytes,
 ) -> ApiResult {
+    let secret = std::env::var("BILLING_WEBHOOK_SECRET")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            PersistenceError::Validation("BILLING_WEBHOOK_SECRET is required".to_string())
+        })?;
     let signature = extract_header_str(&headers, "x-billing-signature")
         .or_else(|| extract_header_str(&headers, "stripe-signature"))
         .unwrap_or("");
 
-    let outcome = state.store.process_payment_webhook(
-        DEFAULT_WEBHOOK_SIGNING_SECRET,
-        &body_bytes,
-        signature,
-    )?;
+    let outcome = state
+        .store
+        .process_payment_webhook(secret.as_bytes(), &body_bytes, signature)?;
     Ok((StatusCode::OK, Json(outcome)).into_response())
 }
 

@@ -4,8 +4,9 @@ use axum::{
     response::Response,
 };
 use serde_json::{json, Value};
+use std::sync::Arc;
 use syllabus_api::{build_router_with_state, ApiAppState};
-use syllabus_security::ReleaseFeatureGates;
+use syllabus_security::{AppEnvironment, DevFixedIdentityAuthVerifier, ReleaseFeatureGates};
 use tower::ServiceExt;
 
 async fn read_body_json(response: Response) -> Value {
@@ -19,36 +20,30 @@ async fn read_body_json(response: Response) -> Value {
     }
 }
 
-async fn login_token(app: &axum::Router, email: &str) -> String {
-    let resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/auth/sessions")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "email": email,
-                        "authentication_code": "123456"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
+const USER_A_TOKEN: &str = "dev-account:00000000-0000-4000-8000-000000000001";
+const USER_B_TOKEN: &str = "dev-account:00000000-0000-4000-8000-000000000002";
+
+fn test_state() -> ApiAppState {
+    let mut state = ApiAppState::new(ReleaseFeatureGates {
+        env: AppEnvironment::Test,
+        ..ReleaseFeatureGates::default()
+    });
+    state.auth_verifier = Arc::new(
+        DevFixedIdentityAuthVerifier::new(
+            AppEnvironment::Test,
+            "00000000-0000-4000-8000-000000000001",
         )
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
-    let body = read_body_json(resp).await;
-    body["session_token"].as_str().unwrap().to_string()
+        .unwrap(),
+    );
+    state
 }
 
 #[tokio::test]
-async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_edit_delete() {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
+async fn manual_resource_ingestion_stays_unreviewed_and_supports_private_syllabus_edits() {
+    let state = test_state();
     let app = build_router_with_state(state.clone());
-    let token_a = login_token(&app, "learner-a@example.test").await;
-    let token_b = login_token(&app, "learner-b@example.test").await;
+    let token_a = USER_A_TOKEN;
+    let token_b = USER_B_TOKEN;
 
     let initial_tfidf_count = state.store.catalog_tfidf_document_count();
 
@@ -88,16 +83,16 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
     assert_eq!(ingest_json["subject"], "Systems");
     assert_eq!(
         ingest_json["tfidf_corpus_document_count"].as_u64().unwrap() as usize,
-        initial_tfidf_count + 1
+        initial_tfidf_count
     );
-    assert!(ingest_json["tfidf_self_match_score"].as_f64().unwrap() > 0.2);
+    assert_eq!(ingest_json["resource"]["review_status"], "under_review");
+    assert_eq!(ingest_json["tfidf_self_match_score"], 0.0);
 
-    // Verify TF-IDF corpus search immediately ranks the newly ingested CKAD resource at the top.
+    // Unreviewed submissions do not enter the approved catalog index.
     let ranked = state
         .store
         .rank_catalog_tfidf("ckad kubernetes helm deployments");
-    assert_eq!(ranked[0].0, rv_id);
-    assert!(ranked[0].1 > 0.25);
+    assert!(!ranked.iter().any(|(id, _)| id == &rv_id));
 
     // 2. Link (ADD) the library resource to Learner A's syllabus (`cur-learner-a-1`)
     let link_resp = app
@@ -145,7 +140,7 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
         .unwrap();
     assert_eq!(cross_tenant_resp.status(), StatusCode::FORBIDDEN);
 
-    // 3. EDIT the resource metadata + syllabus rationale simultaneously (`PATCH /v1/syllabi/{id}/resources/{rv_id}`)
+    // 3. Edit only the private syllabus binding.
     let edit_resp = app
         .clone()
         .oneshot(
@@ -157,11 +152,7 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "role": "supplemental",
-                        "selection_rationale": "Updated rationale including Cilium service mesh labs.",
-                        "catalog_patch": {
-                            "title": "CKAD Mastery with Cilium & eBPF",
-                            "topics": ["ckad", "kubernetes", "cilium", "ebpf"]
-                        }
+                        "selection_rationale": "Updated rationale including Cilium service mesh labs."
                     }))
                     .unwrap(),
                 ))
@@ -172,15 +163,32 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
     assert_eq!(edit_resp.status(), StatusCode::OK);
     let edit_json = read_body_json(edit_resp).await;
     assert_eq!(edit_json["receipt"]["action"], "updated");
-    assert_eq!(
-        edit_json["resource"]["title"],
-        "CKAD Mastery with Cilium & eBPF"
-    );
+    assert!(edit_json["resource"].is_null());
 
-    // Verify TF-IDF index automatically re-indexed the edited terms ("cilium ebpf")!
-    let reindexed_hits = state.store.rank_catalog_tfidf("cilium ebpf");
-    assert_eq!(reindexed_hits[0].0, rv_id);
-    assert!(reindexed_hits[0].1 > 0.25);
+    let forbidden_patch = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/syllabi/cur-learner-a-1/resources/{rv_id}"))
+                .header("authorization", format!("Bearer {token_b}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"catalog_patch": {"title": "Forged title"}}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(forbidden_patch.status(), StatusCode::FORBIDDEN);
+    assert_ne!(
+        state
+            .store
+            .get_catalog_resource_version(&rv_id)
+            .unwrap()
+            .title,
+        "Forged title"
+    );
 
     // 4. REMOVE (unlink) the resource from the syllabus (`DELETE /v1/syllabi/{id}/resources/{rv_id}`)
     let unlink_resp = app
@@ -203,10 +211,10 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
         .unwrap()
         .is_empty());
 
-    // Resource is still in the library & TF-IDF index after unlinking from one syllabus
+    // Resource remains in the library after unlinking from one syllabus.
     assert!(state.store.get_catalog_resource_version(&rv_id).is_ok());
 
-    // 5. Permanently DELETE the resource from the catalog DB & TF-IDF index (`DELETE /v1/catalog/resources/{rv_id}`)
+    // 5. Only Admin can permanently delete a global catalog resource.
     let del_resp = app
         .clone()
         .oneshot(
@@ -219,7 +227,20 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
         )
         .await
         .unwrap();
-    assert_eq!(del_resp.status(), StatusCode::OK);
+    assert_eq!(del_resp.status(), StatusCode::FORBIDDEN);
+    let admin_del_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/v1/catalog/resources/{rv_id}"))
+                .header("authorization", "Bearer dev-admin")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(admin_del_resp.status(), StatusCode::OK);
     assert!(state.store.get_catalog_resource_version(&rv_id).is_err());
     assert_eq!(
         state.store.catalog_tfidf_document_count(),
@@ -229,9 +250,9 @@ async fn manual_resource_ingestion_auto_indexes_tfidf_and_supports_syllabus_add_
 
 #[tokio::test]
 async fn manual_resource_ingestion_rejects_ssrf_and_loopback_urls() {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
+    let state = test_state();
     let app = build_router_with_state(state);
-    let token = login_token(&app, "learner-a@example.test").await;
+    let token = USER_A_TOKEN;
 
     for unsafe_input in [
         "http://127.0.0.1:8080/admin secret internal page",
@@ -259,9 +280,9 @@ async fn manual_resource_ingestion_rejects_ssrf_and_loopback_urls() {
 
 #[tokio::test]
 async fn web_dto_parity_explicit_id_category_access_aliases_and_auto_syllabus_binding() {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
+    let state = test_state();
     let app = build_router_with_state(state);
-    let token = login_token(&app, "learner-a@example.test").await;
+    let token = USER_A_TOKEN;
 
     // 1. Ingest with explicit web `resource_version_id`
     let explicit_id = "manual-web-parity-triton-v1";
@@ -297,7 +318,7 @@ async fn web_dto_parity_explicit_id_category_access_aliases_and_auto_syllabus_bi
             Request::builder()
                 .method("PATCH")
                 .uri(format!("/v1/catalog/resources/{explicit_id}"))
-                .header("authorization", format!("Bearer {token}"))
+                .header("authorization", "Bearer dev-admin")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -338,4 +359,146 @@ async fn web_dto_parity_explicit_id_category_access_aliases_and_auto_syllabus_bi
         .await
         .unwrap();
     assert_eq!(bind_resp.status(), StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn user_cannot_replace_or_edit_a_reviewed_catalog_resource() {
+    let state = test_state();
+    let app = build_router_with_state(state.clone());
+    let id = "res-rag-vector-free-v1";
+    let original = state.store.get_catalog_resource_version(id).unwrap();
+
+    let replace = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/catalog/resources/manual")
+                .header("authorization", format!("Bearer {USER_A_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "resource_version_id": id,
+                        "raw_text": "https://github.com/example/unique-learning-resource"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(replace.status(), StatusCode::CONFLICT);
+
+    let edit = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/catalog/resources/{id}"))
+                .header("authorization", format!("Bearer {USER_A_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({"title": "Forged title"}).to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(edit.status(), StatusCode::FORBIDDEN);
+    assert_eq!(
+        state.store.get_catalog_resource_version(id).unwrap(),
+        original
+    );
+
+    let admin_edit = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("PATCH")
+                .uri(format!("/v1/catalog/resources/{id}"))
+                .header("authorization", "Bearer dev-admin")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"title": "Revised vector resource"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(admin_edit.status(), StatusCode::OK);
+    let revised = state.store.get_catalog_resource_version(id).unwrap();
+    assert_eq!(
+        revised.review_status,
+        syllabus_domain::ResourceReviewStatus::UnderReview
+    );
+    assert!(revised.review_evidence.is_none());
+    assert!(!state
+        .store
+        .rank_catalog_tfidf("vector resource")
+        .iter()
+        .any(|(found, _)| found == id));
+}
+
+#[tokio::test]
+async fn duplicate_url_reuses_global_record_for_another_private_syllabus() {
+    let state = test_state();
+    let app = build_router_with_state(state.clone());
+    let original_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/catalog/resources/manual")
+                .header("authorization", format!("Bearer {USER_A_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "raw_text": "https://example.edu/shared-learning-resource",
+                        "title": "Original learning resource",
+                        "description": "Original catalog description"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(original_response.status(), StatusCode::CREATED);
+    let original_body = read_body_json(original_response).await;
+    let id = original_body["resource"]["resource_version_id"]
+        .as_str()
+        .unwrap();
+    let original = state.store.get_catalog_resource_version(id).unwrap();
+    let corpus_count = state.store.catalog_tfidf_document_count();
+
+    let reused_response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/catalog/resources/manual")
+                .header("authorization", format!("Bearer {USER_B_TOKEN}"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "raw_text": "https://example.edu/shared-learning-resource",
+                        "resource_version_id": "res-rag-vector-free-v1",
+                        "title": "Forged replacement title",
+                        "description": "Forged replacement description",
+                        "syllabus_id": "cur-learner-b-1",
+                        "selection_rationale": "My private reason for using this resource"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(reused_response.status(), StatusCode::CREATED);
+    let reused = read_body_json(reused_response).await;
+    assert_eq!(reused["resource"]["resource_version_id"], id);
+    assert_eq!(reused["resource"]["title"], original.title);
+    assert_eq!(reused["syllabus_binding"]["syllabus_id"], "cur-learner-b-1");
+    assert_eq!(
+        state.store.get_catalog_resource_version(id).unwrap(),
+        original
+    );
+    assert_eq!(state.store.catalog_tfidf_document_count(), corpus_count);
 }

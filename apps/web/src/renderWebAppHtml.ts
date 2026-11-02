@@ -24,7 +24,7 @@ import {
   type InferenceMode, type MaskedCredentialRecord,
 } from "./byokAndReminders.ts";
 import {
-  buildFourBucketCostBreakdown, createHostedBillingController, formatMinorCurrency,
+  buildFourBucketCostBreakdown,
   type HostedCreditWalletSnapshot,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
@@ -48,8 +48,8 @@ import {
   type Account, type AuthStatus,
 } from "./auth.ts";
 import {
-  AUTH_MODES, AuthDialog, PERSONAS, PERSONA_CHOICES, handleOf,
-  type AuthMode, type PersonaChoice, type ReturnDestination,
+  AuthDialog, PERSONAS, handleOf,
+  type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 import {
   AdoptSyllabusDialog, SyllabusTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
@@ -155,7 +155,6 @@ export interface SyllabusWebAppStateInput {
   readonly selectedSyllabusId?: string;
   readonly authStatus?: AuthStatus; readonly account?: Account; readonly returnTo?: ReturnDestination | null;
   readonly authNotice?: string | null; readonly profileNotice?: string | null;
-  readonly authMode?: AuthMode; readonly authPasswordVisible?: boolean;
   readonly passkeys?: readonly PasskeySummaryItem[]; readonly passkeyNotice?: string | null;
   readonly marketplaceFilters?: Partial<MarketplaceFilters>; readonly marketplaceSort?: MarketplaceSort;
   readonly marketplaceTopicsExpanded?: boolean;
@@ -202,9 +201,6 @@ export interface SyllabusWebAppStateInput {
   readonly editingSyllabusActivityId?: string | null;
   readonly syllabusEditorError?: string | null;
   readonly syllabusEditorNotice?: string | null;
-  readonly authResetEmail?: string;
-  readonly emailVerified?: boolean;
-  readonly emailVerificationPending?: boolean;
   readonly billingNotice?: string | null;
 }
 
@@ -912,11 +908,9 @@ export const MARKETPLACE_LISTINGS: readonly MarketplaceListing[] = [
 
 export const PRACTICE_ACTIONS: ReadonlySet<string> = new Set(["request-hint", "study-worked-solution", "submit-practice"]);
 
-// Actions that need no valid session: signing in, password recovery, browsing the Marketplace, appearance, and view layout.
+// Actions that need no valid session: browsing the Marketplace, appearance, and view layout.
 export const OPEN_ACTIONS: ReadonlySet<string> = new Set([
-  "submit-sign-in", "submit-sign-up", "request-password-reset", "confirm-password-reset",
-  "switch-auth-mode", "toggle-auth-password",
-  "sign-in-passkey", "switch-persona", "simulate-session-expired", "sign-out",
+  "simulate-session-expired", "sign-out",
   "set-marketplace-filter", "toggle-marketplace-topics", "clear-marketplace-filters", "set-marketplace-sort", "set-marketplace-query",
   "load-more",
   "close-study-detail", "toggle-solid-surfaces", "toggle-reduce-motion", "set-flow-order", "set-deep-dive", "set-spaced-review",
@@ -1041,7 +1035,7 @@ export const DEFAULT_BYOK_CREDENTIALS: readonly MaskedCredentialRecord[] = [
 ];
 
 export const DEFAULT_WALLET: HostedCreditWalletSnapshot = {
-  currency: "USD", available_minor: 2450, reserved_minor: 350, live_billing_enabled: true, updated_at: "2026-10-20T16:00:00Z",
+  currency: "USD", available_minor: 0, reserved_minor: 0, live_billing_enabled: false, updated_at: "1970-01-01T00:00:00Z",
 };
 
 export function getDialogLightDismissFallbackScript(): string {
@@ -1533,8 +1527,6 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
   const adoptListing = listings.find((listing) => listing.publicationId === inputState.adoptPublicationId);
   const returnTo = inputState.returnTo ?? null;
   const authNotice = inputState.authNotice ?? null;
-  const authMode: AuthMode = inputState.authMode ?? "login";
-  const authPasswordVisible = inputState.authPasswordVisible ?? false;
   const passkeys = inputState.passkeys ?? [];
   const passkeyNotice = inputState.passkeyNotice ?? null;
 
@@ -1550,15 +1542,6 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     initialCredentials: [...byokCredentialsList],
     selectedCredentialRef: effectivePrimaryRef || null,
     themeMode: resolvedThemeMode,
-  }).getState();
-
-  const billingState = createHostedBillingController({
-    wallet: inputState.wallet ?? DEFAULT_WALLET,
-    ledger: [
-      { entry_id: "ledger-001", occurred_at: "2026-10-20T14:00:00Z", entry_type: "credit_purchase", delta_minor: 2800, balance_after_minor: 2800, reference_id: "topup-001", summary: "Hosted AI credit wallet top-up" },
-      { entry_id: "ledger-002", occurred_at: "2026-10-20T15:30:00Z", entry_type: "reservation_hold", delta_minor: -350, balance_after_minor: 2450, reference_id: "reservation-001", summary: "Active generation ceiling reservation" },
-    ],
-    theme: resolvedThemeMode,
   }).getState();
 
   const costBreakdown = buildFourBucketCostBreakdown({
@@ -2309,30 +2292,13 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                 </div>
               </form>
             </div>
-            <div class="profile-verification-bar" data-email-verified="${Boolean(inputState.emailVerified)}">
-              <div class="profile-verification-copy">
-                <span class="badge" data-verified="${Boolean(inputState.emailVerified)}">${inputState.emailVerified ? "Email verified" : "Email unverified"}</span>
-                <span class="row-meta">${inputState.emailVerified ? `Recovery and study notifications are active for ${escapeHtml(account.email)}.` : "Verify your email address to enable account recovery and scheduled study notifications."}</span>
-              </div>
-              ${inputState.emailVerified ? "" : `<div class="profile-verification-controls">
-                <button type="button" class="btn-secondary" data-action="request-email-verification">Send verification code</button>
-                <form class="email-verify-form" data-action="confirm-email-verification" novalidate>
-                  <label class="field" for="profile-verify-code-input">
-                    <span class="st-sr">Email verification code</span>
-                    <span class="field-hint" id="profile-verify-code-hint">6-digit code</span>
-                    <input id="profile-verify-code-input" type="text" name="code" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="6-digit code" aria-describedby="profile-verify-code-hint" autocomplete="one-time-code" required>
-                  </label>
-                  <button type="submit" class="btn-secondary">Verify email</button>
-                </form>
-              </div>`}
-            </div>
           </section>
 
           <section class="settings-section" id="settings-passkeys" aria-labelledby="settings-passkeys-title" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
                 <h2 id="settings-passkeys-title">Passkeys</h2>
-                <p class="section-lede">Sign in with Touch ID, Face ID, Windows Hello, or your password manager without typing a password.</p>
+                <p class="section-lede">Sign in with Touch ID, Face ID, Windows Hello, or your password manager.</p>
               </div>
               <button type="button" class="btn-secondary" data-action="register-passkey">+ Add a passkey</button>
             </div>
@@ -2560,12 +2526,8 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
               <p class="disclosure-text">${escapeHtml(byokState.externalBillingDisclosure)} You act directly as the API account holder with your chosen provider (OpenAI, Anthropic, or Google) under their respective Terms of Service and direct billing. Saving a key does not run a chargeable test. Applying a new key updates future jobs while queued jobs stay on their active key version. Removing a key deletes this app's encrypted copy and does not revoke the key at the issuer.</p>
             </details>
             <details class="settings-disclosure" id="hosted-wallet-panel"${inputState.billingNotice ? " open" : ""}>
-              <summary>Hosted AI credit wallet (optional) · ${escapeHtml(formatMinorCurrency(billingState.wallet.available_minor, billingState.wallet.currency))} available</summary>
-              <p class="disclosure-text">BYOK inference incurs $0.00 platform fees. Optional hosted credits cover AI synthesis and dynamic concept checks when you prefer managed inference without storing a personal provider key. Reserved holds: ${escapeHtml(formatMinorCurrency(billingState.wallet.reserved_minor, billingState.wallet.currency))}.</p>
-              <div class="action-row wallet-topup-actions">
-                <button type="button" class="btn-secondary" data-action="start-hosted-checkout" data-amount-minor="1000">Top up $10.00</button>
-                <button type="button" class="btn-secondary" data-action="start-hosted-checkout" data-amount-minor="2500">Top up $25.00</button>
-              </div>
+              <summary>Hosted AI credits</summary>
+              <p class="disclosure-text">Hosted credit purchases are unavailable. BYOK inference uses your provider account.</p>
               ${inputState.billingNotice ? `<p class="section-lede" id="settings-billing-notice" role="status">${escapeHtml(inputState.billingNotice)}</p>` : ""}
             </details>
           </section>
@@ -2885,9 +2847,6 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
     account,
     returnTo,
     authNotice,
-    authMode,
-    authPasswordVisible,
-    resetEmail: inputState.authResetEmail,
   }))}
 
   <script data-dialog-light-dismiss-fallback="true">

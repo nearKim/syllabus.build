@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 
 export const DEFAULT_CREDENTIAL_META = Object.freeze({
   openai: { credentialRef: "cred-openai-1", label: "OpenAI API Key" },
@@ -13,8 +11,8 @@ function buildAad(accountId, providerId, version) {
 }
 
 /**
- * Resolves a 32-byte AES-256-GCM master key from `BYOK_MASTER_KEY` (64-char hex, 32-byte base64,
- * or SHA-256 KDF of a passphrase), falling back to a local `0600` key file or ephemeral CSPRNG key.
+ * Resolves a 32-byte AES-256-GCM master key from `BYOK_MASTER_KEY`.
+ * Disposable in-memory servers use an ephemeral CSPRNG key.
  */
 export function resolveByokMasterKey(options = {}) {
   const rawEnv = options.envKey?.trim();
@@ -22,24 +20,15 @@ export function resolveByokMasterKey(options = {}) {
     if (/^[0-9a-fA-F]{64}$/.test(rawEnv)) {
       return Buffer.from(rawEnv, "hex");
     }
-    try {
+    if (/^[A-Za-z0-9+/]{43}=$/.test(rawEnv)) {
       const decoded = Buffer.from(rawEnv, "base64");
       if (decoded.length === 32) return decoded;
-    } catch {
-      // Fall through to SHA-256 KDF.
     }
-    return crypto.createHash("sha256").update(rawEnv, "utf8").digest();
+    throw new Error("BYOK_MASTER_KEY must be a 32-byte hex or base64 key.");
   }
 
-  if (options.keyFilePath) {
-    if (fs.existsSync(options.keyFilePath)) {
-      const existing = fs.readFileSync(options.keyFilePath);
-      if (existing.length === 32) return existing;
-    }
-    const generated = crypto.randomBytes(32);
-    fs.mkdirSync(path.dirname(options.keyFilePath), { recursive: true });
-    fs.writeFileSync(options.keyFilePath, generated, { mode: 0o600 });
-    return generated;
+  if (options.persistent) {
+    throw new Error("BYOK_MASTER_KEY is required for persistent account data.");
   }
 
   return crypto.randomBytes(32);

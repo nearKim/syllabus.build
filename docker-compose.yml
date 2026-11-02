@@ -5,10 +5,10 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-syllabus}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-syllabus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB:-syllabus_dev}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - syllabus_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -27,15 +27,16 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      APP_ENV: ${APP_ENV:-production}
+      APP_ENV: production
       API_BIND_ADDR: 0.0.0.0:8080
-      DATABASE_URL: postgres://${POSTGRES_USER:-syllabus}:${POSTGRES_PASSWORD:-syllabus}@postgres:5432/${POSTGRES_DB:-syllabus_dev}
+      DATABASE_URL: ${DATABASE_URL_CONTAINER:?DATABASE_URL_CONTAINER is required}
       PUBLIC_WEB_ORIGIN: ${PUBLIC_WEB_ORIGIN:-http://localhost:3000}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
-      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
-      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-whsec_syllabus_io_dev_secret_key_2026}
+      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:?BYOK_MASTER_KEY is required}
+      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:?BILLING_WEBHOOK_SECRET is required}
+      AUTH_EXCHANGE_SECRET: ${AUTH_EXCHANGE_SECRET:?AUTH_EXCHANGE_SECRET is required}
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
 
   syllabus-worker:
     build:
@@ -48,8 +49,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      APP_ENV: ${APP_ENV:-production}
-      DATABASE_URL: postgres://${POSTGRES_USER:-syllabus}:${POSTGRES_PASSWORD:-syllabus}@postgres:5432/${POSTGRES_DB:-syllabus_dev}
+      APP_ENV: production
+      DATABASE_URL: ${DATABASE_URL_CONTAINER:?DATABASE_URL_CONTAINER is required}
       WORKER_ID: ${WORKER_ID:-worker-main}
       WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -64,14 +65,14 @@ services:
     depends_on:
       - syllabus-api
     environment:
-      APP_ENV: ${APP_ENV:-production}
+      APP_ENV: production
       WEB_HOST: 0.0.0.0
       WEB_PORT: 3000
       API_BASE_URL: http://syllabus-api:8080
       PUBLIC_WEB_ORIGIN: ${PUBLIC_WEB_ORIGIN:-http://localhost:3000}
-      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
-      OAUTH_COOKIE_SECRET: ${OAUTH_COOKIE_SECRET:-}
-      BILLING_WEBHOOK_SECRET: ${BILLING_WEBHOOK_SECRET:-whsec_syllabus_io_dev_secret_key_2026}
+      BYOK_MASTER_KEY: ${BYOK_MASTER_KEY:?BYOK_MASTER_KEY is required}
+      OAUTH_COOKIE_SECRET: ${OAUTH_COOKIE_SECRET:?OAUTH_COOKIE_SECRET is required}
+      AUTH_EXCHANGE_SECRET: ${AUTH_EXCHANGE_SECRET:?AUTH_EXCHANGE_SECRET is required}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}

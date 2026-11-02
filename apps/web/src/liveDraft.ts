@@ -2,6 +2,8 @@
 // topics the catalog does not cover. Each provider uses its own native web search tool.
 // Raw fetch, not the provider SDKs: one request per provider does not justify three new dependencies.
 
+import { readBoundedJson } from "./boundedResponse.ts";
+
 export interface DraftActivity {
   readonly title: string;
   readonly prompt: string;
@@ -40,13 +42,6 @@ export interface LiveDraftRequest {
   readonly modelId: string;
   readonly prompt: string;
 }
-
-// The server reads each key from its own environment. Launch it with the keys loaded from Bitwarden.
-export const PROVIDER_KEY_ENV: Readonly<Record<string, string>> = {
-  openai: "OPENAI_API_KEY",
-  anthropic: "ANTHROPIC_API_KEY",
-  google_gemini: "GEMINI_API_KEY",
-};
 
 const MAX_DRAFT_RESOURCES = 3;
 
@@ -280,7 +275,10 @@ async function postJson(
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(180_000),
   });
-  const json: unknown = await res.json().catch(() => null);
+  const json: unknown = await readBoundedJson(res).catch((err) => {
+    if (err instanceof SyntaxError) return null;
+    throw err;
+  });
   if (!res.ok || !isJsonObject(json)) {
     throw new Error(`${res.status} ${extractErrorMessage(json, res.statusText)}`);
   }

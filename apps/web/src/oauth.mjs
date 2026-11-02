@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import { h } from "preact";
 import { renderToString } from "preact-render-to-string";
 import { GitHubMark, GoogleMark, PERSONAS } from "./components/AuthDialog.tsx";
@@ -13,26 +12,6 @@ export function isOAuthProvider(value) {
 
 export function oauthProviderLabel(provider) {
   return provider === "google" ? "Google" : "GitHub";
-}
-
-/** Loads key=value pairs from a `.env` file without overwriting existing `process.env` keys. */
-export function loadDotEnvIfPresent(envFilePath, targetEnv = process.env) {
-  if (!fs.existsSync(envFilePath)) return;
-  const raw = fs.readFileSync(envFilePath, "utf8");
-  for (const line of raw.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIndex = trimmed.indexOf("=");
-    if (eqIndex <= 0) continue;
-    const key = trimmed.slice(0, eqIndex).trim();
-    let val = trimmed.slice(eqIndex + 1).trim();
-    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-      val = val.slice(1, -1);
-    }
-    if (key && targetEnv[key] === undefined) {
-      targetEnv[key] = val;
-    }
-  }
 }
 
 export function generateRandomBase64Url(byteLength = 32) {
@@ -86,23 +65,6 @@ export function verifyOAuthStateCookie(cookieValue, secret, nowMs = Date.now()) 
   }
 }
 
-export function hashAccountPassword(password) {
-  const salt = crypto.randomBytes(16).toString("hex");
-  const derived = crypto.scryptSync(password, salt, 32).toString("hex");
-  return `scrypt$${salt}$${derived}`;
-}
-
-export function verifyAccountPassword(password, storedHash) {
-  const parts = storedHash.split("$");
-  if (parts.length !== 3 || parts[0] !== "scrypt") return false;
-  const salt = parts[1] ?? "";
-  const expectedHex = parts[2] ?? "";
-  if (!salt || expectedHex.length !== 64) return false;
-  const actual = crypto.scryptSync(password, salt, 32);
-  const expected = Buffer.from(expectedHex, "hex");
-  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
-}
-
 export function resolveProviderCredentials(provider, env = process.env) {
   const clientId = (provider === "google" ? env.GOOGLE_CLIENT_ID : env.GITHUB_CLIENT_ID)?.trim() ?? "";
   const clientSecret = (provider === "google" ? env.GOOGLE_CLIENT_SECRET : env.GITHUB_CLIENT_SECRET)?.trim() ?? "";
@@ -111,8 +73,8 @@ export function resolveProviderCredentials(provider, env = process.env) {
 }
 
 export function isLocalDevEnv(env = process.env) {
-  const appEnv = (env.APP_ENV ?? env.NODE_ENV ?? "development").trim().toLowerCase();
-  return appEnv !== "production" && appEnv !== "staging";
+  const appEnv = env.APP_ENV?.trim().toLowerCase();
+  return appEnv === "development" || appEnv === "test";
 }
 
 export function buildOAuthCallbackUrl(publicOrigin, provider) {
@@ -166,6 +128,28 @@ export function buildOAuthAuthorizeRedirect(options) {
   return { mode: "dev_sandbox", url: sandboxUrl.toString() };
 }
 
+async function readOAuthJson(response) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("OAuth response was empty.");
+  const chunks = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 256 * 1024) {
+        await reader.cancel();
+        throw new Error("OAuth response was too large.");
+      }
+      chunks.push(Buffer.from(value));
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function exchangeLiveOAuthCode(options) {
   const fetchFn = options.fetchImpl ?? globalThis.fetch;
   const creds = resolveProviderCredentials(options.provider, options.env);
@@ -189,7 +173,7 @@ export async function exchangeLiveOAuthCode(options) {
     if (!tokenRes.ok) {
       throw new Error(`Google token exchange failed (${tokenRes.status})`);
     }
-    const tokenJson = await tokenRes.json();
+    const tokenJson = await readOAuthJson(tokenRes);
     if (!tokenJson.access_token) throw new Error("Google token response did not include access_token");
 
     const profileRes = await fetchFn("https://openidconnect.googleapis.com/v1/userinfo", {
@@ -198,7 +182,7 @@ export async function exchangeLiveOAuthCode(options) {
     if (!profileRes.ok) {
       throw new Error(`Google userinfo request failed (${profileRes.status})`);
     }
-    const profile = await profileRes.json();
+    const profile = await readOAuthJson(profileRes);
     if (!profile.sub || !profile.email) {
       throw new Error("Google userinfo did not return required `sub` and `email` claims");
     }
@@ -227,7 +211,7 @@ export async function exchangeLiveOAuthCode(options) {
   if (!tokenRes.ok) {
     throw new Error(`GitHub token exchange failed (${tokenRes.status})`);
   }
-  const tokenJson = await tokenRes.json();
+  const tokenJson = await readOAuthJson(tokenRes);
   if (!tokenJson.access_token) {
     throw new Error(tokenJson.error || "GitHub token response did not include access_token");
   }
@@ -241,14 +225,14 @@ export async function exchangeLiveOAuthCode(options) {
   if (!userRes.ok) {
     throw new Error(`GitHub user profile request failed (${userRes.status})`);
   }
-  const ghUser = await userRes.json();
+  const ghUser = await readOAuthJson(userRes);
   let email = ghUser.email?.trim().toLowerCase() ?? "";
   let emailVerified = Boolean(email);
 
   if (!email) {
     const emailsRes = await fetchFn("https://api.github.com/user/emails", { headers: ghHeaders });
     if (emailsRes.ok) {
-      const emails = await emailsRes.json();
+      const emails = await readOAuthJson(emailsRes);
       const chosen =
         emails.find((e) => e.primary && e.verified) ??
         emails.find((e) => e.verified) ??

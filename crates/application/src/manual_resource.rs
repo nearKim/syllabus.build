@@ -9,8 +9,8 @@ use syllabus_domain::{
 };
 use syllabus_persistence::{
     validate_manual_resource_egress_url, AcquisitionPermission, CatalogAccessModel,
-    CatalogResourceVersionRecord, CatalogReviewEvidence, InMemoryTransactionalStore,
-    PersistenceError, ResourceFreshnessState, ResourceReviewStatus, SyllabusResourceBindingInput,
+    CatalogResourceVersionRecord, InMemoryTransactionalStore, PersistenceError,
+    ResourceFreshnessState, ResourceReviewStatus, SyllabusResourceBindingInput,
     SyllabusResourceMutationReceipt,
 };
 use syllabus_security::AuthenticatedPrincipal;
@@ -728,22 +728,22 @@ pub fn ingest_manual_resource(
     let access_model = req.access_model.unwrap_or(profile.access_model);
     let price_minor_units = req.price_minor_units.or(profile.default_price_minor);
 
-    // Reuse existing manual resource ID if canonical URL already exists, or accept caller's `manual-*` ID, or derive deterministic slug+hash ID.
+    // Reuse an existing global record without accepting replacement metadata from this request.
     let existing_match = store.list_catalog_resources(false).into_iter().find(|rec| {
         let (rec_norm, _) = normalize_canonical_resource_identity(&rec.canonical_url, None);
         rec_norm == normalized_url_identity
     });
+    let is_new_resource = existing_match.is_none();
 
-    let resource_version_id = req
-        .resource_version_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+    let resource_version_id = existing_match
+        .as_ref()
+        .map(|existing| existing.resource_version_id.clone())
         .or_else(|| {
-            existing_match
-                .as_ref()
-                .map(|r| r.resource_version_id.clone())
+            req.resource_version_id
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
         })
         .unwrap_or_else(|| {
             let url_hash = &sha256_bytes_hex(normalized_url_identity.as_bytes())[..10];
@@ -760,10 +760,15 @@ pub fn ingest_manual_resource(
             let clean_slug = if slug.is_empty() { "resource" } else { &slug };
             format!("manual-{clean_slug}-{url_hash}-v1")
         });
-    let resource_id = resource_version_id
-        .strip_suffix("-v1")
-        .unwrap_or(&resource_version_id)
-        .to_string();
+    let resource_id = existing_match
+        .as_ref()
+        .map(|existing| existing.resource_id.clone())
+        .unwrap_or_else(|| {
+            resource_version_id
+                .strip_suffix("-v1")
+                .unwrap_or(&resource_version_id)
+                .to_string()
+        });
 
     let enriched_description = if segments.is_empty() {
         description.clone()
@@ -771,10 +776,10 @@ pub fn ingest_manual_resource(
         format!("{description} Sections: {}.", segments.join("; "))
     };
 
-    let record = CatalogResourceVersionRecord {
+    let record = existing_match.unwrap_or_else(|| CatalogResourceVersionRecord {
         resource_version_id: resource_version_id.clone(),
         resource_id: resource_id.clone(),
-        version_number: existing_match.map_or(1, |r| r.version_number + 1),
+        version_number: 1,
         title: title.clone(),
         provider_id: profile.provider_id,
         provider_display_name: provider_display_name.clone(),
@@ -790,20 +795,8 @@ pub fn ingest_manual_resource(
         price_minor_units,
         subscription_ids: Vec::new(),
         is_optional_certification: false,
-        review_status: ResourceReviewStatus::Approved,
-        review_evidence: Some(CatalogReviewEvidence {
-            reviewer_principal_id: principal.account_id.clone(),
-            reviewed_at: "2026-10-30T00:00:00Z".to_string(),
-            pedagogical_fit_score: 5,
-            accuracy_score: 5,
-            accessibility_score: 5,
-            rights_verified: true,
-            rationale: format!(
-                "Learner-ingested resource analyzed and indexed with egress verification ({host})."
-            ),
-            credibility_basis: "learner_curated_url_analysis".to_string(),
-            evidence_url: canonical_url,
-        }),
+        review_status: ResourceReviewStatus::UnderReview,
+        review_evidence: None,
         freshness_state: ResourceFreshnessState::Healthy,
         acquisition_permission: AcquisitionPermission {
             allow_metadata: true,
@@ -819,39 +812,40 @@ pub fn ingest_manual_resource(
         },
         is_synthetic_fixture: false,
         metadata_embedding: None,
-    };
+    });
 
-    // Atomically upsert into the DB store & synchronized TF-IDF search index.
-    store.upsert_catalog_resource(record.clone());
+    if is_new_resource {
+        store.insert_catalog_resource(record.clone())?;
+    }
 
     let index_descriptor = build_index_descriptor(
         &category,
-        &provider_display_name,
-        &description,
+        &record.provider_display_name,
+        &record.description,
         &segments,
-        &topic_tags,
+        &record.topics,
     );
     let indexed_candidate = IndexedMaterialCandidate {
         resource_version_id: resource_version_id.clone(),
-        resource_id,
-        title: title.clone(),
-        resource_type,
+        resource_id: record.resource_id.clone(),
+        title: record.title.clone(),
+        resource_type: record.resource_type.clone(),
         subject: subject.clone(),
-        topic_tags: topic_tags.clone(),
+        topic_tags: record.topics.clone(),
         supported_math_depths: vec![
             "intuition_first".to_string(),
             "applied".to_string(),
             "formal".to_string(),
         ],
         supported_roles: vec!["instruction".to_string(), "practice".to_string()],
-        access_model,
-        price_minor_units,
-        review_status: ResourceReviewStatus::Approved,
+        access_model: record.access_model,
+        price_minor_units: record.price_minor_units,
+        review_status: record.review_status,
         quarantined: false,
         index_descriptor: Some(index_descriptor),
     };
 
-    let query_probe = format!("{} {}", title, topic_tags.join(" "));
+    let query_probe = format!("{} {}", record.title, record.topics.join(" "));
     let tfidf_corpus_document_count = store.catalog_tfidf_document_count();
     let tfidf_self_match_score = store
         .rank_catalog_tfidf(&query_probe)

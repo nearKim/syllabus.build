@@ -11,7 +11,8 @@ use syllabus_domain::{
     SpacedReviewRecord,
 };
 use syllabus_security::{
-    AuthenticatedPrincipal, CredentialVault, OAuthProvider, PrincipalRole, SealedCredentialEnvelope,
+    AppEnvironment, AuthenticatedPrincipal, CredentialVault, OAuthProvider, PrincipalRole,
+    SealedCredentialEnvelope,
 };
 
 use crate::models::{
@@ -89,6 +90,10 @@ pub(crate) struct StoreInner {
     pub(crate) web_passkeys: BTreeMap<String, WebPasskeyRecord>,
     pub(crate) auth_recovery_tokens: BTreeMap<String, AuthRecoveryTokenRecord>,
     pub(crate) next_seq: u64,
+}
+
+pub(crate) fn credential_map_key(account_id: &str, credential_ref: &str) -> String {
+    format!("{}:{account_id}{credential_ref}", account_id.len())
 }
 
 /// Thread-safe transactional store enforcing `T01` identity, tenant isolation,
@@ -170,6 +175,7 @@ impl InMemoryTransactionalStore {
     /// restoring any existing durable snapshot (or seeding initial fixtures + open Git catalog on
     /// first boot), and writing through on every mutation.
     pub fn open_postgres(database_url: &str, namespace: &str) -> Result<Self, PersistenceError> {
+        let vault = CredentialVault::from_env()?;
         let pg = Arc::new(crate::pg_backend::PgBackendHandle::connect(
             database_url,
             namespace,
@@ -186,7 +192,7 @@ impl InMemoryTransactionalStore {
             }
             Ok(store)
         } else {
-            let mut store = Self::new_with_dev_fixtures();
+            let mut store = Self::new_with_dev_fixtures_with_vault(vault);
             store.load_open_catalog_from_workspace();
             pg.save_store_inner(&store.read_inner())?;
             store.pg_backend = Some(pg);
@@ -195,10 +201,18 @@ impl InMemoryTransactionalStore {
     }
 
     /// Opens a PostgreSQL-backed store when `DATABASE_URL` is configured (using
-    /// `SYLLABUS_STORE_NAMESPACE` or `"default"`), or falls back to an in-memory store seeded
-    /// with dev fixtures and the workspace `catalog/resources` registry.
+    /// `SYLLABUS_STORE_NAMESPACE` or `"default"`). Development and tests may fall back to an
+    /// in-memory store seeded with dev fixtures and the workspace `catalog/resources` registry.
     pub fn open_from_env() -> Result<Self, PersistenceError> {
-        if let Ok(db_url) = std::env::var("DATABASE_URL") {
+        let database_url = std::env::var("DATABASE_URL").ok();
+        Self::open_from_config(database_url.as_deref(), AppEnvironment::from_env())
+    }
+
+    fn open_from_config(
+        database_url: Option<&str>,
+        environment: AppEnvironment,
+    ) -> Result<Self, PersistenceError> {
+        if let Some(db_url) = database_url {
             let trimmed = db_url.trim();
             if !trimmed.is_empty() {
                 let ns = std::env::var("SYLLABUS_STORE_NAMESPACE")
@@ -207,6 +221,11 @@ impl InMemoryTransactionalStore {
                     .unwrap_or_else(|| "default".to_string());
                 return Self::open_postgres(trimmed, &ns);
             }
+        }
+        if !environment.is_local_dev_or_test() {
+            return Err(PersistenceError::Validation(
+                "DATABASE_URL is required outside development and test".to_string(),
+            ));
         }
         let store = Self::new_with_dev_fixtures();
         store.load_open_catalog_from_workspace();
@@ -243,7 +262,16 @@ impl InMemoryTransactionalStore {
     /// and Learner B (`00000000-0000-4000-8000-000000000002`) for development and integration tests.
     #[must_use]
     pub fn new_with_dev_fixtures() -> Self {
+        Self::new_with_dev_fixtures_with_vault(CredentialVault::default())
+    }
+
+    fn new_with_dev_fixtures_with_vault(vault: CredentialVault) -> Self {
         let store = Self::new();
+        store
+            .inner
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .credential_vault = vault;
         let learner_a = "00000000-0000-4000-8000-000000000001";
         let learner_b = "00000000-0000-4000-8000-000000000002";
 
@@ -251,7 +279,7 @@ impl InMemoryTransactionalStore {
             account_id: learner_a.to_string(),
             email: "learner-a@example.test".to_string(),
             email_verified: true,
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             display_name: Some("Learner A".to_string()),
             avatar_url: None,
             password_hash: None,
@@ -261,7 +289,7 @@ impl InMemoryTransactionalStore {
             account_id: learner_b.to_string(),
             email: "learner-b@example.test".to_string(),
             email_verified: true,
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             display_name: Some("Learner B".to_string()),
             avatar_url: None,
             password_hash: None,
@@ -270,12 +298,12 @@ impl InMemoryTransactionalStore {
 
         let principal_a = AuthenticatedPrincipal {
             account_id: learner_a.to_string(),
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             is_development_only_identity: true,
         };
         let principal_b = AuthenticatedPrincipal {
             account_id: learner_b.to_string(),
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             is_development_only_identity: true,
         };
 
@@ -329,7 +357,10 @@ impl InMemoryTransactionalStore {
         if let Some(acct) = guard.accounts.get_mut(account_id) {
             acct.deleted_at_ms = None;
         }
-        if let Some(cred) = guard.credentials.get_mut(credential_ref) {
+        if let Some(cred) = guard
+            .credentials
+            .get_mut(&credential_map_key(account_id, credential_ref))
+        {
             cred.revoked = false;
         }
         for sess in guard.sessions_by_token_sha.values_mut() {
@@ -394,7 +425,10 @@ impl InMemoryTransactionalStore {
                     }
                 }
                 TombstoneEntityType::CredentialRevoked => {
-                    if let Some(cred) = guard.credentials.get_mut(&target_id) {
+                    if let Some(cred) = guard
+                        .credentials
+                        .get_mut(&credential_map_key(&account_id, &target_id))
+                    {
                         if !cred.revoked {
                             cred.revoked = true;
                             credentials_revoked += 1;
@@ -538,3 +572,34 @@ impl InMemoryTransactionalStore {
 
 /// Public interface facade alias matching PROJECT.md interface contract.
 pub type TransactionalStore = InMemoryTransactionalStore;
+
+#[cfg(test)]
+mod vault_seed_tests {
+    use super::*;
+
+    #[test]
+    fn production_requires_a_persistent_database() {
+        for environment in [AppEnvironment::Staging, AppEnvironment::Production] {
+            assert!(matches!(
+                InMemoryTransactionalStore::open_from_config(None, environment),
+                Err(PersistenceError::Validation(_))
+            ));
+        }
+    }
+
+    #[test]
+    fn fixture_credential_uses_the_persistent_vault_key() {
+        let store = InMemoryTransactionalStore::new_with_dev_fixtures_with_vault(
+            CredentialVault::new([7; 32]),
+        );
+        let owner = AuthenticatedPrincipal {
+            account_id: "00000000-0000-4000-8000-000000000002".to_string(),
+            roles: vec![PrincipalRole::User],
+            is_development_only_identity: true,
+        };
+        let (credential, _) = store
+            .open_credential_for_pinned_inference(&owner, "cred-learner-b-openai", 1)
+            .expect("seeded credential must decrypt after boot");
+        assert_eq!(credential, "sk-live-secret-learner-b-9999");
+    }
+}

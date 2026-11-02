@@ -287,7 +287,7 @@ mod tests {
         let dev_tok_req = Request::builder()
             .method(Method::GET)
             .uri("/v1/me/syllabi")
-            .header(header::AUTHORIZATION, "Bearer dev-curator")
+            .header(header::AUTHORIZATION, "Bearer dev-admin")
             .body(Body::empty())
             .expect("build dev token req");
         let dev_tok_res = app.oneshot(dev_tok_req).await.expect("execute dev token");

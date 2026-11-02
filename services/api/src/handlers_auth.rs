@@ -1,5 +1,4 @@
-//! Authentication & identity HTTP handlers: session lifecycle, email signup/login,
-//! OAuth 2.0 PKCE exchange, WebAuthn passkey authentication, password reset, and email verification.
+//! Authentication and identity HTTP handlers: sessions, OAuth exchange, passkeys, and email verification.
 
 use axum::{
     extract::{Path, Query, State},
@@ -11,23 +10,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use syllabus_persistence::{AccountRecord, AuthSessionRecord, PersistenceError};
 use syllabus_security::{
-    compute_pkce_s256_challenge, resolve_oauth_provider_statuses, verify_pkce_s256, OAuthProvider,
-    PrincipalRole, SecurityError,
+    compute_pkce_s256_challenge, resolve_oauth_provider_statuses, OAuthProvider, PrincipalRole,
+    SecurityError,
 };
 
-use crate::{
-    current_epoch_ms, extract_bearer_token, ApiAppState, ApiResult, AuthPrincipal,
-    DEFAULT_NOW_EPOCH_MS,
-};
+use crate::{current_epoch_ms, extract_bearer_token, ApiAppState, ApiResult, AuthPrincipal};
 
-const DEFAULT_SESSION_EXPIRES_AT: &str = "2026-12-31T23:59:59Z";
-
-/// Request payload for establishing a new learner authentication session.
-#[derive(Debug, Deserialize)]
-pub(crate) struct CreateSessionRequestDto {
-    pub(crate) email: String,
-    pub(crate) authentication_code: String,
-}
+const DEV_SESSION_EXPIRES_AT: &str = "9999-12-31T23:59:59Z";
 
 /// Response payload describing an active authentication session.
 #[derive(Debug, Serialize, Deserialize)]
@@ -71,37 +60,21 @@ fn build_session_response(
     }
 }
 
-pub(crate) async fn create_auth_session_handler(
-    State(state): State<ApiAppState>,
-    Json(req): Json<CreateSessionRequestDto>,
-) -> ApiResult {
-    let session = state
-        .store
-        .create_auth_session(&req.email, &req.authentication_code)?;
-    let account = state.store.get_account_by_id(&session.account_id);
-    Ok((
-        StatusCode::OK,
-        Json(build_session_response(
-            account.as_ref(),
-            session,
-            None,
-            None,
-        )),
-    )
-        .into_response())
-}
-
 pub(crate) async fn get_auth_session_handler(
     State(state): State<ApiAppState>,
     AuthPrincipal(principal): AuthPrincipal,
+    headers: HeaderMap,
 ) -> ApiResult {
     let account = state.store.get_account_by_id(&principal.account_id);
+    let expires_at = extract_bearer_token(&headers)
+        .and_then(|token| state.store.session_expiry_for_token(token))
+        .unwrap_or_else(|| DEV_SESSION_EXPIRES_AT.to_string());
     Ok((
         StatusCode::OK,
         Json(SessionResponseDto {
             account_id: principal.account_id,
             roles: principal.roles,
-            expires_at: DEFAULT_SESSION_EXPIRES_AT.to_string(),
+            expires_at,
             session_token: None,
             email: account.as_ref().map(|a| a.email.clone()),
             email_verified: account.as_ref().map(|a| a.email_verified),
@@ -122,25 +95,9 @@ pub(crate) async fn delete_auth_session_handler(
     if let Some(token) = extract_bearer_token(&headers) {
         state
             .store
-            .revoke_session_token(token, DEFAULT_NOW_EPOCH_MS)?;
+            .revoke_session_token(token, current_epoch_ms())?;
     }
     Ok(StatusCode::NO_CONTENT.into_response())
-}
-
-/// Request payload for `POST /v1/auth/signup`.
-#[derive(Debug, Deserialize)]
-pub(crate) struct EmailSignupRequestDto {
-    pub(crate) email: String,
-    pub(crate) password: String,
-    #[serde(default)]
-    pub(crate) display_name: Option<String>,
-}
-
-/// Request payload for `POST /v1/auth/login`.
-#[derive(Debug, Deserialize)]
-pub(crate) struct EmailLoginRequestDto {
-    pub(crate) email: String,
-    pub(crate) password: String,
 }
 
 /// Query parameters for `GET /v1/auth/oauth/{provider}/authorize`.
@@ -159,21 +116,12 @@ pub(crate) struct OAuthAuthorizeQueryDto {
 pub(crate) struct OAuthCallbackExchangeRequestDto {
     pub(crate) provider_subject: String,
     pub(crate) email: String,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub(crate) email_verified: bool,
     #[serde(default)]
     pub(crate) display_name: Option<String>,
     #[serde(default)]
     pub(crate) avatar_url: Option<String>,
-    #[serde(default)]
-    pub(crate) code_verifier: Option<String>,
-    #[serde(default)]
-    pub(crate) expected_code_challenge: Option<String>,
-}
-
-#[must_use]
-const fn default_true() -> bool {
-    true
 }
 
 pub(crate) async fn list_auth_providers_handler(State(state): State<ApiAppState>) -> ApiResult {
@@ -185,47 +133,9 @@ pub(crate) async fn list_auth_providers_handler(State(state): State<ApiAppState>
         StatusCode::OK,
         Json(json!({
             "providers": providers,
-            "email_password_enabled": true,
+            "email_password_enabled": false,
             "passkey_enabled": true,
         })),
-    )
-        .into_response())
-}
-
-pub(crate) async fn signup_email_handler(
-    State(state): State<ApiAppState>,
-    Json(req): Json<EmailSignupRequestDto>,
-) -> ApiResult {
-    let (account, session) = state.store.register_email_account(
-        &req.email,
-        &req.password,
-        req.display_name.as_deref(),
-    )?;
-    Ok((
-        StatusCode::CREATED,
-        Json(build_session_response(
-            Some(&account),
-            session,
-            Some("email"),
-            Some(true),
-        )),
-    )
-        .into_response())
-}
-
-pub(crate) async fn login_email_handler(
-    State(state): State<ApiAppState>,
-    Json(req): Json<EmailLoginRequestDto>,
-) -> ApiResult {
-    let (account, session) = state.store.login_email_account(&req.email, &req.password)?;
-    Ok((
-        StatusCode::OK,
-        Json(build_session_response(
-            Some(&account),
-            session,
-            Some("email"),
-            Some(false),
-        )),
     )
         .into_response())
 }
@@ -306,21 +216,12 @@ pub(crate) async fn oauth_authorize_url_handler(
 
 pub(crate) async fn oauth_callback_exchange_handler(
     State(state): State<ApiAppState>,
+    headers: HeaderMap,
     Path(provider_raw): Path<String>,
     Json(req): Json<OAuthCallbackExchangeRequestDto>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let provider: OAuthProvider = provider_raw.parse().map_err(PersistenceError::Security)?;
-    if let (Some(verifier), Some(expected)) = (
-        req.code_verifier.as_deref(),
-        req.expected_code_challenge.as_deref(),
-    ) {
-        if !verify_pkce_s256(verifier, expected) {
-            return Err(PersistenceError::Security(SecurityError::InvalidOAuthGrant(
-                "PKCE S256 code_verifier did not match code_challenge".to_string(),
-            ))
-            .into());
-        }
-    }
 
     let outcome = state.store.authenticate_oauth_identity(
         provider,
@@ -347,26 +248,12 @@ pub(crate) async fn oauth_callback_exchange_handler(
         .into_response())
 }
 
-#[derive(Debug, Default, Deserialize)]
-pub(crate) struct LookupPasskeysQueryDto {
-    #[serde(default)]
-    pub(crate) email: Option<String>,
-}
-
-pub(crate) async fn lookup_passkeys_for_auth_handler(
-    State(state): State<ApiAppState>,
-    Query(query): Query<LookupPasskeysQueryDto>,
-) -> ApiResult {
-    let items = state
-        .store
-        .list_web_passkeys_by_email(query.email.as_deref().unwrap_or(""));
-    Ok((StatusCode::OK, Json(json!({ "items": items }))).into_response())
-}
-
 pub(crate) async fn get_passkey_for_auth_handler(
     State(state): State<ApiAppState>,
+    headers: HeaderMap,
     Path(credential_id): Path<String>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let rec = state
         .store
         .get_web_passkey_by_credential_id(&credential_id)
@@ -386,8 +273,10 @@ pub(crate) struct PasskeySessionRequestDto {
 
 pub(crate) async fn create_passkey_session_handler(
     State(state): State<ApiAppState>,
+    headers: HeaderMap,
     Json(dto): Json<PasskeySessionRequestDto>,
 ) -> ApiResult {
+    state.require_auth_exchange(&headers)?;
     let (account, session) =
         state
             .store
@@ -398,82 +287,6 @@ pub(crate) async fn create_passkey_session_handler(
             Some(&account),
             session,
             Some("passkey"),
-            Some(false),
-        )),
-    )
-        .into_response())
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct PasswordResetRequestDto {
-    pub(crate) email: String,
-}
-
-pub(crate) async fn request_password_reset_handler(
-    State(state): State<ApiAppState>,
-    Json(dto): Json<PasswordResetRequestDto>,
-) -> ApiResult {
-    let now_ms = current_epoch_ms();
-    let issued_opt = state
-        .store
-        .issue_password_reset_token(&dto.email, now_ms, 15 * 60 * 1000)?;
-
-    let mut dev_code: Option<String> = None;
-    if let Some(issued) = issued_opt {
-        if state.gates.env.is_local_dev_or_test() {
-            dev_code = Some(issued.token.clone());
-        }
-        let job_id = format!("pwreset-{}-{now_ms}", issued.account_id);
-        enqueue_outbox_durable_and_memory(
-            &state,
-            &job_id,
-            &issued.account_id,
-            "password_reset_email",
-            json!({
-                "email": issued.email,
-                "subject": "Syllabus.build Password Recovery Code",
-                "expires_at_ms": issued.expires_at_ms,
-                "recovery_code": issued.token,
-            }),
-            now_ms,
-        )
-        .await;
-    }
-
-    let mut body = json!({
-        "status": "accepted",
-        "message": "If an account exists for that email, a 6-digit recovery code has been sent.",
-    });
-    if let Some(code) = dev_code {
-        body["dev_recovery_code"] = json!(code);
-    }
-    Ok((StatusCode::ACCEPTED, Json(body)).into_response())
-}
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct PasswordResetConfirmDto {
-    pub(crate) email: String,
-    #[serde(alias = "token")]
-    pub(crate) code: String,
-    pub(crate) new_password: String,
-}
-
-pub(crate) async fn confirm_password_reset_handler(
-    State(state): State<ApiAppState>,
-    Json(dto): Json<PasswordResetConfirmDto>,
-) -> ApiResult {
-    let (account, session) = state.store.confirm_password_reset_token(
-        &dto.email,
-        &dto.code,
-        &dto.new_password,
-        current_epoch_ms(),
-    )?;
-    Ok((
-        StatusCode::OK,
-        Json(build_session_response(
-            Some(&account),
-            session,
-            Some("email"),
             Some(false),
         )),
     )

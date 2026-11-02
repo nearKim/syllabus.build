@@ -1,6 +1,5 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
@@ -8,6 +7,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { createWebAppServer } from "../src/server.mjs";
+import { backendSessionResponse, signInWithDevOAuth } from "./helpers/devOAuth.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "../../..");
@@ -62,6 +62,16 @@ test("Live BYOK AI concept checks, hints, worked solutions, interactive diagnost
   let openAiCalls = 0;
   const mockFetch = async (url, init = {}) => {
     const urlStr = String(url);
+    if (urlStr.endsWith("/v1/auth/session")) return backendSessionResponse("tutor-learner-account");
+    if (urlStr.endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      return new Response(JSON.stringify({
+        account_id: "tutor-learner-account",
+        session_token: "tutor-learner-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+      }), { status: 200 });
+    }
     if (urlStr.startsWith("http://127.0.0.1:9")) {
       return new Response("offline", { status: 503 });
     }
@@ -93,7 +103,7 @@ test("Live BYOK AI concept checks, hints, worked solutions, interactive diagnost
   };
 
   const { server } = createWebAppServer({
-    env: { APP_ENV: "development" },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     apiBaseUrl: "http://127.0.0.1:9",
     fetchImpl: mockFetch,
   });
@@ -116,13 +126,9 @@ test("Live BYOK AI concept checks, hints, worked solutions, interactive diagnost
     const home = await fetch(`${baseUrl}/`);
     parseCookies(home, jar);
 
-    // 1. Sign up learner & configure BYOK OpenAI key
-    const signup = await postUi({
-      action: "submit-sign-up",
-      email: "tutor-learner@syllabus.build",
-      password: "TutorPassword123!",
-    });
-    assert.equal(signup.state.authStatus, "authenticated");
+    // 1. Sign in through verified development OAuth and configure a BYOK key.
+    await signInWithDevOAuth(baseUrl, jar, "tutor-learner@syllabus.build");
+    assert.equal((await postUi({ action: "noop" })).state.authStatus, "authenticated");
 
     await postUi({
       action: "replace-key",
@@ -250,70 +256,31 @@ test("Live BYOK AI concept checks, hints, worked solutions, interactive diagnost
   }
 });
 
-test("Account recovery, email verification, RFC 5545 .ics export, hosted checkout & HMAC webhook, and production hardening", async () => {
-  const webhookSecret = "whsec_test_billing_hmac_2026";
+test("OAuth sessions can export calendars while password recovery and hosted billing stay unavailable", async () => {
   const { server } = createWebAppServer({
-    env: {
-      APP_ENV: "development",
-      BILLING_WEBHOOK_SECRET: webhookSecret,
-    },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     apiBaseUrl: "http://127.0.0.1:9",
+    fetchImpl: async (url, init) => String(url).endsWith("/v1/auth/session")
+      ? backendSessionResponse("calendar-user-account")
+      : String(url).endsWith("/v1/auth/oauth/google/callback")
+        ? new Response(JSON.stringify({
+          account_id: "calendar-user-account",
+          session_token: "calendar-user-session",
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          roles: ["user"],
+        }), { status: 200 })
+      : new Response("{}", { status: 503 }),
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const baseUrl = `http://127.0.0.1:${server.address().port}`;
   const jar = new Map();
-
-  const postUi = async (body) => {
-    const res = await fetch(`${baseUrl}/api/ui-state`, {
+  try {
+    await signInWithDevOAuth(baseUrl, jar, "calendar-user@syllabus.build");
+    const initialWallet = (await (await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar) },
-      body: JSON.stringify(body),
-    });
-    parseCookies(res, jar);
-    return res.json();
-  };
-
-  try {
-    const home = await fetch(`${baseUrl}/`);
-    parseCookies(home, jar);
-
-    // 1. Sign up -> request email verification -> read dev outbox -> verify via code & GET link
-    await postUi({
-      action: "submit-sign-up",
-      email: "recovery-user@syllabus.build",
-      password: "OriginalPassword123!",
-    });
-
-    const reqVerify = await postUi({ action: "request-email-verification" });
-    assert.equal(reqVerify.state.emailVerificationPending, true);
-
-    const outboxRes1 = await fetch(`${baseUrl}/auth/dev-outbox`);
-    assert.equal(outboxRes1.status, 200);
-    const outbox1 = await outboxRes1.json();
-    const verifyMsg = outbox1.messages.find(
-      (m) => m.kind === "email_verification" && m.email === "recovery-user@syllabus.build",
-    );
-    assert.ok(verifyMsg?.code);
-
-    const confirmedVerify = await postUi({
-      action: "confirm-email-verification",
-      code: verifyMsg.code,
-    });
-    assert.equal(confirmedVerify.state.emailVerified, true);
-
-    // Also test GET /auth/verify-email?token=... link flow
-    await postUi({ action: "request-email-verification" });
-    const outbox2 = await (await fetch(`${baseUrl}/auth/dev-outbox`)).json();
-    const latestVerify = outbox2.messages
-      .filter((m) => m.kind === "email_verification")
-      .at(-1);
-    const linkRes = await fetch(latestVerify.verify_url, {
-      redirect: "manual",
-      headers: { Cookie: cookieHeader(jar) },
-    });
-    assert.equal(linkRes.status, 302);
-
-    // 2. Export RFC 5545 .ics calendar
+      body: JSON.stringify({ action: "noop" }),
+    })).json()).state.wallet.available_minor;
     const icsRes = await fetch(`${baseUrl}/api/schedule.ics`, {
       headers: { Cookie: cookieHeader(jar) },
     });
@@ -326,72 +293,46 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
     assert.match(icsBody, /TRIGGER:-PT\d+M\r\n/);
     assert.match(icsBody, /END:VCALENDAR\r\n/);
 
-    // 3. Hosted wallet top-up + HMAC-verified /api/billing/webhook
-    const checkoutRes = await fetch(`${baseUrl}/api/billing/checkout`, {
+    const checkout = await fetch(`${baseUrl}/api/billing/checkout`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar) },
       body: JSON.stringify({ amountMinor: 1500 }),
     });
-    assert.equal(checkoutRes.status, 201);
-    const checkoutJson = await checkoutRes.json();
-    assert.ok(checkoutJson.state.wallet.available_minor >= 1500);
-
-    const rawWebhookPayload = JSON.stringify({
-      event_id: "evt_test_001",
-      event_type: "checkout.session.completed",
-      amount_minor_units: 1000,
-    });
-    const badSigRes = await fetch(`${baseUrl}/api/billing/webhook`, {
+    assert.equal(checkout.status, 503);
+    const webhook = await fetch(`${baseUrl}/api/billing/webhook`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Billing-Signature": "sha256=0000000000000000000000000000000000000000000000000000000000000000",
-      },
-      body: rawWebhookPayload,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_type: "checkout.session.completed", amount_minor_units: 1000 }),
     });
-    assert.equal(badSigRes.status, 401);
-
-    const validSig = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(rawWebhookPayload)
-      .digest("hex");
-    const goodSigRes = await fetch(`${baseUrl}/api/billing/webhook`, {
+    assert.equal(webhook.status, 503);
+    const wallet = await (await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Billing-Signature": `sha256=${validSig}`,
-      },
-      body: rawWebhookPayload,
-    });
-    assert.equal(goodSigRes.status, 200);
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar) },
+      body: JSON.stringify({ action: "noop" }),
+    })).json();
+    assert.equal(wallet.state.wallet.available_minor, initialWallet);
 
-    // 4. Sign out -> forgot password -> confirm-password-reset -> old password fails, new succeeds
-    await postUi({ action: "sign-out" });
-
-    await postUi({
-      action: "request-password-reset",
-      email: "recovery-user@syllabus.build",
-    });
-    const outbox3 = await (await fetch(`${baseUrl}/auth/dev-outbox`)).json();
-    const resetMsg = outbox3.messages
-      .filter((m) => m.kind === "password_reset" && m.email === "recovery-user@syllabus.build")
-      .at(-1);
-    assert.ok(resetMsg?.code);
-
-    const resetDone = await postUi({
-      action: "confirm-password-reset",
-      email: "recovery-user@syllabus.build",
-      code: resetMsg.code,
-      password: "RotatedPassword999!",
-    });
-    assert.equal(resetDone.state.authStatus, "authenticated");
+    assert.equal((await fetch(`${baseUrl}/auth/dev-outbox`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/auth/verify-email?token=fake`)).status, 404);
+    const reset = await (await fetch(`${baseUrl}/api/ui-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar) },
+      body: JSON.stringify({ action: "request-password-reset", email: "calendar-user@syllabus.build" }),
+    })).json();
+    assert.equal(reset.state.authStatus, "authenticated");
+    assert.equal(reset.state.wallet.available_minor, initialWallet);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
 
-  // 5. Production security headers, Secure cookie, CSRF Origin check, non-dev debug block & 429 rate limit
   const prod = createWebAppServer({
-    env: { APP_ENV: "production" },
+    env: {
+      APP_ENV: "production",
+      GOOGLE_CLIENT_ID: "google-client",
+      GOOGLE_CLIENT_SECRET: "google-secret",
+      AUTH_EXCHANGE_SECRET: "ef".repeat(32),
+    },
+    byokMasterKey: "ab".repeat(32),
     apiBaseUrl: "http://127.0.0.1:9",
     rateLimitMaxRequests: 6,
     rateLimitWindowMs: 60_000,
@@ -405,31 +346,16 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
     assert.match(res.headers.get("strict-transport-security") ?? "", /max-age=/);
     assert.match(res.headers.get("content-security-policy") ?? "", /default-src 'self'/);
     assert.match(res.headers.get("set-cookie") ?? "", /;\s*Secure/i);
+    assert.equal((await fetch(`${prodUrl}/auth/dev-outbox`)).status, 404);
+    assert.equal((await fetch(`${prodUrl}/auth/dev-idp/google/authorize`)).status, 404);
 
-    // Dev outbox disabled in production
-    const prodOutbox = await fetch(`${prodUrl}/auth/dev-outbox`);
-    assert.equal(prodOutbox.status, 404);
-
-    // Debug switch-persona disabled in production
-    const debugSwitch = await fetch(`${prodUrl}/api/ui-state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "switch-persona", persona: "learner" }),
-    });
-    assert.equal(debugSwitch.status, 403);
-
-    // Cross-origin CSRF mutating POST blocked with 403
     const csrfRes = await fetch(`${prodUrl}/api/ui-state`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: "https://attacker.evil.example",
-      },
+      headers: { "Content-Type": "application/json", Origin: "https://attacker.evil.example" },
       body: JSON.stringify({ action: "navigate-top", destination: "Explore" }),
     });
     assert.equal(csrfRes.status, 403);
 
-    // Exceed sliding-window rate limit on mutating /api/* POST -> 429 with Retry-After
     let saw429 = false;
     for (let i = 0; i < 8; i += 1) {
       const r = await fetch(`${prodUrl}/api/ui-state`, {
@@ -443,13 +369,13 @@ test("Account recovery, email verification, RFC 5545 .ics export, hosted checkou
         break;
       }
     }
-    assert.equal(saw429, true, "expected per-IP rate limiter to return HTTP 429");
+    assert.equal(saw429, true);
   } finally {
     await new Promise((resolve) => prod.server.close(resolve));
   }
 });
 
-test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-api + PostgreSQL 16 preserve workspaces, BYOK envelopes, wallet & auth across full restarts", async (t) => {
+test("Full-stack stateless restart E2E: PostgreSQL preserves OAuth workspaces and BYOK envelopes", async (t) => {
   const dbUrl = (process.env.TEST_POSTGRES_URL ?? process.env.DATABASE_URL ?? "").trim();
   const apiBin = path.join(REPO_ROOT, "target/debug/syllabus-api");
   if (!dbUrl || !fs.existsSync(apiBin)) {
@@ -472,7 +398,7 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
         DATABASE_URL: dbUrl,
         POSTGRES_STORE_NAMESPACE: pgNamespace,
         BYOK_MASTER_KEY: sharedMasterKey,
-        BILLING_WEBHOOK_SECRET: "whsec_syllabus_io_dev_secret_key_2026",
+        AUTH_EXCHANGE_SECRET: "ef".repeat(32),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -512,7 +438,7 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
     storePath: undefined,
     apiBaseUrl: api1.apiBaseUrl,
     byokMasterKey: sharedMasterKey,
-    env: { APP_ENV: "development" },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     fetchImpl: makeFetchWithMockOpenAi(),
   });
   await new Promise((resolve) => web1.server.listen(0, "127.0.0.1", resolve));
@@ -535,11 +461,8 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
     const home1 = await fetch(`${web1Url}/`);
     parseCookies(home1, jar1);
 
-    const signedUp = await postWeb1({
-      action: "submit-sign-up",
-      email: uniqueEmail,
-      password: "StatelessPgPassword123!",
-    });
+    await signInWithDevOAuth(web1Url, jar1, uniqueEmail);
+    const signedUp = await postWeb1({ action: "noop" });
     assert.equal(signedUp.state.authStatus, "authenticated");
     completedActivityId = signedUp.state.selectedActivityId;
 
@@ -566,7 +489,7 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
       headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar1) },
       body: JSON.stringify({ amountMinor: 2500 }),
     });
-    assert.equal(topUp.status, 201);
+    assert.equal(topUp.status, 503);
   } finally {
     await new Promise((resolve) => web1.server.close(resolve));
     api1.child.kill("SIGTERM");
@@ -579,7 +502,7 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
     storePath: undefined,
     apiBaseUrl: api2.apiBaseUrl,
     byokMasterKey: sharedMasterKey,
-    env: { APP_ENV: "development" },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     fetchImpl: makeFetchWithMockOpenAi(),
   });
   await new Promise((resolve) => web2.server.listen(0, "127.0.0.1", resolve));
@@ -601,20 +524,13 @@ test("Full-stack stateless restart E2E: @syllabus/web (no storePath) + syllabus-
     const home2 = await fetch(`${web2Url}/`);
     parseCookies(home2, jar2);
 
-    const relogin = await postWeb2({
-      action: "submit-sign-in",
-      email: uniqueEmail,
-      password: "StatelessPgPassword123!",
-    });
+    await signInWithDevOAuth(web2Url, jar2, uniqueEmail);
+    const relogin = await postWeb2({ action: "noop" });
     assert.equal(relogin.state.authStatus, "authenticated");
     assert.match(relogin.html, /PostgreSQL Durable Unified Syllabus/);
     assert.ok(
       relogin.state.recordedProgressEvents.some((e) => e.activityId === completedActivityId),
       "completed activity progress must survive full stateless web + API restart",
-    );
-    assert.ok(
-      relogin.state.wallet.available_minor >= 2500,
-      `expected wallet credits >= 2500 from PostgreSQL ledger, got ${relogin.state.wallet.available_minor}`,
     );
     assert.equal(
       relogin.state.byokCredentials.find((c) => c.provider_id === "openai")?.masked_suffix,

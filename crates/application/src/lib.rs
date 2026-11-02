@@ -176,7 +176,7 @@ mod tests {
     fn learner_a() -> AuthenticatedPrincipal {
         AuthenticatedPrincipal {
             account_id: "00000000-0000-4000-8000-000000000001".to_string(),
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             is_development_only_identity: true,
         }
     }
@@ -541,8 +541,8 @@ mod tests {
             receipt_path_b.newly_indexed_resources[0].resource_version_id,
             "synthetic-resource-flash-attention-yt-v1"
         );
-        assert_eq!(receipt_path_b.tfidf_corpus_document_count, 2);
-        assert_eq!(receipt_path_b.tfidf_ranked_scores.len(), 2);
+        assert_eq!(receipt_path_b.tfidf_corpus_document_count, 1);
+        assert_eq!(receipt_path_b.tfidf_ranked_scores.len(), 1);
         assert!(receipt_path_b.tfidf_ranked_scores[0].1 > 0.0);
         assert!(receipt_path_b
             .search_prompt

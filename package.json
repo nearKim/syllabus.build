@@ -14,8 +14,8 @@
     "typecheck": "pnpm -r typecheck",
     "test:ts": "pnpm -r test",
     "test:rust": "cargo test --workspace",
-    "dev:web": "pnpm --filter @syllabus/web dev",
-    "dev:api": "sh -c 'if [ -f .env ]; then set -a; . ./.env; set +a; fi; exec cargo run -p syllabus-api'",
+    "dev:web": "APP_ENV=development pnpm --filter @syllabus/web dev",
+    "dev:api": "APP_ENV=development cargo run -p syllabus-api",
     "verify:t00": "python3 scripts/extract_spec.py --check specs/product.md . && python3 scripts/check_current_spec.py specs/product.md && python3 scripts/check_contracts.py && python3 scripts/generate_contracts.py --check && cargo test --workspace && pnpm -r typecheck && pnpm -r test"
   }
 }

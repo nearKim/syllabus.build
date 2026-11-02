@@ -23,7 +23,7 @@ import {
   type InferenceMode, type MaskedCredentialRecord,
 } from "./byokAndReminders.ts";
 import {
-  buildFourBucketCostBreakdown, createHostedBillingController, formatMinorCurrency,
+  buildFourBucketCostBreakdown, createHostedBillingController,
   type HostedCreditWalletSnapshot,
 } from "./billingAndSharing.ts";
 import { createAccountPrivacyController } from "./releaseAndA11yViews.ts";
@@ -47,8 +47,8 @@ import {
   type Account, type AuthStatus,
 } from "./auth.ts";
 import {
-  AUTH_MODES, AuthDialog, PERSONAS, PERSONA_CHOICES, handleOf,
-  type AuthMode, type PersonaChoice, type ReturnDestination,
+  AuthDialog, PERSONAS, handleOf,
+  type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 import {
   AdoptSyllabusDialog, SyllabusTagStrip, ExploreMarketplace, MARKETPLACE_FACETS, MARKETPLACE_SORTS, NO_MARKETPLACE_FILTERS,
@@ -137,8 +137,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let account: Account = initialState.account ?? PERSONAS.learner;
   let returnTo: ReturnDestination | null = initialState.returnTo ?? null;
   let authNotice: string | null = initialState.authNotice ?? null;
-  let authMode: AuthMode = initialState.authMode ?? "login";
-  let authPasswordVisible: boolean = initialState.authPasswordVisible ?? false;
   let passkeys: PasskeySummaryItem[] = [...(initialState.passkeys ?? [])];
   let passkeyNotice: string | null = initialState.passkeyNotice ?? null;
   let profileNotice: string | null = initialState.profileNotice ?? null;
@@ -201,9 +199,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   let editingSyllabusActivityId: string | null = initialState.editingSyllabusActivityId ?? null;
   let syllabusEditorError: string | null = initialState.syllabusEditorError ?? null;
   let syllabusEditorNotice: string | null = initialState.syllabusEditorNotice ?? null;
-  let authResetEmail: string = initialState.authResetEmail ?? "";
-  let emailVerified: boolean = initialState.emailVerified ?? false;
-  let emailVerificationPending: boolean = initialState.emailVerificationPending ?? false;
   let wallet: HostedCreditWalletSnapshot = initialState.wallet ?? DEFAULT_WALLET;
   let billingNotice: string | null = initialState.billingNotice ?? null;
   const currentPlans = () =>
@@ -414,8 +409,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
   function requireSignIn(destination: ReturnDestination) {
     returnTo = destination;
     authNotice = null;
-    authMode = "login";
-    authPasswordVisible = false;
     openDialogId = "dialog-auth";
     return getState();
   }
@@ -485,9 +478,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     editingSyllabusActivityId = null;
     syllabusEditorError = null;
     syllabusEditorNotice = null;
-    authResetEmail = "";
-    emailVerified = false;
-    emailVerificationPending = false;
     wallet = DEFAULT_WALLET;
     billingNotice = null;
     intakeGoalTitle = "";
@@ -508,7 +498,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     account = next;
     authStatus = "authenticated";
     authNotice = null;
-    authPasswordVisible = false;
     openDialogId = null;
     const destination = returnTo;
     returnTo = null;
@@ -520,45 +509,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       adoptPublicationId = destination.adoptPublicationId;
       adoptModuleIds = unitIdsOf(adoptListing());
     }
-  }
-
-  function signInWithEmail(email: string): void {
-    const address = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      authNotice = "Enter a valid email address.";
-      openDialogId = "dialog-auth";
-      return;
-    }
-    signIn(
-      Object.values(PERSONAS).find((persona) => persona.email === address) ?? {
-        accountId: `account-${address}`,
-        email: address,
-        username: defaultUsernameOfEmail(address),
-        role: "Learner",
-      },
-    );
-  }
-
-  function signUpWithEmail(email: string, password: string): void {
-    const address = email.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      authNotice = "Enter a valid email address.";
-      authMode = "signup";
-      openDialogId = "dialog-auth";
-      return;
-    }
-    if (password.length < 8) {
-      authNotice = "Use a password with at least 8 characters.";
-      authMode = "signup";
-      openDialogId = "dialog-auth";
-      return;
-    }
-    signIn({
-      accountId: `account-${address}`,
-      email: address,
-      username: defaultUsernameOfEmail(address),
-      role: "Learner",
-    });
   }
 
   // A guest browses public syllabi, so signing out lands on Explore.
@@ -665,7 +615,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       recordedReceipts: tState.recordedEvents,
       totalStudyMinutes: allToday.reduce((sum, today) => sum + today.totalStudyMinutes, 0),
       selfReportedCompletedCount: allToday.reduce((sum, today) => sum + today.selfReportedCompletedCount, 0),
-      authStatus, account, returnTo, authNotice, authMode, authPasswordVisible,
+      authStatus, account, returnTo, authNotice,
       passkeys: [...passkeys] as readonly PasskeySummaryItem[], passkeyNotice,
       profileNotice, marketplaceFilters, marketplaceSort, marketplaceTopicsExpanded,
       votes: [...votes] as readonly Vote[], adoptions: [...adoptions] as readonly Adoption[],
@@ -726,9 +676,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       editingSyllabusActivityId,
       syllabusEditorError,
       syllabusEditorNotice,
-      authResetEmail,
-      emailVerified,
-      emailVerificationPending,
       wallet,
       billingNotice,
     };
@@ -823,9 +770,10 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     syncCatalogResources(
       entries: Readonly<Record<string, CatalogResourceMetadataInput>>,
       removedIds: readonly string[] = [],
+      localEntries: Readonly<Record<string, CatalogResourceMetadataInput>> = {},
     ) {
       const removedSet = new Set(removedIds);
-      const next: Record<string, CatalogResourceMetadataInput> = { ...catalogResources, ...entries };
+      const next: Record<string, CatalogResourceMetadataInput> = { ...catalogResources, ...entries, ...localEntries };
       for (const id of removedSet) {
         delete next[id];
       }
@@ -901,15 +849,13 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       votes = votes.some(mine) ? votes.filter((vote) => !mine(vote)) : [...votes, { accountId: account.accountId, revisionId: publicationRevisionId }];
       return getState();
     },
-    openDialog(dialogId: string, requestedAuthMode?: string, publicationId?: string) {
+    openDialog(dialogId: string, publicationId?: string) {
       if (dialogId !== "dialog-auth" && !signedIn()) {
         const label = dialogId === "dialog-publication-preview" ? "Share with Community" : undefined;
         return requireSignIn(placeOf(topLevel, learnSubDestination, dialogId, null, label));
       }
       if (dialogId === "dialog-auth") {
         authNotice = null;
-        authPasswordVisible = false;
-        if (isOneOf(AUTH_MODES, requestedAuthMode)) authMode = requestedAuthMode;
       }
       if (dialogId === "dialog-unpublish") {
         const candidate =
@@ -924,7 +870,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     closeDialog() {
       // A guest who closes the sign-in dialog has dropped that return. An expired session keeps it for the banner.
       if (openDialogId === "dialog-auth" && authStatus === "guest") returnTo = null;
-      authPasswordVisible = false;
       openDialogId = null;
       return getState();
     },
@@ -938,9 +883,8 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       }
       return getState();
     },
-    failExternalAuth(message: string, mode?: AuthMode) {
+    failExternalAuth(message: string) {
       authNotice = message;
-      if (mode) authMode = mode;
       openDialogId = "dialog-auth";
       return getState();
     },
@@ -1007,19 +951,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
     setWallet(nextWallet: HostedCreditWalletSnapshot, notice?: string | null) {
       wallet = nextWallet;
       if (notice !== undefined) billingNotice = notice;
-      return getState();
-    },
-    setEmailVerificationState(verified: boolean, pending?: boolean, notice?: string | null) {
-      emailVerified = verified;
-      if (pending !== undefined) emailVerificationPending = pending;
-      if (notice !== undefined) profileNotice = notice;
-      return getState();
-    },
-    advancePasswordReset(email: string, notice: string) {
-      authResetEmail = email.trim().toLowerCase();
-      authMode = "reset_confirm";
-      authNotice = notice;
-      openDialogId = "dialog-auth";
       return getState();
     },
     exportScheduleIcs(): string {
@@ -1118,61 +1049,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
       }
       let handled = true;
       if (action === "close-study-detail") studyDetailOpen = false;
-      else if (action === "submit-sign-in") signInWithEmail(value("email") ?? "");
-      else if (action === "submit-sign-up") signUpWithEmail(value("email") ?? "", value("password") ?? "");
-      else if (action === "request-password-reset") {
-        const address = (value("email") ?? "").trim().toLowerCase();
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-          authNotice = "Enter a valid email address.";
-          authMode = "reset";
-          openDialogId = "dialog-auth";
-        } else {
-          authResetEmail = address;
-          authMode = "reset_confirm";
-          authNotice = `If an account exists for ${address}, a 6-digit recovery code has been sent.`;
-          openDialogId = "dialog-auth";
-        }
-      } else if (action === "confirm-password-reset") {
-        const address = ((value("email") || authResetEmail) ?? "").trim().toLowerCase();
-        const code = (value("code") ?? "").trim();
-        const nextPassword = value("password") ?? "";
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-          authNotice = "Enter a valid email address.";
-          authMode = "reset_confirm";
-          openDialogId = "dialog-auth";
-        } else if (!/^[0-9]{6}$/.test(code)) {
-          authNotice = "Enter the 6-digit recovery code.";
-          authMode = "reset_confirm";
-          openDialogId = "dialog-auth";
-        } else if (nextPassword.length < 8) {
-          authNotice = "Use a new password with at least 8 characters.";
-          authMode = "reset_confirm";
-          openDialogId = "dialog-auth";
-        } else {
-          authResetEmail = "";
-          authMode = "login";
-          signInWithEmail(address);
-        }
-      } else if (action === "request-email-verification") {
-        emailVerificationPending = true;
-        profileNotice = `Sent a 6-digit verification code to ${account.email}.`;
-      } else if (action === "confirm-email-verification") {
-        const code = (value("code") ?? "").trim();
-        if (!/^[0-9]{6}$/.test(code)) {
-          profileNotice = "Enter a valid 6-digit verification code.";
-        } else {
-          emailVerified = true;
-          emailVerificationPending = false;
-          profileNotice = `Email address ${account.email} verified.`;
-        }
-      } else if (action === "switch-auth-mode" && isOneOf(AUTH_MODES, data["authMode"])) {
-        authMode = data["authMode"];
-        authNotice = null;
-        authPasswordVisible = false;
-        openDialogId = "dialog-auth";
-      } else if (action === "toggle-auth-password") {
-        authPasswordVisible = !authPasswordVisible;
-      } else if (action === "sign-in-passkey") signIn(account);
       else if (action === "delete-passkey" && data["credentialId"]) {
         passkeys = passkeys.filter((pk) => pk.id !== data["credentialId"]);
         passkeyNotice = "Passkey removed from your account.";
@@ -1203,9 +1079,6 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
         }
         profileNotice = "Profile photo updated.";
         openDialogId = null;
-      } else if (action === "switch-persona" && isOneOf(PERSONA_CHOICES, data["persona"])) {
-        if (data["persona"] === "guest") signOut();
-        else signIn(PERSONAS[data["persona"]]);
       } else if (action === "simulate-session-expired" && signedIn()) expireSession();
       else if (action === "sign-out" && authStatus !== "guest") signOut();
       else if (action === "set-marketplace-filter" && isOneOf(MARKETPLACE_FACETS, data["facet"])) {
@@ -2034,7 +1907,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
           catalogResources = restCatalog;
           userLibraryResourceIds = userLibraryResourceIds.filter((id) => id !== resId);
           intakeSelectedResourceIds = intakeSelectedResourceIds.filter((id) => id !== resId);
-          if (!adminRemovedResourceIds.includes(resId)) {
+          if (isAdminAccount(account) && !adminRemovedResourceIds.includes(resId)) {
             adminRemovedResourceIds = [...adminRemovedResourceIds, resId];
           }
           todayController = buildToday();
@@ -2199,14 +2072,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
           todayController = buildToday();
         }
       } else if (action === "start-hosted-checkout") {
-        const amountMinor = Number.parseInt(data["amountMinor"] ?? "1000", 10);
-        const validAmount = Number.isFinite(amountMinor) && amountMinor > 0 ? amountMinor : 1000;
-        wallet = {
-          ...wallet,
-          available_minor: wallet.available_minor + validAmount,
-          updated_at: new Date().toISOString(),
-        };
-        billingNotice = `Added ${formatMinorCurrency(validAmount, wallet.currency)} to your hosted AI credit wallet. New available balance: ${formatMinorCurrency(wallet.available_minor, wallet.currency)}.`;
+        billingNotice = "Hosted checkout is unavailable.";
       } else if (action === "view-evidence" || action === "check-prerequisites") handled = true;
       else handled = false;
       return { handled, state: getState() };

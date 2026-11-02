@@ -22,8 +22,6 @@ export interface MountableRootElement {
   addEventListener?: (type: string, listener: (event: unknown) => void) => void;
 }
 
-const AUTH_FIELD_IDS = ["auth-email-input", "auth-password-input", "auth-reset-code-input"] as const;
-
 interface MountedDialog {
   readonly id?: string;
   readonly open?: boolean;
@@ -78,17 +76,13 @@ export function mountSyllabusWebApp(
       .join("");
   }
 
-  const authField = (id: string) => rootElement.querySelector?.(`#${id}`) as { value?: string } | null | undefined;
-
   // A render replaces every element. When the same dialog stays open, it keeps its scroll position and focused control.
   // Without this, checking a unit far down in Details jumps back to the top and moves focus to the close button.
-  // The sign-in fields also keep what the learner typed: a password reveal, a mode switch, or a failed submit re-renders them.
   function syncDom(): void {
     const railLeft = getRail()?.scrollLeft ?? 0;
     const shown = rootElement.querySelector?.("dialog[open]") as MountedDialog | null | undefined;
     const shownTop = shown?.scrollTop ?? 0;
     const focused = focusedControlSelector();
-    const typed = shown?.id === "dialog-auth" ? AUTH_FIELD_IDS.map((id) => authField(id)?.value) : [];
     rootElement.innerHTML = controller.renderHtml();
     const nextRail = getRail();
     if (nextRail) nextRail.scrollLeft = railLeft;
@@ -98,11 +92,6 @@ export function mountSyllabusWebApp(
     if (marked && shown && marked.id === shown.id) {
       marked.scrollTop = shownTop;
       if (focused) marked.querySelector?.(focused)?.focus?.();
-      AUTH_FIELD_IDS.forEach((id, index) => {
-        const field = authField(id);
-        const value = typed[index];
-        if (field && value !== undefined) field.value = value;
-      });
     }
   }
 
@@ -132,7 +121,7 @@ export function mountSyllabusWebApp(
     else if (action === "toggle-upvote") controller.toggleUpvote(ds["revisionId"]);
     else if (action === "open-dialog" && ds["dialogId"]) {
       const pubId = ds["publicationId"] ?? ev.target?.closest?.("[data-publication-id]")?.dataset?.["publicationId"];
-      controller.openDialog(ds["dialogId"], ds["authMode"], pubId);
+      controller.openDialog(ds["dialogId"], pubId);
     }
     else if (action === "close-dialog") {
       ev.preventDefault?.();
@@ -217,7 +206,7 @@ export function mountSyllabusWebApp(
     if (controller.applyUiAction(action, payload).handled) syncDom();
   });
 
-  // The sign-in form, the Marketplace search, the resource editor, and the topic finder submit through their own data-action.
+  // The Marketplace search, resource editor, and topic finder submit through their own data-action.
   rootElement.addEventListener?.("submit", (rawEvent: unknown) => {
     const ev = rawEvent as {
       target?: { closest?: (s: string) => { dataset?: Record<string, string | undefined> } | null } | null;
@@ -227,21 +216,8 @@ export function mountSyllabusWebApp(
     if (!action) return;
     ev.preventDefault?.();
     const valueOf = (selector: string): string => (rootElement.querySelector?.(selector) as { value?: string } | null | undefined)?.value ?? "";
-    const checkedOf = (selector: string): boolean => Boolean((rootElement.querySelector?.(selector) as { checked?: boolean } | null | undefined)?.checked);
     const data: Record<string, string | undefined> =
-      action === "submit-sign-in" || action === "submit-sign-up"
-        ? { email: valueOf("#auth-email-input"), password: valueOf("#auth-password-input") }
-        : action === "request-password-reset"
-          ? { email: valueOf("#auth-email-input") }
-          : action === "confirm-password-reset"
-            ? {
-                email: valueOf("#auth-email-input"),
-                code: valueOf("#auth-reset-code-input"),
-                password: valueOf("#auth-password-input"),
-              }
-            : action === "confirm-email-verification"
-              ? { code: valueOf("#profile-verify-code-input") }
-              : action === "update-profile"
+      action === "update-profile"
                 ? { username: valueOf("#profile-handle-input"), email: valueOf("#profile-email-input") }
                 : action === "save-syllabus-meta"
                   ? {
@@ -272,7 +248,6 @@ export function mountSyllabusWebApp(
                 targetModuleId: valueOf("#resource-target-module") || undefined,
                 role: valueOf("#resource-target-role") || undefined,
                 targetActivityId: valueOf('#dialog-resource-editor input[name="targetActivityId"]') || undefined,
-                saveToOpenCatalog: checkedOf("#resource-ingest-open-catalog") ? "true" : undefined,
               }
             : action === "link-library-resource"
               ? {
@@ -297,7 +272,6 @@ export function mountSyllabusWebApp(
                     targetModuleId: valueOf("#resource-edit-module") || undefined,
                     role: valueOf("#resource-edit-role") || undefined,
                     selectionRationale: valueOf("#resource-edit-rationale"),
-                    saveToOpenCatalog: checkedOf("#resource-edit-open-catalog") ? "true" : undefined,
                   }
                 : action === "set-marketplace-filter" ? { facet: "topic", value: valueOf("#marketplace-topic") }
                 : action === "set-admin-resource-query" ? { query: valueOf("#admin-resource-search") }
@@ -340,8 +314,6 @@ export function mountSyllabusWebApp(
     liveConceptCheckRequest: controller.liveConceptCheckRequest,
     setActivityConceptCheck: withSync(controller.setActivityConceptCheck),
     setWallet: withSync(controller.setWallet),
-    setEmailVerificationState: withSync(controller.setEmailVerificationState),
-    advancePasswordReset: withSync(controller.advancePasswordReset),
     exportScheduleIcs: () => controller.exportScheduleIcs(),
     applyUiAction: withSync(controller.applyUiAction),
   };

@@ -384,7 +384,7 @@ test("T14-Full & T09: Complete screen inventory, role boundaries (@S88), WCAG 2.
   assert.equal(auditReport.manualEvaluationMatrix.parts.length, 8);
 
   // Role boundary checks (@S88)
-  const learnerVisible = getVisibleNavigationScreens(["Learner"]);
+  const learnerVisible = getVisibleNavigationScreens(["User"]);
   assert.equal(
     learnerVisible.every((s) => !s.isInternalOperationalRoute),
     true
@@ -392,14 +392,14 @@ test("T14-Full & T09: Complete screen inventory, role boundaries (@S88), WCAG 2.
 
   const deniedModeratorRoute = evaluateScreenRoleAccess(
     "moderator_publication_quarantine_queue",
-    ["Learner"]
+    ["User"]
   );
   assert.equal(deniedModeratorRoute.allowed, false);
   assert.equal(deniedModeratorRoute.statusCode, 403);
 
   const allowedModeratorRoute = evaluateScreenRoleAccess(
     "moderator_publication_quarantine_queue",
-    ["Moderator"]
+    ["Admin"]
   );
   assert.equal(allowedModeratorRoute.allowed, true);
   assert.equal(allowedModeratorRoute.statusCode, 200);

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { createWebAppServer } from "../src/server.mjs";
+import { backendSessionResponse, signInWithDevOAuth } from "./helpers/devOAuth.mjs";
 
 function parseCookies(res, jar = new Map()) {
   const setCookies = typeof res.headers.getSetCookie === "function"
@@ -65,14 +66,24 @@ const LIVE_DRAFT_FIXTURE = {
   ],
 };
 
-test("Open Git-tracked catalog endpoints, hot reload from disk, and contributor file export", async () => {
+test("Open Git-tracked catalog endpoints and keep User contributions private", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "syllabus-open-catalog-test-"));
   const catalogDir = path.join(tmpDir, "catalog");
   fs.cpSync(path.resolve(process.cwd(), "../../catalog"), catalogDir, { recursive: true });
   const storePath = path.join(tmpDir, "web-store.json");
 
-  const mockFetch = async (input) => {
+  const mockFetch = async (input, init) => {
     const u = String(input);
+    if (u.endsWith("/v1/auth/session")) return backendSessionResponse("contributor-account");
+    if (u.endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      return new Response(JSON.stringify({
+        account_id: "contributor-account",
+        session_token: "contributor-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+      }), { status: 200 });
+    }
     if (u === "https://doc.rust-lang.org/nomicon/") {
       return new Response(
         "<!doctype html><html><head><title>The Rustonomicon</title></head><body><h1>The Dark Arts of Unsafe Rust</h1></body></html>",
@@ -84,6 +95,8 @@ test("Open Git-tracked catalog endpoints, hot reload from disk, and contributor 
 
   const { server } = createWebAppServer({
     storePath,
+    byokMasterKey: "ab".repeat(32),
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     openCatalogDir: catalogDir,
     fetchImpl: mockFetch,
     apiBaseUrl: "http://127.0.0.1:9",
@@ -167,20 +180,11 @@ test("Open Git-tracked catalog endpoints, hot reload from disk, and contributor 
     const hotSingle = await hotSingleRes.json();
     assert.equal(hotSingle.title, "Linux eBPF Tracing & XDP Packet Filtering Handbook");
 
-    // 3. Opt-in `saveToOpenCatalog` writes contributor JSON file to catalog/resources/<subject>/<id>.json
+    // 3. A learner can index a resource locally without writing into the Git-tracked catalog.
     const homeRes = await fetch(`${baseUrl}/`);
     parseCookies(homeRes, jar);
 
-    const signUpRes = await fetch(`${baseUrl}/api/ui-state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookieHeader(jar) },
-      body: JSON.stringify({
-        action: "submit-sign-up",
-        email: "contributor@example.test",
-        password: "ContributorPassword123!",
-      }),
-    });
-    assert.equal(signUpRes.status, 200);
+    await signInWithDevOAuth(baseUrl, jar, "contributor@example.test");
 
     const ingestRes = await fetch(`${baseUrl}/api/ui-state`, {
       method: "POST",
@@ -188,19 +192,16 @@ test("Open Git-tracked catalog endpoints, hot reload from disk, and contributor 
       body: JSON.stringify({
         action: "ingest-manual-resource",
         rawText: "https://doc.rust-lang.org/nomicon/ The Rustonomicon unsafe Rust reference",
-        saveToOpenCatalog: "true",
       }),
     });
     const ingestJson = await ingestRes.json();
     const addedId = ingestJson.state.userLibraryResourceIds[0];
     assert.ok(addedId, "expected userLibraryResourceIds[0] after manual ingestion");
 
-    // Verify file was written inside catalog/resources/**/<addedId>.json and is immediately downloadable
+    // The entry remains in the contributor's library without becoming a public catalog item.
     const exportedRes = await fetch(`${baseUrl}/catalog/resources/${addedId}.json`);
-    assert.equal(exportedRes.status, 200);
-    const exportedJson = await exportedRes.json();
-    assert.equal(exportedJson.resource_version_id, addedId);
-    assert.equal(exportedJson.canonical_url, "https://doc.rust-lang.org/nomicon");
+    assert.equal(exportedRes.status, 404);
+    assert.equal(fs.existsSync(path.join(catalogDir, "resources", "systems", `${addedId}.json`)), false);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -216,6 +217,19 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
   const seenOpenAiAuthHeaders = [];
   const mockFetch = async (url, init) => {
     const u = String(url);
+    if (u.endsWith("/v1/auth/session")) {
+      return backendSessionResponse(init.headers.Authorization.includes("bob@example.test") ? "bob-account" : "alice-account");
+    }
+    if (u.endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      const email = JSON.parse(init.body).email;
+      return new Response(JSON.stringify({
+        account_id: email === "bob@example.test" ? "bob-account" : "alice-account",
+        session_token: `session-${email}`,
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+      }), { status: 200 });
+    }
     if (u === "https://github.com/ept/ddia-references") {
       return new Response(
         "<!doctype html><html><head><title>DDIA References</title></head><body><h1>Designing Data-Intensive Applications</h1></body></html>",
@@ -260,8 +274,9 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
       apiBaseUrl: "http://127.0.0.1:9",
       fetchImpl: mockFetch,
       env: {
+        APP_ENV: "development",
+        AUTH_EXCHANGE_SECRET: "ef".repeat(32),
         BYOK_MASTER_KEY: masterKeyHex,
-        OPENAI_API_KEY: "sk-server-fallback-should-not-be-used-when-byok-set",
       },
     });
 
@@ -289,12 +304,9 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
       return res.json();
     };
 
-    // 1. Sign up as Alice
-    const signedUp = await postUi(jar1, {
-      action: "submit-sign-up",
-      email: "alice@example.test",
-      password: "AliceStrongPassword123!",
-    });
+    // 1. Sign in as Alice through a verified development OAuth exchange.
+    await signInWithDevOAuth(baseUrl1, jar1, "alice@example.test");
+    const signedUp = await postUi(jar1, { action: "noop" });
     assert.equal(signedUp.state.authStatus, "authenticated");
     assert.equal(signedUp.state.account.email, "alice@example.test");
 
@@ -338,7 +350,7 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
     aliceResourceId = ingestRes.state.userLibraryResourceIds[0];
     assert.ok(aliceResourceId);
 
-    // Both outbound OpenAI calls used Alice's JIT-decrypted BYOK key (NOT the server fallback key!)
+    // Both outbound OpenAI calls used Alice's JIT-decrypted BYOK key.
     assert.equal(seenOpenAiAuthHeaders.length, 2);
     assert.equal(seenOpenAiAuthHeaders[0], `Bearer ${aliceRawApiKey}`);
     assert.equal(seenOpenAiAuthHeaders[1], `Bearer ${aliceRawApiKey}`);
@@ -378,15 +390,12 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
     assert.ok(alicePub, "expected Alice's published syllabus in publishedListings");
     alicePublicationId = alicePub.publicationId;
 
-    // 5. Alice signs out on jar1; Bob signs up on the SAME cookie jar1 -> zero cross-account contamination
+    // 5. Alice signs out on jar1; Bob signs in on the same cookie jar.
     const afterSignOut = await postUi(jar1, { action: "sign-out" });
     assert.equal(afterSignOut.state.authStatus, "guest");
 
-    const bobSignedUp = await postUi(jar1, {
-      action: "submit-sign-up",
-      email: "bob@example.test",
-      password: "BobStrongPassword123!",
-    });
+    await signInWithDevOAuth(baseUrl1, jar1, "bob@example.test");
+    const bobSignedUp = await postUi(jar1, { action: "noop" });
     assert.equal(bobSignedUp.state.authStatus, "authenticated");
     assert.equal(bobSignedUp.state.selfReportedCompletedCount, 0);
     assert.equal(bobSignedUp.state.generatedPlans.some((s) => s.syllabusId === aliceSyllabusId), false);
@@ -406,7 +415,8 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
   try {
     const initRes2 = await fetch(`${baseUrl2}/`);
     parseCookies(initRes2, jar2);
-    const initHtml2 = await initRes2.text();
+    await signInWithDevOAuth(baseUrl2, jar2, "alice@example.test");
+    const initHtml2 = await (await fetch(`${baseUrl2}/`, { headers: { Cookie: cookieHeader(jar2) } })).text();
 
     // Verify Modern Web Guidance destructive confirmation dialog autofocus on safe Cancel action
     for (const dialogId of ["dialog-unpublish", "dialog-account-deletion"]) {
@@ -427,11 +437,7 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
     };
 
     // 6. Alice signs back in after server restart on a brand-new cookie -> 100% workspace restored!
-    const aliceRelogin = await postUi2({
-      action: "submit-sign-in",
-      email: "alice@example.test",
-      password: "AliceStrongPassword123!",
-    });
+    const aliceRelogin = await postUi2({ action: "noop" });
     assert.equal(aliceRelogin.state.authStatus, "authenticated");
     assert.equal(aliceRelogin.state.selfReportedCompletedCount, 1);
     assert.ok(aliceRelogin.state.generatedPlans.some((s) => s.syllabusId === aliceSyllabusId));
@@ -479,13 +485,7 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
     const deleted = await postUi2({ action: "confirm-delete-account" });
     assert.equal(deleted.state.authStatus, "guest");
 
-    const loginAfterDelete = await postUi2({
-      action: "submit-sign-in",
-      email: "alice@example.test",
-      password: "AliceStrongPassword123!",
-    });
-    assert.equal(loginAfterDelete.state.authStatus, "guest");
-    assert.equal(loginAfterDelete.state.authNotice, "Incorrect email or password.");
+    assert.equal((await fetch(`${baseUrl2}/api/account/export`, { headers: { Cookie: cookieHeader(jar2) } })).status, 401);
   } finally {
     await new Promise((resolve) => boot2.server.close(resolve));
     fs.rmSync(tmpDir, { recursive: true, force: true });

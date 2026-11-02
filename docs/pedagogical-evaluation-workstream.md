@@ -38,7 +38,7 @@ This document specifies the **4-part pedagogical evaluation workstream** enforce
   - Requires sample size $N \ge 30$ learner attempts per calibrated anchor item.
   - Item difficulty index ($p$-value in basis points) must lie within `[2000, 9000]` ($0.20 \le p \le 0.90$) so items are neither trivial nor impossibly opaque.
   - Point-biserial discrimination index ($r_{\text{pbis}}$ in signed basis points) must be $\ge 2000\text{ bp}$ ($r_{\text{pbis}} \ge 0.20$).
-  - Items failing calibration or flagged via learner defect reports (`POST /v1/assessments/{assessment_id}/items/{item_id}/report-defect`) immediately suspend mastery gating until curator key correction (`POST /v1/assessments/{assessment_id}/key-corrections`) recomputes affected attempts (`@S16`, `@S17`, `@S24`).
+  - Learner defect reports (`POST /v1/assessments/{assessment_id}/items/{item_id}/report-defect`) remain open for admin review and do not suspend the shared mastery gate. An admin key correction (`POST /v1/assessments/{assessment_id}/key-corrections`) recomputes affected attempts (`@S16`, `@S17`, `@S24`).
 
 ---
 

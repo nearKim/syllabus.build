@@ -36,7 +36,10 @@ impl std::fmt::Debug for CredentialVault {
 
 impl Default for CredentialVault {
     fn default() -> Self {
-        Self::from_env()
+        let mut key = [0u8; 32];
+        getrandom::fill(&mut key)
+            .expect("OS randomness is required for the in-memory credential vault");
+        Self::new(key)
     }
 }
 
@@ -46,30 +49,34 @@ impl CredentialVault {
         Self { master_kek }
     }
 
-    /// Resolves a 32-byte BYOK Key-Encryption-Key from `BYOK_MASTER_KEY` (64-char hex,
-    /// 32-byte base64, or SHA-256 digest of a passphrase), falling back to the local dev KEK.
-    #[must_use]
-    pub fn from_env() -> Self {
-        if let Ok(raw) = std::env::var("BYOK_MASTER_KEY") {
-            let trimmed = raw.trim();
-            if !trimmed.is_empty() {
-                if trimmed.len() == 64 {
-                    if let Ok(bytes) = hex::decode(trimmed) {
-                        if let Ok(arr) = <[u8; 32]>::try_from(bytes.as_slice()) {
-                            return Self::new(arr);
-                        }
-                    }
+    /// Loads a persistent 32-byte BYOK key from a 64-character hex or 32-byte base64 value.
+    pub fn from_env() -> Result<Self, SecurityError> {
+        let raw = std::env::var("BYOK_MASTER_KEY").map_err(|_| {
+            SecurityError::InvalidCredentialSecret(
+                "BYOK_MASTER_KEY is required for persistent storage".to_string(),
+            )
+        })?;
+        Self::from_encoded(&raw)
+    }
+
+    fn from_encoded(raw: &str) -> Result<Self, SecurityError> {
+        let trimmed = raw.trim();
+        if trimmed.len() == 64 {
+            if let Ok(bytes) = hex::decode(trimmed) {
+                if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                    return Ok(Self::new(key));
                 }
-                use base64::Engine as _;
-                if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
-                    if let Ok(arr) = <[u8; 32]>::try_from(bytes.as_slice()) {
-                        return Self::new(arr);
-                    }
-                }
-                return Self::new(sha256_digest(trimmed.as_bytes()));
             }
         }
-        Self::new(*b"syllabus-local-vault-kek-32bytes")
+        use base64::Engine as _;
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(trimmed) {
+            if let Ok(key) = <[u8; 32]>::try_from(bytes.as_slice()) {
+                return Ok(Self::new(key));
+            }
+        }
+        Err(SecurityError::InvalidCredentialSecret(
+            "BYOK_MASTER_KEY must be 32 bytes encoded as hex or base64".to_string(),
+        ))
     }
 
     /// Formats a redacted suffix (`...XXXX`) suitable for metadata responses (`BILL-003`, `NFR-006`).
@@ -304,6 +311,14 @@ pub fn sha256_digest(input: &[u8]) -> [u8; 32] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persistent_vault_requires_a_full_length_key() {
+        let key = hex::encode([7u8; 32]);
+        assert!(CredentialVault::from_encoded(&key).is_ok());
+        assert!(CredentialVault::from_encoded("weak").is_err());
+        assert!(CredentialVault::from_encoded("").is_err());
+    }
 
     #[test]
     fn t07a_credential_vault_encrypts_decrypts_and_rejects_cross_tenant_or_version_tampering() {

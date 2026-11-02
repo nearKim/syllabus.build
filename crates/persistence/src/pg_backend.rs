@@ -22,7 +22,7 @@ use syllabus_domain::{
 use syllabus_security::{CredentialVault, OAuthProvider, SealedCredentialEnvelope};
 use tokio_postgres::NoTls;
 
-use crate::store::StoreInner;
+use crate::store::{credential_map_key, StoreInner};
 use crate::{
     AccountDeletionReceiptRecord, AccountExportRecord, AccountRecord, AdaptationProposalRecord,
     AssessmentAttemptRecord, AssessmentIssueReportRecord, AssessmentKeyCorrectionRecord,
@@ -210,7 +210,7 @@ impl PersistedStoreSnapshot {
         }
     }
 
-    pub(crate) fn into_store_inner(mut self) -> StoreInner {
+    pub(crate) fn into_store_inner(mut self) -> Result<StoreInner, PersistenceError> {
         for (acct_id, hash) in self.account_password_hashes {
             if let Some(acct) = self.accounts.get_mut(&acct_id) {
                 acct.password_hash = Some(hash);
@@ -229,9 +229,27 @@ impl PersistedStoreSnapshot {
             progress_events: self.progress_events.into_iter().collect(),
             proficiency_by_account: self.proficiency_by_account,
             math_depth_by_account: self.math_depth_by_account,
-            credentials: self.credentials,
-            credential_envelopes: self.credential_envelopes,
-            credential_vault: CredentialVault::from_env(),
+            credentials: self
+                .credentials
+                .into_values()
+                .map(|record| {
+                    (
+                        credential_map_key(&record.owner_account_id, &record.credential_ref),
+                        record,
+                    )
+                })
+                .collect(),
+            credential_envelopes: self
+                .credential_envelopes
+                .into_values()
+                .map(|envelope| {
+                    (
+                        credential_map_key(&envelope.account_id, &envelope.credential_id),
+                        envelope,
+                    )
+                })
+                .collect(),
+            credential_vault: CredentialVault::from_env()?,
             inference_usage_records: self.inference_usage_records,
             reviewed_assessments: self.reviewed_assessments,
             assessment_attempts: self.assessment_attempts,
@@ -285,7 +303,7 @@ impl PersistedStoreSnapshot {
             InMemoryTransactionalStore::sync_catalog_tfidf_entry_locked(&mut inner, rec);
         }
         inner.catalog_resources = catalog;
-        inner
+        Ok(inner)
     }
 }
 
@@ -716,7 +734,7 @@ impl PgBackendHandle {
                         PersistenceError::Validation(format!("corrupt pg snapshot: {e}"))
                     })?;
                 self.set_last_seen_revision(rev);
-                Ok(Some(snapshot.into_store_inner()))
+                Ok(Some(snapshot.into_store_inner()?))
             }
             None => Ok(None),
         }
@@ -749,7 +767,7 @@ impl PgBackendHandle {
                     serde_json::from_str(&raw_json).map_err(|e| {
                         PersistenceError::Validation(format!("corrupt pg snapshot: {e}"))
                     })?;
-                Ok(Some((rev, snapshot.into_store_inner())))
+                Ok(Some((rev, snapshot.into_store_inner()?)))
             }
             None => Ok(None),
         }

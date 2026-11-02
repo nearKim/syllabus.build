@@ -14,10 +14,9 @@ use serde_json::{json, Value};
 use syllabus_application::{
     default_cheap_model_for_provider, execute_generation_job, execute_search_and_index_pipeline,
     ingest_manual_resource, interpret_goal_request, AcquisitionPermission, CatalogFilterQuery,
-    CatalogResourcePatchInput, CatalogResourceVersionRecord, CatalogReviewEvidence,
-    CatalogReviewInput, DiscoveredWebResourceCandidate, IndexedMaterialCandidate,
-    ManualResourceIngestRequest, ResourceFitDecisionMode, ResourceFreshnessState,
-    SearchAndIndexPipelineParams,
+    CatalogResourcePatchInput, CatalogResourceVersionRecord, CatalogReviewInput,
+    DiscoveredWebResourceCandidate, IndexedMaterialCandidate, ManualResourceIngestRequest,
+    ResourceFitDecisionMode, ResourceFreshnessState, SearchAndIndexPipelineParams,
 };
 use syllabus_persistence::{GenerationJobRecord, PersistenceError};
 use syllabus_security::AuthenticatedPrincipal;
@@ -146,8 +145,6 @@ pub(crate) struct SearchAndIndexCatalogRequestDto {
     #[serde(default = "default_weekly_minutes")]
     pub(crate) weekly_minutes: u32,
     #[serde(default)]
-    pub(crate) indexed_candidates: Vec<IndexedMaterialCandidate>,
-    #[serde(default)]
     pub(crate) selected_resource_version_ids: Vec<String>,
     #[serde(default)]
     pub(crate) skipped_resource_version_ids: Vec<String>,
@@ -162,29 +159,27 @@ pub(crate) async fn search_and_index_catalog_handler(
     AuthPrincipal(_principal): AuthPrincipal,
     Json(req): Json<SearchAndIndexCatalogRequestDto>,
 ) -> ApiResult {
-    let mut candidates = req.indexed_candidates;
-    if candidates.is_empty() {
-        for rec in state.store.list_catalog_resources(false) {
-            candidates.push(IndexedMaterialCandidate {
-                resource_version_id: rec.resource_version_id,
-                resource_id: rec.resource_id,
-                title: rec.title,
-                resource_type: rec.resource_type,
-                subject: req.subject.clone(),
-                topic_tags: rec.topics,
-                supported_math_depths: vec![
-                    "intuition_first".to_string(),
-                    "applied".to_string(),
-                    "formal".to_string(),
-                ],
-                supported_roles: vec!["instruction".to_string(), "practice".to_string()],
-                access_model: rec.access_model,
-                price_minor_units: rec.price_minor_units,
-                review_status: rec.review_status,
-                quarantined: false,
-                index_descriptor: None,
-            });
-        }
+    let mut candidates = Vec::new();
+    for rec in state.store.list_catalog_resources(false) {
+        candidates.push(IndexedMaterialCandidate {
+            resource_version_id: rec.resource_version_id,
+            resource_id: rec.resource_id,
+            title: rec.title,
+            resource_type: rec.resource_type,
+            subject: req.subject.clone(),
+            topic_tags: rec.topics,
+            supported_math_depths: vec![
+                "intuition_first".to_string(),
+                "applied".to_string(),
+                "formal".to_string(),
+            ],
+            supported_roles: vec!["instruction".to_string(), "practice".to_string()],
+            access_model: rec.access_model,
+            price_minor_units: rec.price_minor_units,
+            review_status: rec.review_status,
+            quarantined: false,
+            index_descriptor: None,
+        });
     }
 
     let params = SearchAndIndexPipelineParams {
@@ -205,17 +200,18 @@ pub(crate) async fn search_and_index_catalog_handler(
     let receipt = execute_search_and_index_pipeline(&params)?;
 
     // Incrementally auto-register newly discovered resources into the live catalog store
+    let mut inserted_resource_version_ids = Vec::new();
     for disc in &params.web_search_discoveries {
         let was_newly_indexed = receipt
             .newly_indexed_resources
             .iter()
             .any(|c| c.resource_version_id == disc.resource_version_id);
-        if !was_newly_indexed {
+        if !was_newly_indexed || inserted_resource_version_ids.contains(&disc.resource_version_id) {
             continue;
         }
         state
             .store
-            .upsert_catalog_resource(CatalogResourceVersionRecord {
+            .insert_catalog_resource(CatalogResourceVersionRecord {
                 resource_version_id: disc.resource_version_id.clone(),
                 resource_id: disc.resource_id.clone(),
                 version_number: 1,
@@ -238,20 +234,8 @@ pub(crate) async fn search_and_index_catalog_handler(
                 price_minor_units: disc.price_minor_units,
                 subscription_ids: Vec::new(),
                 is_optional_certification: false,
-                review_status: syllabus_application::ResourceReviewStatus::Approved,
-                review_evidence: Some(CatalogReviewEvidence {
-                    reviewer_principal_id: "00000000-0000-4000-8000-000000000099".to_string(),
-                    reviewed_at: "2026-10-28T00:00:00Z".to_string(),
-                    pedagogical_fit_score: 5,
-                    accuracy_score: 5,
-                    accessibility_score: 5,
-                    rights_verified: true,
-                    rationale:
-                        "Incremental polymorphic auto-indexer verified metadata and egress safety."
-                            .to_string(),
-                    credibility_basis: "Primary educational resource syllabus index".to_string(),
-                    evidence_url: disc.canonical_url.clone(),
-                }),
+                review_status: syllabus_application::ResourceReviewStatus::UnderReview,
+                review_evidence: None,
                 freshness_state: ResourceFreshnessState::Healthy,
                 acquisition_permission: AcquisitionPermission {
                     allow_metadata: true,
@@ -267,7 +251,8 @@ pub(crate) async fn search_and_index_catalog_handler(
                 },
                 is_synthetic_fixture: false,
                 metadata_embedding: None,
-            });
+            })?;
+        inserted_resource_version_ids.push(disc.resource_version_id.clone());
     }
 
     Ok((StatusCode::OK, Json(receipt)).into_response())
@@ -414,13 +399,13 @@ pub(crate) async fn ingest_manual_catalog_resource_handler(
 
 pub(crate) async fn patch_catalog_resource_handler(
     State(state): State<ApiAppState>,
-    AuthPrincipal(_principal): AuthPrincipal,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(resource_version_id): Path<String>,
     Json(patch): Json<CatalogResourcePatchInput>,
 ) -> ApiResult {
     let updated = state
         .store
-        .update_catalog_resource(&resource_version_id, patch)?;
+        .update_catalog_resource(&principal, &resource_version_id, patch)?;
     let query_probe = format!("{} {}", updated.title, updated.topics.join(" "));
     let tfidf_score = state
         .store
@@ -441,10 +426,12 @@ pub(crate) async fn patch_catalog_resource_handler(
 
 pub(crate) async fn delete_catalog_resource_handler(
     State(state): State<ApiAppState>,
-    AuthPrincipal(_principal): AuthPrincipal,
+    AuthPrincipal(principal): AuthPrincipal,
     Path(resource_version_id): Path<String>,
 ) -> ApiResult {
-    let deleted = state.store.delete_catalog_resource(&resource_version_id)?;
+    let deleted = state
+        .store
+        .delete_catalog_resource(&principal, &resource_version_id)?;
     Ok((
         StatusCode::OK,
         Json(json!({

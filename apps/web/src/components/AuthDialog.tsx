@@ -5,17 +5,11 @@ import { usernameOf, type Account, type AuthStatus } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 
 export const AUTH_STATUSES = ["authenticated", "guest", "session_expired"] as const;
-export const AUTH_MODES = ["login", "signup", "reset", "reset_confirm"] as const;
-export type AuthMode = (typeof AUTH_MODES)[number];
-
 export const PERSONAS = {
-  learner: { accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "Learner" },
-  curator: { accountId: "curator-ada", email: "ada@syllabus.build", username: "ada", role: "Curator" },
-  moderator: { accountId: "moderator-mo", email: "mo@syllabus.build", username: "mo", role: "Moderator" },
+  learner: { accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "User" },
+  curator: { accountId: "curator-ada", email: "ada@syllabus.build", username: "ada", role: "User" },
+  moderator: { accountId: "moderator-mo", email: "mo@syllabus.build", username: "mo", role: "User" },
 } as const satisfies Readonly<Record<string, Account>>;
-
-export const PERSONA_CHOICES = ["learner", "curator", "moderator", "guest"] as const;
-export type PersonaChoice = (typeof PERSONA_CHOICES)[number];
 
 export interface ReturnDestination {
   readonly label: string;
@@ -33,9 +27,6 @@ export interface AuthDialogProps {
   readonly account: Account;
   readonly returnTo: ReturnDestination | null;
   readonly authNotice: string | null;
-  readonly authMode?: AuthMode | undefined;
-  readonly authPasswordVisible?: boolean | undefined;
-  readonly resetEmail?: string | undefined;
 }
 
 export function GoogleMark(): VNode {
@@ -69,51 +60,6 @@ export function GitHubMark(): VNode {
   );
 }
 
-function MailIcon(): VNode {
-  return (
-    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect width="20" height="16" x="2" y="4" rx="2.5" />
-      <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
-    </svg>
-  );
-}
-
-function LockIcon(): VNode {
-  return (
-    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect width="18" height="11" x="3" y="11" rx="2.5" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-    </svg>
-  );
-}
-
-function KeyCodeIcon(): VNode {
-  return (
-    <svg class="auth-field-icon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect width="18" height="14" x="3" y="5" rx="2.5" />
-      <path d="M7 12h10" />
-    </svg>
-  );
-}
-
-// The eye button holds both glyphs. Its aria-pressed state picks the one that shows, so the client flips one attribute.
-function EyeIcons(): VNode {
-  return (
-    <>
-      <svg class="auth-eye-show" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-      <svg class="auth-eye-hide" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
-        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
-        <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
-        <path d="m1 1 22 22" />
-      </svg>
-    </>
-  );
-}
-
 function PasskeyIcon(): VNode {
   return (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -125,84 +71,20 @@ function PasskeyIcon(): VNode {
   );
 }
 
-export function AuthDialog({
-  open,
-  authStatus,
-  account,
-  returnTo,
-  authNotice,
-  authMode = "login",
-  authPasswordVisible = false,
-  resetEmail = "",
-}: AuthDialogProps): VNode {
-  const isSignup = authMode === "signup";
-  const isResetRequest = authMode === "reset";
-  const isResetConfirm = authMode === "reset_confirm";
-  const isRecovery = isResetRequest || isResetConfirm;
-
-  const prefilledEmail = isRecovery
-    ? resetEmail
-    : !isSignup && authStatus === "session_expired"
-      ? account.email
-      : "";
-
-  const formAction = isSignup
-    ? "submit-sign-up"
-    : isResetRequest
-      ? "request-password-reset"
-      : isResetConfirm
-        ? "confirm-password-reset"
-        : "submit-sign-in";
-
-  const dialogTitle = isSignup
-    ? "Create your account"
-    : isResetRequest
-      ? "Reset your password"
-      : isResetConfirm
-        ? "Enter recovery code"
-        : "Sign in with email";
-
-  const submitLabel = isSignup
-    ? "Create account"
-    : isResetRequest
-      ? "Send recovery code"
-      : isResetConfirm
-        ? "Reset password & sign in"
-        : "Log in";
-
-  const needsNewPassword = isSignup || isResetConfirm;
-  const passwordAttrs = {
-    name: "password",
-    autocomplete: needsNewPassword ? "new-password" : "current-password",
-    enterkeyhint: "done",
-    minLength: needsNewPassword ? 8 : 1,
-    placeholder: needsNewPassword ? "At least 8 characters" : "Password",
-    "aria-describedby": needsNewPassword ? "auth-password-hint" : undefined,
-    required: true,
-  } as const;
-
-  // novalidate: the product's own messages replace the browser's validation bubbles. After interaction or a failed
-  // submit, each field the browser finds invalid takes the error state, and clears as soon as the field is valid.
+export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNode {
   return (
     <dialog
       id="dialog-auth"
       closedby="any"
       aria-labelledby="dialog-auth-title"
       data-open={String(open)}
-      data-auth-mode={authMode}
+      data-auth-mode="login"
       data-opaque-surface="true"
     >
-      <form
-        method="dialog"
-        class="dialog-surface auth-surface"
-        data-action={formAction}
-        novalidate
-      >
+      <div class="dialog-surface auth-surface">
         <div class="auth-head">
           <BrandLockup />
-          <h2 id="dialog-auth-title" class="auth-title">
-            {dialogTitle}
-          </h2>
+          <h2 id="dialog-auth-title" class="auth-title">Sign in</h2>
           {returnTo ? (
             <p class="auth-return" role="status">
               After you sign in, you return to <strong>{returnTo.label}</strong>. Nothing is voted, published, adopted, or bought on your behalf.
@@ -210,153 +92,30 @@ export function AuthDialog({
           ) : null}
         </div>
 
-        <div class="auth-fields">
-          <div class="auth-field">
-            <label class="auth-label" for="auth-email-input">Email</label>
-            <div class="auth-input-wrap">
-              <MailIcon />
-              <input
-                id="auth-email-input"
-                type="email"
-                name="email"
-                autocomplete={isSignup || isRecovery ? "username" : "username webauthn"}
-                spellcheck={false}
-                autocapitalize="off"
-                inputmode="email"
-                pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
-                enterkeyhint={isResetRequest ? "done" : "next"}
-                placeholder="you@example.com"
-                value={prefilledEmail}
-                autofocus={!isResetConfirm}
-                required
-              />
-            </div>
+        {authNotice ? <p class="field-error" role="alert">{authNotice}</p> : null}
+
+        <div class="auth-alt-block">
+          <p class="auth-alt-label">Continue with</p>
+          <div class="auth-alt-grid">
+            <a href="/auth/oauth/google" class="auth-oauth-btn" data-oauth-provider="google">
+              <GoogleMark />
+              <span>Google</span>
+            </a>
+            <a href="/auth/oauth/github" class="auth-oauth-btn" data-oauth-provider="github">
+              <GitHubMark />
+              <span>GitHub</span>
+            </a>
+            <button type="button" class="auth-oauth-btn auth-passkey-btn" data-action="sign-in-passkey">
+              <PasskeyIcon />
+              <span>Passkey</span>
+            </button>
           </div>
-
-          {isResetConfirm ? (
-            <div class="auth-field">
-              <label class="auth-label" for="auth-reset-code-input">Recovery code</label>
-              <p class="field-hint" id="auth-code-hint">Enter the 6-digit recovery code sent to your email.</p>
-              <div class="auth-input-wrap">
-                <KeyCodeIcon />
-                <input
-                  id="auth-reset-code-input"
-                  type="text"
-                  name="code"
-                  autocomplete="one-time-code"
-                  inputmode="numeric"
-                  pattern="[0-9]{6}"
-                  minLength={6}
-                  maxLength={6}
-                  enterkeyhint="next"
-                  placeholder="6-digit code"
-                  aria-describedby="auth-code-hint"
-                  autofocus
-                  required
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {isResetRequest ? null : (
-            <div class="auth-field">
-              <div class="auth-label-row">
-                <label class="auth-label" for="auth-password-input">
-                  {isResetConfirm ? "New password" : "Password"}
-                </label>
-                {authMode === "login" ? (
-                  <button
-                    type="button"
-                    class="auth-switch-btn auth-forgot-btn"
-                    data-action="switch-auth-mode"
-                    data-auth-mode="reset"
-                  >
-                    Forgot password?
-                  </button>
-                ) : null}
-              </div>
-              {needsNewPassword ? (
-                <p class="field-hint" id="auth-password-hint">Use at least 8 characters.</p>
-              ) : null}
-              <div class="auth-password-wrap">
-                <LockIcon />
-                {authPasswordVisible ? (
-                  <input id="auth-password-input" type="text" {...passwordAttrs} />
-                ) : (
-                  <input id="auth-password-input" type="password" {...passwordAttrs} />
-                )}
-                <button
-                  type="button"
-                  class="auth-password-eye"
-                  data-action="toggle-auth-password"
-                  aria-controls="auth-password-input"
-                  aria-pressed={authPasswordVisible}
-                  aria-label={authPasswordVisible ? "Hide password" : "Show password"}
-                >
-                  <EyeIcons />
-                </button>
-              </div>
-            </div>
-          )}
         </div>
 
-        {authNotice ? (
-          <p class="field-error" role="alert">
-            {authNotice}
-          </p>
-        ) : null}
-
-        <div class="auth-actions">
-          <button type="submit" class="btn-primary auth-submit-btn">
-            {submitLabel}
-          </button>
-        </div>
-
-        {isRecovery ? null : (
-          <div class="auth-alt-block">
-            <p class="auth-alt-label">Or continue with</p>
-            <div class="auth-alt-grid">
-              <a href="/auth/oauth/google" class="auth-oauth-btn" data-oauth-provider="google">
-                <GoogleMark />
-                <span>Google</span>
-              </a>
-              <a href="/auth/oauth/github" class="auth-oauth-btn" data-oauth-provider="github">
-                <GitHubMark />
-                <span>GitHub</span>
-              </a>
-              {isSignup ? null : (
-                <button type="button" class="auth-oauth-btn auth-passkey-btn" data-action="sign-in-passkey">
-                  <PasskeyIcon />
-                  <span>Passkey</span>
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <p class="auth-switch">
-          <span>
-            {isRecovery
-              ? "Remembered your password?"
-              : isSignup
-                ? "Already have an account?"
-                : "Don't have an account?"}
-          </span>
-          <button
-            type="button"
-            class="auth-switch-btn"
-            data-action="switch-auth-mode"
-            data-auth-mode={isRecovery || isSignup ? "login" : "signup"}
-          >
-            {isRecovery || isSignup ? "Log in" : "Sign up"}
-          </button>
-        </p>
-
-        {/* Last in tree order, so opening the dialog never puts initial focus on it and Enter submits the form. */}
-        <button type="submit" class="auth-close-btn" data-action="close-dialog" aria-label="Close">
+        <button type="button" class="auth-close-btn" data-action="close-dialog" aria-label="Close">
           <SfIcon name="close" />
         </button>
-      </form>
+      </div>
     </dialog>
   );
 }

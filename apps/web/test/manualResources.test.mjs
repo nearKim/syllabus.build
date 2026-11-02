@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,11 +8,13 @@ import { mountSyllabusWebApp } from "../src/browserApp.ts";
 import { buildIndexedMaterialCandidates, catalogIndexOf } from "../src/components/NewSyllabusDialog.tsx";
 import {
   analyzeManualResourceDeterministic,
+  inspectUrlPageInternals,
   isSafePublicHttpsUrl,
   parseFreeFormResourceInput,
 } from "../src/resourceAnalyzer.ts";
-import { createWebAppServer } from "../src/server.mjs";
+import { createWebAppServer, fetchPublicResourcePage } from "../src/server.mjs";
 import { searchTfidf } from "../src/tfidfIndex.ts";
+import { backendSessionResponse, signInWithDevOAuth } from "./helpers/devOAuth.mjs";
 
 function parseCookies(res, jar = new Map()) {
   const setCookies =
@@ -66,9 +69,53 @@ test("parseFreeFormResourceInput normalizes bare URLs with free-form notes and e
   assert.equal(isSafePublicHttpsUrl("https://10.0.0.8/internal"), false);
   assert.equal(isSafePublicHttpsUrl("https://intranet.local/course"), false);
   assert.equal(isSafePublicHttpsUrl("https://user:pass@udemy.com/course/ckad"), false);
+  assert.equal(isSafePublicHttpsUrl("https://localhost./admin"), false);
 
   const rejectedLocal = parseFreeFormResourceInput("http://127.0.0.1:8080/internal secret notes");
   assert.equal("error" in rejectedLocal, true);
+});
+
+test("Resource inspection blocks private DNS answers and unsafe redirects", async () => {
+  const lookup = dns.lookup;
+  dns.lookup = (hostname, _options, callback) => {
+    assert.equal(hostname, "public.example");
+    callback(null, [{ address: "127.0.0.1", family: 4 }]);
+  };
+  try {
+    await assert.rejects(fetchPublicResourcePage("https://public.example/page"), /non-public address/);
+    dns.lookup = (_hostname, _options, callback) => {
+      callback(null, [{ address: "::ffff:127.0.0.1", family: 6 }]);
+    };
+    await assert.rejects(fetchPublicResourcePage("https://public.example/page"), /non-public address/);
+  } finally {
+    dns.lookup = lookup;
+  }
+
+  const requested = [];
+  const page = await inspectUrlPageInternals("https://public.example/page", async (url, init) => {
+    requested.push(String(url));
+    assert.equal(init.redirect, "manual");
+    return new Response(null, { status: 302, headers: { location: "https://localhost/admin" } });
+  });
+  assert.equal(page.fetchedLive, false);
+  assert.deepEqual(requested, ["https://public.example/page"]);
+});
+
+test("Resource inspection cancels a remote body after 128 KiB", async () => {
+  let canceled = false;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode("<title>Public Resource</title>"));
+      controller.enqueue(new Uint8Array(150_000));
+    },
+    cancel() { canceled = true; },
+  });
+  const page = await inspectUrlPageInternals(
+    "https://public.example/page",
+    async () => new Response(body, { headers: { "content-type": "text/html" } }),
+  );
+  assert.equal(page.pageTitle, "Public Resource");
+  assert.equal(canceled, true);
 });
 
 test("Manual resource ingestion, library-only save, syllabus link, edit, unlink, delete, and immediate MiniSearch TF-IDF re-indexing", () => {
@@ -223,6 +270,19 @@ test("Web SSR server runs live HTML inspection + OpenAI structured extraction an
     const url = String(input);
     fetchedUrls.push(url);
 
+    if (url.endsWith("/v1/auth/session")) return backendSessionResponse("manual-resource-owner");
+
+    if (url.endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      return new Response(JSON.stringify({
+        account_id: "manual-resource-owner",
+        session_token: "owner-session-token",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+        email: "owner@example.test",
+      }), { status: 200 });
+    }
+
     if (url === "https://academy.example.com/courses/tokio-async-rust") {
       const html = `<!doctype html>
         <html lang="en">
@@ -278,7 +338,8 @@ test("Web SSR server runs live HTML inspection + OpenAI structured extraction an
 
   const { server: server1 } = createWebAppServer({
     storePath,
-    env: { NODE_ENV: "development", OPENAI_API_KEY: "sk-test-openai-key" },
+    byokMasterKey: "ab".repeat(32),
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     fetchImpl: fetchStub,
     apiBaseUrl: "http://127.0.0.1:59999",
   });
@@ -291,6 +352,13 @@ test("Web SSR server runs live HTML inspection + OpenAI structured extraction an
   const homeRes = await fetch(`${base1}/`);
   assert.equal(homeRes.status, 200);
   parseCookies(homeRes, jar);
+  await signInWithDevOAuth(base1, jar, "owner@example.test");
+  const keyRes = await fetch(`${base1}/api/ui-state`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: cookieHeader(jar) },
+    body: JSON.stringify({ action: "replace-key", providerId: "openai", keyValue: "sk-test-openai-key" }),
+  });
+  assert.equal((await keyRes.json()).state.byokCredentials.length, 1);
 
   // Navigate to Resources and ingest via POST /api/ui-state
   await fetch(`${base1}/api/ui-state`, {
@@ -355,15 +423,18 @@ test("Web SSR server runs live HTML inspection + OpenAI structured extraction an
   // Restart a brand-new server instance pointing at the same storePath and verify full durability
   const { server: server2 } = createWebAppServer({
     storePath,
-    env: { NODE_ENV: "development" },
+    byokMasterKey: "ab".repeat(32),
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
     fetchImpl: fetchStub,
     apiBaseUrl: "http://127.0.0.1:59999",
   });
   await new Promise((resolve) => server2.listen(0, "127.0.0.1", resolve));
   t.after(() => server2.close());
   const port2 = server2.address().port;
+  const base2 = `http://127.0.0.1:${port2}`;
+  await signInWithDevOAuth(base2, jar, "owner@example.test");
 
-  const stateRes2 = await fetch(`http://127.0.0.1:${port2}/api/ui-state`, {
+  const stateRes2 = await fetch(`${base2}/api/ui-state`, {
     method: "POST",
     headers: { "content-type": "application/json", cookie: cookieHeader(jar) },
     body: JSON.stringify({ learnSubDestination: "Resources" }),

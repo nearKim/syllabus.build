@@ -971,9 +971,7 @@ impl InMemoryTransactionalStore {
         &self,
         principal: &AuthenticatedPrincipal,
     ) -> Result<Vec<PublicationReportRecord>, PersistenceError> {
-        if !principal.has_role(PrincipalRole::Operator) {
-            principal.require_role(PrincipalRole::Moderator)?;
-        }
+        principal.require_role(PrincipalRole::Admin)?;
         let guard = self.read_inner();
         Ok(guard.publication_reports.clone())
     }
@@ -986,9 +984,7 @@ impl InMemoryTransactionalStore {
         action_kind: &str,
         rationale: &str,
     ) -> Result<ModerationActionRecord, PersistenceError> {
-        if !principal.has_role(PrincipalRole::Operator) {
-            principal.require_role(PrincipalRole::Moderator)?;
-        }
+        principal.require_role(PrincipalRole::Admin)?;
         let mut guard = self.write_inner();
         let pub_rec = guard
             .publications
@@ -1636,7 +1632,10 @@ impl InMemoryTransactionalStore {
         for cred in guard.credentials.values_mut() {
             if cred.owner_account_id == principal.account_id {
                 cred.revoked = true;
-                owned_cred_refs.insert(cred.credential_ref.clone());
+                owned_cred_refs.insert(crate::store::credential_map_key(
+                    &cred.owner_account_id,
+                    &cred.credential_ref,
+                ));
             }
         }
         guard

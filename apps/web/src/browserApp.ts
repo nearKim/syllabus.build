@@ -29,8 +29,6 @@ export {
 } from "./auth.ts";
 
 export {
-  type AuthMode,
-  type PersonaChoice,
   type ReturnDestination,
 } from "./components/AuthDialog.tsx";
 

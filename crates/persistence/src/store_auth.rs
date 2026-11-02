@@ -4,10 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{json, Value};
 use syllabus_contracts::jcs::sha256_bytes_hex;
-use syllabus_security::{
-    hash_password, verify_password, AuthenticatedPrincipal, OAuthProvider, PrincipalRole,
-    SecurityError,
-};
+use syllabus_security::{AuthenticatedPrincipal, OAuthProvider, PrincipalRole, SecurityError};
+use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 
 use crate::models::{
     evaluate_if_match, AccountRecord, AuthRecoveryTokenIssued, AuthRecoveryTokenRecord,
@@ -15,7 +13,7 @@ use crate::models::{
     OAuthIdentityRecord, OAuthLoginOutcome, PersistenceError, StoredCredentialRecord,
     TombstoneEntityType, WebPasskeyRecord, WebWorkspaceRecord,
 };
-use crate::store::{InMemoryTransactionalStore, StoreInner};
+use crate::store::{credential_map_key, InMemoryTransactionalStore, StoreInner};
 
 impl InMemoryTransactionalStore {
     pub fn upsert_account(&self, account: AccountRecord) {
@@ -31,83 +29,6 @@ impl InMemoryTransactionalStore {
                 total_time_spent_minutes: 0,
             });
         guard.accounts.insert(account.account_id.clone(), account);
-    }
-
-    pub fn create_auth_session(
-        &self,
-        email: &str,
-        authentication_code: &str,
-    ) -> Result<AuthSessionRecord, PersistenceError> {
-        if email.trim().is_empty() || !email.contains('@') {
-            return Err(PersistenceError::Validation(
-                "valid email address is required".to_string(),
-            ));
-        }
-        if authentication_code.len() < 6 || authentication_code == "invalid" {
-            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-        }
-
-        let mut guard = self.write_inner();
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-
-        let (account_id, roles) = match email {
-            "curator@example.test" => (
-                "00000000-0000-4000-8000-000000000099".to_string(),
-                vec![PrincipalRole::Curator],
-            ),
-            "moderator@example.test" => (
-                "00000000-0000-4000-8000-000000000098".to_string(),
-                vec![PrincipalRole::Moderator],
-            ),
-            "operator@example.test" => (
-                "00000000-0000-4000-8000-000000000097".to_string(),
-                vec![PrincipalRole::Operator],
-            ),
-            "learner-b@example.test" => (
-                "00000000-0000-4000-8000-000000000002".to_string(),
-                vec![PrincipalRole::Learner],
-            ),
-            _ => {
-                if let Some(existing) = guard
-                    .accounts
-                    .values()
-                    .find(|a| a.email == email && a.deleted_at_ms.is_none())
-                {
-                    (existing.account_id.clone(), existing.roles.clone())
-                } else {
-                    (
-                        "00000000-0000-4000-8000-000000000001".to_string(),
-                        vec![PrincipalRole::Learner],
-                    )
-                }
-            }
-        };
-
-        if let Some(acct) = guard.accounts.get(&account_id) {
-            if acct.deleted_at_ms.is_some() {
-                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-            }
-        } else {
-            guard.accounts.insert(
-                account_id.clone(),
-                AccountRecord {
-                    account_id: account_id.clone(),
-                    email: email.to_string(),
-                    email_verified: true,
-                    roles: roles.clone(),
-                    display_name: None,
-                    avatar_url: None,
-                    password_hash: None,
-                    deleted_at_ms: None,
-                },
-            );
-            Self::ensure_proficiency_locked(&mut guard, &account_id);
-        }
-
-        Ok(Self::issue_session_locked(
-            &mut guard, seq, account_id, roles,
-        ))
     }
 
     fn ensure_proficiency_locked(guard: &mut StoreInner, account_id: &str) {
@@ -129,7 +50,9 @@ impl InMemoryTransactionalStore {
         account_id: String,
         roles: Vec<PrincipalRole>,
     ) -> AuthSessionRecord {
-        let token = format!("sess-token-{seq}-{account_id}");
+        let mut random = [0u8; 32];
+        getrandom::fill(&mut random).expect("OS random source is required for auth sessions");
+        let token = sha256_bytes_hex(&random);
         let token_sha256 = sha256_bytes_hex(token.as_bytes());
         let record = AuthSessionRecord {
             session_id: format!("sess-{seq}"),
@@ -137,7 +60,9 @@ impl InMemoryTransactionalStore {
             token_sha256: token_sha256.clone(),
             account_id,
             roles,
-            expires_at: "2026-12-31T23:59:59Z".to_string(),
+            expires_at: (OffsetDateTime::now_utc() + Duration::hours(24))
+                .format(&Rfc3339)
+                .expect("UTC expiry formats as RFC 3339"),
             revoked: false,
         };
         guard
@@ -164,15 +89,6 @@ impl InMemoryTransactionalStore {
         Ok(email)
     }
 
-    fn default_roles_for_email(email: &str) -> Vec<PrincipalRole> {
-        match email {
-            "ada@syllabus.build" | "curator@example.test" => vec![PrincipalRole::Curator],
-            "mo@syllabus.build" | "moderator@example.test" => vec![PrincipalRole::Moderator],
-            "operator@example.test" => vec![PrincipalRole::Operator],
-            _ => vec![PrincipalRole::Learner],
-        }
-    }
-
     /// Looks up an active (non-deleted) `AccountRecord` by `account_id`.
     #[must_use]
     pub fn get_account_by_id(&self, account_id: &str) -> Option<AccountRecord> {
@@ -182,120 +98,6 @@ impl InMemoryTransactionalStore {
             .get(account_id)
             .filter(|acct| acct.deleted_at_ms.is_none())
             .cloned()
-    }
-
-    /// Registers a new email + password account (or attaches a password to a passwordless OAuth account)
-    /// and returns `(AccountRecord, AuthSessionRecord)`.
-    pub fn register_email_account(
-        &self,
-        email: &str,
-        password: &str,
-        display_name: Option<&str>,
-    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
-        let normalized_email = Self::normalize_email(email)?;
-        let default_username = normalized_email
-            .split('@')
-            .next()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-        let cleaned_name = display_name
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .or(default_username);
-
-        let mut guard = self.write_inner();
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-        let salt = format!("syllabus-pw-salt-{seq}-{normalized_email}");
-        let pw_hash =
-            hash_password(password, salt.as_bytes()).map_err(PersistenceError::Security)?;
-
-        if let Some(existing) = guard
-            .accounts
-            .values_mut()
-            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
-        {
-            if existing.password_hash.is_some() {
-                return Err(PersistenceError::Conflict {
-                    code: "account_already_exists",
-                    message: format!("an account for `{normalized_email}` already exists"),
-                });
-            }
-            existing.password_hash = Some(pw_hash);
-            if existing.display_name.is_none() {
-                existing.display_name = cleaned_name;
-            }
-            let acct = existing.clone();
-            let session = Self::issue_session_locked(
-                &mut guard,
-                seq,
-                acct.account_id.clone(),
-                acct.roles.clone(),
-            );
-            return Ok((acct, session));
-        }
-
-        let account_id = format!("usr-{seq:06}");
-        let roles = Self::default_roles_for_email(&normalized_email);
-        let acct = AccountRecord {
-            account_id: account_id.clone(),
-            email: normalized_email,
-            email_verified: false,
-            roles: roles.clone(),
-            display_name: cleaned_name,
-            avatar_url: None,
-            password_hash: Some(pw_hash),
-            deleted_at_ms: None,
-        };
-        guard.accounts.insert(account_id.clone(), acct.clone());
-        Self::ensure_proficiency_locked(&mut guard, &account_id);
-        let session = Self::issue_session_locked(&mut guard, seq, account_id, roles);
-        Ok((acct, session))
-    }
-
-    /// Authenticates an email + password account and mints a fresh `AuthSessionRecord`.
-    pub fn login_email_account(
-        &self,
-        email: &str,
-        password: &str,
-    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
-        let normalized_email = Self::normalize_email(email)?;
-        if password.is_empty() {
-            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-        }
-
-        let mut guard = self.write_inner();
-        let Some(acct) = guard
-            .accounts
-            .values()
-            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
-            .cloned()
-        else {
-            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-        };
-
-        if let Some(ref stored_hash) = acct.password_hash {
-            if !verify_password(password, stored_hash) {
-                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-            }
-        } else {
-            // Passwordless OAuth-only account or pre-seeded dev fixture requires at least 6 chars in dev.
-            if password.len() < 6 {
-                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-            }
-        }
-
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-        let session = Self::issue_session_locked(
-            &mut guard,
-            seq,
-            acct.account_id.clone(),
-            acct.roles.clone(),
-        );
-        Ok((acct, session))
     }
 
     /// Links or creates an account from a verified OAuth 2.0 / OIDC identity (`Google` or `GitHub`)
@@ -384,7 +186,7 @@ impl InMemoryTransactionalStore {
         } else {
             // 3. Brand-new OAuth signup -> create a fresh account.
             let account_id = format!("usr-{seq:06}");
-            let roles = Self::default_roles_for_email(&normalized_email);
+            let roles = vec![PrincipalRole::User];
             let acct = AccountRecord {
                 account_id: account_id.clone(),
                 email: normalized_email.clone(),
@@ -430,24 +232,39 @@ impl InMemoryTransactionalStore {
         &self,
         bearer_token: &str,
     ) -> Result<Option<AuthenticatedPrincipal>, PersistenceError> {
+        if bearer_token.starts_with("sess-token-") {
+            return Err(PersistenceError::Security(SecurityError::Unauthenticated));
+        }
         let token_sha256 = sha256_bytes_hex(bearer_token.as_bytes());
         let guard = self.read_inner();
         if let Some(sess) = guard.sessions_by_token_sha.get(&token_sha256) {
-            if sess.revoked {
+            if sess.revoked
+                || OffsetDateTime::parse(&sess.expires_at, &Rfc3339)
+                    .map_or(true, |expiry| expiry <= OffsetDateTime::now_utc())
+            {
                 return Err(PersistenceError::Security(SecurityError::Unauthenticated));
             }
-            if let Some(acct) = guard.accounts.get(&sess.account_id) {
-                if acct.deleted_at_ms.is_some() {
-                    return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-                }
-            }
+            let acct = guard
+                .accounts
+                .get(&sess.account_id)
+                .filter(|account| account.deleted_at_ms.is_none())
+                .ok_or(PersistenceError::Security(SecurityError::Unauthenticated))?;
             return Ok(Some(AuthenticatedPrincipal {
                 account_id: sess.account_id.clone(),
-                roles: sess.roles.clone(),
+                roles: acct.roles.clone(),
                 is_development_only_identity: false,
             }));
         }
         Ok(None)
+    }
+
+    #[must_use]
+    pub fn session_expiry_for_token(&self, bearer_token: &str) -> Option<String> {
+        let token_sha256 = sha256_bytes_hex(bearer_token.as_bytes());
+        self.read_inner()
+            .sessions_by_token_sha
+            .get(&token_sha256)
+            .map(|session| session.expires_at.clone())
     }
 
     pub fn revoke_session_token(
@@ -488,6 +305,13 @@ impl InMemoryTransactionalStore {
         raw_api_key: &str,
     ) -> Result<CredentialMetadataView, PersistenceError> {
         let mut guard = self.write_inner();
+        let key = credential_map_key(&principal.account_id, credential_ref);
+        if guard.credentials.contains_key(&key) {
+            return Err(PersistenceError::Conflict {
+                code: "credential_ref_exists",
+                message: format!("credential reference `{credential_ref}` already exists"),
+            });
+        }
         let sealed = guard.credential_vault.seal_credential(
             &principal.account_id,
             credential_ref,
@@ -509,10 +333,8 @@ impl InMemoryTransactionalStore {
             revoked: false,
         };
         let view = CredentialMetadataView::from(&record);
-        guard
-            .credential_envelopes
-            .insert(credential_ref.to_string(), sealed);
-        guard.credentials.insert(credential_ref.to_string(), record);
+        guard.credential_envelopes.insert(key.clone(), sealed);
+        guard.credentials.insert(key, record);
         Ok(view)
     }
 
@@ -522,14 +344,14 @@ impl InMemoryTransactionalStore {
         credential_ref: &str,
     ) -> Result<CredentialMetadataView, PersistenceError> {
         let guard = self.read_inner();
-        let record =
-            guard
-                .credentials
-                .get(credential_ref)
-                .ok_or_else(|| PersistenceError::NotFound {
-                    resource_type: "credential",
-                    resource_id: credential_ref.to_string(),
-                })?;
+        let key = credential_map_key(&principal.account_id, credential_ref);
+        let record = guard
+            .credentials
+            .get(&key)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "credential",
+                resource_id: credential_ref.to_string(),
+            })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
         if record.revoked {
             return Err(PersistenceError::NotFound {
@@ -548,12 +370,14 @@ impl InMemoryTransactionalStore {
         now_ms: u64,
     ) -> Result<(), PersistenceError> {
         let mut guard = self.write_inner();
-        let record = guard.credentials.get_mut(credential_ref).ok_or_else(|| {
-            PersistenceError::NotFound {
+        let key = credential_map_key(&principal.account_id, credential_ref);
+        let record = guard
+            .credentials
+            .get_mut(&key)
+            .ok_or_else(|| PersistenceError::NotFound {
                 resource_type: "credential",
                 resource_id: credential_ref.to_string(),
-            }
-        })?;
+            })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
         evaluate_if_match(if_match, &record.etag)?;
         record.revoked = true;
@@ -871,113 +695,6 @@ impl InMemoryTransactionalStore {
         let digest = sha256_bytes_hex(entropy.as_bytes());
         let num = u32::from_str_radix(&digest[..8], 16).unwrap_or(100_000) % 900_000 + 100_000;
         format!("{num:06}")
-    }
-
-    pub fn issue_password_reset_token(
-        &self,
-        email: &str,
-        now_ms: u64,
-        ttl_ms: u64,
-    ) -> Result<Option<AuthRecoveryTokenIssued>, PersistenceError> {
-        let normalized_email = Self::normalize_email(email)?;
-        let mut guard = self.write_inner();
-        let Some(acct) = guard
-            .accounts
-            .values()
-            .find(|a| a.email.eq_ignore_ascii_case(&normalized_email) && a.deleted_at_ms.is_none())
-            .cloned()
-        else {
-            return Ok(None);
-        };
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-        let code = Self::generate_recovery_code(seq, &acct.account_id, "password_reset", now_ms);
-        let token_key = format!("password_reset:{}:{code}", acct.email.to_ascii_lowercase());
-        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
-        let expires_at_ms = now_ms.saturating_add(ttl_ms);
-
-        guard.auth_recovery_tokens.insert(
-            token_sha256.clone(),
-            AuthRecoveryTokenRecord {
-                token_sha256,
-                account_id: acct.account_id.clone(),
-                email: acct.email.clone(),
-                purpose: "password_reset".to_string(),
-                expires_at_ms,
-                consumed_at_ms: None,
-            },
-        );
-        Ok(Some(AuthRecoveryTokenIssued {
-            token: code,
-            account_id: acct.account_id,
-            email: acct.email,
-            purpose: "password_reset".to_string(),
-            expires_at_ms,
-        }))
-    }
-
-    pub fn confirm_password_reset_token(
-        &self,
-        email: &str,
-        token: &str,
-        new_password: &str,
-        now_ms: u64,
-    ) -> Result<(AccountRecord, AuthSessionRecord), PersistenceError> {
-        let normalized_email = Self::normalize_email(email)?;
-        let cleaned_code = token.trim();
-        if cleaned_code.is_empty() {
-            return Err(PersistenceError::Validation(
-                "recovery code is required".to_string(),
-            ));
-        }
-        let mut guard = self.write_inner();
-        let token_key = format!("password_reset:{normalized_email}:{cleaned_code}");
-        let token_sha256 = sha256_bytes_hex(token_key.as_bytes());
-
-        let account_id = {
-            let rec = guard
-                .auth_recovery_tokens
-                .get_mut(&token_sha256)
-                .ok_or(PersistenceError::Security(SecurityError::Unauthenticated))?;
-            if rec.consumed_at_ms.is_some()
-                || rec.expires_at_ms < now_ms
-                || rec.purpose != "password_reset"
-            {
-                return Err(PersistenceError::Security(SecurityError::Unauthenticated));
-            }
-            rec.consumed_at_ms = Some(now_ms);
-            rec.account_id.clone()
-        };
-
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-        let salt = format!("syllabus-pw-reset-salt-{seq}-{normalized_email}");
-        let pw_hash =
-            hash_password(new_password, salt.as_bytes()).map_err(PersistenceError::Security)?;
-
-        let acct = {
-            let acct_mut = guard
-                .accounts
-                .get_mut(&account_id)
-                .filter(|a| a.deleted_at_ms.is_none())
-                .ok_or(PersistenceError::Security(SecurityError::Unauthenticated))?;
-            acct_mut.password_hash = Some(pw_hash);
-            acct_mut.clone()
-        };
-
-        // Revoke older sessions on password reset for defense-in-depth, then mint a fresh session.
-        for sess in guard.sessions_by_token_sha.values_mut() {
-            if sess.account_id == account_id {
-                sess.revoked = true;
-            }
-        }
-        let session = Self::issue_session_locked(
-            &mut guard,
-            seq,
-            acct.account_id.clone(),
-            acct.roles.clone(),
-        );
-        Ok((acct, session))
     }
 
     pub fn issue_email_verification_token(

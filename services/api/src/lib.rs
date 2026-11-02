@@ -19,9 +19,10 @@ use syllabus_persistence::{
     IdempotencyBeginOutcome, InMemoryTransactionalStore, PersistenceError, StoredIdempotentResponse,
 };
 use syllabus_security::{
-    AuthVerifier, AuthenticatedPrincipal, DevFixedIdentityAuthVerifier, ReleaseFeatureGates,
-    SecurityError,
+    constant_time_eq, AuthVerifier, AuthenticatedPrincipal, ReleaseFeatureGates, SecurityError,
 };
+#[cfg(test)]
+use syllabus_security::{AppEnvironment, DevFixedIdentityAuthVerifier};
 
 pub(crate) mod handlers_account;
 pub(crate) mod handlers_auth;
@@ -30,6 +31,7 @@ pub(crate) mod handlers_commerce;
 pub(crate) mod handlers_learning;
 pub(crate) mod handlers_syllabus;
 
+#[cfg(test)]
 pub(crate) const DEFAULT_DEV_ACCOUNT_ID: &str = "00000000-0000-4000-8000-000000000001";
 pub(crate) const DEFAULT_SYLLABUS_ID: &str = "cur-learner-a-1";
 pub(crate) const HEADER_IDEMPOTENCY_KEY: &str = "idempotency-key";
@@ -45,6 +47,10 @@ pub(crate) fn current_epoch_ms() -> u64 {
 }
 
 struct FailClosedAuthVerifier;
+
+fn valid_32_byte_hex_secret(value: &str) -> bool {
+    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
 
 impl AuthVerifier for FailClosedAuthVerifier {
     fn verify_bearer_token(
@@ -62,6 +68,7 @@ pub struct ApiAppState {
     pub store: InMemoryTransactionalStore,
     pub outbox: OutboxJobQueue,
     pub auth_verifier: Arc<dyn AuthVerifier>,
+    pub(crate) auth_exchange_secret: Option<String>,
 }
 
 impl ApiAppState {
@@ -74,22 +81,51 @@ impl ApiAppState {
     /// Creates a new `ApiAppState` bound to the provided transactional store.
     #[must_use]
     pub fn with_store(gates: ReleaseFeatureGates, store: InMemoryTransactionalStore) -> Self {
-        let auth_verifier: Arc<dyn AuthVerifier> =
-            match DevFixedIdentityAuthVerifier::new(gates.env, DEFAULT_DEV_ACCOUNT_ID) {
-                Ok(verifier) => Arc::new(verifier),
-                Err(_) => Arc::new(FailClosedAuthVerifier),
-            };
+        #[cfg(test)]
+        let auth_verifier: Arc<dyn AuthVerifier> = if gates.env.is_local_dev_or_test() {
+            Arc::new(
+                DevFixedIdentityAuthVerifier::new(AppEnvironment::Test, DEFAULT_DEV_ACCOUNT_ID)
+                    .expect("test identity verifier initializes in Test"),
+            )
+        } else {
+            Arc::new(FailClosedAuthVerifier)
+        };
+        #[cfg(not(test))]
+        let auth_verifier: Arc<dyn AuthVerifier> = Arc::new(FailClosedAuthVerifier);
         Self {
             gates,
             store,
             outbox: OutboxJobQueue::new(OutboxQueueConfig::default()),
             auth_verifier,
+            auth_exchange_secret: std::env::var("AUTH_EXCHANGE_SECRET")
+                .ok()
+                .filter(|value| valid_32_byte_hex_secret(value)),
         }
     }
 
-    /// Creates an `ApiAppState` backed by PostgreSQL when `DATABASE_URL` is configured (or
-    /// in-memory + open Git catalog when `DATABASE_URL` is unset).
+    /// Creates an `ApiAppState` backed by PostgreSQL when `DATABASE_URL` is configured.
+    /// Development and test may use an in-memory store when it is absent.
     pub fn new_from_env(gates: ReleaseFeatureGates) -> Result<Self, PersistenceError> {
+        if !std::env::var("AUTH_EXCHANGE_SECRET")
+            .ok()
+            .as_deref()
+            .is_some_and(valid_32_byte_hex_secret)
+        {
+            return Err(PersistenceError::Validation(
+                "AUTH_EXCHANGE_SECRET must be 32 random bytes encoded as 64 hex characters"
+                    .to_string(),
+            ));
+        }
+        if !std::env::var("BILLING_WEBHOOK_SECRET")
+            .ok()
+            .as_deref()
+            .is_some_and(valid_32_byte_hex_secret)
+        {
+            return Err(PersistenceError::Validation(
+                "BILLING_WEBHOOK_SECRET must be 32 random bytes encoded as 64 hex characters"
+                    .to_string(),
+            ));
+        }
         let store = InMemoryTransactionalStore::open_from_env()?;
         Ok(Self::with_store(gates, store))
     }
@@ -100,6 +136,22 @@ impl ApiAppState {
         headers: &HeaderMap,
     ) -> Result<AuthenticatedPrincipal, PersistenceError> {
         authenticate_request(self, headers)
+    }
+
+    pub(crate) fn require_auth_exchange(
+        &self,
+        headers: &HeaderMap,
+    ) -> Result<(), PersistenceError> {
+        let valid = self.auth_exchange_secret.as_deref().is_some_and(|secret| {
+            headers
+                .get("x-auth-exchange-secret")
+                .is_some_and(|provided| constant_time_eq(provided.as_bytes(), secret.as_bytes()))
+        });
+        if valid {
+            Ok(())
+        } else {
+            Err(PersistenceError::Security(SecurityError::Unauthenticated))
+        }
     }
 
     /// Executes a mandatory idempotent HTTP command, ensuring that any `Acquired` lock is
@@ -310,13 +362,11 @@ pub(crate) fn build_v1_routes() -> Router<ApiAppState> {
 
 fn auth_and_core_routes() -> Router<ApiAppState> {
     Router::new()
-        // Companion auth session, email signup/login, and OAuth 2.0 + PKCE routes
+        // OAuth 2.0 and authenticated session routes
         .route(
             "/v1/auth/providers",
             get(handlers_auth::list_auth_providers_handler),
         )
-        .route("/v1/auth/signup", post(handlers_auth::signup_email_handler))
-        .route("/v1/auth/login", post(handlers_auth::login_email_handler))
         .route(
             "/v1/auth/oauth/{provider}/authorize",
             get(handlers_auth::oauth_authorize_url_handler),
@@ -327,19 +377,8 @@ fn auth_and_core_routes() -> Router<ApiAppState> {
         )
         .route(
             "/v1/auth/session",
-            post(handlers_auth::create_auth_session_handler),
-        )
-        .route(
-            "/v1/auth/session",
-            get(handlers_auth::get_auth_session_handler),
-        )
-        .route(
-            "/v1/auth/session",
-            delete(handlers_auth::delete_auth_session_handler),
-        )
-        .route(
-            "/v1/auth/sessions",
-            post(handlers_auth::create_auth_session_handler),
+            get(handlers_auth::get_auth_session_handler)
+                .delete(handlers_auth::delete_auth_session_handler),
         )
         .route(
             "/v1/auth/sessions/current",
@@ -349,15 +388,7 @@ fn auth_and_core_routes() -> Router<ApiAppState> {
             "/v1/auth/sessions/current",
             delete(handlers_auth::delete_auth_session_handler),
         )
-        // Password recovery, email verification, WebAuthn passkeys & durable web workspace routes
-        .route(
-            "/v1/auth/password-reset/request",
-            post(handlers_auth::request_password_reset_handler),
-        )
-        .route(
-            "/v1/auth/password-reset/confirm",
-            post(handlers_auth::confirm_password_reset_handler),
-        )
+        // Email verification, WebAuthn passkeys, and durable web workspace routes
         .route(
             "/v1/auth/email-verification/request",
             post(handlers_auth::request_email_verification_handler),
@@ -365,10 +396,6 @@ fn auth_and_core_routes() -> Router<ApiAppState> {
         .route(
             "/v1/auth/email-verification/confirm",
             post(handlers_auth::confirm_email_verification_handler),
-        )
-        .route(
-            "/v1/auth/passkeys",
-            get(handlers_auth::lookup_passkeys_for_auth_handler),
         )
         .route(
             "/v1/auth/passkeys/session",
@@ -1058,3 +1085,15 @@ pub(crate) fn json_string_map(payload: &Value, keys: &[&str]) -> BTreeMap<String
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod auth_secret_tests {
+    use super::valid_32_byte_hex_secret;
+
+    #[test]
+    fn exchange_secret_requires_a_full_hex_key() {
+        assert!(!valid_32_byte_hex_secret("short"));
+        assert!(!valid_32_byte_hex_secret(&"g".repeat(64)));
+        assert!(valid_32_byte_hex_secret(&"a1".repeat(32)));
+    }
+}

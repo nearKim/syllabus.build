@@ -13,7 +13,6 @@ use syllabus_persistence::{
 use tower::ServiceExt;
 
 use super::*;
-use crate::handlers_commerce::DEFAULT_WEBHOOK_SIGNING_SECRET;
 
 fn test_app() -> (ApiAppState, Router) {
     let state = ApiAppState::new(ReleaseFeatureGates::default());
@@ -58,21 +57,24 @@ async fn healthz_returns_spec_hash_and_visible_release_gates() {
 
 #[tokio::test]
 async fn s87_auth_session_lifecycle_create_inspect_and_delete_revokes_session() {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
+    let mut state = ApiAppState::new(ReleaseFeatureGates::default());
+    state.auth_exchange_secret = Some("test-auth-exchange-secret".to_string());
     let app = build_router_with_state(state);
 
-    // 1. POST /v1/auth/session establishes an authenticated session
+    // A verified web OAuth exchange establishes an authenticated session.
     let create_resp = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/session")
+                .uri("/v1/auth/oauth/google/callback")
                 .header("content-type", "application/json")
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
                         "email": "learner-a@example.test",
-                        "authentication_code": "123456"
+                        "provider_subject": "google-learner-a",
+                        "email_verified": true
                     }))
                     .unwrap(),
                 ))
@@ -88,7 +90,7 @@ async fn s87_auth_session_lifecycle_create_inspect_and_delete_revokes_session() 
     );
     let token = session_json["session_token"].as_str().unwrap().to_string();
 
-    // 2. GET /v1/auth/session returns active session
+    // GET /v1/auth/session returns the active session.
     let get_resp = app
         .clone()
         .oneshot(
@@ -103,7 +105,7 @@ async fn s87_auth_session_lifecycle_create_inspect_and_delete_revokes_session() 
         .unwrap();
     assert_eq!(get_resp.status(), StatusCode::OK);
 
-    // 3. DELETE /v1/auth/session revokes the session token
+    // DELETE /v1/auth/session revokes the session token.
     let del_resp = app
         .clone()
         .oneshot(
@@ -118,7 +120,7 @@ async fn s87_auth_session_lifecycle_create_inspect_and_delete_revokes_session() 
         .unwrap();
     assert_eq!(del_resp.status(), StatusCode::NO_CONTENT);
 
-    // 4. Subsequent GET /v1/auth/session with revoked token returns 401 Unauthorized (@S87)
+    // A revoked session returns 401.
     let after_del_resp = app
         .oneshot(
             Request::builder()
@@ -141,8 +143,8 @@ async fn s29_s36_s64_s87_cross_tenant_negative_cases_forbid_learner_curator_and_
     // Actors who do NOT own Learner B (`00000000-0000-4000-8000-000000000002`)
     let unauthorized_tokens = [
         "dev-account:00000000-0000-4000-8000-000000000001", // Learner A
-        "dev-curator",                                      // Curator (@S36)
-        "dev-moderator",                                    // Moderator (@S64)
+        "dev-admin",                                        // Curator (@S36)
+        "dev-admin",                                        // Moderator (@S64)
     ];
 
     for token in unauthorized_tokens {
@@ -234,8 +236,8 @@ async fn s29_s36_s64_s87_cross_tenant_negative_cases_forbid_learner_curator_and_
             .unwrap();
         assert_eq!(
             cred_resp.status(),
-            StatusCode::FORBIDDEN,
-            "token `{token}` must be forbidden from reading Learner B credential"
+            StatusCode::NOT_FOUND,
+            "token `{token}` must not discover Learner B credential"
         );
     }
 
@@ -594,34 +596,19 @@ async fn t01_idempotency_key_http_replay_mismatch_inflight_and_5xx_recovery() {
 #[tokio::test]
 async fn private_alpha_tracer_bullet_end_to_end_flow() {
     let state = ApiAppState::new(ReleaseFeatureGates::default());
-    let app = build_router_with_state(state.clone());
-
-    // 1. Auth Session for Learner A
-    let auth_resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/auth/session")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "email": "learner.a@example.com",
-                        "authentication_code": "123456"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
+    let auth = state
+        .store
+        .authenticate_oauth_identity(
+            syllabus_security::OAuthProvider::Google,
+            "tracer-learner-a",
+            "learner-a@example.test",
+            true,
+            None,
+            None,
         )
-        .await
-        .unwrap();
-    assert_eq!(auth_resp.status(), StatusCode::OK);
-    let auth_body = read_body_json(auth_resp).await;
-    assert_eq!(
-        auth_body["account_id"],
-        "00000000-0000-4000-8000-000000000001"
-    );
-    let session_token = auth_body["session_token"].as_str().unwrap().to_string();
+        .expect("verified fixture identity");
+    let session_token = auth.session.token;
+    let app = build_router_with_state(state.clone());
 
     // 2. Goal Intake (POST /v1/goals/interpret)
     let goal_resp = app
@@ -971,7 +958,7 @@ async fn private_alpha_tracer_bullet_end_to_end_flow() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/catalog/resources/synthetic-resource-tokenization-v1/quarantine")
-                .header("authorization", "Bearer dev-curator")
+                .header("authorization", "Bearer dev-admin")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -1064,7 +1051,7 @@ async fn t02_t03_catalog_filter_review_and_generation_cancel_routes() {
             Request::builder()
                 .method("POST")
                 .uri("/v1/catalog/resources/res-rag-unknown-price-v1/reviews")
-                .header("authorization", "Bearer dev-curator")
+                .header("authorization", "Bearer dev-admin")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -1219,7 +1206,7 @@ async fn t05_assessments_assistance_cap_prereq_gate_defects_and_key_correction_r
     let attempt_body = read_body_json(attempt_resp).await;
     assert_eq!(attempt_body["passed"], false);
 
-    // Learner reports defective item -> suspends gate
+    // Learner report opens review without changing the shared gate.
     let defect_resp = app
         .clone()
         .oneshot(
@@ -1241,7 +1228,7 @@ async fn t05_assessments_assistance_cap_prereq_gate_defects_and_key_correction_r
         .unwrap();
     assert_eq!(defect_resp.status(), StatusCode::CREATED);
     let defect_body = read_body_json(defect_resp).await;
-    assert_eq!(defect_body["gate_suspended"], true);
+    assert_eq!(defect_body["gate_suspended"], false);
 
     // Curator issues answer-key correction
     let corr_resp = app
@@ -1250,7 +1237,7 @@ async fn t05_assessments_assistance_cap_prereq_gate_defects_and_key_correction_r
             Request::builder()
                 .method("POST")
                 .uri("/v1/assessments/assess-anchor-tokenization/key-corrections")
-                .header("authorization", "Bearer dev-curator")
+                .header("authorization", "Bearer dev-admin")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -1359,10 +1346,10 @@ async fn t06_t12_workload_spaced_reviews_diagnostics_waivers_math_depth_and_adap
         .unwrap();
     assert_eq!(diag_att_resp.status(), StatusCode::OK);
     let diag_att_body = read_body_json(diag_att_resp).await;
-    assert_eq!(
-        diag_att_body["granted_waiver_ids"][0],
-        "waiver-diag-rag-1-objective-tokenization"
-    );
+    assert!(diag_att_body["granted_waiver_ids"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let diag_stop_resp = app
         .clone()
@@ -1388,7 +1375,7 @@ async fn t06_t12_workload_spaced_reviews_diagnostics_waivers_math_depth_and_adap
     assert_eq!(diag_stop_body["math_depth_preference"], "intuitive");
     assert_eq!(
         diag_stop_body["objective_states"]["objective-tokenization"],
-        "demonstrated"
+        "needs_review"
     );
     assert_eq!(
         diag_stop_body["objective_states"]["objective-rag-evaluation"],
@@ -1741,7 +1728,10 @@ async fn t08_reminders_iana_timezone_dst_suppression_push_subscriptions_and_snoo
 #[tokio::test]
 async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconciliation_and_multi_provider_byok(
 ) {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
+    const TEST_WEBHOOK_SECRET: &str = "test-only-billing-webhook-secret";
+    std::env::set_var("BILLING_WEBHOOK_SECRET", TEST_WEBHOOK_SECRET);
+    let mut state = ApiAppState::new(ReleaseFeatureGates::default());
+    state.auth_exchange_secret = Some("test-auth-exchange-secret".to_string());
     let app = build_router_with_state(state.clone());
     let learner_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
 
@@ -1807,6 +1797,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         "webhook_event_id": "evt-wh-100",
         "event_type": "checkout.session.completed",
         "checkout_session_id": "chk-sess-100",
+        "amount_minor_units": 500,
         "occurred_at": "2026-10-20T19:02:00Z"
     }))
     .unwrap();
@@ -1827,9 +1818,35 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         .unwrap();
     assert_eq!(bad_wh_resp.status(), StatusCode::UNAUTHORIZED);
 
+    let wrong_amount_payload = serde_json::to_vec(&json!({
+        "provider_event_id": "evt-wh-wrong-amount",
+        "event_type": "checkout.session.completed",
+        "checkout_session_id": "chk-sess-100",
+        "amount_minor_units": 5
+    }))
+    .unwrap();
+    let wrong_amount_sig = syllabus_security::compute_webhook_hmac_sha256(
+        TEST_WEBHOOK_SECRET.as_bytes(),
+        &wrong_amount_payload,
+    );
+    let wrong_amount_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/billing/webhooks")
+                .header("x-billing-signature", format!("sha256={wrong_amount_sig}"))
+                .header("content-type", "application/json")
+                .body(Body::from(wrong_amount_payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(wrong_amount_resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
     // Valid HMAC signature credits wallet (500 initial + 500 = 1000)
     let valid_sig = syllabus_security::compute_webhook_hmac_sha256(
-        DEFAULT_WEBHOOK_SIGNING_SECRET,
+        TEST_WEBHOOK_SECRET.as_bytes(),
         &webhook_payload,
     );
     let ok_wh_resp = app
@@ -1848,7 +1865,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
     assert_eq!(ok_wh_resp.status(), StatusCode::OK);
     let wh_body = read_body_json(ok_wh_resp).await;
     assert_eq!(wh_body["replayed"], false);
-    assert_eq!(wh_body["wallet"]["available_minor_units"], 1000);
+    assert_eq!(wh_body["wallet"]["available_minor_units"], 500);
 
     // Replay of the same webhook_event_id is a no-op (`replayed: true`, balance stays 1000)
     let replay_wh_resp = app
@@ -1867,7 +1884,33 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
     assert_eq!(replay_wh_resp.status(), StatusCode::OK);
     let replay_wh_body = read_body_json(replay_wh_resp).await;
     assert_eq!(replay_wh_body["replayed"], true);
-    assert_eq!(replay_wh_body["wallet"]["available_minor_units"], 1000);
+    assert_eq!(replay_wh_body["wallet"]["available_minor_units"], 500);
+
+    let duplicate_payload = serde_json::to_vec(&json!({
+        "provider_event_id": "evt-wh-101",
+        "event_type": "checkout.session.completed",
+        "checkout_session_id": "chk-sess-100",
+        "amount_minor_units": 500
+    }))
+    .unwrap();
+    let duplicate_sig = syllabus_security::compute_webhook_hmac_sha256(
+        TEST_WEBHOOK_SECRET.as_bytes(),
+        &duplicate_payload,
+    );
+    let duplicate_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/billing/webhooks")
+                .header("x-billing-signature", format!("sha256={duplicate_sig}"))
+                .header("content-type", "application/json")
+                .body(Body::from(duplicate_payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(duplicate_resp.status(), StatusCode::CONFLICT);
 
     // 3. T07B: Create usage quote with 4 distinct cost buckets, reserve credits, and settle at min(actual, cap)
     let quote_resp = app
@@ -1929,7 +1972,51 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         .unwrap();
     assert_eq!(resv_resp.status(), StatusCode::CREATED);
 
-    // Settle at actual=260 (< cap=400) -> settles 260 and releases 140 back to available balance (1000 - 260 = 740)
+    for (path, payload) in [
+        (
+            "/v1/reservations/resv-hosted-1/settle",
+            json!({"actual_cost_minor_units": 0}),
+        ),
+        (
+            "/v1/reservations/resv-hosted-1/release",
+            json!({"reason": "self_release"}),
+        ),
+        (
+            "/v1/reservations/resv-hosted-1/reconcile-timeout",
+            json!({"outcome": "unconfirmed_after_deadline"}),
+        ),
+    ] {
+        let denied = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(path)
+                    .header("authorization", learner_bearer)
+                    .header("content-type", "application/json")
+                    .body(Body::from(payload.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+    }
+    let held_wallet = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/me/wallet")
+                .header("authorization", learner_bearer)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let held_wallet = read_body_json(held_wallet).await;
+    assert_eq!(held_wallet["available_minor_units"], 100);
+    assert_eq!(held_wallet["reserved_minor_units"], 400);
+
+    // Settle at actual=260 (< cap=400) -> settles 260 and releases 140 back to available balance (500 - 260 = 240)
     let settle_resp = app
         .clone()
         .oneshot(
@@ -1937,6 +2024,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
                 .method("POST")
                 .uri("/v1/reservations/resv-hosted-1/settle")
                 .header("authorization", learner_bearer)
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -1958,11 +2046,11 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         settle_body["reservation"]["reservation"]["released_minor_units"],
         140
     );
-    assert_eq!(settle_body["wallet"]["available_minor_units"], 740);
+    assert_eq!(settle_body["wallet"]["available_minor_units"], 240);
     assert_eq!(settle_body["wallet"]["reserved_minor_units"], 0);
 
     // 4. Ambiguous timeout reconciliation releases reservation if unconfirmed after deadline (@S84)
-    let _ = app
+    let timeout_quote_resp = app
         .clone()
         .oneshot(
             Request::builder()
@@ -1974,7 +2062,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
                     serde_json::to_vec(&json!({
                         "quote_id": "quote-timeout-1",
                         "billing_mode": "hosted_credits",
-                        "max_reservation_cap_minor_units": 300
+                        "max_reservation_cap_minor_units": 200
                     }))
                     .unwrap(),
                 ))
@@ -1982,7 +2070,8 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         )
         .await
         .unwrap();
-    let _ = app
+    assert_eq!(timeout_quote_resp.status(), StatusCode::CREATED);
+    let timeout_reservation_resp = app
         .clone()
         .oneshot(
             Request::builder()
@@ -2003,6 +2092,28 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         )
         .await
         .unwrap();
+    assert_eq!(timeout_reservation_resp.status(), StatusCode::CREATED);
+
+    let other_owner_resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/reservations/resv-timeout-1/reconcile-timeout")
+                .header(
+                    "authorization",
+                    "Bearer dev-account:00000000-0000-4000-8000-000000000002",
+                )
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({"outcome": "unconfirmed_after_deadline"}).to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(other_owner_resp.status(), StatusCode::FORBIDDEN);
 
     let recon_resp = app
         .clone()
@@ -2011,6 +2122,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
                 .method("POST")
                 .uri("/v1/reservations/resv-timeout-1/reconcile-timeout")
                 .header("authorization", learner_bearer)
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
                 .header("content-type", "application/json")
                 .body(Body::from(
                     serde_json::to_vec(&json!({
@@ -2032,7 +2144,7 @@ async fn t07b_t07c_t07d_hosted_credit_ledger_quotes_reservations_webhooks_reconc
         recon_body["reservation"]["reservation"]["settled_minor_units"],
         0
     );
-    assert_eq!(recon_body["wallet"]["available_minor_units"], 740);
+    assert_eq!(recon_body["wallet"]["available_minor_units"], 240);
 }
 
 #[tokio::test]
@@ -2042,7 +2154,7 @@ async fn t13_public_templates_preview_sanitization_discovery_upvotes_moderation_
     let app = build_router_with_state(state.clone());
     let learner_a_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000001";
     let learner_b_bearer = "Bearer dev-account:00000000-0000-4000-8000-000000000002";
-    let moderator_bearer = "Bearer dev-moderator";
+    let moderator_bearer = "Bearer dev-admin";
 
     // 1. Preview publication strips private fields and computes JCS preview_sha256 (@S56, @S57)
     let prev_resp = app
@@ -2536,9 +2648,17 @@ async fn catalog_search_and_index_tfidf_ranking_incremental_auto_index_and_cheap
     let eligible = cat_body["eligible_resources"]
         .as_array()
         .expect("eligible_resources array");
-    assert!(eligible
+    assert!(!eligible
         .iter()
         .any(|r| r["resource_version_id"] == json!("res-auto-flash-attention-v1")));
+    assert_eq!(
+        state
+            .store
+            .get_catalog_resource_version("res-auto-flash-attention-v1")
+            .unwrap()
+            .review_status,
+        syllabus_domain::ResourceReviewStatus::UnderReview
+    );
 
     // 2. Verify BYOK generation defaults to cheap frontier model (`gpt-6-mini`) and records it in /v1/me/usage
     let create_cred_resp = app
@@ -2608,143 +2728,232 @@ async fn catalog_search_and_index_tfidf_ranking_incremental_auto_index_and_cheap
 }
 
 #[tokio::test]
-async fn oauth_pkce_and_email_signup_login_http_endpoints() {
-    let state = ApiAppState::new(ReleaseFeatureGates::default());
-    let app = build_router_with_state(state);
+async fn duplicate_web_discovery_in_one_request_is_registered_once() {
+    let (state, app) = test_app();
+    let initial_count = state.store.list_catalog_resources(false).len();
+    let discovery = json!({
+        "resource_id": "duplicate-discovery",
+        "resource_version_id": "duplicate-discovery-v1",
+        "title": "Novel systems resource",
+        "canonical_url": "https://example.edu/novel-systems-resource",
+        "resource_type": "book",
+        "subject": "Engineering",
+        "topic_tags": ["NovelTopic"],
+        "supported_math_depths": ["formal"],
+        "supported_roles": ["instruction"],
+        "access_model": "free_public",
+        "price_minor_units": 0,
+        "index_descriptor": {
+            "index_kind": "book_index",
+            "authors": [],
+            "publisher": "Example University",
+            "edition": null,
+            "brief_summary": "Novel systems resource",
+            "table_of_contents": [],
+            "content_excerpts": null
+        }
+    });
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/catalog/search-and-index")
+                .header(
+                    "authorization",
+                    "Bearer dev-account:00000000-0000-4000-8000-000000000001",
+                )
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "goal_title": "Novel systems",
+                        "subject": "Engineering",
+                        "topic_tags": ["NovelTopic"],
+                        "requested_mode": "search_all_topics",
+                        "web_search_discoveries": [discovery.clone(), discovery]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = read_body_json(response).await;
+    assert_eq!(body["newly_indexed_resources"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        state.store.list_catalog_resources(false).len(),
+        initial_count + 1
+    );
+    assert_eq!(
+        state
+            .store
+            .get_catalog_resource_version("duplicate-discovery-v1")
+            .unwrap()
+            .review_status,
+        syllabus_domain::ResourceReviewStatus::UnderReview
+    );
+}
 
-    // 1. GET /v1/auth/providers lists Google and GitHub with dev sandbox readiness
-    let prov_resp = app
+#[tokio::test]
+async fn oauth_and_passkey_exchanges_require_server_secret() {
+    let mut state = ApiAppState::new(ReleaseFeatureGates::default());
+    state.auth_exchange_secret = Some("test-auth-exchange-secret".to_string());
+    let app = build_router_with_state(state.clone());
+
+    let providers = app
         .clone()
         .oneshot(
             Request::builder()
-                .method("GET")
                 .uri("/v1/auth/providers")
                 .body(Body::empty())
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(prov_resp.status(), StatusCode::OK);
-    let prov_json = read_body_json(prov_resp).await;
-    let providers = prov_json["providers"].as_array().expect("providers array");
-    assert_eq!(providers.len(), 2);
-    assert_eq!(providers[0]["provider"], json!("google"));
-    assert_eq!(providers[1]["provider"], json!("github"));
+    assert_eq!(providers.status(), StatusCode::OK);
+    let provider_body = read_body_json(providers).await;
+    assert_eq!(provider_body["email_password_enabled"], json!(false));
+    assert_eq!(provider_body["providers"].as_array().unwrap().len(), 2);
 
-    // 2. POST /v1/auth/signup creates a hashed-password account and returns 201 + session token
-    let signup_resp = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/auth/signup")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.build",
-                        "password": "MayaPassword2026!",
-                        "display_name": "Maya Lin"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(signup_resp.status(), StatusCode::CREATED);
-    let signup_json = read_body_json(signup_resp).await;
-    let maya_account_id = signup_json["account_id"].as_str().unwrap().to_string();
-    assert_eq!(signup_json["display_name"], json!("Maya Lin"));
-    assert_eq!(signup_json["is_new_account"], json!(true));
-
-    // 3. POST /v1/auth/login rejects wrong password (401) and accepts right password (200)
-    let bad_login = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/auth/login")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.build",
-                        "password": "WrongPassword!"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(bad_login.status(), StatusCode::UNAUTHORIZED);
-
-    let ok_login = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/auth/login")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "email": "maya@syllabus.build",
-                        "password": "MayaPassword2026!"
-                    }))
-                    .unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(ok_login.status(), StatusCode::OK);
-
-    // 4. GET /v1/auth/oauth/google/authorize builds RFC 7636 S256 URL, and POST callback verifies PKCE & links Maya
-    let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
-    let expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
-    let authz_resp = app
+    for path in [
+        "/v1/auth/signup",
+        "/v1/auth/login",
+        "/v1/auth/session",
+        "/v1/auth/sessions",
+        "/v1/auth/password-reset/request",
+        "/v1/auth/password-reset/confirm",
+    ] {
+        let response = app
             .clone()
             .oneshot(
                 Request::builder()
-                    .method("GET")
-                    .uri(format!(
-                        "/v1/auth/oauth/google/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fauth%2Foauth%2Fgoogle%2Fcallback&state=st123&code_verifier={verifier}"
-                    ))
+                    .method("POST")
+                    .uri(path)
                     .body(Body::empty())
                     .unwrap(),
             )
             .await
             .unwrap();
-    assert_eq!(authz_resp.status(), StatusCode::OK);
-    let authz_json = read_body_json(authz_resp).await;
-    assert!(authz_json["authorize_url"]
-        .as_str()
-        .unwrap()
-        .contains(&format!("code_challenge={expected_challenge}")));
+        assert!(
+            matches!(
+                response.status(),
+                StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+            ),
+            "{path}"
+        );
+    }
 
-    let cb_resp = app
+    let oauth_body = json!({
+        "provider_subject": "google-admin-email",
+        "email": "ada@syllabus.build",
+        "email_verified": true
+    });
+    for secret in [None, Some("wrong-secret")] {
+        let mut request = Request::builder()
+            .method("POST")
+            .uri("/v1/auth/oauth/google/callback")
+            .header("content-type", "application/json");
+        if let Some(secret) = secret {
+            request = request.header("x-auth-exchange-secret", secret);
+        }
+        let response = app
+            .clone()
+            .oneshot(
+                request
+                    .body(Body::from(serde_json::to_vec(&oauth_body).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    let request = || {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/auth/oauth/google/callback")
+            .header("content-type", "application/json")
+            .header("x-auth-exchange-secret", "test-auth-exchange-secret")
+            .body(Body::from(serde_json::to_vec(&oauth_body).unwrap()))
+            .unwrap()
+    };
+    let first = app.clone().oneshot(request()).await.unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+    let first_body = read_body_json(first).await;
+    assert_eq!(first_body["roles"], json!(["user"]));
+    assert_eq!(first_body["auth_provider"], json!("google"));
+    let first_token = first_body["session_token"].as_str().unwrap();
+    assert_eq!(first_token.len(), 64);
+
+    let second = app.clone().oneshot(request()).await.unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+    let second_body = read_body_json(second).await;
+    assert_ne!(first_body["session_token"], second_body["session_token"]);
+
+    let account_id = first_body["account_id"].as_str().unwrap();
+    let principal = state
+        .store
+        .resolve_session_token(first_token)
+        .unwrap()
+        .unwrap();
+    state
+        .store
+        .put_web_passkey(
+            &principal,
+            "test-passkey",
+            json!({"id":"test-passkey","counter":0}),
+            current_epoch_ms(),
+        )
+        .unwrap();
+    assert_eq!(principal.account_id, account_id);
+
+    let no_secret = app
+        .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/v1/auth/oauth/google/callback")
+                .uri("/v1/auth/passkeys/session")
                 .header("content-type", "application/json")
-                .body(Body::from(
-                    serde_json::to_vec(&json!({
-                        "provider_subject": "google-uid-777",
-                        "email": "maya@syllabus.build",
-                        "email_verified": true,
-                        "display_name": "Maya Lin",
-                        "code_verifier": verifier,
-                        "expected_code_challenge": expected_challenge
-                    }))
-                    .unwrap(),
-                ))
+                .body(Body::from(r#"{"credential_id":"test-passkey"}"#))
                 .unwrap(),
         )
         .await
         .unwrap();
-    assert_eq!(cb_resp.status(), StatusCode::OK);
-    let cb_json = read_body_json(cb_resp).await;
-    assert_eq!(cb_json["account_id"], json!(maya_account_id));
-    assert_eq!(cb_json["auth_provider"], json!("google"));
-    assert_eq!(cb_json["is_new_account"], json!(false));
+    assert_eq!(no_secret.status(), StatusCode::UNAUTHORIZED);
+    let exposed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/v1/auth/passkeys/test-passkey")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(exposed.status(), StatusCode::UNAUTHORIZED);
+
+    let verified = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/passkeys/session")
+                .header("content-type", "application/json")
+                .header("x-auth-exchange-secret", "test-auth-exchange-secret")
+                .body(Body::from(r#"{"credential_id":"test-passkey"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(verified.status(), StatusCode::OK);
+    let passkey_body = read_body_json(verified).await;
+    assert_eq!(passkey_body["roles"], json!(["user"]));
+
+    let mut unconfigured = ApiAppState::new(ReleaseFeatureGates::default());
+    unconfigured.auth_exchange_secret = None;
+    let closed = build_router_with_state(unconfigured)
+        .oneshot(request())
+        .await
+        .unwrap();
+    assert_eq!(closed.status(), StatusCode::UNAUTHORIZED);
 }

@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use syllabus_domain::{
     AssistanceLevel, DiagnosticStopReason, LearnerGateDecision, MathDepthPreference,
 };
-use syllabus_persistence::PersistenceError;
+use syllabus_persistence::{DiagnosticSessionRecord, PersistenceError};
 use syllabus_security::AuthenticatedPrincipal;
 
 use crate::{
@@ -118,16 +118,15 @@ pub(crate) async fn submit_assessment_attempt_handler(
         |key_str| {
             let attempt_id = json_str(&payload, &["attempt_id"])
                 .map(str::to_string)
-                .unwrap_or_else(|| format!("att-{assessment_id}-{key_str}"));
+                .unwrap_or_else(|| {
+                    format!("att-{}-{assessment_id}-{key_str}", principal.account_id)
+                });
             let session_id = json_str(&payload, &["session_id"]).unwrap_or(DEFAULT_SESSION_ID);
             let assistance_str = json_str(&payload, &["assistance_level"])
                 .unwrap_or(DEFAULT_DECLARED_ASSISTANCE_LEVEL);
             let declared_assistance = AssistanceLevel::from_wire(assistance_str)
                 .map_err(|err| PersistenceError::Validation(err.to_string()))?;
             let responses = json_string_map(&payload, &["responses"]);
-            let explicit_score_bp =
-                json_u64(&payload, &["score_bp"]).map(|n| u32::try_from(n).unwrap_or(u32::MAX));
-
             let record = state.store.submit_assessment_attempt(
                 &principal,
                 &assessment_id,
@@ -135,7 +134,6 @@ pub(crate) async fn submit_assessment_attempt_handler(
                 session_id,
                 declared_assistance,
                 responses,
-                explicit_score_bp,
             )?;
             let body = serde_json::to_value(&record).unwrap_or(Value::Null);
             Ok((StatusCode::CREATED, body, None))
@@ -253,7 +251,8 @@ pub(crate) async fn start_diagnostic_handler(
     AuthPrincipal(principal): AuthPrincipal,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    let diagnostic_id = json_str(&payload, &["diagnostic_id"]).unwrap_or(DEFAULT_DIAGNOSTIC_ID);
+    let default_diagnostic_id = format!("{DEFAULT_DIAGNOSTIC_ID}-{}", principal.account_id);
+    let diagnostic_id = json_str(&payload, &["diagnostic_id"]).unwrap_or(&default_diagnostic_id);
     let syllabus_id = json_str(&payload, &["syllabus_id"]).map(str::to_string);
     let topic_id = json_str(&payload, &["topic_id", "topic"]).unwrap_or(DEFAULT_TOPIC_ID);
     let candidate_objectives = json_string_vec(&payload, "objective_ids");
@@ -269,7 +268,7 @@ pub(crate) async fn start_diagnostic_handler(
         candidate_objectives,
         math_depth,
     )?;
-    Ok((StatusCode::CREATED, Json(rec)).into_response())
+    Ok((StatusCode::CREATED, Json(diagnostic_public_view(&rec))).into_response())
 }
 
 pub(crate) async fn get_diagnostic_handler(
@@ -280,7 +279,7 @@ pub(crate) async fn get_diagnostic_handler(
     let rec = state
         .store
         .get_diagnostic_session(&principal, &diagnostic_id)?;
-    Ok((StatusCode::OK, Json(rec)).into_response())
+    Ok((StatusCode::OK, Json(diagnostic_public_view(&rec))).into_response())
 }
 
 pub(crate) async fn submit_diagnostic_attempt_handler(
@@ -302,7 +301,7 @@ pub(crate) async fn submit_diagnostic_attempt_handler(
         answer,
         assistance,
     )?;
-    Ok((StatusCode::OK, Json(rec)).into_response())
+    Ok((StatusCode::OK, Json(diagnostic_public_view(&rec))).into_response())
 }
 
 #[must_use]
@@ -327,7 +326,24 @@ pub(crate) async fn stop_diagnostic_handler(
     let rec = state
         .store
         .stop_diagnostic_session(&principal, &diagnostic_id, reason)?;
-    Ok((StatusCode::OK, Json(rec)).into_response())
+    Ok((StatusCode::OK, Json(diagnostic_public_view(&rec))).into_response())
+}
+
+fn diagnostic_public_view(rec: &DiagnosticSessionRecord) -> Value {
+    json!({
+        "diagnostic_id": rec.diagnostic_id,
+        "account_id": rec.account_id,
+        "syllabus_id": rec.syllabus_id,
+        "topic_id": rec.topic_id,
+        "status": rec.status,
+        "stop_reason": rec.stop_reason,
+        "math_depth_preference": rec.math_depth_preference,
+        "candidate_objective_ids": rec.candidate_objective_ids,
+        "items": rec.items,
+        "answered_results": rec.answered_results,
+        "objective_states": rec.objective_states,
+        "granted_waiver_ids": rec.granted_waiver_ids,
+    })
 }
 
 pub(crate) async fn preview_adaptation_handler(
@@ -337,7 +353,11 @@ pub(crate) async fn preview_adaptation_handler(
     payload: Option<Json<Value>>,
 ) -> ApiResult {
     let body = payload.map_or_else(|| json!({}), |Json(v)| v);
-    let proposal_id = json_str(&body, &["proposal_id"]).unwrap_or(DEFAULT_ADAPTATION_PROPOSAL_ID);
+    let default_proposal_id = format!(
+        "{DEFAULT_ADAPTATION_PROPOSAL_ID}-{}-{syllabus_id}",
+        principal.account_id
+    );
+    let proposal_id = json_str(&body, &["proposal_id"]).unwrap_or(&default_proposal_id);
     let trigger_kind = json_str(&body, &["trigger_kind"]);
 
     let rec = state.store.create_adaptation_proposal(
@@ -385,8 +405,11 @@ pub(crate) async fn accept_adaptation_body_handler(
     Path(syllabus_id): Path<String>,
     Json(payload): Json<Value>,
 ) -> ApiResult {
-    let proposal_id =
-        json_str(&payload, &["proposal_id"]).unwrap_or(DEFAULT_ADAPTATION_PROPOSAL_ID);
+    let default_proposal_id = format!(
+        "{DEFAULT_ADAPTATION_PROPOSAL_ID}-{}-{syllabus_id}",
+        principal.account_id
+    );
+    let proposal_id = json_str(&payload, &["proposal_id"]).unwrap_or(&default_proposal_id);
     accept_adaptation_inner(
         &state,
         &principal,

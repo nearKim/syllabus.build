@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createSyllabusWebAppController } from "../src/index.ts";
 import { createWebAppServer } from "../src/server.mjs";
+import { backendSessionResponse } from "./helpers/devOAuth.mjs";
 
 function parseCookies(res, jar = new Map()) {
   const setCookies = typeof res.headers.getSetCookie === "function"
@@ -30,49 +31,35 @@ function authDialogOf(html) {
   return html.slice(start, html.indexOf("</dialog>", start));
 }
 
-test("AuthDialog toggles between Log in and Sign up modes with Email + Password first, OAuth/Passkey below, and no Name input", () => {
+test("AuthDialog offers OAuth and passkeys without password or email-code controls", () => {
   const app = createSyllabusWebAppController({ authStatus: "guest", topLevel: "Explore" });
-  app.openDialog("dialog-auth", "login");
-  let html = authDialogOf(app.renderHtml());
-  // Centered brand lockup and headline. No header bar, horizontal divider, or Name field.
-  assert.match(html, /<div class="auth-head"><div class="brand-cluster">[\s\S]*?<span class="brand-title">Syllabus\.build<\/span><\/div><h2 id="dialog-auth-title" class="auth-title">Sign in with email<\/h2><\/div>/);
-  assert.equal(/<hr|dialog-header|auth-divider|auth-name-input/.test(html), false);
-  assert.ok(html.includes('data-action="submit-sign-in" novalidate'), "the product's own messages replace browser bubbles");
-  assert.ok(html.includes('autocomplete="current-password"'));
-  assert.ok(html.includes(">Log in</button>"));
+  app.openDialog("dialog-auth");
+  const html = authDialogOf(app.renderHtml());
+  assert.ok(html.includes('<h2 id="dialog-auth-title" class="auth-title">Sign in</h2>'));
   assert.ok(html.includes('href="/auth/oauth/google"'));
   assert.ok(html.includes('href="/auth/oauth/github"'));
-  assert.ok(html.includes('data-action="sign-in-passkey"><svg'));
-  assert.ok(html.includes('data-action="switch-auth-mode" data-auth-mode="signup">Sign up</button>'));
-  // Email + Password + primary CTA appear before secondary federated/passkey buttons, and close button comes last.
-  assert.ok(html.indexOf('id="auth-email-input"') < html.indexOf('id="auth-password-input"'));
-  assert.ok(html.indexOf('id="auth-password-input"') < html.indexOf('class="btn-primary auth-submit-btn"'));
-  assert.ok(html.indexOf('class="btn-primary auth-submit-btn"') < html.indexOf('href="/auth/oauth/google"'));
-  assert.ok(html.indexOf('class="btn-primary auth-submit-btn"') < html.indexOf('class="auth-close-btn"'));
-
-  app.applyUiAction("toggle-auth-password");
-  html = authDialogOf(app.renderHtml());
-  assert.ok(html.includes('id="auth-password-input" type="text"'));
-  assert.ok(html.includes('aria-pressed="true" aria-label="Hide password"'));
-
-  // Sign up keeps email + password only (no Name input), clears stale messages, and omits passkey sign-in.
-  app.applyUiAction("submit-sign-in", { email: "not-an-email" });
-  assert.ok(authDialogOf(app.renderHtml()).includes('<p class="field-error" role="alert">Enter a valid email address.</p>'));
-  app.applyUiAction("switch-auth-mode", { authMode: "signup" });
-  html = authDialogOf(app.renderHtml());
-  assert.ok(html.includes(">Create your account</h2>"));
-  assert.equal(html.includes("field-error"), false);
-  assert.equal(html.includes('id="auth-name-input"'), false, "Sign up requires only email and password");
-  assert.ok(html.includes('autocomplete="new-password"'));
-  assert.ok(html.includes(">Create account</button>"));
-  assert.equal(html.includes("sign-in-passkey"), false);
-  assert.ok(html.includes('data-action="switch-auth-mode" data-auth-mode="login">Log in</button>'));
+  assert.ok(html.includes('data-action="sign-in-passkey"'));
+  assert.equal(/auth-email-input|auth-password-input|submit-sign-up|request-password-reset|confirm-email-verification/.test(html), false);
 });
 
 test("Local Dev OAuth 2.0 + PKCE S256 sandbox completes full redirect, consent, callback, and session login", async () => {
+  const mockFetch = async (url, init) => {
+    if (String(url).endsWith("/v1/auth/session")) return backendSessionResponse("elena-backend-account");
+    if (String(url).endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      return new Response(JSON.stringify({
+        account_id: "elena-backend-account",
+        session_token: "elena-backend-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+      }), { status: 200 });
+    }
+    return new Response("{}", { status: 503 });
+  };
   const { server } = createWebAppServer({
     initialState: { authStatus: "guest", topLevel: "Explore" },
-    env: { APP_ENV: "development" },
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
+    fetchImpl: mockFetch,
     apiBaseUrl: "http://127.0.0.1:9",
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -106,7 +93,7 @@ test("Local Dev OAuth 2.0 + PKCE S256 sandbox completes full redirect, consent, 
     }
     assert.equal(consentHtml.match(/action="\/auth\/dev-idp\/google\/authorize"/g)?.length, 4);
     assert.equal(consentHtml.match(/name="code_challenge" value="/g)?.length, 4);
-    assert.ok(consentHtml.includes('<span class="dev-oauth-avatar" data-tone="Curator" aria-hidden="true">AD</span>'));
+    assert.ok(consentHtml.includes('<span class="dev-oauth-avatar" data-tone="User" aria-hidden="true">AD</span>'));
     assert.equal(consentHtml.includes('id="dev-oauth-name"'), false);
     assert.ok(consentHtml.includes("Use another account</span>"));
     assert.ok(consentHtml.includes(`?error=access_denied&amp;state=${encodeURIComponent(state)}">Cancel</a>`));
@@ -152,10 +139,11 @@ test("Local Dev OAuth 2.0 + PKCE S256 sandbox completes full redirect, consent, 
   }
 });
 
-test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE_CLIENT_ID is configured, and links existing email signup account", async () => {
+test("Live Google OAuth exchanges the code and accepts only a verified backend session", async () => {
   let capturedVerifier = "";
   const mockFetch = async (url, init) => {
     const u = String(url);
+    if (u.endsWith("/v1/auth/session")) return backendSessionResponse("claire-backend-account", ["admin"]);
     if (u === "https://oauth2.googleapis.com/token") {
       const params = new URLSearchParams(String(init?.body ?? ""));
       capturedVerifier = params.get("code_verifier") ?? "";
@@ -174,6 +162,15 @@ test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE
         { status: 200 },
       );
     }
+    if (u.endsWith("/v1/auth/oauth/google/callback")) {
+      assert.equal(init.headers["x-auth-exchange-secret"], "ef".repeat(32));
+      return new Response(JSON.stringify({
+        account_id: "claire-backend-account",
+        session_token: "claire-backend-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["admin"],
+      }), { status: 200 });
+    }
     throw new Error(`offline: ${u}`);
   };
 
@@ -183,7 +180,9 @@ test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE
       APP_ENV: "production",
       GOOGLE_CLIENT_ID: "live-google-id.apps.googleusercontent.com",
       GOOGLE_CLIENT_SECRET: "live-google-secret",
+      AUTH_EXCHANGE_SECRET: "ef".repeat(32),
     },
+    byokMasterKey: "ab".repeat(32),
     fetchImpl: mockFetch,
     apiBaseUrl: "http://127.0.0.1:9",
   });
@@ -192,7 +191,6 @@ test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE
   const jar = new Map();
 
   try {
-    // 1. Sign up with email + password first
     const initRes = await fetch(`${baseUrl}/`);
     parseCookies(initRes, jar);
 
@@ -205,34 +203,6 @@ test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE
       return res.json();
     };
 
-    const signedUp = await postUi({
-      action: "submit-sign-up",
-      email: "claire@example.com",
-      password: "ClaireStrongPassword!",
-    });
-    assert.equal(signedUp.state.authStatus, "authenticated");
-    assert.equal(signedUp.state.account.username, "claire");
-    const originalAccountId = signedUp.state.account.accountId;
-
-    // 2. Sign out, verify wrong password fails and duplicate signup fails
-    await postUi({ action: "sign-out" });
-    const badPw = await postUi({
-      action: "submit-sign-in",
-      email: "claire@example.com",
-      password: "WrongPassword!",
-    });
-    assert.equal(badPw.state.authStatus, "guest");
-    assert.equal(badPw.state.authNotice, "Incorrect email or password.");
-
-    const dupSignup = await postUi({
-      action: "submit-sign-up",
-      email: "claire@example.com",
-      password: "AnotherStrongPassword!",
-    });
-    assert.equal(dupSignup.state.authStatus, "guest");
-    assert.match(dupSignup.state.authNotice, /already exists/);
-
-    // 3. Sign in with Live Google OAuth -> links to Claire's existing accountId!
     const oauthStart = await fetch(`${baseUrl}/auth/oauth/google`, {
       redirect: "manual",
       headers: { Cookie: cookieHeader(jar) },
@@ -253,8 +223,9 @@ test("Live Google OAuth 2.0 + PKCE S256 exchanges token and userinfo when GOOGLE
 
     const afterOAuth = await postUi({ action: "close-dialog" });
     assert.equal(afterOAuth.state.authStatus, "authenticated");
-    assert.equal(afterOAuth.state.account.accountId, originalAccountId);
+    assert.equal(afterOAuth.state.account.accountId, "claire-backend-account");
     assert.equal(afterOAuth.state.account.username, "claire");
+    assert.equal(afterOAuth.state.account.role, "Admin");
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

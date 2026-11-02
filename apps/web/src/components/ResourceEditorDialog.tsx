@@ -303,15 +303,6 @@ export function ResourceEditorDialog({
               </div>
             ) : null}
 
-            <label class="switch-field resource-open-catalog-toggle" for="resource-ingest-open-catalog">
-              <input
-                id="resource-ingest-open-catalog"
-                type="checkbox"
-                name="saveToOpenCatalog"
-                value="true"
-              />
-              <span>Also write JSON file to <code>catalog/resources/</code> for Git contribution</span>
-            </label>
 
             <footer class="dialog-footer resource-editor-footer">
               <div class="resource-editor-submit-actions">
@@ -573,15 +564,6 @@ export function ResourceEditorDialog({
               />
             </div>
 
-            <label class="switch-field resource-open-catalog-toggle" for="resource-edit-open-catalog">
-              <input
-                id="resource-edit-open-catalog"
-                type="checkbox"
-                name="saveToOpenCatalog"
-                value="true"
-              />
-              <span>Also write JSON file to <code>catalog/resources/</code> for Git contribution</span>
-            </label>
 
             <footer class="dialog-footer resource-editor-footer">
               <div class="resource-editor-danger-actions">

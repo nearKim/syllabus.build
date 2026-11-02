@@ -312,12 +312,39 @@ pub struct OAuthLoginOutcome {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AuthSessionRecord {
     pub session_id: String,
+    #[serde(skip_serializing, default)]
     pub token: String,
     pub token_sha256: String,
     pub account_id: String,
     pub roles: Vec<PrincipalRole>,
     pub expires_at: String,
     pub revoked: bool,
+}
+
+#[cfg(test)]
+mod session_serialization_tests {
+    use super::AuthSessionRecord;
+    use syllabus_security::PrincipalRole;
+
+    #[test]
+    fn persisted_session_omits_raw_token() {
+        let session = AuthSessionRecord {
+            session_id: "session-1".to_string(),
+            token: "raw-secret-session-token".to_string(),
+            token_sha256: "hashed-token".to_string(),
+            account_id: "account-1".to_string(),
+            roles: vec![PrincipalRole::User],
+            expires_at: "2099-01-01T00:00:00Z".to_string(),
+            revoked: false,
+        };
+        let stored = serde_json::to_value(&session).unwrap();
+        assert!(stored.get("token").is_none());
+        assert_eq!(stored["token_sha256"], "hashed-token");
+
+        let restored: AuthSessionRecord = serde_json::from_value(stored).unwrap();
+        assert!(restored.token.is_empty());
+        assert_eq!(restored.token_sha256, "hashed-token");
+    }
 }
 
 /// Private learner syllabus revision (`SHARE-001`, `SHARE-002`, `NFR-007`).

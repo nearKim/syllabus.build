@@ -259,8 +259,13 @@ pub fn execute_search_and_index_pipeline(
     // Step 0: Build structured search prompt via method on value object
     let search_prompt = params.build_search_prompt();
 
-    // Build initial TF-IDF corpus index from existing indexed candidates
-    let mut tfidf_index = TfIdfCorpusIndex::from_candidates(&params.indexed_candidates);
+    // Only reviewed candidates can appear in search rankings.
+    let mut tfidf_index = TfIdfCorpusIndex::new();
+    for candidate in &params.indexed_candidates {
+        if candidate.review_status == ResourceReviewStatus::Approved && !candidate.quarantined {
+            tfidf_index.upsert_candidate(candidate);
+        }
+    }
 
     // Step 1 & Step 1.5: Evaluate existing indexed resource fit & coverage over accepted resources
     let fit_evaluation = evaluate_resource_fit_and_coverage(
@@ -335,14 +340,47 @@ pub fn execute_search_and_index_pipeline(
             }
 
             // Deduplicate against already-indexed resources by resource_version_id or resource_id
-            let already_indexed = params.indexed_candidates.iter().any(|existing| {
-                existing.resource_version_id == disc.resource_version_id
-                    || existing.resource_id == disc.resource_id
-            });
-            if already_indexed {
-                if !pinned_synthesis_resource_version_ids.contains(&disc.resource_version_id) {
-                    pinned_synthesis_resource_version_ids.push(disc.resource_version_id.clone());
+            let existing_candidate = params
+                .indexed_candidates
+                .iter()
+                .find(|existing| existing.resource_version_id == disc.resource_version_id)
+                .or_else(|| {
+                    params.indexed_candidates.iter().find(|existing| {
+                        existing.resource_id == disc.resource_id
+                            && existing.review_status == ResourceReviewStatus::Approved
+                            && !existing.quarantined
+                    })
+                })
+                .or_else(|| {
+                    params
+                        .indexed_candidates
+                        .iter()
+                        .find(|existing| existing.resource_id == disc.resource_id)
+                });
+            if let Some(existing) = existing_candidate {
+                if fit_evaluation
+                    .ranked_materials
+                    .iter()
+                    .any(|eligible| eligible.resource_version_id == existing.resource_version_id)
+                    && !params
+                        .skipped_resource_version_ids
+                        .contains(&existing.resource_version_id)
+                    && !pinned_synthesis_resource_version_ids
+                        .contains(&existing.resource_version_id)
+                {
+                    pinned_synthesis_resource_version_ids
+                        .push(existing.resource_version_id.clone());
                 }
+                continue;
+            }
+
+            if newly_indexed_resources
+                .iter()
+                .any(|existing: &IndexedMaterialCandidate| {
+                    existing.resource_version_id == disc.resource_version_id
+                        || existing.resource_id == disc.resource_id
+                })
+            {
                 continue;
             }
 
@@ -357,12 +395,10 @@ pub fn execute_search_and_index_pipeline(
                 supported_roles: disc.supported_roles.clone(),
                 access_model: disc.access_model,
                 price_minor_units: disc.price_minor_units,
-                review_status: ResourceReviewStatus::Approved,
+                review_status: ResourceReviewStatus::UnderReview,
                 quarantined: false,
                 index_descriptor: Some(disc.index_descriptor.clone()),
             };
-            tfidf_index.upsert_candidate(&indexed_candidate);
-            pinned_synthesis_resource_version_ids.push(disc.resource_version_id.clone());
             newly_indexed_resources.push(indexed_candidate);
         }
     }
@@ -419,5 +455,82 @@ mod tests {
         assert!(prompt
             .synthesized_search_query
             .contains("Transformers, Attention"));
+    }
+
+    #[test]
+    fn only_approved_existing_versions_rank_and_deduplicated_discoveries_pin_the_existing_id() {
+        let approved = IndexedMaterialCandidate {
+            resource_version_id: "known-v1".to_string(),
+            resource_id: "known".to_string(),
+            title: "Reviewed attention resource".to_string(),
+            resource_type: "book".to_string(),
+            subject: "Engineering".to_string(),
+            topic_tags: vec!["Attention".to_string()],
+            supported_math_depths: vec!["formal".to_string()],
+            supported_roles: vec!["instruction".to_string()],
+            access_model: CatalogAccessModel::FreePublic,
+            price_minor_units: Some(0),
+            review_status: ResourceReviewStatus::Approved,
+            quarantined: false,
+            index_descriptor: None,
+        };
+        let pending = IndexedMaterialCandidate {
+            resource_version_id: "pending-v1".to_string(),
+            resource_id: "pending".to_string(),
+            title: "Unreviewed attention resource".to_string(),
+            review_status: ResourceReviewStatus::UnderReview,
+            ..approved.clone()
+        };
+        let descriptor = ResourceIndexDescriptor::BookIndex {
+            authors: vec![],
+            publisher: "Example University".to_string(),
+            edition: None,
+            brief_summary: "Attention".to_string(),
+            table_of_contents: vec![],
+            content_excerpts: None,
+        };
+        let duplicate = DiscoveredWebResourceCandidate {
+            resource_id: "known".to_string(),
+            resource_version_id: "known-v2".to_string(),
+            title: "Discovered newer attention resource".to_string(),
+            canonical_url: "https://example.edu/attention-new".to_string(),
+            external_id: None,
+            resource_type: "book".to_string(),
+            subject: "Engineering".to_string(),
+            topic_tags: vec!["Attention".to_string()],
+            supported_math_depths: vec!["formal".to_string()],
+            supported_roles: vec!["instruction".to_string()],
+            access_model: CatalogAccessModel::FreePublic,
+            price_minor_units: Some(0),
+            index_descriptor: descriptor.clone(),
+        };
+        let new_discovery = DiscoveredWebResourceCandidate {
+            resource_id: "new".to_string(),
+            resource_version_id: "new-v1".to_string(),
+            canonical_url: "https://example.edu/attention-new-resource".to_string(),
+            ..duplicate.clone()
+        };
+        let params = SearchAndIndexPipelineParams {
+            goal_title: "Learn attention".to_string(),
+            topic_tags: vec!["Attention".to_string()],
+            indexed_candidates: vec![approved, pending],
+            requested_mode: Some(ResourceFitDecisionMode::SearchAllTopics),
+            web_search_discoveries: vec![duplicate, new_discovery],
+            ..SearchAndIndexPipelineParams::default()
+        };
+
+        let receipt = execute_search_and_index_pipeline(&params).unwrap();
+        assert_eq!(
+            receipt.pinned_synthesis_resource_version_ids,
+            vec!["known-v1"]
+        );
+        assert_eq!(receipt.newly_indexed_resources.len(), 1);
+        assert_eq!(
+            receipt.newly_indexed_resources[0].review_status,
+            ResourceReviewStatus::UnderReview
+        );
+        assert_eq!(receipt.tfidf_corpus_document_count, 1);
+        assert_eq!(receipt.tfidf_ranked_scores.len(), 1);
+        assert_eq!(receipt.tfidf_ranked_scores[0].0, "known-v1");
     }
 }

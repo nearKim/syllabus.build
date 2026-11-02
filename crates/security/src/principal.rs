@@ -19,12 +19,13 @@ impl AppEnvironment {
         matches!(self, AppEnvironment::Development | AppEnvironment::Test)
     }
 
-    /// Resolves the runtime `AppEnvironment` from `APP_ENV` (falling back to `NODE_ENV` or `Development`).
+    /// Resolves the runtime `AppEnvironment` from `APP_ENV` or `SYLLABUS_ENV`.
+    /// An absent or unknown value uses Production so optional development paths stay disabled.
     #[must_use]
     pub fn from_env() -> Self {
         let raw = std::env::var("APP_ENV")
             .or_else(|_| std::env::var("SYLLABUS_ENV"))
-            .unwrap_or_else(|_| "development".to_string());
+            .unwrap_or_else(|_| "production".to_string());
         Self::parse_str(&raw)
     }
 
@@ -34,7 +35,7 @@ impl AppEnvironment {
             "production" | "prod" => AppEnvironment::Production,
             "staging" | "stage" => AppEnvironment::Staging,
             "test" | "testing" => AppEnvironment::Test,
-            _ => AppEnvironment::Development,
+            _ => AppEnvironment::Production,
         }
     }
 }
@@ -42,10 +43,14 @@ impl AppEnvironment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PrincipalRole {
-    Learner,
-    Curator,
-    Moderator,
-    Operator,
+    #[serde(
+        alias = "learner",
+        alias = "curator",
+        alias = "moderator",
+        alias = "operator"
+    )]
+    User,
+    Admin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -62,7 +67,7 @@ impl AuthenticatedPrincipal {
     }
 
     /// Enforces strict tenant isolation (`NFR-001`, `@S36`, `@S64`):
-    /// Curators, moderators, and operators do not gain access to another learner's private state,
+    /// Admins do not gain access to another user's private state,
     /// assessment evidence, schedules, or BYOK credentials.
     #[must_use]
     pub fn can_access_learner_private_resource(&self, resource_owner_account_id: &str) -> bool {
@@ -99,7 +104,7 @@ impl AuthenticatedPrincipal {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum SecurityError {
-    #[error("development-only fixed identity verifier is forbidden in `{0:?}` environment (`D11` production auth gate required)")]
+    #[error("fixed identity verifier is allowed only in Test, not `{0:?}`")]
     DevAuthForbiddenOutsideDev(AppEnvironment),
     #[error("missing or invalid authentication token")]
     Unauthenticated,
@@ -137,9 +142,9 @@ pub trait AuthVerifier: Send + Sync {
     ) -> Result<AuthenticatedPrincipal, SecurityError>;
 }
 
-/// Development-only fixed identity adapter for the Private Alpha tracer bullet (`T00`–`T04`).
+/// Test-only fixed identity adapter for the Private Alpha tracer bullet (`T00`–`T04`).
 ///
-/// **Security Invariant (`D11`):** Refuses to initialize in `Staging` or `Production`.
+/// **Security Invariant (`D11`):** Refuses to initialize outside `Test`.
 /// Any internet-facing beta, BYOK storage (`T07A`), hosted billing (`T07B`/`T07D`), or
 /// public publishing (`T13`) is blocked until the `D11` production authentication vendor
 /// is approved and configured.
@@ -153,7 +158,7 @@ impl DevFixedIdentityAuthVerifier {
         env: AppEnvironment,
         default_account_id: impl Into<String>,
     ) -> Result<Self, SecurityError> {
-        if !env.is_local_dev_or_test() {
+        if env != AppEnvironment::Test {
             return Err(SecurityError::DevAuthForbiddenOutsideDev(env));
         }
         Ok(Self {
@@ -178,34 +183,24 @@ impl AuthVerifier for DevFixedIdentityAuthVerifier {
                 }
                 Ok(AuthenticatedPrincipal {
                     account_id: id,
-                    roles: vec![PrincipalRole::Learner],
+                    roles: vec![PrincipalRole::User],
                     is_development_only_identity: true,
                 })
             }
-            Some("dev-curator") => Ok(AuthenticatedPrincipal {
+            Some("dev-admin") => Ok(AuthenticatedPrincipal {
                 account_id: "00000000-0000-4000-8000-000000000099".to_string(),
-                roles: vec![PrincipalRole::Curator],
-                is_development_only_identity: true,
-            }),
-            Some("dev-moderator") => Ok(AuthenticatedPrincipal {
-                account_id: "00000000-0000-4000-8000-000000000098".to_string(),
-                roles: vec![PrincipalRole::Moderator],
-                is_development_only_identity: true,
-            }),
-            Some("dev-operator") => Ok(AuthenticatedPrincipal {
-                account_id: "00000000-0000-4000-8000-000000000097".to_string(),
-                roles: vec![PrincipalRole::Operator],
+                roles: vec![PrincipalRole::Admin],
                 is_development_only_identity: true,
             }),
             Some("dev-default") => Ok(AuthenticatedPrincipal {
                 account_id: self.default_account_id.clone(),
-                roles: vec![PrincipalRole::Learner],
+                roles: vec![PrincipalRole::User],
                 is_development_only_identity: true,
             }),
             Some(_) => Err(SecurityError::Unauthenticated),
             None => Ok(AuthenticatedPrincipal {
                 account_id: self.default_account_id.clone(),
-                roles: vec![PrincipalRole::Learner],
+                roles: vec![PrincipalRole::User],
                 is_development_only_identity: true,
             }),
         }
@@ -310,12 +305,29 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dev_fixed_identity_verifier_refuses_staging_and_production() {
+    fn unknown_environment_disables_development_paths() {
+        assert_eq!(AppEnvironment::parse_str(""), AppEnvironment::Production);
+        assert_eq!(
+            AppEnvironment::parse_str("prodution"),
+            AppEnvironment::Production
+        );
+    }
+
+    #[test]
+    fn fixed_identity_verifier_is_test_only() {
         assert!(DevFixedIdentityAuthVerifier::new(
-            AppEnvironment::Development,
+            AppEnvironment::Test,
             "00000000-0000-4000-8000-000000000001"
         )
         .is_ok());
+        assert_eq!(
+            DevFixedIdentityAuthVerifier::new(
+                AppEnvironment::Development,
+                "00000000-0000-4000-8000-000000000001"
+            )
+            .unwrap_err(),
+            SecurityError::DevAuthForbiddenOutsideDev(AppEnvironment::Development)
+        );
         assert_eq!(
             DevFixedIdentityAuthVerifier::new(
                 AppEnvironment::Production,
@@ -327,20 +339,18 @@ mod tests {
     }
 
     #[test]
-    fn s36_curator_cannot_access_learner_private_resource() {
+    fn admin_cannot_access_user_private_resource() {
         let verifier = DevFixedIdentityAuthVerifier::new(
             AppEnvironment::Test,
             "00000000-0000-4000-8000-000000000001",
         )
         .unwrap();
-        let curator = verifier.verify_bearer_token(Some("dev-curator")).unwrap();
-        assert!(curator.has_role(PrincipalRole::Curator));
-        assert!(curator.require_role(PrincipalRole::Curator).is_ok());
-        assert!(
-            !curator.can_access_learner_private_resource("00000000-0000-4000-8000-000000000001")
-        );
+        let admin = verifier.verify_bearer_token(Some("dev-admin")).unwrap();
+        assert!(admin.has_role(PrincipalRole::Admin));
+        assert!(admin.require_role(PrincipalRole::Admin).is_ok());
+        assert!(!admin.can_access_learner_private_resource("00000000-0000-4000-8000-000000000001"));
         assert_eq!(
-            curator
+            admin
                 .require_learner_ownership("00000000-0000-4000-8000-000000000001")
                 .unwrap_err(),
             SecurityError::CrossTenantAccessDenied {
@@ -351,19 +361,17 @@ mod tests {
     }
 
     #[test]
-    fn s64_moderator_cannot_access_learner_private_evidence_or_credentials() {
+    fn legacy_role_strings_downgrade_to_user() {
         let verifier = DevFixedIdentityAuthVerifier::new(
             AppEnvironment::Test,
             "00000000-0000-4000-8000-000000000001",
         )
         .unwrap();
-        let moderator = verifier.verify_bearer_token(Some("dev-moderator")).unwrap();
-        assert!(moderator.has_role(PrincipalRole::Moderator));
-        assert!(moderator.require_role(PrincipalRole::Moderator).is_ok());
-        assert!(moderator.require_role(PrincipalRole::Curator).is_err());
-        assert!(
-            !moderator.can_access_learner_private_resource("00000000-0000-4000-8000-000000000001")
-        );
+        assert!(verifier.verify_bearer_token(Some("dev-moderator")).is_err());
+        for legacy in ["learner", "curator", "moderator", "operator"] {
+            let role: PrincipalRole = serde_json::from_str(&format!("\"{legacy}\"")).unwrap();
+            assert_eq!(role, PrincipalRole::User);
+        }
     }
 
     #[test]

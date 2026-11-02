@@ -17,7 +17,7 @@ use crate::models::{
     PaymentWebhookReceiptRecord, PersistenceError, PushSubscriptionRecord,
     ReminderOccurrenceRecord, StoredCredentialRecord, UsageQuoteRecord,
 };
-use crate::store::{InMemoryTransactionalStore, StoreInner};
+use crate::store::{credential_map_key, InMemoryTransactionalStore, StoreInner};
 
 #[allow(clippy::too_many_arguments)]
 impl InMemoryTransactionalStore {
@@ -51,13 +51,15 @@ impl InMemoryTransactionalStore {
         new_label: Option<&str>,
     ) -> Result<CredentialMetadataView, PersistenceError> {
         let mut guard = self.write_inner();
+        let key = credential_map_key(&principal.account_id, credential_ref);
         let (owner_id, current_etag, current_ver) = {
-            let record = guard.credentials.get(credential_ref).ok_or_else(|| {
-                PersistenceError::NotFound {
+            let record = guard
+                .credentials
+                .get(&key)
+                .ok_or_else(|| PersistenceError::NotFound {
                     resource_type: "credential",
                     resource_id: credential_ref.to_string(),
-                }
-            })?;
+                })?;
             if record.revoked {
                 return Err(PersistenceError::NotFound {
                     resource_type: "credential",
@@ -83,14 +85,9 @@ impl InMemoryTransactionalStore {
         let masked_hint = sealed.key_last4_redacted.clone();
         let fingerprint = sealed.key_fingerprint_sha256.clone();
 
-        guard
-            .credential_envelopes
-            .insert(credential_ref.to_string(), sealed);
+        guard.credential_envelopes.insert(key.clone(), sealed);
 
-        let record = guard
-            .credentials
-            .get_mut(credential_ref)
-            .expect("checked above");
+        let record = guard.credentials.get_mut(&key).expect("checked above");
         record.version = next_version;
         record.masked_hint = masked_hint.clone();
         record.key_fingerprint_sha256 = fingerprint;
@@ -112,14 +109,14 @@ impl InMemoryTransactionalStore {
         expected_version: u64,
     ) -> Result<(String, StoredCredentialRecord), PersistenceError> {
         let guard = self.read_inner();
-        let record =
-            guard
-                .credentials
-                .get(credential_ref)
-                .ok_or_else(|| PersistenceError::NotFound {
-                    resource_type: "credential",
-                    resource_id: credential_ref.to_string(),
-                })?;
+        let key = credential_map_key(&principal.account_id, credential_ref);
+        let record = guard
+            .credentials
+            .get(&key)
+            .ok_or_else(|| PersistenceError::NotFound {
+                resource_type: "credential",
+                resource_id: credential_ref.to_string(),
+            })?;
         principal.require_learner_ownership(&record.owner_account_id)?;
         if record.revoked {
             return Err(PersistenceError::Conflict {
@@ -129,13 +126,14 @@ impl InMemoryTransactionalStore {
                 ),
             });
         }
-        let envelope = guard
-            .credential_envelopes
-            .get(credential_ref)
-            .ok_or_else(|| PersistenceError::NotFound {
-                resource_type: "credential_envelope",
-                resource_id: credential_ref.to_string(),
-            })?;
+        let envelope =
+            guard
+                .credential_envelopes
+                .get(&key)
+                .ok_or_else(|| PersistenceError::NotFound {
+                    resource_type: "credential_envelope",
+                    resource_id: credential_ref.to_string(),
+                })?;
         let raw_secret = guard.credential_vault.open_credential(
             envelope,
             &principal.account_id,
@@ -450,9 +448,9 @@ impl InMemoryTransactionalStore {
             .or_insert_with(|| HostedCreditWalletRecord {
                 account_id: account_id.to_string(),
                 currency: "USD".to_string(),
-                available_minor_units: 500,
+                available_minor_units: 0,
                 reserved_minor_units: 0,
-                lifetime_purchased_minor_units: 500,
+                lifetime_purchased_minor_units: 0,
                 lifetime_settled_minor_units: 0,
                 lifetime_refunded_minor_units: 0,
                 four_cost_buckets: FourCostBucketBreakdown {
@@ -480,7 +478,8 @@ impl InMemoryTransactionalStore {
         Self::ensure_wallet_mut(&mut guard, &principal.account_id).clone()
     }
 
-    pub fn set_wallet_balance_for_test(
+    #[cfg(test)]
+    pub(crate) fn set_wallet_balance_for_test(
         &self,
         account_id: &str,
         available_minor_units: i64,
@@ -512,13 +511,24 @@ impl InMemoryTransactionalStore {
         ttl_seconds: i64,
     ) -> Result<UsageQuoteRecord, PersistenceError> {
         let mut guard = self.write_inner();
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
+        let mut seq = guard.next_seq + 1;
         let resolved_quote_id = quote_id
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| format!("quote-{seq}"));
+            .unwrap_or_else(|| loop {
+                let generated = format!("quote-{seq}");
+                if !guard.usage_quotes.contains_key(&generated) {
+                    break generated;
+                }
+                seq += 1;
+            });
+        if guard.usage_quotes.contains_key(&resolved_quote_id) {
+            return Err(PersistenceError::Conflict {
+                code: "usage_quote_id_exists",
+                message: format!("usage quote `{resolved_quote_id}` already exists"),
+            });
+        }
 
         let (est_hosted, max_hosted, est_byok) = match billing_mode {
             BillingModeKind::HostedCredits => (
@@ -574,6 +584,7 @@ impl InMemoryTransactionalStore {
             created_at: format_epoch_utc_iso(now_epoch_seconds),
             expires_at: format_epoch_utc_iso(expires_at_epoch_seconds),
         };
+        guard.next_seq = seq;
         guard.usage_quotes.insert(resolved_quote_id, record.clone());
         Ok(record)
     }
@@ -627,6 +638,28 @@ impl InMemoryTransactionalStore {
             });
         }
 
+        let mut seq = guard.next_seq + 1;
+        let resolved_reservation_id = reservation_id
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| loop {
+                let generated = format!("resv-{seq}");
+                if !guard.credit_reservations.contains_key(&generated) {
+                    break generated;
+                }
+                seq += 1;
+            });
+        if guard
+            .credit_reservations
+            .contains_key(&resolved_reservation_id)
+        {
+            return Err(PersistenceError::Conflict {
+                code: "credit_reservation_id_exists",
+                message: format!("credit reservation `{resolved_reservation_id}` already exists"),
+            });
+        }
+
         let reserve_amount =
             requested_reserve_minor_units.unwrap_or(quote_rec.quote.max_reservable_minor_units);
 
@@ -654,13 +687,7 @@ impl InMemoryTransactionalStore {
             }
         })?;
 
-        guard.next_seq += 1;
-        let seq = guard.next_seq;
-        let resolved_reservation_id = reservation_id
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("resv-{seq}"));
+        guard.next_seq = seq;
 
         {
             let wallet = Self::ensure_wallet_mut(&mut guard, &principal.account_id);
@@ -895,6 +922,7 @@ impl InMemoryTransactionalStore {
     /// Never settles a charge unless `committed_artifact_persisted == true` and the provider confirmed completion.
     pub fn reconcile_ambiguous_provider_timeout(
         &self,
+        principal: &AuthenticatedPrincipal,
         reservation_id: &str,
         committed_artifact_persisted: bool,
         outcome: AmbiguousProviderOutcome,
@@ -910,6 +938,7 @@ impl InMemoryTransactionalStore {
                 resource_id: reservation_id.to_string(),
             })?;
 
+        principal.require_learner_ownership(&existing.reservation.account_id)?;
         let account_id = existing.reservation.account_id.clone();
         if existing.reservation.status != ReservationStatus::Reserved {
             let wallet = Self::ensure_wallet_mut(&mut guard, &account_id).clone();
@@ -1011,9 +1040,10 @@ impl InMemoryTransactionalStore {
                 operation_id: "createBillingCheckoutSession".to_string(),
             });
         }
-        if amount_minor_units <= 0 || credit_minor_units <= 0 {
+        if amount_minor_units <= 0 || credit_minor_units != amount_minor_units {
             return Err(PersistenceError::Validation(
-                "checkout amount_minor_units and credit_minor_units must be positive".to_string(),
+                "checkout amount_minor_units must be positive and equal credit_minor_units"
+                    .to_string(),
             ));
         }
         if !success_url.starts_with("https://") || !cancel_url.starts_with("https://") {
@@ -1045,6 +1075,12 @@ impl InMemoryTransactionalStore {
             .filter(|s| !s.is_empty())
             .map(str::to_string)
             .unwrap_or_else(|| format!("cs_test_{seq}"));
+        if guard.checkout_sessions.contains_key(&resolved_id) {
+            return Err(PersistenceError::Conflict {
+                code: "checkout_session_id_exists",
+                message: format!("checkout session `{resolved_id}` already exists"),
+            });
+        }
 
         let record = CheckoutSessionRecord {
             checkout_session_id: resolved_id.clone(),
@@ -1101,7 +1137,9 @@ impl InMemoryTransactionalStore {
             .get("event_type")
             .or_else(|| payload.get("type"))
             .and_then(|v| v.as_str())
-            .unwrap_or("checkout.session.completed")
+            .ok_or_else(|| {
+                PersistenceError::Validation("missing event_type in webhook".to_string())
+            })?
             .to_string();
 
         let checkout_session_id = payload
@@ -1139,13 +1177,14 @@ impl InMemoryTransactionalStore {
 
         let amount_minor_units = payload
             .get("amount_minor_units")
-            .or_else(|| payload.get("credit_minor_units"))
             .and_then(|v| v.as_i64())
-            .unwrap_or(sess.credit_minor_units);
+            .ok_or_else(|| {
+                PersistenceError::Validation("missing amount_minor_units in webhook".to_string())
+            })?;
 
-        if amount_minor_units <= 0 {
+        if amount_minor_units != sess.amount_minor_units {
             return Err(PersistenceError::Validation(
-                "webhook amount_minor_units must be positive".to_string(),
+                "webhook amount_minor_units does not match checkout amount".to_string(),
             ));
         }
 
@@ -1154,24 +1193,33 @@ impl InMemoryTransactionalStore {
         let account_id = sess.account_id.clone();
 
         let (entry_kind, delta_avail, new_sess_status, description) = match event_type.as_str() {
-            "checkout.session.completed" => (
+            "checkout.session.completed" if sess.status == "pending" => (
                 LedgerEntryKind::TopUpCredit,
-                amount_minor_units,
+                sess.credit_minor_units,
                 "completed",
                 format!("Hosted credit top-up from checkout session `{checkout_session_id}`"),
             ),
-            "charge.refunded" => (
+            "charge.refunded" if sess.status == "completed" => (
                 LedgerEntryKind::RefundDebit,
-                -amount_minor_units,
+                -sess.credit_minor_units,
                 "refunded",
                 format!("Refund debit for checkout session `{checkout_session_id}`"),
             ),
-            "charge.dispute.created" => (
+            "charge.dispute.created" if sess.status == "completed" => (
                 LedgerEntryKind::ChargebackDebit,
-                -amount_minor_units,
+                -sess.credit_minor_units,
                 "disputed",
                 format!("Chargeback dispute debit for checkout session `{checkout_session_id}`"),
             ),
+            "checkout.session.completed" | "charge.refunded" | "charge.dispute.created" => {
+                return Err(PersistenceError::Conflict {
+                    code: "checkout_event_out_of_order",
+                    message: format!(
+                        "checkout session `{checkout_session_id}` is already `{}`",
+                        sess.status
+                    ),
+                });
+            }
             other => {
                 return Err(PersistenceError::Validation(format!(
                     "unsupported payment webhook event_type `{other}`"

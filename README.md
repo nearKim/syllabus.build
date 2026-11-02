@@ -8,7 +8,7 @@
 
 | Component | Path | Responsibility |
 | --- | --- | --- |
-| **`syllabus-api`** | `services/api` | Axum HTTP `/v1/*` API: authentication (email/password, OAuth 2.0 + PKCE S256, FIDO2 WebAuthn passkeys, password recovery, email verification), syllabus DAG planning & diagnostics, workspace synchronization, hosted credit wallet & HMAC billing webhooks, community marketplace publishing, and account export/deletion. |
+| **`syllabus-api`** | `services/api` | Axum HTTP `/v1/*` API: authentication (OAuth 2.0 + PKCE S256 and FIDO2 WebAuthn passkeys), syllabus DAG planning & diagnostics, workspace synchronization, hosted credit wallet & HMAC billing webhooks, community marketplace publishing, and account export/deletion. |
 | **`syllabus-worker`** | `services/worker` | Transactional outbox worker claiming `outbox_jobs` via `FOR UPDATE SKIP LOCKED`, dispatching email/webhook/calendar/account-erasure jobs, and recording `worker_dispatch_receipts`. |
 | **`crates/*`** | `crates/domain`, `application`, `contracts`, `persistence`, `providers`, `jobs`, `security` | Core Rust domain logic, JSON Schema Draft 2020-12 contract validation (RFC 8785 JCS), PostgreSQL 16 persistence (`crates/persistence/migrations/0001..0010`), and release feature gates. |
 | **`@syllabus/web`** | `apps/web` | Node + Preact SSR & signal-hydrated browser workspace (`Today`, `Plan` Map/Outline, `Progress`, `Resources`, `Explore`, `Settings`), RFC 5545 `.ics` calendar export, and AES-256-GCM BYOK envelope custody (OpenAI, Anthropic, Google Gemini). |
@@ -26,10 +26,17 @@
 
 ### 1. Start PostgreSQL 16 & Apply Migrations
 
+Load database values from Bitwarden into the process environment: `POSTGRES_PASSWORD`, `DATABASE_URL`, and `DATABASE_URL_CONTAINER`.
+`DATABASE_URL` connects host tools to `127.0.0.1`. `DATABASE_URL_CONTAINER` connects containers to `postgres`.
+
+Load `BYOK_MASTER_KEY`, `BILLING_WEBHOOK_SECRET`, `AUTH_EXCHANGE_SECRET`, and `OAUTH_COOKIE_SECRET` from Bitwarden at process launch.
+Encode the billing and auth exchange secrets as independent 32-byte random values, each represented by 64 hex characters.
+Load Google or GitHub client secrets from Bitwarden when using those providers. Do not copy secrets into `.env`.
+For cloud deployments, inject machine-generated deployment secrets from that environment's secret store.
+
 ```bash
-cp .env.example .env
-docker compose up -d postgres
-DATABASE_URL=postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_dev ./scripts/apply_migrations.sh
+docker compose --env-file /dev/null up -d postgres
+./scripts/apply_migrations.sh
 ```
 
 ### 2. Install Workspace Dependencies
@@ -40,18 +47,21 @@ pnpm install
 
 ### 3. Run API, Worker, and Web App
 
+Run each command from a shell with the required secret environment values loaded.
+
 ```bash
-# Terminal 1 — Rust API server (http://127.0.0.1:8080)
 pnpm dev:api
-
-# Terminal 2 — Background outbox worker
-DATABASE_URL=postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_dev cargo run -p syllabus-worker
-
-# Terminal 3 — Interactive Web App (http://localhost:3000)
+cargo run -p syllabus-worker
 pnpm dev:web
 ```
 
 `@syllabus/web` persists authenticated workspaces, passkeys, BYOK AES-256-GCM sealed envelopes, and wallet state directly through `syllabus-api` into PostgreSQL 16 (`web_account_workspaces`, `web_passkey_credentials`, `web_auth_recovery_tokens`, `accounts`, `hosted_credit_wallets`) — no local JSON state file is required.
+
+New social accounts receive the `User` role. No account receives `Admin` automatically. Shared catalog review and deletion remain unavailable until an Admin account is assigned through a trusted process.
+
+Existing BYOK credentials sealed with the former source-known fallback key cannot be opened with a new `BYOK_MASTER_KEY`. Users must re-enter those provider keys after the key change.
+
+Hosted checkout is unavailable until payment events can be verified against a provider. Synthetic diagnostic answers do not grant mastery or waivers.
 
 ---
 
@@ -59,10 +69,11 @@ pnpm dev:web
 
 Run PostgreSQL 16, `syllabus-api`, `syllabus-worker`, and `syllabus-web` together:
 
+Load the required secrets into the environment of the Compose process before starting the stack.
+Configure a complete Google or GitHub OAuth client pair for production sign-in.
+
 ```bash
-BYOK_MASTER_KEY="$(openssl rand -hex 32)" \
-OAUTH_COOKIE_SECRET="$(openssl rand -hex 32)" \
-docker compose up --build -d
+docker compose --env-file /dev/null up --build -d
 ```
 
 - **Web UI**: `http://localhost:3000`
@@ -88,8 +99,6 @@ node scripts/sync_open_catalog.mjs
 
 ```bash
 # Rust workspace unit + integration + PostgreSQL persistence tests
-DATABASE_URL=postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_dev \
-TEST_POSTGRES_URL=postgres://syllabus:syllabus@127.0.0.1:5432/syllabus_dev \
 cargo test --workspace --locked
 
 # TypeScript strict typecheck + Web SSR/UI/Auth/BYOK/E2E tests

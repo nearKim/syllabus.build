@@ -109,12 +109,12 @@ fn s56_s57_separate_private_and_public_revision_identifiers_and_projections() {
     let store = InMemoryTransactionalStore::new_with_dev_fixtures();
     let learner_a = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000001".to_string(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: true,
     };
     let learner_b = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000002".to_string(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: true,
     };
 
@@ -266,7 +266,7 @@ fn s43_s45_post_restore_tombstone_replay_reapplies_account_and_credential_revoca
     let store = InMemoryTransactionalStore::new_with_dev_fixtures();
     let learner_b = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000002".to_string(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: true,
     };
 
@@ -513,12 +513,12 @@ fn t02_s04_s05_s08_s31_s35_s36_rights_permissions_ssrf_egress_and_curator_rubric
     // 3. Curator role & rubric evidence gate (@S04, @S36)
     let learner_a = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000001".to_string(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: true,
     };
     let curator = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000099".to_string(),
-        roles: vec![PrincipalRole::Curator],
+        roles: vec![PrincipalRole::Admin],
         is_development_only_identity: true,
     };
 
@@ -569,12 +569,12 @@ fn t02_s07_s09_s63_quarantine_overlay_preserves_historical_revision_immutability
     let store = InMemoryTransactionalStore::new_with_dev_fixtures();
     let learner_a = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000001".to_string(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: true,
     };
     let curator = AuthenticatedPrincipal {
         account_id: "00000000-0000-4000-8000-000000000099".to_string(),
-        roles: vec![PrincipalRole::Curator],
+        roles: vec![PrincipalRole::Admin],
         is_development_only_identity: true,
     };
 
@@ -729,81 +729,263 @@ fn postgres_transactional_statements_migration_bundle_and_parameterized_queries_
 }
 
 #[test]
-fn email_signup_login_and_oauth_account_linking_lifecycle() {
+fn oauth_account_linking_and_session_lifecycle() {
     let store = InMemoryTransactionalStore::new();
-    let (acct, signup_sess) = store
-        .register_email_account("Jane@Example.com", "StrongPass123!", Some("Jane Doe"))
-        .expect("register email account");
-    assert_eq!(acct.email, "jane@example.com");
-    assert_eq!(acct.display_name.as_deref(), Some("Jane Doe"));
+    let first = store
+        .authenticate_oauth_identity(
+            syllabus_security::OAuthProvider::Google,
+            "google-sub-999",
+            "Jane@Example.com",
+            true,
+            Some("Jane Doe"),
+            None,
+        )
+        .expect("create OAuth account");
+    assert!(first.is_new_account);
+    assert_eq!(first.account.email, "jane@example.com");
+    assert_eq!(first.account.roles, vec![PrincipalRole::User]);
+    assert_eq!(first.account.password_hash, None);
+    assert_eq!(first.session.token.len(), 64);
     assert!(store
-        .resolve_session_token(&signup_sess.token)
-        .expect("resolve signup session")
+        .resolve_session_token(&first.session.token)
+        .unwrap()
         .is_some());
 
-    // Duplicate registration fails with 409 Conflict
-    assert_eq!(
-        store
-            .register_email_account("jane@example.com", "AnotherPass123!", None)
-            .unwrap_err()
-            .http_status_code(),
-        409
-    );
-
-    // Wrong password fails with 401
-    assert_eq!(
-        store
-            .login_email_account("jane@example.com", "WrongPassword!")
-            .unwrap_err()
-            .http_status_code(),
-        401
-    );
-
-    // Correct password logs into the same account
-    let (login_acct, _) = store
-        .login_email_account("JANE@example.com", "StrongPass123!")
-        .expect("login with hashed password");
-    assert_eq!(login_acct.account_id, acct.account_id);
-
-    // Verified Google OAuth with the same email links to Jane's existing account
-    let linked = store
+    let second = store
         .authenticate_oauth_identity(
             syllabus_security::OAuthProvider::Google,
             "google-sub-999",
             "jane@example.com",
             true,
-            Some("Jane Google"),
-            Some("https://lh3.googleusercontent.com/a/jane"),
+            None,
+            None,
         )
-        .expect("link Google OAuth identity");
-    assert!(!linked.is_new_account);
-    assert_eq!(linked.account.account_id, acct.account_id);
-    assert!(linked.account.email_verified);
+        .expect("reuse OAuth account");
+    assert!(!second.is_new_account);
+    assert_eq!(first.account.account_id, second.account.account_id);
+    assert_ne!(first.session.token, second.session.token);
 
-    // Brand-new GitHub OAuth user creates a new account, and second login reuses it
-    let gh_first = store
-        .authenticate_oauth_identity(
-            syllabus_security::OAuthProvider::Github,
-            "gh-42",
-            "linus@kernel.org",
-            true,
-            Some("Linus Torvalds"),
+    assert!(store
+        .resolve_session_token(&format!("sess-token-1-{}", first.account.account_id))
+        .is_err());
+
+    let mut admin = first.account.clone();
+    admin.roles = vec![PrincipalRole::Admin];
+    store.upsert_account(admin);
+    assert_eq!(
+        store
+            .resolve_session_token(&first.session.token)
+            .unwrap()
+            .unwrap()
+            .roles,
+        vec![PrincipalRole::Admin],
+    );
+
+    let token_sha = first.session.token_sha256;
+    store
+        .write_inner()
+        .sessions_by_token_sha
+        .get_mut(&token_sha)
+        .unwrap()
+        .expires_at = "2000-01-01T00:00:00Z".to_string();
+    assert!(store.resolve_session_token(&first.session.token).is_err());
+}
+
+#[test]
+fn credential_reference_is_scoped_to_each_account() {
+    let store = InMemoryTransactionalStore::new_with_dev_fixtures();
+    let owner = AuthenticatedPrincipal {
+        account_id: "00000000-0000-4000-8000-000000000001".to_string(),
+        roles: vec![PrincipalRole::User],
+        is_development_only_identity: true,
+    };
+    let other = AuthenticatedPrincipal {
+        account_id: "00000000-0000-4000-8000-000000000002".to_string(),
+        roles: vec![PrincipalRole::User],
+        is_development_only_identity: true,
+    };
+    store
+        .create_credential(
+            &owner,
+            "same-ref",
+            "openai",
+            "Owner",
+            "sk-owner-secret-12345",
+        )
+        .unwrap();
+    store
+        .create_credential(
+            &other,
+            "same-ref",
+            "openai",
+            "Other",
+            "sk-other-secret-67890",
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .get_credential_metadata(&owner, "same-ref")
+            .unwrap()
+            .label,
+        "Owner"
+    );
+    assert_eq!(
+        store
+            .get_credential_metadata(&other, "same-ref")
+            .unwrap()
+            .label,
+        "Other"
+    );
+    assert_eq!(
+        store
+            .create_credential(
+                &owner,
+                "same-ref",
+                "openai",
+                "Duplicate",
+                "sk-another-test-key"
+            )
+            .unwrap_err()
+            .error_code(),
+        "credential_ref_exists",
+    );
+    let (owner_secret, _) = store
+        .open_credential_for_pinned_inference(&owner, "same-ref", 1)
+        .unwrap();
+    let (other_secret, _) = store
+        .open_credential_for_pinned_inference(&other, "same-ref", 1)
+        .unwrap();
+    assert_eq!(owner_secret, "sk-owner-secret-12345");
+    assert_eq!(other_secret, "sk-other-secret-67890");
+    store
+        .rotate_credential(
+            &owner,
+            "same-ref",
+            Some("\"cred-v1\""),
+            "sk-owner-rotated-secret",
             None,
         )
-        .expect("create GitHub OAuth account");
-    assert!(gh_first.is_new_account);
-    let gh_second = store
-        .authenticate_oauth_identity(
-            syllabus_security::OAuthProvider::Github,
-            "gh-42",
-            "linus@kernel.org",
-            true,
-            Some("Linus Torvalds"),
-            None,
+        .unwrap();
+    let (owner_rotated, _) = store
+        .open_credential_for_pinned_inference(&owner, "same-ref", 2)
+        .unwrap();
+    let (other_unchanged, _) = store
+        .open_credential_for_pinned_inference(&other, "same-ref", 1)
+        .unwrap();
+    assert_eq!(owner_rotated, "sk-owner-rotated-secret");
+    assert_eq!(other_unchanged, "sk-other-secret-67890");
+}
+
+#[test]
+fn billing_ids_cannot_replace_another_accounts_records_or_wallet_hold() {
+    let store = InMemoryTransactionalStore::new_with_dev_fixtures();
+    let account_a = AuthenticatedPrincipal {
+        account_id: "00000000-0000-4000-8000-000000000001".to_string(),
+        roles: vec![PrincipalRole::User],
+        is_development_only_identity: true,
+    };
+    let account_b = AuthenticatedPrincipal {
+        account_id: "00000000-0000-4000-8000-000000000002".to_string(),
+        roles: vec![PrincipalRole::User],
+        is_development_only_identity: true,
+    };
+    let initial_wallet = store.get_hosted_credit_wallet(&account_a);
+    assert_eq!(initial_wallet.available_minor_units, 0);
+    assert_eq!(initial_wallet.lifetime_purchased_minor_units, 0);
+
+    let create_quote = |principal: &AuthenticatedPrincipal, id: &str| {
+        store.create_usage_quote(
+            principal,
+            Some(id),
+            "syllabus_generation",
+            BillingModeKind::HostedCredits,
+            "openai",
+            "test-model",
+            100,
+            100,
+            0,
+            0,
+            1_800_000_000,
+            900,
         )
-        .expect("reuse GitHub OAuth account");
-    assert!(!gh_second.is_new_account);
-    assert_eq!(gh_first.account.account_id, gh_second.account.account_id);
+    };
+    create_quote(&account_a, "shared-quote").unwrap();
+    assert_eq!(
+        create_quote(&account_b, "shared-quote")
+            .unwrap_err()
+            .error_code(),
+        "usage_quote_id_exists"
+    );
+    assert_eq!(
+        store
+            .read_inner()
+            .usage_quotes
+            .get("shared-quote")
+            .unwrap()
+            .quote
+            .account_id,
+        account_a.account_id
+    );
+    create_quote(&account_b, "quote-b").unwrap();
+
+    store.set_wallet_balance_for_test(&account_a.account_id, 200, 0);
+    store.set_wallet_balance_for_test(&account_b.account_id, 200, 0);
+    store
+        .create_credit_reservation(
+            &account_a,
+            Some("shared-reservation"),
+            "shared-quote",
+            "idem-a",
+            Some(100),
+            1_800_000_000,
+        )
+        .unwrap();
+    assert_eq!(
+        store
+            .create_credit_reservation(
+                &account_b,
+                Some("shared-reservation"),
+                "quote-b",
+                "idem-b",
+                Some(100),
+                1_800_000_000,
+            )
+            .unwrap_err()
+            .error_code(),
+        "credit_reservation_id_exists"
+    );
+    let wallet_b = store.get_hosted_credit_wallet(&account_b);
+    assert_eq!(wallet_b.available_minor_units, 200);
+    assert_eq!(wallet_b.reserved_minor_units, 0);
+    assert!(store.list_ledger_entries(&account_b).is_empty());
+    assert_eq!(
+        store
+            .read_inner()
+            .credit_reservations
+            .get("shared-reservation")
+            .unwrap()
+            .reservation
+            .account_id,
+        account_a.account_id
+    );
+
+    let checkout = |principal: &AuthenticatedPrincipal, key: &str| {
+        store.create_checkout_session(
+            principal,
+            Some("shared-checkout"),
+            "starter",
+            key,
+            100,
+            100,
+            "https://example.edu/success",
+            "https://example.edu/cancel",
+        )
+    };
+    checkout(&account_a, "checkout-a").unwrap();
+    assert_eq!(
+        checkout(&account_b, "checkout-b").unwrap_err().error_code(),
+        "checkout_session_id_exists"
+    );
 }
 
 #[test]
@@ -852,18 +1034,22 @@ async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across
         assert!(store.is_postgres_backed());
         assert_eq!(store.postgres_namespace(), Some(namespace.as_str()));
 
-        let (acct, _sess) = store
-            .register_email_account(
+        let acct = store
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Google,
+                "pg-alice-google",
                 "pg-alice@example.test",
-                "StrongPgPass123!",
+                true,
                 Some("PG Alice"),
+                None,
             )
-            .expect("register pg-alice");
+            .expect("register pg-alice")
+            .account;
         acct_id = acct.account_id.clone();
 
         let principal = AuthenticatedPrincipal {
             account_id: acct_id.clone(),
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             is_development_only_identity: false,
         };
         store
@@ -889,12 +1075,20 @@ async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across
     {
         let restarted = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
             .expect("reopen postgres-backed store (boot 2)");
-        let (_logged_in_acct, _sess2) = restarted
-            .login_email_account("pg-alice@example.test", "StrongPgPass123!")
-            .expect("password hash must survive PostgreSQL restart");
+        let logged_in = restarted
+            .authenticate_oauth_identity(
+                syllabus_security::OAuthProvider::Google,
+                "pg-alice-google",
+                "pg-alice@example.test",
+                true,
+                None,
+                None,
+            )
+            .expect("OAuth identity must survive PostgreSQL restart");
+        assert_eq!(logged_in.account.account_id, acct_id);
         let principal = AuthenticatedPrincipal {
             account_id: acct_id.clone(),
-            roles: vec![PrincipalRole::Learner],
+            roles: vec![PrincipalRole::User],
             is_development_only_identity: false,
         };
         let active = restarted
@@ -954,12 +1148,20 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     let replica_b = InMemoryTransactionalStore::open_postgres(&pg_url, &namespace)
         .expect("open replica_b against PostgreSQL");
 
-    let (acct, _sess) = replica_a
-        .register_email_account("replica-maya@syllabus.build", "InitialPass123!", Some("Maya"))
-        .expect("register account on replica_a");
+    let acct = replica_a
+        .authenticate_oauth_identity(
+            syllabus_security::OAuthProvider::Google,
+            "replica-maya-google",
+            "replica-maya@syllabus.build",
+            true,
+            Some("Maya"),
+            None,
+        )
+        .expect("register account on replica_a")
+        .account;
     let principal = AuthenticatedPrincipal {
         account_id: acct.account_id.clone(),
-        roles: vec![PrincipalRole::Learner],
+        roles: vec![PrincipalRole::User],
         is_development_only_identity: false,
     };
 
@@ -1005,7 +1207,7 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     assert_eq!(synced_pks.len(), 1);
     assert_eq!(synced_pks[0].credential_id, "pk-cred-replica-1");
 
-    // 2. Issue email verification & password reset on replica_a -> confirm on replica_b
+    // 2. Issue email verification on replica_a and confirm on replica_b.
     let verify_issued = replica_a
         .issue_email_verification_token(&principal, 1_776_000_000_200, 3_600_000)
         .expect("issue email verification on replica_a");
@@ -1014,24 +1216,7 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
         .expect("confirm email verification on replica_b");
     assert!(verified_acct.email_verified);
 
-    let reset_issued = replica_b
-        .issue_password_reset_token("replica-maya@syllabus.build", 1_776_000_000_400, 900_000)
-        .expect("issue password reset on replica_b")
-        .expect("account exists");
-    let (_reset_acct, _reset_sess) = replica_a
-        .confirm_password_reset_token(
-            "replica-maya@syllabus.build",
-            &reset_issued.token,
-            "RotatedReplicaPass456!",
-            1_776_000_000_500,
-        )
-        .expect("confirm password reset on replica_a");
-
-    let (_relogin_acct, _) = replica_b
-        .login_email_account("replica-maya@syllabus.build", "RotatedReplicaPass456!")
-        .expect("login with reset password on replica_b");
-
-    // 3. Verify normalized row-level SQL tables & worker_dispatch_receipts directly in PostgreSQL
+    // 3. Verify normalized row-level SQL tables and worker dispatch receipts in PostgreSQL.
     let email_job_id = format!("pg-dispatch-email-{namespace}");
     crate::enqueue_pg_outbox_job(
         &pg_url,

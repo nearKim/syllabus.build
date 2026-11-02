@@ -13,6 +13,7 @@ import {
   renderSyllabusWebAppHtml,
 } from "../src/index.ts";
 import { createWebAppServer } from "../src/server.mjs";
+import { backendSessionResponse, cookieHeader, signInWithDevOAuth } from "./helpers/devOAuth.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../public");
@@ -1222,7 +1223,7 @@ test("Profile & settings › Your contributions thanks the author, states its to
   assert.ok(unpublish.slice(0, unpublish.indexOf("</dialog>")).includes("Historical votes are not transferred."));
 
   // A learner with no publication sees an invitation instead of an empty summary.
-  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "Learner" } }));
+  const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "User" } }));
   assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another syllabus") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
   assert.ok(newcomer.includes('<div class="settings-card">'));
   assert.match(text(newcomer), /^Your contributions Share a plan and any self-learner can adopt it for free\. .+ stay private\. Share your first syllabus$/);
@@ -1307,7 +1308,7 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
   assert.deepEqual([guest.authStatus, guest.topLevel, guest.recordedProgressEvents.length], ["guest", "Explore", 0]);
   assert.match(
     header(),
-    /<div class="navbar-guest-actions" data-auth-status="guest">[\s\S]*?data-dialog-id="dialog-auth"[^>]*>Log in<\/button>[\s\S]*?data-dialog-id="dialog-auth"[^>]*>Sign up<\/button>/,
+    /<div class="navbar-guest-actions" data-auth-status="guest">[\s\S]*?data-dialog-id="dialog-auth"[^>]*>Sign in<\/button>/,
   );
   // No private content reaches a guest's page, not even hidden.
   for (const hidden of ['id="panel-learn"', 'id="panel-settings"', 'id="learn-detail-inspector"', 'id="dialog-new-syllabus"', "data-self-reported-count", "My Publications"]) {
@@ -1320,12 +1321,11 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
   click({ action: "open-adopt-dialog", publicationId: "publication-statmech-001" });
   assert.equal(app.getState().returnTo.label, "Explore › Details: Statistical Mechanics & Thermodynamics");
   assert.ok(root.innerHTML.includes("After you sign in, you return to <strong>Explore › Details: Statistical Mechanics &amp; Thermodynamics</strong>. Nothing is voted, published, adopted, or bought on your behalf."));
-  submit("submit-sign-in", { "#auth-email-input": { value: "not-an-email" } });
-  assert.ok(root.innerHTML.includes('<p class="field-error" role="alert">Enter a valid email address.</p>'));
+  assert.equal(root.innerHTML.includes('id="auth-email-input"'), false);
   assert.equal(app.getState().authStatus, "guest");
 
   // Signing in restores the place and its dialog, never the action.
-  submit("submit-sign-in", { "#auth-email-input": { value: "Alex@Syllabus.build" } });
+  app.completeExternalAuth({ accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "User" });
   const back = app.getState();
   assert.deepEqual([back.authStatus, back.topLevel, back.openDialogId, back.adoptPublicationId, back.adoptions.length, back.votes.length],
     ["authenticated", "Explore", "dialog-partial-adoption", "publication-statmech-001", 0, 0]);
@@ -1336,7 +1336,7 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
   click({ action: "sign-out" });
   app.navigateTopLevel("Learn");
   assert.equal(app.getState().returnTo.label, "Learn › Today");
-  click({ action: "sign-in-passkey" });
+  app.completeExternalAuth({ accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "User" });
   assert.deepEqual([app.getState().topLevel, app.getState().learnSubDestination], ["Learn", "Today"]);
 });
 
@@ -1352,10 +1352,10 @@ test("an expired session keeps the view for the same account and starts clean fo
   assert.notEqual(app.getState().activityStates["activity-example"], "in_progress");
 
   // The same account resumes with its work. Another account starts with a clean session.
-  click({ action: "sign-in-passkey" });
+  app.completeExternalAuth({ accountId: "learner-default", email: "alex@syllabus.build", username: "alex", role: "User" });
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
   click({ action: "simulate-session-expired" });
-  click({ action: "switch-persona", persona: "curator" });
+  app.completeExternalAuth({ accountId: "curator-ada", email: "ada@syllabus.build", username: "ada", role: "Admin" });
   assert.ok(root.innerHTML.includes('value="ada@syllabus.build"'));
   assert.ok(root.innerHTML.includes('aria-label="Profile &amp; settings (@ada)"'));
   assert.equal(root.innerHTML.includes('class="navbar-user-name"'), false);
@@ -1392,8 +1392,20 @@ test("the activity inspector is one modal drawer that never takes width from the
   assert.equal(/\.syllabus-app-shell\s*\{[^}]*overflow-wrap:\s*anywhere/s.test(css), false, "the shell must not let words split mid-letter");
 });
 
-test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synthetic API fallback", async () => {
-  const { server } = createWebAppServer();
+test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and live API proxy", async () => {
+  const { server } = createWebAppServer({
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
+    fetchImpl: async (url) => String(url).endsWith("/v1/auth/session")
+      ? backendSessionResponse("learner-default")
+      : String(url).endsWith("/v1/auth/oauth/google/callback")
+        ? new Response(JSON.stringify({
+          account_id: "learner-default",
+          session_token: "test-session",
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          roles: ["user"],
+        }), { status: 200 })
+      : new Response("{}", { status: 503 }),
+  });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const addr = server.address();
   const baseUrl = `http://127.0.0.1:${addr.port}`;
@@ -1405,10 +1417,14 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     const setCookie = indexRes.headers.get("set-cookie") ?? "";
     assert.match(setCookie, /^cio_sid=[0-9a-f-]{36}; Path=\/; HttpOnly; SameSite=Lax$/);
     const cookie = setCookie.split(";")[0];
+    const jar = new Map([["cio_sid", cookie.split("=")[1]]]);
     const indexHtml = await indexRes.text();
     assert.ok(indexHtml.includes("<!doctype html>"));
     assert.ok(indexHtml.includes('data-current-learn-sub="Plan"'));
-    assert.ok(indexHtml.includes('<svg class="plan-dag-svg"'));
+    assert.equal(indexHtml.includes('<svg class="plan-dag-svg"'), false);
+    await signInWithDevOAuth(baseUrl, jar, "alex@syllabus.build");
+    const signedInHtml = await (await fetch(`${baseUrl}/?topLevel=Learn&learnSub=Plan&planView=Map`, { headers: { cookie: cookieHeader(jar) } })).text();
+    assert.ok(signedInHtml.includes('<svg class="plan-dag-svg"'));
 
     const cssRes = await fetch(`${baseUrl}/styles.css`);
     assert.equal(cssRes.status, 200);
@@ -1494,7 +1510,8 @@ test("createWebAppServer serves SSR HTML, stylesheet, hydration script, and synt
     assert.equal(signedOut.html.includes('id="panel-learn"'), false);
     const learn = await post({ action: "navigate-top", destination: "Learn" });
     assert.deepEqual([learn.state.openDialogId, learn.state.returnTo.label], ["dialog-auth", "Learn › Plan"]);
-    const signedIn = await post({ action: "submit-sign-in", email: "alex@syllabus.build" });
+    await signInWithDevOAuth(baseUrl, jar, "alex@syllabus.build");
+    const signedIn = await post({ action: "noop" });
     assert.deepEqual([signedIn.state.authStatus, signedIn.state.topLevel], ["authenticated", "Learn"]);
     assert.ok(clientJs.includes('root.querySelector(\'.syllabus-app-shell[data-auth-status="authenticated"]\')'));
     assert.ok(clientJs.includes("new FormData(form).forEach"));
@@ -1520,22 +1537,38 @@ test("the navbar shows Learn and Explore, and Admin opens only at its protected 
 
   // /admin and ?topLevel=Admin open the console for a signed-in admin. Anyone else gets 403.
   const fetchWith = async (initialState, url) => {
-    const { server } = createWebAppServer({ initialState });
+    const account = initialState.account;
+    const { server } = createWebAppServer({
+      env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
+      fetchImpl: async (target) => String(target).endsWith("/v1/auth/session")
+        ? backendSessionResponse(account.accountId, account.role === "Admin" ? ["admin"] : ["user"])
+        : String(target).endsWith("/v1/auth/oauth/google/callback")
+          ? new Response(JSON.stringify({
+            account_id: account.accountId,
+            session_token: "test-session",
+            expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+            roles: account.role === "Admin" ? ["admin"] : ["user"],
+          }), { status: 200 })
+        : new Response("{}", { status: 503 }),
+    });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
     try {
-      const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`);
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+      const jar = new Map();
+      if (account && initialState.authStatus !== "guest") await signInWithDevOAuth(baseUrl, jar, account.email);
+      const res = await fetch(`${baseUrl}${url}`, { headers: { cookie: cookieHeader(jar) } });
       return { status: res.status, html: await res.text() };
     } finally {
       await new Promise((resolve) => server.close(resolve));
     }
   };
-  const curator = { account: { accountId: "curator-ada", email: "ada@syllabus.build", displayName: "Ada Lovelace", role: "Curator" } };
+  const curator = { account: { accountId: "curator-ada", email: "ada@syllabus.build", displayName: "Ada Lovelace", role: "Admin" } };
   const admin = await fetchWith(curator, "/admin");
   assert.equal(admin.status, 200);
   assert.ok(admin.html.includes('data-admin-authorized="true"'));
   assert.equal((await fetchWith(curator, "/?topLevel=Admin")).status, 200);
   assert.equal((await fetchWith({}, "/admin")).status, 403, "the default learner is not an admin");
-  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@syllabus.build", role: "Learner" } };
+  const learner = { authStatus: "authenticated", account: { accountId: "learner-sam", email: "sam@syllabus.build", role: "User" } };
   const denied = await fetchWith(learner, "/admin");
   assert.equal(denied.status, 403);
   assert.ok(denied.html.includes("403 Unauthorized Role"));
@@ -2096,7 +2129,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   // 2. Admin is a role. The default learner gets the 403 boundary, and the curator persona opens the console.
   click({ action: "open-admin-resources" });
   assert.ok(root.innerHTML.includes("403 Unauthorized Role"));
-  app.applyUiAction("submit-sign-in", { email: "ada@syllabus.build" });
+  app.completeExternalAuth({ accountId: "curator-ada", email: "ada@syllabus.build", username: "ada", role: "Admin" });
   click({ action: "open-admin-resources" });
   assert.equal(app.getState().adminConsoleOpen, true);
   const adminPanel = root.innerHTML.slice(
@@ -2159,7 +2192,7 @@ test("JSON-driven Learn Resources Access column and Admin Global Resource & Vect
   );
 
   // 6. Non-admin learner accounts receive a 403 role boundary if they view Admin
-  app.applyUiAction("submit-sign-in", { email: "sam@syllabus.build" });
+  app.completeExternalAuth({ accountId: "learner-sam", email: "sam@syllabus.build", username: "sam", role: "User" });
   app.applyUiAction("open-admin-resources");
   const unauthorizedAdminPanel = root.innerHTML.slice(
     root.innerHTML.indexOf('id="panel-admin-resources"'),

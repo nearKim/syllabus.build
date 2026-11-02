@@ -45,7 +45,7 @@ export interface AdminGlobalResourceRow {
 
 // Admin is a role, never an account id or an email address.
 export function isAdminAccount(account: Account): boolean {
-  return account.role === "Moderator" || account.role === "Curator";
+  return account.role === "Admin";
 }
 
 export function buildGlobalCorpusCatalog(

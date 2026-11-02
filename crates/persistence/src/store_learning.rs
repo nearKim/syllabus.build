@@ -8,18 +8,17 @@ use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 
 use syllabus_domain::{
     evaluate_assessment_attempt, evaluate_prerequisite_gate, partition_diagnostic_objectives,
-    recalculate_attempts_for_key_correction, schedule_initial_spaced_review,
-    validate_objective_waiver, AssessmentKind, AssessmentReviewStatus, AssistanceLevel,
-    DiagnosticStopReason, HistoricalAttemptForKeyCorrection, LearnerGateDecision,
-    MasteryGateEvaluation, MathDepthPreference, ObjectiveProficiencyState, PrerequisiteGateInput,
-    SpacedReviewRecord, WaiverEvidenceSource,
+    recalculate_attempts_for_key_correction, schedule_initial_spaced_review, AssessmentKind,
+    AssessmentReviewStatus, AssistanceLevel, DiagnosticStopReason,
+    HistoricalAttemptForKeyCorrection, LearnerGateDecision, MasteryGateEvaluation,
+    MathDepthPreference, ObjectiveProficiencyState, PrerequisiteGateInput, SpacedReviewRecord,
 };
 
 use crate::models::{
     AdaptationProposalRecord, AssessmentAttemptRecord, AssessmentIssueReportRecord,
     AssessmentKeyCorrectionRecord, DiagnosticSessionRecord, LearnerProficiencyProjection,
-    ObjectiveWaiverRecord, PersistenceError, PrerequisiteDecisionAuditRecord,
-    ReviewedAssessmentRecord, SyllabusRevisionRecord,
+    PersistenceError, PrerequisiteDecisionAuditRecord, ReviewedAssessmentRecord,
+    SyllabusRevisionRecord,
 };
 use crate::store::InMemoryTransactionalStore;
 
@@ -155,6 +154,21 @@ impl InMemoryTransactionalStore {
                 resource_id: assessment_id.to_string(),
             });
         }
+        if let Some(att_id) = attempt_id {
+            if let Some(att) = guard.assessment_attempts.get(att_id) {
+                principal.require_learner_ownership(&att.account_id)?;
+                if att.assessment_id != assessment_id {
+                    return Err(PersistenceError::NotFound {
+                        resource_type: "assessment_attempt",
+                        resource_id: att_id.to_string(),
+                    });
+                }
+                return Err(PersistenceError::Conflict {
+                    code: "assessment_attempt_finalized",
+                    message: format!("assessment attempt `{att_id}` is already finalized"),
+                });
+            }
+        }
         let key = (principal.account_id.clone(), assessment_id.to_string());
         let prev = guard
             .pending_assistance_by_assessment
@@ -165,19 +179,6 @@ impl InMemoryTransactionalStore {
         guard
             .pending_assistance_by_assessment
             .insert(key, escalated);
-
-        if let Some(att_id) = attempt_id {
-            if let Some(att) = guard.assessment_attempts.get_mut(att_id) {
-                principal.require_learner_ownership(&att.account_id)?;
-                att.assistance_level = att.assistance_level.escalate(assistance_level);
-                if !att.assistance_level.is_independent()
-                    && att.derived_proficiency_state == ObjectiveProficiencyState::Demonstrated
-                {
-                    att.derived_proficiency_state = ObjectiveProficiencyState::InProgress;
-                    att.contract_proficiency_label = "assisted_progress".to_string();
-                }
-            }
-        }
 
         Ok(json!({
             "assessment_id": assessment_id,
@@ -197,9 +198,14 @@ impl InMemoryTransactionalStore {
         session_id: &str,
         declared_assistance: AssistanceLevel,
         responses: BTreeMap<String, String>,
-        explicit_score_bp: Option<u32>,
     ) -> Result<AssessmentAttemptRecord, PersistenceError> {
         let mut guard = self.write_inner();
+        if guard.assessment_attempts.contains_key(attempt_id) {
+            return Err(PersistenceError::Conflict {
+                code: "assessment_attempt_id_exists",
+                message: format!("assessment attempt `{attempt_id}` already exists"),
+            });
+        }
         let assessment = guard
             .reviewed_assessments
             .get(assessment_id)
@@ -216,9 +222,7 @@ impl InMemoryTransactionalStore {
             .unwrap_or(AssistanceLevel::Independent);
         let effective_assistance = declared_assistance.escalate(recorded_assistance);
 
-        let score_bp = if let Some(explicit) = explicit_score_bp {
-            explicit
-        } else if assessment.answer_key.is_empty() {
+        let score_bp = if assessment.answer_key.is_empty() {
             0
         } else {
             let mut correct = 0u32;
@@ -327,9 +331,7 @@ impl InMemoryTransactionalStore {
         Ok(rec.clone())
     }
 
-    /// Reports a defective assessment item (`PED-004`, `@S40`).
-    /// When `reason_code == "broken_answer_key"` or `"ambiguous_prompt"`, suspends the mastery gate on that assessment
-    /// so learners are not blocked by a broken question until a curator issues a key correction.
+    /// Records a learner report for review without changing the shared assessment gate.
     pub fn report_defective_assessment_item(
         &self,
         principal: &AuthenticatedPrincipal,
@@ -341,18 +343,13 @@ impl InMemoryTransactionalStore {
         let mut guard = self.write_inner();
         guard.next_seq += 1;
         let seq = guard.next_seq;
-        let assessment = guard
+        guard
             .reviewed_assessments
-            .get_mut(assessment_id)
+            .get(assessment_id)
             .ok_or_else(|| PersistenceError::NotFound {
                 resource_type: "assessment",
                 resource_id: assessment_id.to_string(),
             })?;
-
-        let suspend = matches!(reason_code, "broken_answer_key" | "ambiguous_prompt");
-        if suspend {
-            assessment.review_status = AssessmentReviewStatus::Suspended;
-        }
 
         let report = AssessmentIssueReportRecord {
             report_id: format!("rep-{assessment_id}-{seq}"),
@@ -361,12 +358,8 @@ impl InMemoryTransactionalStore {
             item_id: item_id.to_string(),
             reason_code: reason_code.to_string(),
             details: details.to_string(),
-            status: if suspend {
-                "suspended_gate".to_string()
-            } else {
-                "open".to_string()
-            },
-            gate_suspended: suspend,
+            status: "open".to_string(),
+            gate_suspended: false,
         };
         guard.assessment_issue_reports.push(report.clone());
         Ok(report)
@@ -381,7 +374,7 @@ impl InMemoryTransactionalStore {
         updated_answer_key: BTreeMap<String, String>,
         rationale: &str,
     ) -> Result<AssessmentKeyCorrectionRecord, PersistenceError> {
-        principal.require_role(PrincipalRole::Curator)?;
+        principal.require_role(PrincipalRole::Admin)?;
 
         let mut guard = self.write_inner();
         guard.next_seq += 1;
@@ -614,6 +607,12 @@ impl InMemoryTransactionalStore {
         math_depth_preference: Option<MathDepthPreference>,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
         let mut guard = self.write_inner();
+        if guard.diagnostic_sessions.contains_key(diagnostic_id) {
+            return Err(PersistenceError::Conflict {
+                code: "diagnostic_id_exists",
+                message: format!("diagnostic `{diagnostic_id}` already exists"),
+            });
+        }
         if let Some(pref) = math_depth_preference {
             guard
                 .math_depth_by_account
@@ -639,13 +638,12 @@ impl InMemoryTransactionalStore {
         let mut answer_key = BTreeMap::new();
         for (idx, obj_id) in objectives.iter().enumerate() {
             let item_id = format!("diag-item-{}-{obj_id}", idx + 1);
-            let expected = format!("correct-{obj_id}");
             items.push(json!({
                 "item_id": item_id,
                 "objective_id": obj_id,
                 "prompt": format!("Diagnostic verification item for {obj_id}"),
             }));
-            answer_key.insert(item_id, (obj_id.clone(), expected));
+            answer_key.insert(item_id, (obj_id.clone(), String::new()));
         }
 
         let objective_states = partition_diagnostic_objectives(&objectives, &BTreeMap::new());
@@ -693,8 +691,8 @@ impl InMemoryTransactionalStore {
         principal: &AuthenticatedPrincipal,
         diagnostic_id: &str,
         item_id: &str,
-        answer: &str,
-        assistance_level: AssistanceLevel,
+        _answer: &str,
+        _assistance_level: AssistanceLevel,
     ) -> Result<DiagnosticSessionRecord, PersistenceError> {
         let mut guard = self.write_inner();
         let owner_id = guard
@@ -708,7 +706,7 @@ impl InMemoryTransactionalStore {
             .clone();
         principal.require_learner_ownership(&owner_id)?;
 
-        let (obj_id, is_independent_pass, updated_record) = {
+        let (obj_id, updated_record) = {
             let sess = guard
                 .diagnostic_sessions
                 .get_mut(diagnostic_id)
@@ -719,19 +717,14 @@ impl InMemoryTransactionalStore {
                     message: format!("diagnostic `{diagnostic_id}` is already `{}`", sess.status),
                 });
             }
-            let (obj_id, expected) = sess.answer_key.get(item_id).cloned().ok_or_else(|| {
+            let (obj_id, _) = sess.answer_key.get(item_id).cloned().ok_or_else(|| {
                 PersistenceError::NotFound {
                     resource_type: "diagnostic_item",
                     resource_id: item_id.to_string(),
                 }
             })?;
 
-            let answer_matches = answer.trim().eq_ignore_ascii_case(expected.trim())
-                || answer.trim().eq_ignore_ascii_case("pass")
-                || answer.trim().eq_ignore_ascii_case("correct");
-            let is_independent_pass = answer_matches && assistance_level.is_independent();
-            sess.answered_results
-                .insert(obj_id.clone(), is_independent_pass);
+            sess.answered_results.insert(obj_id.clone(), false);
             sess.objective_states = partition_diagnostic_objectives(
                 &sess.candidate_objective_ids,
                 &sess.answered_results,
@@ -740,7 +733,7 @@ impl InMemoryTransactionalStore {
                 sess.status = "completed".to_string();
                 sess.stop_reason = Some(DiagnosticStopReason::AllItemsAnswered);
             }
-            (obj_id, is_independent_pass, sess.clone())
+            (obj_id, sess.clone())
         };
 
         let prof = guard
@@ -754,44 +747,14 @@ impl InMemoryTransactionalStore {
                 total_time_spent_minutes: 0,
             });
 
-        if is_independent_pass {
-            prof.objectives
-                .insert(obj_id.clone(), ObjectiveProficiencyState::Demonstrated);
-            let waiver_source = WaiverEvidenceSource::DiagnosticDemonstrated {
-                diagnostic_id: diagnostic_id.to_string(),
-                assessed_objective_id: obj_id.clone(),
-                equivalence_mapping_id: None,
-            };
-            validate_objective_waiver(&obj_id, &waiver_source)
-                .map_err(|e| PersistenceError::Validation(e.to_string()))?;
-            let waiver_id = format!("waiver-{diagnostic_id}-{obj_id}");
-            guard.objective_waivers.insert(
-                (principal.account_id.clone(), obj_id.clone()),
-                ObjectiveWaiverRecord {
-                    waiver_id: waiver_id.clone(),
-                    account_id: principal.account_id.clone(),
-                    objective_id: obj_id,
-                    evidence_kind: "diagnostic_demonstrated".to_string(),
-                    source_evidence_ref: diagnostic_id.to_string(),
-                    equivalence_mapping_id: None,
-                },
-            );
-            if let Some(sess) = guard.diagnostic_sessions.get_mut(diagnostic_id) {
-                if !sess.granted_waiver_ids.contains(&waiver_id) {
-                    sess.granted_waiver_ids.push(waiver_id);
-                }
-                return Ok(sess.clone());
-            }
-        } else {
-            prof.objectives
-                .entry(obj_id)
-                .or_insert(ObjectiveProficiencyState::NeedsReview);
-        }
+        prof.objectives
+            .entry(obj_id)
+            .or_insert(ObjectiveProficiencyState::NeedsReview);
 
         Ok(updated_record)
     }
 
-    /// Stops a diagnostic session early (`@S81`), preserving demonstrated objectives and leaving
+    /// Stops a diagnostic session early (`@S81`), preserving practice results and leaving
     /// unreached objectives explicitly `Unassessed` while preserving `math_depth_preference` (`@S12`, `@S70`).
     pub fn stop_diagnostic_session(
         &self,
@@ -833,6 +796,12 @@ impl InMemoryTransactionalStore {
         trigger_kind: Option<&str>,
     ) -> Result<AdaptationProposalRecord, PersistenceError> {
         let mut guard = self.write_inner();
+        if guard.adaptation_proposals.contains_key(proposal_id) {
+            return Err(PersistenceError::Conflict {
+                code: "adaptation_proposal_id_exists",
+                message: format!("adaptation proposal `{proposal_id}` already exists"),
+            });
+        }
 
         // Resolve current active/latest syllabus revision and current schedule revision
         let mut revs: Vec<&SyllabusRevisionRecord> = guard

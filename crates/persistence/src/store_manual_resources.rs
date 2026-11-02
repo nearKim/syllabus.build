@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 use syllabus_contracts::jcs::sha256_bytes_hex;
-use syllabus_security::AuthenticatedPrincipal;
+use syllabus_security::{AuthenticatedPrincipal, PrincipalRole};
 
 use syllabus_domain::{
     AcquisitionPermission, CatalogAccessModel, ResourceFreshnessState, ResourceReviewStatus,
@@ -23,11 +23,7 @@ impl InMemoryTransactionalStore {
         guard: &mut StoreInner,
         record: &CatalogResourceVersionRecord,
     ) {
-        if record.is_synthetic_fixture
-            || record.review_status == ResourceReviewStatus::Quarantined
-            || record.review_status == ResourceReviewStatus::Withdrawn
-            || record.review_status == ResourceReviewStatus::Rejected
-        {
+        if record.is_synthetic_fixture || record.review_status != ResourceReviewStatus::Approved {
             guard
                 .catalog_tfidf_index
                 .remove_document(&record.resource_version_id);
@@ -63,9 +59,11 @@ impl InMemoryTransactionalStore {
     /// Updates an existing catalog/library resource version and atomically refreshes its TF-IDF index entry.
     pub fn update_catalog_resource(
         &self,
+        principal: &AuthenticatedPrincipal,
         resource_version_id: &str,
         patch: CatalogResourcePatchInput,
     ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
+        principal.require_role(PrincipalRole::Admin)?;
         if let Some(ref url) = patch.canonical_url {
             validate_manual_resource_egress_url(url)?;
         }
@@ -92,9 +90,6 @@ impl InMemoryTransactionalStore {
             }
             if let Some(canonical_url) = patch.canonical_url {
                 record.canonical_url = canonical_url.trim().to_string();
-                if let Some(ref mut ev) = record.review_evidence {
-                    ev.evidence_url = record.canonical_url.clone();
-                }
             }
             if let Some(provider_name) = patch.provider_display_name {
                 let trimmed = provider_name.trim();
@@ -171,6 +166,8 @@ impl InMemoryTransactionalStore {
             if let Some(price_opt) = patch.price_minor_units {
                 record.price_minor_units = price_opt;
             }
+            record.review_status = ResourceReviewStatus::UnderReview;
+            record.review_evidence = None;
             record.clone()
         };
 
@@ -181,8 +178,10 @@ impl InMemoryTransactionalStore {
     /// Permanently deletes a catalog/library resource version and purges it from the TF-IDF index.
     pub fn delete_catalog_resource(
         &self,
+        principal: &AuthenticatedPrincipal,
         resource_version_id: &str,
     ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
+        principal.require_role(PrincipalRole::Admin)?;
         let mut guard = self.write_inner();
         let removed = guard
             .catalog_resources

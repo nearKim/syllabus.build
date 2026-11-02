@@ -8,6 +8,7 @@
  */
 
 import type { ConceptCheck } from "./components/InspectorDrawer.tsx";
+import { readBoundedJson } from "./boundedResponse.ts";
 
 export interface LiveConceptCheckParams {
   readonly syllabusTitle: string;
@@ -395,8 +396,12 @@ export async function requestLiveConceptCheck(
     method: "POST",
     headers,
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(180_000),
   });
-  const payload = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  const payload = (await readBoundedJson(res).catch((err) => {
+    if (err instanceof SyntaxError) return {};
+    throw err;
+  })) as Record<string, unknown>;
   if (!res.ok) {
     const errObj = payload["error"] && typeof payload["error"] === "object" ? (payload["error"] as Record<string, unknown>) : null;
     throw new Error(typeof errObj?.["message"] === "string" ? errObj["message"] : `${req.providerId} HTTP ${res.status}`);

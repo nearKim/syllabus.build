@@ -485,12 +485,28 @@ impl InMemoryTransactionalStore {
         }
     }
 
-    pub fn upsert_catalog_resource(&self, record: CatalogResourceVersionRecord) {
+    pub fn insert_catalog_resource(
+        &self,
+        record: CatalogResourceVersionRecord,
+    ) -> Result<(), PersistenceError> {
         let mut guard = self.write_inner();
+        if guard
+            .catalog_resources
+            .contains_key(&record.resource_version_id)
+        {
+            return Err(PersistenceError::Conflict {
+                code: "catalog_resource_id_exists",
+                message: format!(
+                    "catalog resource `{}` already exists",
+                    record.resource_version_id
+                ),
+            });
+        }
         Self::sync_catalog_tfidf_entry_locked(&mut guard, &record);
         guard
             .catalog_resources
             .insert(record.resource_version_id.clone(), record);
+        Ok(())
     }
 
     pub fn get_catalog_resource_version(
@@ -773,16 +789,14 @@ impl InMemoryTransactionalStore {
         Ok(record.clone())
     }
 
-    /// Curator review decision workflow enforcing `PrincipalRole::Curator` and rubric evidence (`CAT-002`, `@S04`, `@S36`).
+    /// Admin review decision workflow enforcing rubric evidence (`CAT-002`, `@S04`, `@S36`).
     pub fn review_catalog_resource(
         &self,
         principal: &AuthenticatedPrincipal,
         resource_version_id: &str,
         input: CatalogReviewInput,
     ) -> Result<CatalogResourceVersionRecord, PersistenceError> {
-        if !principal.roles.contains(&PrincipalRole::Operator) {
-            principal.require_role(PrincipalRole::Curator)?;
-        }
+        principal.require_role(PrincipalRole::Admin)?;
 
         let mut guard = self.write_inner();
         let record = guard
@@ -857,6 +871,7 @@ impl InMemoryTransactionalStore {
             record.review_status = input.decision;
         }
         let cloned_record = record.clone();
+        Self::sync_catalog_tfidf_entry_locked(&mut guard, &cloned_record);
         if input.decision == ResourceReviewStatus::Quarantined {
             let overlay = ResourceQuarantineOverlayRecord {
                 overlay_id: format!("quar-{resource_version_id}"),
@@ -885,11 +900,7 @@ impl InMemoryTransactionalStore {
         replacement_resource_version_id: Option<String>,
         now_iso: &str,
     ) -> Result<ResourceQuarantineOverlayRecord, PersistenceError> {
-        if !principal.roles.contains(&PrincipalRole::Moderator)
-            && !principal.roles.contains(&PrincipalRole::Operator)
-        {
-            principal.require_role(PrincipalRole::Curator)?;
-        }
+        principal.require_role(PrincipalRole::Admin)?;
 
         let mut guard = self.write_inner();
         let record = guard
@@ -900,6 +911,8 @@ impl InMemoryTransactionalStore {
                 resource_id: resource_version_id.to_string(),
             })?;
         record.review_status = ResourceReviewStatus::Quarantined;
+        let updated_record = record.clone();
+        Self::sync_catalog_tfidf_entry_locked(&mut guard, &updated_record);
 
         let overlay = ResourceQuarantineOverlayRecord {
             overlay_id: format!("quar-{resource_version_id}"),

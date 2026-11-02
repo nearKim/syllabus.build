@@ -105,7 +105,7 @@ export function isSafePublicHttpsUrl(rawUrl: string): boolean {
   if (parsed.username || parsed.password) return false;
 
   const host = parsed.hostname.toLowerCase();
-  if (!host || !host.includes(".")) return false;
+  if (!host || !host.includes(".") || host.endsWith(".")) return false;
   if (
     host === "localhost" ||
     host.endsWith(".localhost") ||
@@ -247,9 +247,34 @@ function stripTags(html: string): string {
  * JSON-LD learning schema, and `<h1>`–`<h3>` syllabus headings) with a 3.2s timeout.
  * Never throws: returns `{ fetchedLive: false, ... }` when offline or blocked by the remote host.
  */
+async function readLimitedText(response: Response, maxBytes: number, truncate: boolean): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maxBytes - bytes;
+      text += decoder.decode(value.subarray(0, Math.max(0, remaining)), { stream: true });
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        if (!truncate) throw new Error("Remote response is too large.");
+        break;
+      }
+    }
+    return text + decoder.decode();
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function inspectUrlPageInternals(
   canonicalUrl: string,
-  fetchImpl: typeof fetch | undefined = globalThis.fetch,
+  fetchImpl: typeof fetch | undefined = undefined,
 ): Promise<InspectedUrlPageInternals> {
   const empty: InspectedUrlPageInternals = {
     fetchedLive: false,
@@ -264,22 +289,32 @@ export async function inspectUrlPageInternals(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 3200);
   try {
-    const res = await fetchImpl(canonicalUrl, {
-      method: "GET",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-        "user-agent": "SyllabusResourceIndexer/1.0 (+https://syllabus.study)",
-      },
-    });
+    let currentUrl = canonicalUrl;
+    let res: Response | undefined;
+    for (let hop = 0; hop < 4; hop += 1) {
+      res = await fetchImpl(currentUrl, {
+        method: "GET",
+        redirect: "manual",
+        signal: controller.signal,
+        headers: {
+          accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
+          "user-agent": "SyllabusResourceIndexer/1.0 (+https://syllabus.study)",
+        },
+      });
+      if (res.status < 300 || res.status >= 400) break;
+      const location = res.headers.get("location");
+      await res.body?.cancel();
+      if (!location) return empty;
+      currentUrl = new URL(location, currentUrl).href;
+      if (!isSafePublicHttpsUrl(currentUrl)) return empty;
+    }
+    if (!res || (res.status >= 300 && res.status < 400)) return empty;
     if (!res.ok) return empty;
     if (res.url && !isSafePublicHttpsUrl(res.url)) return empty;
     const contentType = res.headers.get("content-type") ?? "";
     if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return empty;
 
-    const fullText = await res.text();
-    const html = fullText.slice(0, 131_072);
+    const html = await readLimitedText(res, 131_072, true);
 
     const extractMeta = (pattern: RegExp): string | null => {
       const m = pattern.exec(html);
@@ -729,11 +764,12 @@ export async function analyzeManualResourceWithAi(params: {
   readonly modelId?: string | undefined;
   readonly apiKey?: string | undefined;
   readonly fetchImpl?: typeof fetch | undefined;
+  readonly pageFetchImpl?: typeof fetch | undefined;
 }): Promise<AnalyzedManualResourceDraft | { readonly error: string }> {
   const parsed = parseFreeFormResourceInput(params.rawText, params.explicitUrl);
   if ("error" in parsed) return parsed;
 
-  const pageInternals = await inspectUrlPageInternals(parsed.canonicalUrl, params.fetchImpl);
+  const pageInternals = await inspectUrlPageInternals(parsed.canonicalUrl, params.pageFetchImpl);
   const baseline = analyzeManualResourceDeterministic({
     parsed,
     pageInternals,
@@ -783,7 +819,7 @@ export async function analyzeManualResourceWithAi(params: {
         }),
       });
       if (res.ok) {
-        const body = (await res.json()) as {
+        const body = (JSON.parse(await readLimitedText(res, 1024 * 1024, false))) as {
           output_text?: string;
           output?: readonly { content?: readonly { text?: string }[] }[];
         };
@@ -808,7 +844,7 @@ export async function analyzeManualResourceWithAi(params: {
         }),
       });
       if (res.ok) {
-        const body = (await res.json()) as { content?: readonly { type?: string; text?: string }[] };
+        const body = (JSON.parse(await readLimitedText(res, 1024 * 1024, false))) as { content?: readonly { type?: string; text?: string }[] };
         rawJsonText =
           body.content?.filter((b) => b.type === "text").map((b) => b.text ?? "").join("") ?? null;
       }
@@ -827,7 +863,7 @@ export async function analyzeManualResourceWithAi(params: {
         },
       );
       if (res.ok) {
-        const body = (await res.json()) as {
+        const body = (JSON.parse(await readLimitedText(res, 1024 * 1024, false))) as {
           candidates?: readonly { content?: { parts?: readonly { text?: string }[] } }[];
         };
         rawJsonText =
