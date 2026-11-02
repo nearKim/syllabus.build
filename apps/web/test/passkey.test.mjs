@@ -191,6 +191,26 @@ test("Brand assets, favicon, polyfills, and explicit passkey sign-in render clea
     assert.ok(clientJs.includes("PublicKeyCredential.signalUnknownCredential"));
     assert.ok(clientJs.includes('action === "sign-in-passkey"'));
 
+    const modalClasses = new Set([...loginHtml.matchAll(/class="([^"]*)"/g)].flatMap((match) => match[1].split(/\s+/)));
+    let displayedError;
+    const providers = { parentNode: { insertBefore(node) { displayedError = node; } } };
+    const dialog = {
+      querySelector(selector) {
+        if (selector === ".field-error") return displayedError;
+        return modalClasses.has(selector.slice(1)) ? providers : null;
+      },
+    };
+    const errorStart = clientJs.indexOf("function showAuthDialogError(");
+    const errorEnd = clientJs.indexOf("function showSettingsPasskeyNotice(", errorStart);
+    assert.ok(errorStart >= 0 && errorEnd > errorStart);
+    const showError = new Function("root", "document", `${clientJs.slice(errorStart, errorEnd)}; return showAuthDialogError;`)(
+      { querySelector: (selector) => selector === "#dialog-auth" ? dialog : null },
+      { createElement: () => ({ setAttribute(name, value) { this[name] = value; } }) },
+    );
+    showError("Passkeys are not supported in this browser.");
+    assert.equal(displayedError?.textContent, "Passkeys are not supported in this browser.");
+    assert.equal(displayedError?.role, "alert");
+
     const functionStart = clientJs.indexOf("async function triggerPasskeyRegistration(");
     const functionEnd = clientJs.indexOf("\n  bindDialogs();", functionStart);
     assert.ok(functionStart >= 0 && functionEnd > functionStart);

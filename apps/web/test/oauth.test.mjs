@@ -35,11 +35,12 @@ test("AuthDialog offers OAuth and passkeys without password or email-code contro
   const app = createSyllabusWebAppController({ authStatus: "guest", topLevel: "Explore" });
   app.openDialog("dialog-auth");
   const html = authDialogOf(app.renderHtml());
-  assert.ok(html.includes('<h2 id="dialog-auth-title" class="auth-title">Continue to Syllabus.build</h2>'));
-  assert.ok(html.includes("Sign in or create an account to save your syllabi and progress."));
+  assert.match(html, /<h2[^>]*id="dialog-auth-title"[^>]*>Sign in<\/h2>/);
+  assert.ok(html.includes('aria-describedby="dialog-auth-description"'));
+  assert.ok(html.includes('id="dialog-auth-description" class="auth-description">or create an account</p>'));
   assert.ok(html.includes("Continue with Google"));
   assert.ok(html.includes("Continue with GitHub"));
-  assert.ok(html.includes("Use a passkey"));
+  assert.ok(html.includes("Sign in with a passkey"));
   assert.ok(html.includes('href="/auth/oauth/google"'));
   assert.ok(html.includes('href="/auth/oauth/github"'));
   assert.ok(html.includes('data-action="sign-in-passkey"'));

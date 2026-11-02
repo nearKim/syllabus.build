@@ -1,5 +1,6 @@
 import type { VNode } from "preact";
 import type { LearnSubDestination, TopLevelDestination } from "../navigationShell.ts";
+import { BrandMark } from "./HeaderBar.tsx";
 import { usernameOf, type Account, type AuthStatus } from "../auth.ts";
 import { SfIcon } from "./Icons.tsx";
 
@@ -76,20 +77,25 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
       id="dialog-auth"
       closedby="any"
       aria-labelledby="dialog-auth-title"
+      aria-describedby="dialog-auth-description"
       data-open={String(open)}
       data-auth-mode="login"
       data-opaque-surface="true"
     >
       <div class="dialog-surface auth-surface">
         <div class="auth-head">
-          <h2 id="dialog-auth-title" class="auth-title">Continue to Syllabus.build</h2>
-          <p class="auth-description">Sign in or create an account to save your syllabi and progress.</p>
-          {returnTo ? (
-            <p class="auth-return" role="status">
-              After you sign in, you return to <strong>{returnTo.label}</strong>. Nothing is voted, published, adopted, or bought on your behalf.
-            </p>
-          ) : null}
+          <BrandMark className="brand-mark auth-brand-mark" />
+          <div class="auth-heading">
+            <h2 id="dialog-auth-title" class="auth-title" tabIndex={-1} autofocus>Sign in</h2>
+            <p id="dialog-auth-description" class="auth-description">or create an account</p>
+          </div>
         </div>
+
+        {returnTo ? (
+          <p class="auth-return" role="status">
+            After you sign in, you return to <strong>{returnTo.label}</strong>. Nothing is voted, published, adopted, or bought on your behalf.
+          </p>
+        ) : null}
 
         {authNotice ? <p class="field-error" role="alert">{authNotice}</p> : null}
 
@@ -105,7 +111,7 @@ export function AuthDialog({ open, returnTo, authNotice }: AuthDialogProps): VNo
         </div>
         <button type="button" class="auth-passkey-action" data-action="sign-in-passkey">
           <PasskeyIcon />
-          <span>Use a passkey</span>
+          <span>Sign in with a passkey</span>
         </button>
 
         <button type="button" class="auth-close-btn" data-action="close-dialog" aria-label="Close">

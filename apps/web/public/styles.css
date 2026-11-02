@@ -521,8 +521,8 @@ section[id] {
 
 /* Authentication dialog. */
 #dialog-auth {
-  max-width: min(25rem, calc(100vw - 32px));
-  padding: 32px;
+  max-width: min(23rem, calc(100vw - 32px));
+  padding: 28px 28px 20px;
   border-radius: var(--radius-surface);
   transition: opacity 200ms var(--ease-out), translate 280ms var(--ease-out), scale 280ms var(--ease-out);
 }
@@ -552,13 +552,31 @@ section[id] {
 
 .auth-head {
   display: grid;
-  gap: 8px;
-  padding-inline-end: 24px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding-inline-end: 32px;
+}
+
+.auth-brand-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+.auth-brand-mark .brand-mark-svg {
+  width: 24px;
+  height: 24px;
+}
+
+.auth-heading {
+  display: grid;
+  gap: 2px;
 }
 
 .auth-title {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: -0.025em;
@@ -575,7 +593,7 @@ section[id] {
 }
 
 .auth-return {
-  margin: 8px 0 0;
+  margin: 20px 0 0;
   font-size: 13.5px;
   font-weight: 400;
   line-height: 1.55;
@@ -782,22 +800,21 @@ section[id] {
 .auth-provider-list {
   display: grid;
   gap: 10px;
-  margin-top: 28px;
+  margin-top: 24px;
 }
 
 .auth-provider-btn {
   position: relative;
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
   min-width: 0;
-  min-height: 52px;
+  min-height: 48px;
   padding: 0 16px;
-  border: 1px solid var(--color-border-control);
+  border: 0;
   border-radius: var(--radius-control);
-  background: var(--color-surface);
+  background: var(--color-surface-secondary);
   color: var(--color-text-primary);
   font-size: 15px;
   font-weight: 600;
@@ -808,48 +825,49 @@ section[id] {
 }
 
 .auth-provider-btn svg {
+  flex: none;
   width: 20px;
   height: 20px;
 }
 
-.auth-provider-btn span {
-  text-align: center;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .auth-provider-btn:hover {
-    background: color-mix(in srgb, var(--color-surface) 94%, var(--color-text-primary));
+    background: color-mix(in srgb, var(--color-surface-secondary) 94%, var(--color-text-primary));
     text-decoration: none;
   }
 }
 
 .auth-passkey-action {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 12px;
   width: 100%;
-  min-height: var(--layout-touch-target-min);
+  min-height: 48px;
   margin-top: 12px;
-  padding: 0;
+  padding: 0 16px;
   border: 0;
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text-secondary);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 500;
+  text-align: start;
   cursor: pointer;
+  transition: background-color 160ms ease;
 }
 
 .auth-passkey-action svg {
-  width: 18px;
-  height: 18px;
+  flex: none;
+  width: 20px;
+  height: 20px;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .auth-passkey-action:hover {
+    background: var(--tint-4);
     color: var(--color-text-primary);
-    text-decoration: underline;
-    text-underline-offset: 3px;
   }
 }
 
@@ -887,15 +905,14 @@ section[id] {
   }
 }
 
-/* The circle is 36px. Its hit area reaches the 44px touch target, inset symmetrically 20px from the card corner. */
 .auth-close-btn {
   position: absolute;
-  top: -12px;
-  inset-inline-end: -12px;
+  top: -8px;
+  inset-inline-end: -8px;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--layout-touch-target-min);
+  height: var(--layout-touch-target-min);
   min-width: 0;
   min-height: 0;
   padding: 0;
@@ -903,13 +920,6 @@ section[id] {
   border-radius: 999px;
   background: transparent;
   color: var(--color-text-secondary);
-}
-
-.auth-close-btn::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: inherit;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -956,12 +966,7 @@ section[id] {
   }
 
   #dialog-auth {
-    padding: 28px 24px;
-  }
-
-  .auth-close-btn {
-    top: -12px;
-    inset-inline-end: -8px;
+    padding: 24px 24px 16px;
   }
 }
 

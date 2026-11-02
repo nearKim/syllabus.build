@@ -382,7 +382,7 @@ ${fallbackScript}
       errEl = document.createElement("p");
       errEl.className = "field-error";
       errEl.setAttribute("role", "alert");
-      const providers = dialog.querySelector(".auth-alt-block");
+      const providers = dialog.querySelector(".auth-provider-list");
       if (providers && providers.parentNode) providers.parentNode.insertBefore(errEl, providers);
     }
     errEl.textContent = message;
