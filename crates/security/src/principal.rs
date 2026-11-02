@@ -32,6 +32,7 @@ impl AppEnvironment {
     #[must_use]
     pub fn parse_str(raw: &str) -> Self {
         match raw.trim().to_ascii_lowercase().as_str() {
+            "development" | "dev" => AppEnvironment::Development,
             "production" | "prod" => AppEnvironment::Production,
             "staging" | "stage" => AppEnvironment::Staging,
             "test" | "testing" => AppEnvironment::Test,
@@ -306,6 +307,10 @@ mod tests {
 
     #[test]
     fn unknown_environment_disables_development_paths() {
+        assert_eq!(
+            AppEnvironment::parse_str("development"),
+            AppEnvironment::Development
+        );
         assert_eq!(AppEnvironment::parse_str(""), AppEnvironment::Production);
         assert_eq!(
             AppEnvironment::parse_str("prodution"),

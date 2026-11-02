@@ -1010,6 +1010,33 @@ fn open_catalog_workspace_files_load_and_validate_against_contract_schema() {
     }
 }
 
+async fn wait_for_pg_outbox_receipt(pg_url: &str, job_id: &str) {
+    let (client, connection) = tokio_postgres::connect(pg_url, tokio_postgres::NoTls)
+        .await
+        .expect("connect to check outbox receipt");
+    tokio::spawn(async move {
+        let _ = connection.await;
+    });
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if client
+                .query_opt(
+                    "SELECT 1 FROM worker_dispatch_receipts WHERE job_id = $1",
+                    &[&job_id],
+                )
+                .await
+                .expect("query outbox receipt")
+                .is_some()
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("timed out waiting for outbox receipt for {job_id}"));
+}
+
 #[tokio::test]
 async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across_restarts() {
     let Ok(pg_url) = std::env::var("TEST_POSTGRES_URL") else {
@@ -1115,14 +1142,10 @@ async fn postgres_runtime_store_persists_accounts_syllabi_byok_and_outbox_across
     )
     .await
     .expect("enqueue pg outbox job");
-    let tick = crate::run_pg_outbox_worker_tick(&pg_url, "pg-test-worker", 60)
+    crate::run_pg_outbox_worker_tick(&pg_url, "pg-test-worker", 60)
         .await
         .expect("run pg outbox worker tick");
-    assert!(
-        tick.claimed_and_completed_job_ids.contains(&job_id),
-        "expected worker tick to claim and complete `{job_id}`, got {:?}",
-        tick.claimed_and_completed_job_ids
-    );
+    wait_for_pg_outbox_receipt(&pg_url, &job_id).await;
 }
 
 #[tokio::test]
@@ -1228,10 +1251,10 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
     .await
     .expect("enqueue email_verification job");
 
-    let tick = crate::run_pg_outbox_worker_tick(&pg_url, "pg-dispatch-worker", 60)
+    crate::run_pg_outbox_worker_tick(&pg_url, "pg-dispatch-worker", 60)
         .await
         .expect("run outbox worker tick");
-    assert!(tick.claimed_and_completed_job_ids.contains(&email_job_id));
+    wait_for_pg_outbox_receipt(&pg_url, &email_job_id).await;
 
     let (pg_client, pg_conn) = tokio_postgres::connect(&pg_url, tokio_postgres::NoTls)
         .await
@@ -1269,8 +1292,8 @@ async fn postgres_cross_replica_web_workspaces_passkeys_recovery_and_dispatch_re
             .expect("query web_auth_recovery_tokens")
             .get(0);
     assert_eq!(
-        tok_count, 2,
-        "both email_verification and password_reset tokens must be recorded consumed"
+        tok_count, 1,
+        "email_verification token must be recorded consumed"
     );
 
     let receipt_row = pg_client

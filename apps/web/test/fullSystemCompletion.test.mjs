@@ -49,7 +49,7 @@ async function waitForHttpReady(url, timeoutMs = 10_000) {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url);
-      if (res.ok || res.status < 500) return;
+      if (res.ok) return;
     } catch {
       // retry until ready
     }
@@ -396,13 +396,14 @@ test("Full-stack stateless restart E2E: PostgreSQL preserves OAuth workspaces an
         APP_ENV: "development",
         API_BIND_ADDR: `127.0.0.1:${apiPort}`,
         DATABASE_URL: dbUrl,
-        POSTGRES_STORE_NAMESPACE: pgNamespace,
+        SYLLABUS_STORE_NAMESPACE: pgNamespace,
         BYOK_MASTER_KEY: sharedMasterKey,
         AUTH_EXCHANGE_SECRET: "ef".repeat(32),
+        BILLING_WEBHOOK_SECRET: "ab".repeat(32),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
-    await waitForHttpReady(`http://127.0.0.1:${apiPort}/v1/health`);
+    await waitForHttpReady(`http://127.0.0.1:${apiPort}/healthz`);
     return { child, apiBaseUrl: `http://127.0.0.1:${apiPort}` };
   };
 
