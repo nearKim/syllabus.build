@@ -796,10 +796,10 @@ section[id] {
   min-width: 0;
   min-height: 48px;
   padding: 0 16px;
-  border: 0;
+  border: 1px solid var(--color-border-control);
   border-radius: var(--radius-control);
-  background: var(--color-action-fill);
-  color: var(--color-action-text);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -819,7 +819,7 @@ section[id] {
 
 @media (hover: hover) and (pointer: fine) {
   .auth-provider-btn:hover {
-    background: color-mix(in srgb, var(--color-action-fill) 88%, var(--color-surface));
+    background: color-mix(in srgb, var(--color-surface) 92%, var(--color-text-primary));
     text-decoration: none;
   }
 }
