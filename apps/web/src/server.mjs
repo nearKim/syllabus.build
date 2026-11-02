@@ -780,13 +780,6 @@ ${fallbackScript}
   syncPasskeyCapabilityButtons();
   maybeArmConditionalAutofill();
 
-  document.addEventListener("click", (event) => {
-    const openMenu = root.querySelector("details.navbar-user-menu[open]");
-    if (openMenu && event.target && !openMenu.contains(event.target)) {
-      openMenu.removeAttribute("open");
-    }
-  });
-
   // The eye button keeps focus and the caret in the password field.
   root.addEventListener("mousedown", (event) => {
     if (event.target && event.target.closest && event.target.closest('[data-action="toggle-auth-password"]')) event.preventDefault();

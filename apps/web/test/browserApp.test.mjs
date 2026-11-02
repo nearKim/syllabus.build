@@ -1229,22 +1229,23 @@ test("Profile & settings › Your contributions thanks the author, states its to
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 
-test("the header shows the navbar avatar menu, signing out purges private state, and guests sign in to return where they were", () => {
+test("the header shows the clickable navbar avatar button, signing out from Profile & settings purges private state, and guests sign in to return where they were", () => {
   const { app, root, click, submit } = mountWithClicks();
   const header = () => root.innerHTML.slice(root.innerHTML.indexOf('<div class="header-status">'), root.innerHTML.indexOf("</header>"));
-  assert.match(header(), /<summary class="navbar-avatar-trigger"[^>]*>[\s\S]*?<span class="user-avatar-circle"[^>]*>AL<\/span><svg class="navbar-user-chevron"/);
+  assert.match(header(), /<button type="button" class="navbar-avatar-trigger" data-action="navigate-top" data-destination="Settings" aria-label="Profile &amp; settings \(@alex\)"><span class="user-avatar-circle"[^>]*>AL<\/span><\/button>/);
+  assert.equal(header().includes('class="navbar-user-menu"'), false);
+  assert.equal(header().includes('class="navbar-user-dropdown"'), false);
   assert.equal(header().includes('class="navbar-user-name"'), false);
+  assert.equal(header().includes('data-action="sign-out"'), false);
   assert.ok(
     header().includes('class="navbar-theme-toggle"') &&
-      header().includes('<span class="navbar-dropdown-name">@alex</span>') &&
-      header().includes('<span class="account-email">alex@syllabus.build</span>') &&
       header().includes('data-destination="Settings"') &&
-      header().includes('data-action="sign-out"') &&
       !header().includes("Switch account"),
   );
 
-  // Profile form in Profile & Settings updates display name and email live, and Profile & Settings renders Your contributions (upvotes, shared syllabi status, learner comments) and BYOK AI providers with custody disclosure before #byok-key
+  // Profile form in Profile & Settings updates display name and email live, places Sign out in the page header, and renders Your contributions and BYOK AI providers
   const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
+  assert.ok(settingsPanel.includes('<button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>'));
   assert.equal(settingsPanel.includes('id="settings-appearance"'), false);
   assert.equal(settingsPanel.includes('id="settings-usage"'), false);
   assert.equal(settingsPanel.includes("Profile Settings"), false);
@@ -1296,7 +1297,7 @@ test("the header shows the navbar avatar menu, signing out purges private state,
     "#profile-handle-input": { value: "alex.chen" },
     "#profile-email-input": { value: "alex@syllabus.build" },
   });
-  assert.ok(header().includes('<span class="navbar-dropdown-name">@alex.chen</span>'));
+  assert.ok(header().includes('aria-label="Profile &amp; settings (@alex.chen)"'));
   assert.equal(header().includes('class="navbar-user-name"'), false);
 
   click({ action: "complete-activity", activityId: "activity-theory", eventId: "evt-complete-activity-theory" });
@@ -1355,8 +1356,8 @@ test("an expired session keeps the view for the same account and starts clean fo
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && app.getState().authStatus === "authenticated");
   click({ action: "simulate-session-expired" });
   click({ action: "switch-persona", persona: "curator" });
-  assert.ok(root.innerHTML.includes('<span class="account-email">ada@syllabus.build</span>'));
-  assert.ok(root.innerHTML.includes('<span class="navbar-dropdown-name">@ada</span>'));
+  assert.ok(root.innerHTML.includes('value="ada@syllabus.build"'));
+  assert.ok(root.innerHTML.includes('aria-label="Profile &amp; settings (@ada)"'));
   assert.equal(root.innerHTML.includes('class="navbar-user-name"'), false);
   assert.ok(root.innerHTML.includes('data-self-reported-count="0"'));
 });

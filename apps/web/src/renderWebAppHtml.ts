@@ -2280,6 +2280,7 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
       ${signedOut ? "" : `      <section class="top-level-panel" id="panel-settings" data-top-panel="Settings" data-active="${isSettings}"${isSettings ? "" : " hidden"}>
         <div class="section-header">
           <h1 class="page-title">Profile &amp; settings</h1>
+          <button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>
         </div>
         <div class="settings-stack">
           <section class="settings-section profile-identity" aria-labelledby="settings-profile-title" data-opaque-surface="true">

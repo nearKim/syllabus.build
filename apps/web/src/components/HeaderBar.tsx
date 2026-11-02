@@ -177,56 +177,18 @@ export function HeaderBar({
           )}
         </button>
         {authStatus === "authenticated" ? (
-          <details class="navbar-user-menu">
-            <summary class="navbar-avatar-trigger" aria-label={`Account menu (${account.email})`}>
-              <span class="user-avatar-circle" aria-hidden="true">
-                {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
-              </span>
-              <svg
-                class="navbar-user-chevron"
-                width="12"
-                height="12"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="m4 6 4 4 4-4" />
-              </svg>
-            </summary>
-            <div class="navbar-user-dropdown" data-opaque-surface="true">
-              <div class="navbar-dropdown-identity">
-                <span class="user-avatar-circle user-avatar-md" aria-hidden="true">
-                  {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
-                </span>
-                <div class="navbar-dropdown-meta">
-                  <span class="navbar-dropdown-name">{`@${usernameOf(account)}`}</span>
-                  <span class="account-email">{account.email}</span>
-                </div>
-              </div>
-              <div class="navbar-dropdown-actions">
-                <button
-                  type="button"
-                  class="navbar-dropdown-item"
-                  data-action="navigate-top"
-                  data-destination="Settings"
-                >
-                  <SfIcon name="settings" size={15} />
-                  <span>Profile &amp; Settings</span>
-                </button>
-                <button
-                  type="button"
-                  class="navbar-dropdown-item navbar-dropdown-signout"
-                  data-action="sign-out"
-                >
-                  <span>Sign out</span>
-                </button>
-              </div>
-            </div>
-          </details>
+          <button
+            type="button"
+            class="navbar-avatar-trigger"
+            data-action="navigate-top"
+            data-destination="Settings"
+            aria-current={activeTopLevel === "Settings" ? "page" : undefined}
+            aria-label={`Profile & settings (@${usernameOf(account)})`}
+          >
+            <span class="user-avatar-circle" aria-hidden="true">
+              {account.avatarUrl ? <img class="user-avatar-img" src={account.avatarUrl} alt="" /> : initialsOf(account)}
+            </span>
+          </button>
         ) : (
           <div class="navbar-guest-actions" data-auth-status="guest">
             <button
