@@ -111,20 +111,22 @@ export function createAccountPrivacyController(initial?: {
         disclosures: {
           exportScope: {
             includedRecords: [
-              "syllabus_plans_and_versions",
-              "study_sessions_and_attempt_history",
-              "mastery_and_review_schedule",
-              "hosted_billing_ledger_and_usage",
-              "owned_publications_and_revisions",
+              "account profile",
+              "syllabi and schedules",
+              "study progress",
+              "library resources",
+              "publications, votes and adoptions",
+              "reminder and display preferences",
+              "masked API key metadata",
             ],
-            excludedRecords: ["raw_byok_secret_material (never exported in plaintext)"],
+            excludedRecords: ["API keys and encrypted key copies", "password hashes", "passkey public keys"],
           },
           byokDeletionVsProviderRevocation:
-            "Deleting your account or stored BYOK key immediately destroys our encrypted copy and per-credential DEK, but does NOT revoke the API key at your external AI provider. Rotate or revoke the key in your provider console to invalidate it externally.",
+            "Removing a saved key does not revoke the key at your AI provider. Revoke or rotate it with the provider.",
           publicPublicationsImpact:
-            "Deleting your account withdraws your owned public publications from app-controlled discovery. Previously adopted plans in other learners' private workspaces remain intact.",
+            "Your public syllabi are withdrawn from app-controlled discovery. Copies already adopted by other learners remain.",
           financialAuditRetention:
-            "Personal learning data and credentials are purged. De-identified billing ledger records are retained strictly as required for financial audit compliance.",
+            "The account record and some assessment and diagnostic records remain in storage. Billing and deletion audit records may also be retained. Backups may retain data.",
         },
         manualWcagEvaluationMatrix: MANUAL_WCAG_22_AA_EVALUATION_MATRIX,
       };

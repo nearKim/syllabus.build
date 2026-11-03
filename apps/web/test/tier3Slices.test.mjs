@@ -434,7 +434,7 @@ test("T14-Full & T09: Complete screen inventory, role boundaries (@S88), WCAG 2.
   assert.equal(privacyState.clientStatePurged, true);
   assert.ok(
     privacyState.disclosures.byokDeletionVsProviderRevocation.includes(
-      "does NOT revoke the API key at your external AI provider"
+      "does not revoke the key at your AI provider"
     )
   );
 });

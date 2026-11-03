@@ -558,6 +558,10 @@ test("Full-stack stateless restart E2E: PostgreSQL preserves OAuth workspaces an
     });
     assert.equal(openAiDecryptedKeySeen, "Bearer sk-proj-stateless-pg-secret-4242");
     assert.match(liveTutor.html, /Survived stateless PostgreSQL restart concept check\?/);
+
+    const deleted = await postWeb2({ action: "confirm-delete-account" });
+    assert.equal(deleted.state.authStatus, "guest");
+    assert.equal((await fetch(`${web2Url}/api/account/export`, { headers: { Cookie: cookieHeader(jar2) } })).status, 401);
   } finally {
     await new Promise((resolve) => web2.server.close(resolve));
     api2.child.kill("SIGTERM");

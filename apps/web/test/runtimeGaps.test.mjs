@@ -230,6 +230,10 @@ test("Gap 2, Gap 3 & Gap 5: Auth decoupled from workspace persistence across sig
         roles: ["user"],
       }), { status: 200 });
     }
+    if (u.endsWith("/v1/me/deletion-requests")) {
+      assert.equal(JSON.parse(init.body).confirm_deletion, true);
+      return new Response(JSON.stringify({ status: "completed" }), { status: 202 });
+    }
     if (u === "https://github.com/ept/ddia-references") {
       return new Response(
         "<!doctype html><html><head><title>DDIA References</title></head><body><h1>Designing Data-Intensive Applications</h1></body></html>",

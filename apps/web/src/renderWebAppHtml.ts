@@ -2386,8 +2386,8 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
           <section class="settings-section" id="settings-ai" aria-labelledby="settings-ai-title" data-byok-mode="${escapeHtml(byokState.mode)}" data-primary-credential="${escapeHtml(effectivePrimaryRef)}" data-has-active-keys="${activeByokCredentials.length > 0}" data-allow-hosted-fallback="${byokState.allowHostedFallback}" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
-                <h2 id="settings-ai-title">AI providers (BYOK)</h2>
-                <p class="section-lede">Choose a model and add an API key for each provider.</p>
+                <h2 id="settings-ai-title">AI providers</h2>
+                <p class="section-lede">Connect your own API key and choose a model. AI requests go to your provider, which may charge for usage.</p>
                 <p class="row-meta">${escapeHtml(byokState.serverCustodyDisclosure)}</p>
               </div>
             </div>
@@ -2547,15 +2547,30 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
           </section>
 
           <section class="settings-section settings-card" id="settings-privacy" aria-labelledby="settings-privacy-title" data-opaque-surface="true">
-            <div class="settings-privacy-row">
+            <div class="settings-section-head">
               <div>
                 <h2 id="settings-privacy-title">Privacy &amp; account</h2>
-                <p class="row-meta">Download a portable archive of your syllabi and study history, or permanently delete your account.</p>
+                <p class="section-lede">Download your data or review account closure.</p>
               </div>
-              <button type="button" class="btn-danger" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Export &amp; deletion</button>
+            </div>
+            <div class="privacy-actions">
+              <div class="privacy-action">
+                <div>
+                  <h3>Export your data</h3>
+                  <p class="section-lede">Download your profile, syllabi, progress, and preferences. API keys are excluded.</p>
+                </div>
+                <a class="btn-secondary" href="/api/account/export" download="syllabus-account-export.json">Download JSON</a>
+              </div>
+              <div class="privacy-action">
+                <div>
+                  <h3>Close your account</h3>
+                  <p class="section-lede">Review what is removed and retained before confirming.</p>
+                </div>
+                <button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-account-deletion">Review closure</button>
+              </div>
             </div>
             <details class="settings-disclosure">
-              <summary>Export scope, retention &amp; license terms</summary>
+              <summary>Export, AI keys, retention &amp; license terms</summary>
               <p class="disclosure-text">Export includes ${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}. It excludes ${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}.</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
               <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
@@ -2694,16 +2709,18 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
 
   <dialog id="dialog-account-deletion" closedby="any" aria-labelledby="dialog-account-deletion-title"${dialogOpen("dialog-account-deletion")} data-opaque-surface="true">
     <div class="dialog-surface">
-      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Account Export &amp; Destructive Deletion Confirmation</h2><form method="dialog">${DIALOG_CLOSE_BUTTON}</form></header>
-      <p>Export Scope Included: <code>${escapeHtml(privacyState.disclosures.exportScope.includedRecords.join(", "))}</code></p>
-      <p>Export Scope Excluded: <code>${escapeHtml(privacyState.disclosures.exportScope.excludedRecords.join(", "))}</code></p>
-      <p class="disclosure-text">${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</p>
-      <p class="disclosure-text">${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</p>
-      <p class="disclosure-text">${escapeHtml(privacyState.disclosures.financialAuditRetention)} Deletion does not promise immediate removal from every backup.</p>
+      <header class="dialog-header"><h2 id="dialog-account-deletion-title">Review account closure</h2><form method="dialog">${DIALOG_CLOSE_BUTTON}</form></header>
+      <p class="disclosure-text">Your account will be deactivated. Its saved workspace, progress events, passkeys, and saved API keys will be removed.</p>
+      <ul class="disclosure-text">
+        <li>${escapeHtml(privacyState.disclosures.byokDeletionVsProviderRevocation)}</li>
+        <li>${escapeHtml(privacyState.disclosures.publicPublicationsImpact)}</li>
+        <li>${escapeHtml(privacyState.disclosures.financialAuditRetention)}</li>
+      </ul>
+      <p class="field-error" id="account-deletion-error" role="alert" hidden>We couldn&#39;t confirm account closure. Please try again.</p>
       <footer class="dialog-footer">
-        <a class="btn-secondary" href="/api/account/export" download="syllabus-account-export.json">Download export (.json)</a>
+        <a class="btn-secondary" href="/api/account/export" download="syllabus-account-export.json">Download data first</a>
         <form method="dialog"><button type="submit" class="btn-secondary" data-action="close-dialog" autofocus>Cancel</button></form>
-        <button type="button" class="btn-danger" data-action="confirm-delete-account">Delete account permanently</button>
+        <button type="button" class="btn-danger" data-action="confirm-delete-account">Deactivate account</button>
       </footer>
     </div>
   </dialog>

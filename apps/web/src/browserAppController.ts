@@ -1127,7 +1127,7 @@ export function createSyllabusWebAppController(initialState: SyllabusWebAppState
           handled = false;
         } else {
           signOut();
-          authNotice = "Your account and private workspace data have been permanently deleted.";
+          authNotice = "Your account was deactivated and its saved workspace removed.";
         }
       } else if (action === "activate-revision" && planData().draft) activateSelectedDraft();
       else if (action === "select-syllabus" && data["syllabusId"] === "__new_syllabus__") {

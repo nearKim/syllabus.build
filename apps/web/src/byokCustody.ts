@@ -34,9 +34,9 @@ export interface ByokHttpRequest<TPayload> {
 }
 
 const SERVER_CUSTODY_DISCLOSURE =
-  "Server custody disclosure: Keys are sent to the server and encrypted at rest for background jobs. They are not saved in browser storage or URLs.";
+  "Your key is encrypted at rest on the server for background jobs. It is not saved in browser storage or URLs.";
 const EXTERNAL_BILLING_DISCLOSURE =
-  "External billing disclosure: BYOK generation requests execute against your external provider account and incur usage charges directly on your provider billing plan. Silent fallback to hosted inference is disabled.";
+  "AI requests use your external provider account, which may charge for usage. Silent fallback to hosted inference is disabled.";
 
 const maskSuffixFromRawKey = (rawKey: string) => {
   const suffix = rawKey.trim().slice(-4) || "••••";

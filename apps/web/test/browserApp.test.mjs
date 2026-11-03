@@ -1230,6 +1230,26 @@ test("Profile & settings › Your contributions thanks the author, states its to
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 
+test("privacy settings distinguish export from deletion and explain retained data", () => {
+  const html = renderSyllabusWebAppHtml({ topLevel: "Settings" });
+  const privacy = html.slice(html.indexOf('id="settings-privacy"'), html.indexOf('</section>', html.indexOf('id="settings-privacy"')));
+  assert.ok(privacy.includes('href="/api/account/export" download="syllabus-account-export.json"'));
+  assert.ok(privacy.includes('data-action="open-dialog" data-dialog-id="dialog-account-deletion"'));
+  assert.ok(privacy.includes("Close your account"));
+  assert.equal(privacy.includes('data-action="confirm-delete-account"'), false);
+  assert.ok(privacy.includes("API keys are excluded."));
+  assert.ok(privacy.includes("The account record and some assessment and diagnostic records remain in storage."));
+  assert.equal(privacy.includes("per-credential DEK"), false);
+  assert.equal(privacy.includes("hosted_billing_ledger_and_usage"), false);
+
+  const start = html.indexOf('<dialog id="dialog-account-deletion"');
+  const dialog = html.slice(start, html.indexOf("</dialog>", start));
+  assert.ok(dialog.includes('data-action="confirm-delete-account"'));
+  assert.ok(dialog.includes("Deactivate account"));
+  assert.ok(dialog.includes('id="account-deletion-error" role="alert" hidden'));
+  assert.ok(dialog.includes("does not revoke the key at your AI provider"));
+});
+
 test("settings keep the selected section after an action and open AI settings from the intake", () => {
   const listeners = {};
   let html = "";
@@ -1305,7 +1325,7 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
   assert.ok(settingsPanel.includes('data-action="edit-provider-key" data-provider-id="openai"'));
   assert.equal(settingsPanel.includes('id="byok-key"'), false, "API key must be read-only until Edit is pressed");
   assert.ok(settingsPanel.includes('class="provider-icon-btn provider-remove-btn" data-action="delete-connection"'));
-  assert.ok(settingsPanel.includes('<h2 id="settings-ai-title">AI providers (BYOK)</h2>'));
+  assert.ok(settingsPanel.includes('<h2 id="settings-ai-title">AI providers</h2>'));
   assert.ok(settingsPanel.includes('data-primary-credential="cred-openai-1"'));
   click({ action: "edit-provider-key", providerId: "openai", credentialRef: "cred-openai-1" });
   assert.ok(root.innerHTML.includes('id="byok-key"'));

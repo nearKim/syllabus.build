@@ -7465,12 +7465,22 @@ ul.adopt-resources {
   grid-column: span 2;
 }
 
-.settings-privacy-row {
+.privacy-actions {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.privacy-action {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
+  gap: var(--space-3) var(--space-5);
+}
+
+.privacy-action > div {
+  flex: 1 1 22rem;
+  min-inline-size: 0;
 }
 
 .row-actions {

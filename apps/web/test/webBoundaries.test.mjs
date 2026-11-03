@@ -235,6 +235,66 @@ test("Saved web cookies lose authenticated access after server restart", async (
   }
 });
 
+test("Account deletion keeps the session when the backend cannot confirm deletion", async () => {
+  let deletionStatus = 503;
+  let deletionPhase = "processing";
+  const deletionRequests = [];
+  const mockFetch = async (url, init) => {
+    const endpoint = String(url);
+    if (endpoint.endsWith("/v1/auth/oauth/google/callback")) {
+      return new Response(JSON.stringify({
+        account_id: "deletion-test-user",
+        session_token: "deletion-test-session",
+        expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+        roles: ["user"],
+      }), { status: 200 });
+    }
+    if (endpoint.endsWith("/v1/auth/session")) return backendSessionResponse("deletion-test-user");
+    if (endpoint.endsWith("/v1/me/deletion-requests")) {
+      deletionRequests.push({ body: JSON.parse(init.body), authorization: init.headers.Authorization });
+      return new Response(JSON.stringify({ status: deletionPhase }), { status: deletionStatus });
+    }
+    return new Response("{}", { status: 503 });
+  };
+  const { server } = createWebAppServer({
+    env: { APP_ENV: "development", AUTH_EXCHANGE_SECRET: "ef".repeat(32) },
+    apiBaseUrl: "http://127.0.0.1:9",
+    fetchImpl: mockFetch,
+  });
+  const baseUrl = await listen(server);
+  const jar = new Map();
+  const deleteAccount = () => fetch(`${baseUrl}/api/ui-state`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: cookieHeader(jar) },
+    body: JSON.stringify({ action: "confirm-delete-account" }),
+  });
+  try {
+    assert.equal((await deleteAccount()).status, 401);
+    await signInWithDevOAuth(baseUrl, jar, "deletion-test@example.test");
+    assert.equal((await deleteAccount()).status, 502);
+    const exportResponse = await fetch(`${baseUrl}/api/account/export`, { headers: { cookie: cookieHeader(jar) } });
+    assert.equal(exportResponse.status, 200);
+    const archive = await exportResponse.json();
+    assert.ok(archive.included_scope.includes("account_profile"));
+    assert.ok(archive.excluded_scope.includes("raw_byok_api_keys"));
+    assert.equal(archive.included_scope.includes("hosted_billing_ledger_and_usage"), false);
+
+    deletionStatus = 202;
+    assert.equal((await deleteAccount()).status, 502);
+    assert.equal((await fetch(`${baseUrl}/api/account/export`, { headers: { cookie: cookieHeader(jar) } })).status, 200);
+
+    deletionPhase = "completed";
+    const deleted = await deleteAccount();
+    assert.equal(deleted.status, 200);
+    assert.equal((await deleted.json()).state.authStatus, "guest");
+    assert.equal((await fetch(`${baseUrl}/api/account/export`, { headers: { cookie: cookieHeader(jar) } })).status, 401);
+    assert.equal(deletionRequests.length, 3);
+    assert.ok(deletionRequests.every((request) => request.body.confirm_deletion === true && request.authorization === "Bearer deletion-test-session"));
+  } finally {
+    await close(server);
+  }
+});
+
 test("User resource edits and deletion stay in that account's library", async () => {
   const mockFetch = async (url, init) => {
     const endpoint = String(url);

@@ -702,6 +702,21 @@ ${fallbackScript}
       return;
     }
 
+    if (action === "confirm-delete-account") {
+      event.preventDefault();
+      const notice = root.querySelector("#account-deletion-error");
+      if (notice) notice.hidden = true;
+      target.disabled = true;
+      target.setAttribute("aria-busy", "true");
+      dispatchServerRender({ action }).then((ok) => {
+        if (ok) return;
+        target.disabled = false;
+        target.removeAttribute("aria-busy");
+        if (notice) notice.hidden = false;
+      });
+      return;
+    }
+
     if (action === "close-dialog" || action === "close-study-detail") {
       event.preventDefault();
       const dialog = target.closest("dialog");
@@ -2764,16 +2779,13 @@ export function createWebAppServer(options = {}) {
             const { authStatus, account } = controller.getState();
             if (authStatus === "authenticated") {
               const apiToken = apiTokenForSession(sid, controller);
-              if (apiToken) {
-                await Promise.all([
-                  callBackendJson("DELETE", "/v1/me/workspace", { token: apiToken }),
-                  callBackendJson("POST", "/v1/me/deletion-requests", {
-                    token: apiToken,
-                    headers: { "Idempotency-Key": `idem-del-${account.accountId}` },
-                    body: { reason: "learner_requested_account_deletion" },
-                  }),
-                ]);
-              }
+              if (!apiToken) throw Object.assign(new Error("A verified session is required to delete your account."), { statusCode: 401 });
+              const deletion = await callBackendJson("POST", "/v1/me/deletion-requests", {
+                token: apiToken,
+                headers: { "Idempotency-Key": `idem-del-${account.accountId}` },
+                body: { confirm_deletion: true, reason: "learner_requested_account_deletion" },
+              });
+              if (!deletion.ok || deletion.data?.status !== "completed") throw Object.assign(new Error("Account deletion could not be confirmed."), { statusCode: 502 });
               const deletedAccountId = account.accountId;
               const deletedEmail = account.email.trim().toLowerCase();
               delete store.data.accountWorkspaces[deletedAccountId];
@@ -2796,6 +2808,8 @@ export function createWebAppServer(options = {}) {
               }
               controller.applyUiAction("confirm-delete-account");
               detachSessionToGuest(sid, controller);
+            } else {
+              throw Object.assign(new Error("A verified session is required to delete your account."), { statusCode: 401 });
             }
           } else if (cmd.action === "replace-key") {
             const beforeState = controller.getState();

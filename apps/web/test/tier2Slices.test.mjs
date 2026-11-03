@@ -329,10 +329,10 @@ test("T07A (@S28, @S29, @S38, @S68, @S80): ByokCustodyController wipes transient
 
   // Verify explicit server-custody and external-billing disclosures
   const initialState = byok.getState();
-  assert.match(initialState.serverCustodyDisclosure, /Server custody disclosure/);
+  assert.match(initialState.serverCustodyDisclosure, /encrypted at rest on the server/);
   assert.match(
     initialState.externalBillingDisclosure,
-    /External billing disclosure/
+    /provider account, which may charge for usage/
   );
   assert.equal(initialState.allowHostedFallback, false);
 
