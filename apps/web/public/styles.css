@@ -8307,11 +8307,37 @@ dialog.inspector::backdrop {
   text-decoration: line-through;
 }
 
-.subtask-body > .subtask-title {
+.subtask-heading {
+  display: flex;
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.subtask-heading > .subtask-title {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr);
   align-items: start;
   gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.subtask-resource-edit {
+  display: inline-flex;
+  flex: 0 0 var(--layout-touch-target-min);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.subtask-resource-edit:hover {
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
 }
 
 .subtask-kind {
@@ -8345,33 +8371,29 @@ dialog.inspector::backdrop {
   text-underline-offset: 3px;
 }
 
-.subtask-management {
+.subtask-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
   margin-inline-start: 32px;
 }
 
-.subtask-management > summary {
-  width: fit-content;
-  min-height: var(--layout-touch-target-min);
-  color: var(--color-text-secondary);
-  font-size: 13px;
-  line-height: var(--layout-touch-target-min);
-  cursor: pointer;
-  list-style-position: inside;
-}
-
-.subtask-management-content {
-  display: grid;
-  gap: var(--space-5);
-  padding-block: var(--space-2);
-}
-
-.subtask-resource-management {
-  display: grid;
+.subtask-edit-step {
+  display: inline-flex;
+  align-items: center;
   gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--color-text-secondary);
 }
 
-.subtask-resource-management > p {
-  margin: 0;
+.subtask-edit-step:hover {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .subtask-meta {
@@ -8579,8 +8601,7 @@ dialog.inspector::backdrop {
   gap: 8px 12px;
 }
 
-.source-card-actions,
-.subtask-material-actions {
+.source-card-actions {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;

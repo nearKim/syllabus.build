@@ -14,6 +14,8 @@ export type SfIconName =
   | "focus"
   | "sparkles"
   | "check"
+  | "plus"
+  | "edit"
   | "close"
   | "clock"
   | "globe"
@@ -149,6 +151,10 @@ function renderSfIconNodes(name: SfIconName): VNode {
       );
     case "check":
       return <path d="M20 6 9 17l-5-5" />;
+    case "plus":
+      return <path d="M12 5v14M5 12h14" />;
+    case "edit":
+      return <path d="m16 3 5 5M3 21l5-1L21 7a3.5 3.5 0 0 0-5-5L3 15z" />;
     case "close":
       return (
         <>

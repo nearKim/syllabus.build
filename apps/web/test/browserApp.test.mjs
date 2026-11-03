@@ -419,12 +419,11 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(material, /<a class="subtask-material-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing <span aria-hidden="true">↗<\/span><span class="st-sr"> in a new tab<\/span><\/a>/);
   assert.ok(material.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
   assert.equal(/Open study material|Curator Verified|source-action-btn/.test(material), false);
-  const management = theory.match(/<details class="subtask-management">[\s\S]*?<\/details>/)?.[0] ?? "";
-  assert.ok(management.startsWith('<details class="subtask-management"><summary>Manage</summary>'));
-  assert.ok(management.includes("Open ML Press (Curator Verified) · Free · External link"));
-  for (const action of ["open-resource-editor", "unlink-syllabus-resource", "open-syllabus-editor"]) {
-    assert.ok(management.includes(`data-action="${action}"`), `${action} remains available under Manage`);
-  }
+  assert.match(material, /class="subtask-resource-edit" aria-label="Edit resource: Reviewed Open Monograph:[^"]+" title="Edit resource" data-action="open-resource-editor" data-editor-mode="edit" data-resource-id="synthetic-resource-tokenization-v1"/);
+  assert.equal(/subtask-management|subtask-resource-management|<summary>Manage<\/summary>/.test(theory), false);
+  const actions = theory.match(/<div class="subtask-edit-actions">[\s\S]*?<\/div>/)?.[0] ?? "";
+  assert.match(actions, /class="btn-secondary"[^>]*data-action="open-resource-editor"[^>]*data-editor-mode="ingest"[\s\S]*?<svg[^>]*>[\s\S]*?<\/svg>Add resource<\/button>/);
+  assert.match(actions, /class="subtask-edit-step"[^>]*data-action="open-syllabus-editor"[\s\S]*?<svg[^>]*>[\s\S]*?<\/svg>Edit step<\/button>/);
   assert.equal(drawerFor("activity-review", "module-attention").includes(":material:"), false, "no material subtask without material");
 
   // The study focus comes first, then the subtasks with a done count. Each row has one circle, so the numbered spine is gone.
@@ -471,7 +470,7 @@ test("subtasks identify resource types and quizzes without repeating the video t
     assert.ok(material.includes(`data-kind="${icon}" title="${category}"`));
     assert.ok(material.includes(`<span class="st-sr">${category}: </span>`), "the icon has a text equivalent");
     assert.ok(material.includes(`rel="noopener noreferrer">${category === "YouTube" ? "Attention" : "YouTube Lecture: Attention"} <span`));
-    assert.ok(drawer.includes('<p class="subtask-title">YouTube Lecture: Attention</p>'), "Manage keeps the full original title");
+    assert.ok(material.includes('aria-label="Edit resource: YouTube Lecture: Attention"'), "the edit control keeps the full original title");
   }
 });
 

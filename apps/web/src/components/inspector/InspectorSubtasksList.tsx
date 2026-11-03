@@ -75,12 +75,6 @@ export function InspectorSubtasksList({
           ...(card.accessModel !== "free" ? [humanize(card.accessModel)] : []),
           ...(certificateNote ? [certificateNote] : []),
         ];
-        const provenance = [
-          card.verifiedPublisher,
-          humanize(card.accessModel),
-          card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
-          ...(certificateNote ? [certificateNote] : []),
-        ];
         const url = card.canonicalUrl && isSafeResourceUrl(card.canonicalUrl) ? card.canonicalUrl : null;
         return {
           subtaskId: subtask.subtaskId,
@@ -103,42 +97,27 @@ export function InspectorSubtasksList({
               {!url ? <p class="subtask-meta">Study link unavailable</p> : null}
             </>
           ),
-          management: (
-            <div key={subtask.subtaskId} class="subtask-resource-management">
-              <p class="subtask-title">{card.title}</p>
-              <p class="subtask-meta">{provenance.join(" · ")}</p>
-              <div class="subtask-material-actions">
-                <button
-                  type="button"
-                  class="source-action-btn"
-                  data-action="open-resource-editor"
-                  data-editor-mode="edit"
-                  data-resource-id={card.resourceVersionId}
-                  data-syllabus-id={syllabusId}
-                  data-module-id={mod.moduleId}
-                >
-                  Edit
-                </button>
-                {syllabusId ? (
-                  <button
-                    type="button"
-                    class="source-action-btn source-action-danger"
-                    data-action="unlink-syllabus-resource"
-                    data-resource-id={card.resourceVersionId}
-                    data-syllabus-id={syllabusId}
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </div>
-            </div>
+          action: (
+            <button
+              type="button"
+              class="subtask-resource-edit"
+              aria-label={`Edit resource: ${card.title}`}
+              title="Edit resource"
+              data-action="open-resource-editor"
+              data-editor-mode="edit"
+              data-resource-id={card.resourceVersionId}
+              data-syllabus-id={syllabusId}
+              data-module-id={mod.moduleId}
+            >
+              <SfIcon name="edit" />
+            </button>
           ),
         };
       }
       case "concept-check":
-        return { subtaskId: subtask.subtaskId, kindLabel: "Practice quiz", icon: "quiz" as const, title: "Concept check", details: conceptCheckWorkspace, management: null };
+        return { subtaskId: subtask.subtaskId, kindLabel: "Practice quiz", icon: "quiz" as const, title: "Concept check", details: conceptCheckWorkspace, action: null };
       case "criterion":
-        return { subtaskId: subtask.subtaskId, kindLabel: "Criterion", icon: "resources" as const, title: <MathText text={subtask.text} />, details: null, management: null };
+        return { subtaskId: subtask.subtaskId, kindLabel: "Criterion", icon: "resources" as const, title: <MathText text={subtask.text} />, details: null, action: null };
     }
   });
 
@@ -151,7 +130,7 @@ export function InspectorSubtasksList({
       </h3>
       {subtasks.length > 0 ? (
         <ul class="subtask-list" role="list">
-          {subtasks.map(({ subtaskId, kindLabel, icon, title, details }, idx) => {
+          {subtasks.map(({ subtaskId, kindLabel, icon, title, details, action }, idx) => {
             const done = subtaskDone(subtaskId);
             return (
               <li key={subtaskId} class="subtask" data-done={String(done)}>
@@ -168,13 +147,16 @@ export function InspectorSubtasksList({
                   <SfIcon name="check" size={15} />
                 </button>
                 <div class="subtask-body">
-                  <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
-                    <span class="subtask-kind" data-kind={icon} title={kindLabel}>
-                      <SfIcon name={icon} />
-                      <span class="st-sr">{kindLabel}: </span>
-                    </span>
-                    <span>{title}</span>
-                  </p>
+                  <div class="subtask-heading">
+                    <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
+                      <span class="subtask-kind" data-kind={icon} title={kindLabel}>
+                        <SfIcon name={icon} />
+                        <span class="st-sr">{kindLabel}: </span>
+                      </span>
+                      <span>{title}</span>
+                    </p>
+                    {action}
+                  </div>
                   {details}
                 </div>
               </li>
@@ -184,35 +166,31 @@ export function InspectorSubtasksList({
       ) : (
         <p class="meta-text">No study materials attached to this step yet.</p>
       )}
-      <details class="subtask-management">
-        <summary>Manage</summary>
-        <div class="subtask-management-content">
-          {subtasks.map(({ management }) => management)}
-          <div class="subtask-material-actions">
-            <button
-              type="button"
-              class="inspector-inline-action"
-              data-action="open-resource-editor"
-              data-editor-mode="ingest"
-              data-syllabus-id={syllabusId}
-              data-module-id={mod.moduleId}
-              data-activity-id={id}
-            >
-              Add resource
-            </button>
-            <button
-              type="button"
-              class="inspector-inline-action"
-              data-action="open-syllabus-editor"
-              data-syllabus-edit-mode="edit-activity"
-              data-module-id={mod.moduleId}
-              data-activity-id={id}
-            >
-              Edit step
-            </button>
-          </div>
-        </div>
-      </details>
+      <div class="subtask-edit-actions">
+        <button
+          type="button"
+          class="btn-secondary"
+          data-action="open-resource-editor"
+          data-editor-mode="ingest"
+          data-syllabus-id={syllabusId}
+          data-module-id={mod.moduleId}
+          data-activity-id={id}
+        >
+          <SfIcon name="plus" />
+          Add resource
+        </button>
+        <button
+          type="button"
+          class="subtask-edit-step"
+          data-action="open-syllabus-editor"
+          data-syllabus-edit-mode="edit-activity"
+          data-module-id={mod.moduleId}
+          data-activity-id={id}
+        >
+          <SfIcon name="edit" />
+          Edit step
+        </button>
+      </div>
     </section>
   );
 }
