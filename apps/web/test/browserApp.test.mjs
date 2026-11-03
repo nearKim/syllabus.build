@@ -416,10 +416,15 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   // Each material is a subtask: one round checkbox, the title, the sections to read, and one link that opens it.
   const material = theory.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
   assert.match(material, /^<li class="subtask" data-done="false"><button type="button" class="subtask-check" role="checkbox" aria-checked="false" aria-labelledby="learn-detail-inspector-subtask-0" data-action="toggle-subtask" data-activity-id="activity-theory" data-subtask-id="activity-theory:material:synthetic-resource-tokenization-v1">/);
-  assert.ok(material.includes('<p id="learn-detail-inspector-subtask-0" class="subtask-title">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing</p>'));
+  assert.match(material, /<p id="learn-detail-inspector-subtask-0" class="subtask-title"><a class="subtask-material-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing <span aria-hidden="true">↗<\/span><span class="st-sr"> in a new tab<\/span><\/a><\/p>/);
   assert.ok(material.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
-  assert.match(material, /<a class="source-open-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Open study material<span aria-hidden="true">↗<\/span>/);
-  assert.ok(material.includes("<span>Open ML Press (Curator Verified) · Free · External link</span>"));
+  assert.equal(/Open study material|Curator Verified|source-action-btn/.test(material), false);
+  const management = theory.match(/<details class="subtask-management">[\s\S]*?<\/details>/)?.[0] ?? "";
+  assert.ok(management.startsWith('<details class="subtask-management"><summary>Manage</summary>'));
+  assert.ok(management.includes("Open ML Press (Curator Verified) · Free · External link"));
+  for (const action of ["open-resource-editor", "unlink-syllabus-resource", "open-syllabus-editor"]) {
+    assert.ok(management.includes(`data-action="${action}"`), `${action} remains available under Manage`);
+  }
   assert.equal(drawerFor("activity-review", "module-attention").includes(":material:"), false, "no material subtask without material");
 
   // The study focus comes first, then the subtasks with a done count. Each row has one circle, so the numbered spine is gone.
@@ -451,6 +456,25 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(coding, /Recommended first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-example"/);
   assert.equal(drawerFor("activity-coding", "module-foundations", { activityStates: { "activity-example": "self_reported_completed" } }).includes("Recommended first"), false);
   assert.match(quiz, /Required first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-coding"/);
+});
+
+test("material subtasks keep access requirements visible and do not link unsafe URLs", () => {
+  const drawer = drawerOf(renderSyllabusWebAppHtml({
+    selectedActivityId: "activity-theory",
+    studyDetailOpen: true,
+    catalogResources: {
+      "synthetic-resource-tokenization-v1": {
+        title: "Subscription reference",
+        canonical_url: "javascript:alert(1)",
+        access: { model: "subscription" },
+      },
+    },
+  }));
+  const material = drawer.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.ok(material.includes('class="subtask-title">Subscription reference</p>'));
+  assert.ok(material.includes('class="subtask-meta">Subscription</p>'));
+  assert.ok(material.includes("Study link unavailable"));
+  assert.equal(/href=|subtask-material-link/.test(material), false);
 });
 
 test("Today has no detached Study block, and the drawer ends worked examples, quizzes, and reviews with the plan's concept check", () => {
@@ -639,8 +663,9 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   assert.match(section("brief"), /Deliverable brief[\s\S]*Run the external test suite to verify lossless UTF-8 round-trip encoding\.[\s\S]*<li>A reversible tokenizer and a tensor shape validator/);
   assert.deepEqual([...section("specs").matchAll(/<span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), ["25 min (19–38 min)", "Formal", "Required", "Local or external IDE"]);
   assert.match(lab, /data-subtask-id="activity-coding:verify:objective-tokenization">[\s\S]*?class="subtask-title">Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples\.<\/p>/);
-  assert.match(lab, /<a class="source-open-link" [^>]*>Open lab specification<span aria-hidden="true">↗<\/span>/);
-  assert.ok(lab.includes("Optional certificate $49.00"), "a paid option stays visible before the learner leaves");
+  const labMaterial = lab.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
+  assert.match(labMaterial, /<a class="subtask-material-link" [^>]*>[\s\S]*?<span aria-hidden="true">↗<\/span>/);
+  assert.ok(labMaterial.includes("Optional certificate $49.00"), "a paid option stays visible before the learner leaves");
   // The brief and specs describe the task. The subtasks follow: open the spec first, then verify each criterion.
   const order = [
     lab.indexOf('aria-labelledby="learn-detail-inspector-brief"'),

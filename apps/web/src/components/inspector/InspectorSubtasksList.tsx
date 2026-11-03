@@ -50,7 +50,6 @@ export function InspectorSubtasksList({
   completedSubtaskIds,
   status,
 }: InspectorSubtasksListProps): VNode {
-  const isLab = activity.type === "coding" || activity.type === "project";
   const completedSubtasks = new Set(completedSubtaskIds);
   const subtaskDone = (subtaskId: string): boolean => status === "completed" || completedSubtasks.has(subtaskId);
 
@@ -67,16 +66,26 @@ export function InspectorSubtasksList({
         const sections = card.verifiedSegments
           .flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
           .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
+        const certificateNote = card.optionalCertificationBadge ? `Optional certificate ${formatMinorCurrency(4900, "USD")}` : null;
+        const accessNotes = [
+          ...(card.accessModel !== "free" ? [humanize(card.accessModel)] : []),
+          ...(certificateNote ? [certificateNote] : []),
+        ];
         const provenance = [
           card.verifiedPublisher,
           humanize(card.accessModel),
           card.rightsBadge.externalLinkOnly ? "External link" : humanize(card.rightsBadge.basis),
-          ...(card.optionalCertificationBadge ? [`Optional certificate ${formatMinorCurrency(4900, "USD")}`] : []),
+          ...(certificateNote ? [certificateNote] : []),
         ];
         const url = card.canonicalUrl && isSafeResourceUrl(card.canonicalUrl) ? card.canonicalUrl : null;
         return {
           subtaskId: subtask.subtaskId,
-          title: card.title,
+          title: url ? (
+            <a class="subtask-material-link" href={url} target="_blank" rel="noopener noreferrer">
+              {card.title} <span aria-hidden="true">↗</span>
+              <span class="st-sr"> in a new tab</span>
+            </a>
+          ) : card.title,
           details: (
             <>
               {sections.map((section, secIdx) => (
@@ -84,16 +93,14 @@ export function InspectorSubtasksList({
                   <MathText text={section} />
                 </p>
               ))}
-              <p class="subtask-meta">
-                {url ? (
-                  <a class="source-open-link" href={url} target="_blank" rel="noopener noreferrer">
-                    {isLab ? "Open lab specification" : "Open study material"}
-                    <span aria-hidden="true">↗</span>
-                    <span class="st-sr"> in a new tab</span>
-                  </a>
-                ) : null}
-                <span>{provenance.join(" · ")}</span>
-              </p>
+              {accessNotes.length > 0 ? <p class="subtask-meta">{accessNotes.join(" · ")}</p> : null}
+              {!url ? <p class="subtask-meta">Study link unavailable</p> : null}
+            </>
+          ),
+          management: (
+            <div key={subtask.subtaskId} class="subtask-resource-management">
+              <p class="subtask-title">{card.title}</p>
+              <p class="subtask-meta">{provenance.join(" · ")}</p>
               <div class="subtask-material-actions">
                 <button
                   type="button"
@@ -118,14 +125,14 @@ export function InspectorSubtasksList({
                   </button>
                 ) : null}
               </div>
-            </>
+            </div>
           ),
         };
       }
       case "concept-check":
-        return { subtaskId: subtask.subtaskId, title: "Answer the concept check", details: conceptCheckWorkspace };
+        return { subtaskId: subtask.subtaskId, title: "Answer the concept check", details: conceptCheckWorkspace, management: null };
       case "criterion":
-        return { subtaskId: subtask.subtaskId, title: <MathText text={subtask.text} />, details: null };
+        return { subtaskId: subtask.subtaskId, title: <MathText text={subtask.text} />, details: null, management: null };
     }
   });
 
@@ -167,29 +174,35 @@ export function InspectorSubtasksList({
       ) : (
         <p class="meta-text">No study materials attached to this step yet.</p>
       )}
-      <div class="subtask-material-actions">
-        <button
-          type="button"
-          class="inspector-inline-action"
-          data-action="open-resource-editor"
-          data-editor-mode="ingest"
-          data-syllabus-id={syllabusId}
-          data-module-id={mod.moduleId}
-          data-activity-id={id}
-        >
-          + Add resource
-        </button>
-        <button
-          type="button"
-          class="inspector-inline-action"
-          data-action="open-syllabus-editor"
-          data-syllabus-edit-mode="edit-activity"
-          data-module-id={mod.moduleId}
-          data-activity-id={id}
-        >
-          Edit step
-        </button>
-      </div>
+      <details class="subtask-management">
+        <summary>Manage</summary>
+        <div class="subtask-management-content">
+          {subtasks.map(({ management }) => management)}
+          <div class="subtask-material-actions">
+            <button
+              type="button"
+              class="inspector-inline-action"
+              data-action="open-resource-editor"
+              data-editor-mode="ingest"
+              data-syllabus-id={syllabusId}
+              data-module-id={mod.moduleId}
+              data-activity-id={id}
+            >
+              Add resource
+            </button>
+            <button
+              type="button"
+              class="inspector-inline-action"
+              data-action="open-syllabus-editor"
+              data-syllabus-edit-mode="edit-activity"
+              data-module-id={mod.moduleId}
+              data-activity-id={id}
+            >
+              Edit step
+            </button>
+          </div>
+        </div>
+      </details>
     </section>
   );
 }
