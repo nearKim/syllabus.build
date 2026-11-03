@@ -553,7 +553,7 @@ section[id] {
 .auth-head {
   display: grid;
   gap: 8px;
-  padding-inline: 28px;
+  padding-inline: var(--layout-touch-target-min);
   text-align: center;
 }
 
