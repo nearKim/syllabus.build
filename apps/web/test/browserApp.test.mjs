@@ -422,14 +422,15 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(material, /class="subtask-resource-edit" aria-label="Edit resource: Reviewed Open Monograph:[^"]+" title="Edit resource" data-action="open-resource-editor" data-editor-mode="edit" data-resource-id="synthetic-resource-tokenization-v1"/);
   assert.equal(/subtask-management|subtask-resource-management|<summary>Manage<\/summary>/.test(theory), false);
   const header = theory.match(/<header class="inspector-head">[\s\S]*?<\/header>/)?.[0] ?? "";
-  assert.match(header, /<details class="inspector-edit-menu"><summary>[\s\S]*?Edit[\s\S]*?<\/summary>/);
+  assert.match(header, /<details class="inspector-edit-menu"><summary aria-label="Edit step actions" title="Edit step actions"><svg[^>]*>[\s\S]*?<\/svg><\/summary>/);
+  assert.match(header, /class="inspector-unit-link" data-action="select-outline-module" data-module-id="module-foundations" aria-label="Back to unit: Tokenization &amp; Sequence Foundations"/);
+  assert.equal(/inspector-context-row|step-pager|Step 1 of|15 min/.test(header), false);
   assert.match(header, /data-action="open-resource-editor"[^>]*data-editor-mode="ingest"[\s\S]*?<\/svg>Add resource<\/button>/);
   assert.match(header, /data-action="open-syllabus-editor"[\s\S]*?<\/svg>Edit step<\/button>/);
   assert.equal(/subtask-edit-actions|data-editor-mode="ingest"|data-syllabus-edit-mode="edit-activity"/.test(theory.slice(theory.indexOf('<div class="inspector-scroll"'))), false);
   assert.equal(drawerFor("activity-review", "module-attention").includes(":material:"), false, "no material subtask without material");
 
   // The study focus comes first, then the subtasks with a done count. Each row has one circle, so the numbered spine is gone.
-  assert.match(theory, /<ol class="step-pager" aria-hidden="true">/);
   assert.match(theory, /<h3 id="learn-detail-inspector-prompt">Study focus<\/h3>[\s\S]*?<h3 id="learn-detail-inspector-subtasks" class="subtasks-head">Subtasks <span class="subtasks-count">0\/1<\/span><\/h3><ul class="subtask-list" role="list">/);
   assert.equal(/step-procedure|step-num|todoist/.test(theory + coding + quiz), false);
   // An activity with no material and no distinct prompt starts at the concept check.
@@ -453,14 +454,12 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   assert.match(css, /dialog\.inspector\s*\{[^}]*width:\s*min\(560px,\s*100vw\);/s);
   assert.match(css, /@media \(min-width: 872px\)\s*\{\s*\.mobile-step-nav\s*\{\s*display:\s*none;/);
-  assert.match(css, /\.status-control \.seg-btn\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--color-surface\);/s);
+  assert.match(css, /\.status-control\s*\{[^}]*flex:\s*1 1 100%;/s);
+  assert.match(css, /\.status-control \.seg-btn\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--color-text-primary\);[^}]*color:\s*var\(--color-surface\);/s);
   // The global button rule has a 44px minimum, so the 20px subtask circle must reset it.
   assert.match(css, /\n\.subtask-check \{[^}]*width: 20px;[^}]*min-width: 0;[^}]*min-height: 0;/);
 
-  // An earlier step that is not done is one click away. A mastery gate says required instead of recommended.
-  assert.match(coding, /Recommended first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-example"/);
-  assert.equal(drawerFor("activity-coding", "module-foundations", { activityStates: { "activity-example": "self_reported_completed" } }).includes("Recommended first"), false);
-  assert.match(quiz, /Required first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-coding"/);
+  assert.equal(/Recommended first:|Required first:|class="first-steps"/.test(theory + coding + quiz), false);
 });
 
 test("subtasks identify resource types and quizzes without repeating the video type in the title", () => {
@@ -1200,9 +1199,10 @@ test("an expanded quiz stays open during practice and resets when the activity c
     set innerHTML(value) {
       html = value;
       const activityId = drawerOf(value).match(/data-activity-id="([^"]+)"/)?.[1];
+      const inspectorMode = drawerOf(value).match(/data-inspector-mode="([^"]+)"/)?.[1];
       dialog = {
         id: "learn-detail-inspector", open: false, scrollTop: 0,
-        getAttribute: (name) => name === "data-activity-id" ? activityId : null,
+        getAttribute: (name) => name === "data-activity-id" ? activityId : name === "data-inspector-mode" ? inspectorMode : null,
         showModal() { this.open = true; },
       };
       disclosure = { id: "learn-detail-inspector-practice", open: false };
@@ -1224,6 +1224,10 @@ test("an expanded quiz stays open during practice and resets when the activity c
   disclosure.open = true;
   app.selectPlanActivity("activity-quiz", "module-attention");
   assert.equal(disclosure.open, false, "another activity starts collapsed");
+  app.selectPlanModule("module-attention", "Outline");
+  dialog.scrollTop = 120;
+  app.selectPlanActivity("activity-quiz", "module-attention");
+  assert.equal(dialog.scrollTop, 0, "returning from the unit overview starts at the top of the activity");
 });
 
 test("Share with Community previews the public projection, then publishes it to Explore and Profile & settings", () => {

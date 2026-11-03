@@ -151,7 +151,7 @@ ${fallbackScript}
     const open = new Map();
     root.querySelectorAll("dialog[open]").forEach((dialog) => {
       const expanded = Array.from(dialog.querySelectorAll('details[data-preserve-open][open]'), (detail) => detail.id);
-      open.set(dialog.id, { top: (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop, activityId: dialog.dataset.activityId, expanded });
+      open.set(dialog.id, { top: (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop, activityId: dialog.dataset.activityId, inspectorMode: dialog.dataset.inspectorMode, expanded });
     });
     return open;
   }
@@ -161,14 +161,15 @@ ${fallbackScript}
     root.querySelectorAll('dialog[data-open="true"]').forEach((dialog) => {
       if (dialog.open) return;
       const before = previous.get(dialog.id);
+      const sameView = before && before.activityId === dialog.dataset.activityId && before.inspectorMode === dialog.dataset.inspectorMode;
       if (before) dialog.setAttribute("data-instant", "");
       dialog.showModal();
-      if (before && before.activityId === dialog.dataset.activityId) {
+      if (sameView) {
         dialog.querySelectorAll('details[data-preserve-open]').forEach((detail) => {
           detail.open = before.expanded.includes(detail.id);
         });
       }
-      (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = before && before.activityId === dialog.dataset.activityId ? before.top : 0;
+      (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = sameView ? before.top : 0;
     });
   }
 

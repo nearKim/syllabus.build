@@ -17,6 +17,7 @@ export type SfIconName =
   | "plus"
   | "edit"
   | "chevron-down"
+  | "chevron-left"
   | "close"
   | "clock"
   | "globe"
@@ -158,6 +159,8 @@ function renderSfIconNodes(name: SfIconName): VNode {
       return <path d="m16 3 5 5M3 21l5-1L21 7a3.5 3.5 0 0 0-5-5L3 15z" />;
     case "chevron-down":
       return <path d="m6 9 6 6 6-6" />;
+    case "chevron-left":
+      return <path d="m15 18-6-6 6-6" />;
     case "close":
       return (
         <>

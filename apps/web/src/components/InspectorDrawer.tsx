@@ -3,12 +3,9 @@ import type { CatalogResourceMetadataInput } from "@syllabus/ui";
 import { SfIcon, StatusGlyph } from "./Icons.tsx";
 import { MathText } from "./MathText.tsx";
 import {
-  ActivityGlyph,
-  TRACK_LABELS,
-  effortWords,
+  displayUnitTitle,
   executionTone,
   humanize,
-  isClosed,
   trackOf,
   unitProgress,
   type StudyActivity,
@@ -126,16 +123,11 @@ export function InspectorDrawer({
   const uProg = unitProgress(mod.activities);
   const unitIdx = modules.indexOf(mod);
   const unitNumber = unitIdx + 1;
-  const stepIndexInUnit = Math.max(0, mod.activities.findIndex((a) => a.activityId === activity.activityId)) + 1;
 
   const steps = modules.flatMap((unit) => unit.activities);
   const at = steps.findIndex((step) => step.activityId === activity.activityId);
   const prev = steps[at - 1];
   const next = steps[at + 1];
-
-  const unmet = activity.prerequisiteActivityIds
-    .flatMap((prereqId) => steps.find((step) => step.activityId === prereqId) ?? [])
-    .filter((step) => !isClosed(step.executionStatus));
 
   const objectives = new Map(
     modules.flatMap((unit) => unit.objectives).map((objective) => [objective.objectiveId, objective]),
@@ -154,29 +146,24 @@ export function InspectorDrawer({
       data-opaque-surface="true"
     >
       <header class="inspector-head">
-        <div class="inspector-context-row">
-          <p class="inspector-context">
-            Unit {unitNumber} · Step {stepIndexInUnit} of {mod.activities.length} · {TRACK_LABELS[track].badge} · {effortWords(activity.durationTriplet)}
-          </p>
-          <ol class="step-pager" aria-hidden="true">
-            {mod.activities.map((unitAct) => (
-              <li
-                key={unitAct.activityId}
-                data-done={String(isClosed(unitAct.executionStatus))}
-                data-current={String(unitAct.activityId === activity.activityId)}
-              />
-            ))}
-          </ol>
-        </div>
+        <button
+          type="button"
+          class="inspector-unit-link"
+          data-action="select-outline-module"
+          data-module-id={mod.moduleId}
+          aria-label={`Back to unit: ${displayUnitTitle(mod.title)}`}
+          title={displayUnitTitle(mod.title)}
+        >
+          <SfIcon name="chevron-left" />
+          <span><MathText text={displayUnitTitle(mod.title)} /></span>
+        </button>
         <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
           <MathText text={activity.title} />
         </h2>
         <div class="inspector-header-actions">
           <details class="inspector-edit-menu">
-            <summary>
+            <summary aria-label="Edit step actions" title="Edit step actions">
               <SfIcon name="edit" />
-              Edit
-              <SfIcon name="chevron-down" />
             </summary>
             <div class="inspector-edit-options">
               <button
@@ -269,30 +256,6 @@ export function InspectorDrawer({
               </button>
             ) : null}
           </nav>
-        ) : null}
-
-        {unmet.length > 0 ? (
-          <div class="first-steps">
-            <p class="first-steps-label">
-              {activity.prerequisiteBridgeRecommendation?.blocking ? "Required first:" : "Recommended first:"}
-            </p>
-            {unmet.map((step) => (
-              <button
-                key={step.activityId}
-                type="button"
-                class="first-step"
-                data-action="select-outline-activity"
-                data-activity-id={step.activityId}
-                data-module-id={step.moduleId}
-              >
-                <ActivityGlyph activity={step} size={16} />
-                <span>
-                  <MathText text={step.title} />
-                </span>
-                <span aria-hidden="true">→</span>
-              </button>
-            ))}
-          </div>
         ) : null}
 
         <InspectorActivityOverview

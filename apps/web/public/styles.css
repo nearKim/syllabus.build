@@ -7995,46 +7995,35 @@ dialog.inspector::backdrop {
   border-bottom: 0;
 }
 
-.inspector-context-row {
+.inspector-unit-link {
   grid-column: 1;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px var(--space-3);
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  text-align: start;
+}
+
+.inspector-unit-link > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-unit-link:hover {
+  color: var(--color-text-primary);
 }
 
 .inspector-context {
   margin: 0;
   font-size: 13px;
   color: var(--color-text-secondary);
-}
-
-.step-pager {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.step-pager li {
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: var(--tint-12);
-}
-
-.step-pager li[data-done="true"] {
-  background: var(--color-success-text);
-}
-
-.step-pager li[data-current="true"] {
-  width: 9px;
-  height: 9px;
-  background: var(--color-surface);
-  box-shadow: inset 0 0 0 2px var(--color-text-primary);
 }
 
 .inspector-head h2 {
@@ -8063,12 +8052,12 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
 .inspector-edit-menu > summary {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  justify-content: center;
+  width: var(--layout-touch-target-min);
   min-height: var(--layout-touch-target-min);
-  padding-inline: var(--space-2);
+  padding: 0;
   border-radius: var(--radius-control);
   color: var(--color-text-secondary);
-  font-size: 13px;
   cursor: pointer;
   list-style: none;
 }
@@ -8123,9 +8112,6 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
     background: var(--tint-12);
   }
 
-  .first-step:hover {
-    background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-  }
 }
 
 .inspector-scroll {
@@ -8143,7 +8129,7 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
   margin: 0;
 }
 
-/* Header controls: quiet tri-state status indicator (zero black fill at rest) and gate proficiency pill */
+/* Header controls: full-width status selection and gate proficiency. */
 .inspector-pills {
   display: flex;
   flex-wrap: wrap;
@@ -8156,25 +8142,28 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
 .status-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  flex: 0 1 320px;
+  flex: 1 1 100%;
   max-width: 100%;
 }
 
 .status-control .seg-btn {
+  min-height: 48px;
   padding-inline: var(--space-2);
+  font-size: 14px;
+  font-weight: 500;
   color: var(--color-text-secondary);
 }
 
 .status-control .seg-btn[aria-pressed="true"] {
-  background: var(--color-surface);
-  color: var(--color-text-primary);
-  box-shadow: inset 0 0 0 1px var(--color-text-primary);
+  background: var(--color-text-primary);
+  color: var(--color-surface);
+  box-shadow: none;
   font-weight: 600;
 }
 
 .status-control .seg-btn[data-status="completed"][aria-pressed="true"] {
-  background: var(--color-success-surface);
-  color: var(--color-success-text);
+  background: var(--color-success-text);
+  color: var(--color-surface);
   box-shadow: none;
 }
 
@@ -8448,8 +8437,7 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
   color: var(--color-text-secondary);
 }
 
-.inspector-disclosure[open] > summary > .sf-icon:last-child,
-.inspector-edit-menu[open] > summary > .sf-icon:last-child {
+.inspector-disclosure[open] > summary > .sf-icon:last-child {
   rotate: 180deg;
 }
 
@@ -8518,33 +8506,6 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
 .inspector-reference-group {
   display: grid;
   gap: var(--space-5);
-}
-
-/* Recommended first: each earlier step that is not done yet, one click away */
-.first-steps {
-  display: grid;
-  gap: 2px;
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
-  border-radius: var(--radius-control);
-  background: var(--color-accent-surface);
-}
-
-.first-steps-label {
-  margin: 0;
-  padding-top: var(--space-1);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.first-step {
-  justify-content: flex-start;
-  min-width: 0;
-  margin-left: calc(-1 * var(--space-2));
-  padding: 6px var(--space-2);
-  border: 0;
-  background: transparent;
-  font-size: 14px;
-  text-align: left;
 }
 
 /* Ordered learning sequence inside the unit (mobile fallback when parent board is not visible) */
@@ -9369,7 +9330,6 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
   .macro-node,
   .publish-invite,
   .proficiency-pill,
-  .first-steps,
   .draft-notice,
   .seg-btn[aria-pressed="true"],
   .sort-btn[aria-pressed="true"],

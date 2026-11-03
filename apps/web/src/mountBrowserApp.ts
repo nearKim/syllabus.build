@@ -98,12 +98,14 @@ export function mountSyllabusWebApp(
     const marked = rootElement.querySelector?.('dialog[data-open="true"]') as MountedDialog | null | undefined;
     if (marked && typeof marked.showModal === "function" && !marked.open) marked.showModal();
     if (marked && shown && marked.id === shown.id) {
-      if (marked.getAttribute?.("data-activity-id") === shown.getAttribute?.("data-activity-id")) {
+      const sameView = marked.getAttribute?.("data-activity-id") === shown.getAttribute?.("data-activity-id")
+        && marked.getAttribute?.("data-inspector-mode") === shown.getAttribute?.("data-inspector-mode");
+      if (sameView) {
         for (const detail of Array.from(rootElement.querySelectorAll?.('details[data-preserve-open]') ?? []) as HTMLDetailsElement[]) {
           detail.open = expanded.has(detail.id);
         }
       }
-      marked.scrollTop = shownTop;
+      marked.scrollTop = sameView ? shownTop : 0;
       if (focused) marked.querySelector?.(focused)?.focus?.();
     }
   }
