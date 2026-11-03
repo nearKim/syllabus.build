@@ -1198,7 +1198,7 @@ test("Profile & settings › Your contributions thanks the author, states its to
 
   const mine = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings" }));
   assert.ok(mine.includes("Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open."));
-  assert.ok(mine.includes('<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another syllabus</button>'));
+  assert.ok(mine.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another syllabus</button>'));
   assert.equal(impactOf(mine), "Your shared plan reached 142 learners , who planned about 232 study hours with it. 14 people upvoted your work.");
   for (const removed of ["philanthropy", "impact-hero", "impact-icon-badge", "<dl"]) {
     assert.equal(mine.includes(removed), false, `Your contributions still renders ${removed}`);
@@ -1225,8 +1225,8 @@ test("Profile & settings › Your contributions thanks the author, states its to
   // A learner with no publication sees an invitation instead of an empty summary.
   const newcomer = sectionOf(renderSyllabusWebAppHtml({ topLevel: "Settings", account: { accountId: "learner-new", email: "sam@syllabus.build", role: "User" } }));
   assert.equal(newcomer.includes("impact-summary") || newcomer.includes("Share another syllabus") || newcomer.includes("<svg class=\"philanthropy-art\""), false);
-  assert.ok(newcomer.includes('<div class="settings-card">'));
-  assert.match(text(newcomer), /^Your contributions Share a plan and any self-learner can adopt it for free\. .+ stay private\. Share your first syllabus$/);
+  assert.ok(newcomer.includes('<div class="contribution-invite">'));
+  assert.match(text(newcomer), /^Share what you&#39;ve learned Give another learner a place to start\. Shared syllabi are free to adopt\. Share your first syllabus Your progress, notes, keys, billing, and session dates stay private\.$/);
   assert.ok(newcomer.includes('<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>'));
 });
 
@@ -1240,7 +1240,7 @@ test("settings keep the selected section after an action and open AI settings fr
     set innerHTML(value) {
       html = value;
       selected = "profile";
-      choices = ["profile", "passkeys", "ai", "schedule", "community", "privacy"].map((name) => ({
+      choices = ["profile", "passkeys", "ai", "schedule", "privacy"].map((name) => ({
         value: name,
         get checked() { return selected === name; },
         set checked(value) { if (value) selected = name; },
@@ -1278,6 +1278,7 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
 
   // Profile form in Profile & Settings updates display name and email live, places Sign out in the page header, and renders Your contributions and BYOK AI providers
   const settingsPanel = root.innerHTML.slice(root.innerHTML.indexOf('id="panel-settings"'), root.innerHTML.indexOf('</main>'));
+  assert.equal(settingsPanel.includes('id="settings-choice-community"'), false);
   assert.ok(settingsPanel.includes('<button type="button" class="btn-secondary" data-action="sign-out">Sign out</button>'));
   assert.equal(settingsPanel.includes('id="settings-appearance"'), false);
   assert.equal(settingsPanel.includes('id="settings-usage"'), false);
@@ -1292,9 +1293,9 @@ test("the header shows the clickable navbar avatar button, signing out from Prof
   assert.ok(settingsPanel.includes("Your shared plan reached <strong>142 learners</strong>"));
   assert.ok(settingsPanel.includes("<strong>14 people</strong> upvoted your work."));
   assert.ok(settingsPanel.includes('<span class="status-text" data-status="public">Public · Revision 1</span>'));
-  assert.ok(settingsPanel.includes("<h3>Comments from learners</h3>"));
-  assert.ok(settingsPanel.includes("<strong>@maya_dev</strong> on Build and Evaluate RAG Systems in Python"));
-  assert.ok(settingsPanel.includes('class="comment-card"'));
+  assert.equal(settingsPanel.includes("Comments from learners"), false);
+  assert.equal(settingsPanel.includes("@maya_dev"), false);
+  assert.equal(settingsPanel.includes("@kenji_ml"), false);
   assert.ok(settingsPanel.includes('class="providers-data-table"'));
   assert.ok(settingsPanel.includes('class="provider-brand-tile"'));
   assert.ok(settingsPanel.includes('class="provider-logo-svg"'));

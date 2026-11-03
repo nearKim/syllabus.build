@@ -1410,8 +1410,19 @@ section[id] {
 
 @media (max-width: 720px) {
   .profile-layout-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 64px minmax(0, 1fr);
     gap: var(--space-4);
+  }
+
+  .profile-avatar-trigger,
+  .user-avatar-xl {
+    width: 64px;
+    height: 64px;
+    min-height: 64px;
+  }
+
+  .user-avatar-xl {
+    font-size: 22px;
   }
 
   .profile-photo-stack {
@@ -6650,6 +6661,12 @@ ul.adopt-resources {
   gap: var(--space-7);
 }
 
+@media (max-width: 720px) {
+  .settings-stack {
+    gap: var(--space-6);
+  }
+}
+
 .settings-nav {
   display: flex;
   flex-wrap: wrap;
@@ -6687,11 +6704,10 @@ ul.adopt-resources {
   display: none;
 }
 
-.settings-stack:has(#settings-choice-profile:checked) > #settings-profile,
+.settings-stack:has(#settings-choice-profile:checked) > :is(#settings-profile, #settings-community),
 .settings-stack:has(#settings-choice-passkeys:checked) > #settings-passkeys,
 .settings-stack:has(#settings-choice-ai:checked) > #settings-ai,
 .settings-stack:has(#settings-choice-schedule:checked) > #settings-schedule,
-.settings-stack:has(#settings-choice-community:checked) > #settings-community,
 .settings-stack:has(#settings-choice-privacy:checked) > #settings-privacy {
   display: grid;
 }
@@ -6747,6 +6763,12 @@ ul.adopt-resources {
 }
 
 /* Community impact summary and shared syllabus cards */
+.contribution-invite {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-4);
+}
+
 .community-impact-banner {
   display: flex;
   flex-wrap: wrap;
@@ -6910,78 +6932,6 @@ ul.adopt-resources {
 
 .contribution-metric .sf-icon {
   color: var(--color-accent);
-}
-
-/* Learner Comments 2-column visual quote cards */
-.learner-comments {
-  display: grid;
-  gap: var(--space-3);
-  margin-top: var(--space-2);
-}
-
-.learner-comments-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.comment-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: var(--space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.comment-card {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: var(--space-3);
-  padding: 20px 22px;
-  border-radius: var(--radius-surface);
-  background: var(--color-swimlane);
-}
-
-.comment-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-
-.comment-upvote-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--color-success-text);
-}
-
-.comment-body {
-  margin: 0;
-  font-size: 15px;
-  line-height: 1.55;
-  color: var(--color-text-primary);
-}
-
-.comment-body p {
-  margin: 0;
-}
-
-.comment-author-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.comment-avatar {
-  width: 28px;
-  height: 28px;
-  font-size: 11px;
 }
 
 /* BYOK Providers Data Table (unshaded canvas table with provider brand logos) */

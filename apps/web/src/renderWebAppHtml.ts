@@ -2272,7 +2272,6 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
             <input class="st-sr" type="radio" name="settings-section" id="settings-choice-passkeys" value="passkeys"><label for="settings-choice-passkeys">Passkeys</label>
             <input class="st-sr" type="radio" name="settings-section" id="settings-choice-ai" value="ai"><label for="settings-choice-ai">AI providers</label>
             <input class="st-sr" type="radio" name="settings-section" id="settings-choice-schedule" value="schedule"><label for="settings-choice-schedule">Reminders</label>
-            <input class="st-sr" type="radio" name="settings-section" id="settings-choice-community" value="community"><label for="settings-choice-community">Contributions</label>
             <input class="st-sr" type="radio" name="settings-section" id="settings-choice-privacy" value="privacy"><label for="settings-choice-privacy">Privacy</label>
           </fieldset>
           <section class="settings-section profile-identity" id="settings-profile" aria-labelledby="settings-profile-title" data-opaque-surface="true">
@@ -2339,14 +2338,14 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
           <section class="settings-section" id="settings-community" aria-labelledby="settings-community-title" data-opaque-surface="true">
             <div class="settings-section-head">
               <div>
-                <h2 id="settings-community-title">Your contributions</h2>
+                <h2 id="settings-community-title">${ownedListings.length > 0 ? "Your contributions" : "Share what you&#39;ve learned"}</h2>
               </div>
-              ${ownedListings.length > 0 ? `<button type="button" class="btn-secondary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">+ Share another syllabus</button>` : ""}
+              ${ownedListings.length > 0 ? `<button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share another syllabus</button>` : ""}
             </div>
             ${ownedListings.length > 0 ? `<div class="community-impact-banner">
               <div class="impact-copy-group">
                 <p class="impact-summary">Your shared ${ownedListings.length === 1 ? "plan" : "plans"} reached <strong>${totalLearnersReached} ${totalLearnersReached === 1 ? "learner" : "learners"}</strong>, who planned about <strong>${totalStudyHoursGifted} ${totalStudyHoursGifted === 1 ? "study hour" : "study hours"}</strong> with ${ownedListings.length === 1 ? "it" : "them"}. <strong>${totalUpvotesReceived} ${totalUpvotesReceived === 1 ? "person" : "people"}</strong> upvoted your work.</p>
-                <p class="row-meta">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.</p>
+                <p class="row-meta">Every adoption is free for the learner under CC BY 4.0. Thank you for teaching in the open.${derivedListings.length > 0 ? ` ${derivedListings.length} community remix${derivedListings.length === 1 ? "" : "es"}.` : ""}</p>
               </div>
             </div>
             <ul class="contribution-list">
@@ -2377,39 +2376,10 @@ export function renderSyllabusWebAppHtml(inputState: SyllabusWebAppStateInput = 
                 </div>
               </li>`;
               }).join("\n")}
-            </ul>
-            <div class="learner-comments">
-              <div class="learner-comments-head">
-                <h3>Comments from learners</h3>
-                <span class="row-meta">${derivedListings.length > 0 ? `${derivedListings.length} community remix${derivedListings.length === 1 ? "" : "es"}` : "Community notes on your shared syllabus"}</span>
-              </div>
-              <ul class="comment-list">
-                <li class="comment-card">
-                  <div class="comment-card-top">
-                    <span class="comment-upvote-tag">${sfIcon("upvote", 15)}<span>Upvoted &amp; adopted</span></span>
-                    <time class="row-meta" datetime="2026-10-24">2 days ago</time>
-                  </div>
-                  <blockquote class="comment-body"><p>The BPE and scaled dot-product attention progression finally made variance scaling click before writing the retrieval pipeline.</p></blockquote>
-                  <div class="comment-author-row">
-                    <span class="user-avatar-circle comment-avatar" aria-hidden="true">MD</span>
-                    <p class="row-meta"><strong>@maya_dev</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.syllabus ?? syllabus))}</p>
-                  </div>
-                </li>
-                <li class="comment-card">
-                  <div class="comment-card-top">
-                    <span class="comment-upvote-tag">${sfIcon("upvote", 15)}<span>Upvoted &amp; adopted</span></span>
-                    <time class="row-meta" datetime="2026-10-21">5 days ago</time>
-                  </div>
-                  <blockquote class="comment-body"><p>Cleanest self-study syllabus I have found for RAG evaluation metrics. It saved me weeks of piecing together scattered blog posts.</p></blockquote>
-                  <div class="comment-author-row">
-                    <span class="user-avatar-circle comment-avatar" aria-hidden="true">KM</span>
-                    <p class="row-meta"><strong>@kenji_ml</strong> on ${escapeHtml(goalTitleOf(ownedListings[0]?.syllabus ?? syllabus))}</p>
-                  </div>
-                </li>
-              </ul>
-            </div>` : `<div class="settings-card">
-              <p class="section-lede">Share a plan and any self-learner can adopt it for free. Your progress, notes, keys, billing, and session dates stay private.</p>
-              <div class="action-row"><button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button></div>
+            </ul>` : `<div class="contribution-invite">
+              <p class="section-lede">Give another learner a place to start. Shared syllabi are free to adopt.</p>
+              <button type="button" class="btn-primary" data-action="open-dialog" data-dialog-id="dialog-publication-preview">Share your first syllabus</button>
+              <p class="row-meta">Your progress, notes, keys, billing, and session dates stay private.</p>
             </div>`}
           </section>
 
