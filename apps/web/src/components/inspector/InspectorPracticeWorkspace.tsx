@@ -18,7 +18,7 @@ export function InspectorPracticeWorkspace({
 
   return (
     <>
-      <p class="subtask-meta">Practice only. Your answer does not change the objective's proficiency status.</p>
+      <p class="subtask-meta">Practice only. Does not change mastery.</p>
       <section id="study-workspace" class="study-workspace" aria-label="Concept check" data-opaque-surface="true">
         <div
           class="math-formula-surface"

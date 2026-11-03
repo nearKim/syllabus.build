@@ -416,7 +416,7 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   // Each material is a subtask: one round checkbox, the title, the sections to read, and one link that opens it.
   const material = theory.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
   assert.match(material, /^<li class="subtask" data-done="false"><button type="button" class="subtask-check" role="checkbox" aria-checked="false" aria-labelledby="learn-detail-inspector-subtask-0" data-action="toggle-subtask" data-activity-id="activity-theory" data-subtask-id="activity-theory:material:synthetic-resource-tokenization-v1">/);
-  assert.match(material, /<p id="learn-detail-inspector-subtask-0" class="subtask-title"><a class="subtask-material-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing <span aria-hidden="true">↗<\/span><span class="st-sr"> in a new tab<\/span><\/a><\/p>/);
+  assert.match(material, /<a class="subtask-material-link" href="https:\/\/example\.invalid\/catalog\/tokenization-monograph" target="_blank" rel="noopener noreferrer">Reviewed Open Monograph: Subword Tokenization &amp; Sequence Packing <span aria-hidden="true">↗<\/span><span class="st-sr"> in a new tab<\/span><\/a>/);
   assert.ok(material.includes('<p class="source-section">Section 2.1: Byte-Pair Encoding Merge Tables</p>'));
   assert.equal(/Open study material|Curator Verified|source-action-btn/.test(material), false);
   const management = theory.match(/<details class="subtask-management">[\s\S]*?<\/details>/)?.[0] ?? "";
@@ -433,7 +433,7 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.equal(/step-procedure|step-num|todoist/.test(theory + coding + quiz), false);
   // An activity with no material and no distinct prompt starts at the concept check.
   const review = drawerFor("activity-review", "module-attention");
-  assert.match(review, /<ul class="subtask-list" role="list"><li class="subtask" data-done="false"><button [^>]*data-subtask-id="activity-review:concept-check">[\s\S]*?class="subtask-title">Answer the concept check<\/p>/);
+  assert.match(review, /<ul class="subtask-list" role="list"><li class="subtask" data-done="false"><button [^>]*data-subtask-id="activity-review:concept-check">[\s\S]*?data-kind="quiz" title="Practice quiz">[\s\S]*?<span>Concept check<\/span>/);
   assert.match(theory, /<h3 id="learn-detail-inspector-focus">What this builds<\/h3>[\s\S]*?Analyze BPE and Unigram tokenization sequence lengths[\s\S]*?Prepares for: Unit 1 Gate/);
   assert.match(theory, /<h3 id="learn-detail-inspector-order">Unit 1 learning order \(0\/3 done\)<\/h3>[\s\S]*?aria-current="step"/);
   assert.match(theory, /<h3 id="learn-detail-inspector-time">Time &amp; duration<\/h3>[\s\S]*?Unit total<\/span><\/th><td>[^<]*\([0-9]+m remaining\)<\/td>/);
@@ -458,6 +458,23 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.match(quiz, /Required first:<\/p>\s*<button type="button" class="first-step" data-action="select-outline-activity" data-activity-id="activity-coding"/);
 });
 
+test("subtasks identify resource types and quizzes without repeating the video type in the title", () => {
+  for (const [category, icon] of [["Book", "learn"], ["Course", "course"], ["YouTube", "youtube"], ["Code Lab", "code"], ["Problem Set", "resources"]]) {
+    const drawer = drawerOf(renderSyllabusWebAppHtml({
+      selectedActivityId: "activity-theory",
+      studyDetailOpen: true,
+      catalogResources: {
+        "synthetic-resource-tokenization-v1": { title: "YouTube Lecture: Attention", category, canonical_url: "https://example.invalid/watch" },
+      },
+    }));
+    const material = drawer.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
+    assert.ok(material.includes(`data-kind="${icon}" title="${category}"`));
+    assert.ok(material.includes(`<span class="st-sr">${category}: </span>`), "the icon has a text equivalent");
+    assert.ok(material.includes(`rel="noopener noreferrer">${category === "YouTube" ? "Attention" : "YouTube Lecture: Attention"} <span`));
+    assert.ok(drawer.includes('<p class="subtask-title">YouTube Lecture: Attention</p>'), "Manage keeps the full original title");
+  }
+});
+
 test("material subtasks keep access requirements visible and do not link unsafe URLs", () => {
   const drawer = drawerOf(renderSyllabusWebAppHtml({
     selectedActivityId: "activity-theory",
@@ -471,7 +488,7 @@ test("material subtasks keep access requirements visible and do not link unsafe 
     },
   }));
   const material = drawer.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
-  assert.ok(material.includes('class="subtask-title">Subscription reference</p>'));
+  assert.ok(material.includes('<span>Subscription reference</span>'));
   assert.ok(material.includes('class="subtask-meta">Subscription</p>'));
   assert.ok(material.includes("Study link unavailable"));
   assert.equal(/href=|subtask-material-link/.test(material), false);
@@ -662,7 +679,7 @@ test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then t
   const section = (id) => lab.match(new RegExp(`<section class="inspector-section[^"]*" aria-labelledby="learn-detail-inspector-${id}">([\\s\\S]*?)</section>`))?.[1] ?? "";
   assert.match(section("brief"), /Deliverable brief[\s\S]*Run the external test suite to verify lossless UTF-8 round-trip encoding\.[\s\S]*<li>A reversible tokenizer and a tensor shape validator/);
   assert.deepEqual([...section("specs").matchAll(/<span>([^<]+)<\/span><\/li>/g)].map((match) => match[1]), ["25 min (19–38 min)", "Formal", "Required", "Local or external IDE"]);
-  assert.match(lab, /data-subtask-id="activity-coding:verify:objective-tokenization">[\s\S]*?class="subtask-title">Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples\.<\/p>/);
+  assert.match(lab, /data-subtask-id="activity-coding:verify:objective-tokenization">[\s\S]*?class="subtask-title">[\s\S]*?<span>Accurately compare token counts and out-of-vocabulary behavior across two unseen text samples\.<\/span>/);
   const labMaterial = lab.match(/<li class="subtask" data-done="false">[\s\S]*?<\/li>/)?.[0] ?? "";
   assert.match(labMaterial, /<a class="subtask-material-link" [^>]*>[\s\S]*?<span aria-hidden="true">↗<\/span>/);
   assert.ok(labMaterial.includes("Optional certificate $49.00"), "a paid option stays visible before the learner leaves");

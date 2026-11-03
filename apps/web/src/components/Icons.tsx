@@ -21,6 +21,8 @@ export type SfIconName =
   | "pin"
   | "code"
   | "video"
+  | "youtube"
+  | "quiz"
   | "course"
   | "upvote"
   | "engineering"
@@ -197,6 +199,21 @@ function renderSfIconNodes(name: SfIconName): VNode {
         <>
           <rect width="18" height="18" x="3" y="3" rx="2" />
           <polygon points="10 8 16 12 10 16 10 8" />
+        </>
+      );
+    case "youtube":
+      return (
+        <>
+          <path d="M21.58 7.19a2.8 2.8 0 0 0-1.97-1.98C17.88 4.75 12 4.75 12 4.75s-5.88 0-7.61.46a2.8 2.8 0 0 0-1.97 1.98A29.3 29.3 0 0 0 2 12a29.3 29.3 0 0 0 .42 4.81 2.8 2.8 0 0 0 1.97 1.98c1.73.46 7.61.46 7.61.46s5.88 0 7.61-.46a2.8 2.8 0 0 0 1.97-1.98A29.3 29.3 0 0 0 22 12a29.3 29.3 0 0 0-.42-4.81Z" fill="currentColor" stroke="none" />
+          <path d="m10 8.75 5.5 3.25-5.5 3.25Z" fill="#fff" stroke="none" />
+        </>
+      );
+    case "quiz":
+      return (
+        <>
+          <rect x="4" y="3" width="16" height="19" rx="2" />
+          <path d="M9 3V2h6v1M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4" />
+          <path d="M12 17h.01" />
         </>
       );
     case "course":

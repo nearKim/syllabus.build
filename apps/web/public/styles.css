@@ -8307,6 +8307,26 @@ dialog.inspector::backdrop {
   text-decoration: line-through;
 }
 
+.subtask-body > .subtask-title {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.subtask-kind {
+  padding-block-start: 3px;
+  color: var(--color-text-secondary);
+}
+
+.subtask-kind[data-kind="youtube"] {
+  color: #ff0033;
+}
+
+.subtask-body > :is(.source-section, .subtask-meta) {
+  margin-inline-start: 24px;
+}
+
 .subtask-material-link {
   display: inline-block;
   min-height: var(--layout-touch-target-min);

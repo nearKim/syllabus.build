@@ -7,6 +7,7 @@ import {
 import { formatMinorCurrency } from "../../billingAndSharing.ts";
 import { SfIcon } from "../Icons.tsx";
 import { MathText } from "../MathText.tsx";
+import { categoryIcon, classifyResourceCategory } from "../ResourcesView.tsx";
 import {
   humanize,
   type StudyActivity,
@@ -62,7 +63,10 @@ export function InspectorSubtasksList({
     switch (subtask.kind) {
       case "material": {
         const { card } = subtask;
-        const segments = catalogResources[card.resourceVersionId]?.segments ?? [];
+        const resource = catalogResources[card.resourceVersionId];
+        const category = classifyResourceCategory(card.resourceVersionId, card.title, card.verifiedPublisher, resource?.category);
+        const title = category === "YouTube" ? card.title.replace(/^YouTube(?: lecture| video)?:\s*(?=\S)/i, "") : card.title;
+        const segments = resource?.segments ?? [];
         const sections = card.verifiedSegments
           .flatMap((segmentId) => segments.find((segment) => segment.segment_id === segmentId)?.title ?? [])
           .map((section) => renderUntrustedCatalogText(section, { maxLength: 300 }).text);
@@ -80,12 +84,14 @@ export function InspectorSubtasksList({
         const url = card.canonicalUrl && isSafeResourceUrl(card.canonicalUrl) ? card.canonicalUrl : null;
         return {
           subtaskId: subtask.subtaskId,
+          kindLabel: category,
+          icon: category === "YouTube" ? "youtube" as const : categoryIcon(category),
           title: url ? (
             <a class="subtask-material-link" href={url} target="_blank" rel="noopener noreferrer">
-              {card.title} <span aria-hidden="true">↗</span>
+              {title} <span aria-hidden="true">↗</span>
               <span class="st-sr"> in a new tab</span>
             </a>
-          ) : card.title,
+          ) : title,
           details: (
             <>
               {sections.map((section, secIdx) => (
@@ -130,9 +136,9 @@ export function InspectorSubtasksList({
         };
       }
       case "concept-check":
-        return { subtaskId: subtask.subtaskId, title: "Answer the concept check", details: conceptCheckWorkspace, management: null };
+        return { subtaskId: subtask.subtaskId, kindLabel: "Practice quiz", icon: "quiz" as const, title: "Concept check", details: conceptCheckWorkspace, management: null };
       case "criterion":
-        return { subtaskId: subtask.subtaskId, title: <MathText text={subtask.text} />, details: null, management: null };
+        return { subtaskId: subtask.subtaskId, kindLabel: "Criterion", icon: "resources" as const, title: <MathText text={subtask.text} />, details: null, management: null };
     }
   });
 
@@ -145,7 +151,7 @@ export function InspectorSubtasksList({
       </h3>
       {subtasks.length > 0 ? (
         <ul class="subtask-list" role="list">
-          {subtasks.map(({ subtaskId, title, details }, idx) => {
+          {subtasks.map(({ subtaskId, kindLabel, icon, title, details }, idx) => {
             const done = subtaskDone(subtaskId);
             return (
               <li key={subtaskId} class="subtask" data-done={String(done)}>
@@ -163,7 +169,11 @@ export function InspectorSubtasksList({
                 </button>
                 <div class="subtask-body">
                   <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
-                    {title}
+                    <span class="subtask-kind" data-kind={icon} title={kindLabel}>
+                      <SfIcon name={icon} />
+                      <span class="st-sr">{kindLabel}: </span>
+                    </span>
+                    <span>{title}</span>
                   </p>
                   {details}
                 </div>
