@@ -91,6 +91,56 @@ export function InspectorActivityOverview({
         </>
       ) : null}
 
+      {isLab ? null : (
+        <section class="inspector-section inspector-time-section" aria-labelledby={`${INSPECTOR_ID}-time`}>
+          <h3 id={`${INSPECTOR_ID}-time`}>Time &amp; duration</h3>
+          <table class="meta-table">
+            <caption class="st-sr">Activity details</caption>
+            <tbody>
+              <tr>
+                <th scope="row">
+                  <span class="meta-key">
+                    <SfIcon name="clock" />
+                    Duration
+                  </span>
+                </th>
+                <td>{effortWords(activity.durationTriplet)}</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="meta-key">
+                    <SfIcon name="learn" />
+                    Unit total
+                  </span>
+                </th>
+                <td>
+                  {effortWords(mod.durationTriplet)}
+                  {uProg.left > 0 ? ` (${uProg.left}m remaining)` : " (complete)"}
+                </td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="meta-key">
+                    <SfIcon name="rigor" />
+                    Rigor
+                  </span>
+                </th>
+                <td>{rigor}</td>
+              </tr>
+              <tr>
+                <th scope="row">
+                  <span class="meta-key">
+                    <SfIcon name="pin" />
+                    Type
+                  </span>
+                </th>
+                <td>{activity.required ? "Required" : "Optional"}</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      )}
+
       {rubric ? (
         <section class="inspector-section rubric-block" aria-labelledby={`${INSPECTOR_ID}-rubric`}>
           <h3 id={`${INSPECTOR_ID}-rubric`}>Synthesis &amp; Self-Check Rubric</h3>
@@ -109,76 +159,32 @@ export function InspectorActivityOverview({
       {children}
 
       <div class="inspector-reference-group">
-        <section class="inspector-section conceptual-focus" aria-labelledby={`${INSPECTOR_ID}-focus`}>
-          <h3 id={`${INSPECTOR_ID}-focus`}>{isGate ? "What this checks" : "What this builds"}</h3>
-          <ul class="focus-list">
-            {mine.length > 0 ? (
-              mine.map((objective) => (
-                <li key={objective.objectiveId}>
-                  <MathText text={objective.title} />
-                </li>
-              ))
-            ) : (
-              <li>No objective is mapped to this activity.</li>
+        <details id={`${INSPECTOR_ID}-outcomes`} class="inspector-disclosure inspector-outcomes" data-preserve-open="">
+          <summary>
+            <SfIcon name="learn" />
+            <span>{isGate ? "Assessed objectives" : "Learning outcomes"}</span>
+            <SfIcon name="chevron-down" />
+          </summary>
+          <div class="inspector-outcomes-content">
+            <ul class="focus-list">
+              {mine.length > 0 ? (
+                mine.map((objective) => (
+                  <li key={objective.objectiveId}>
+                    <MathText text={objective.title} />
+                  </li>
+                ))
+              ) : (
+                <li>No objective is mapped to this activity.</li>
+              )}
+            </ul>
+            {isGate || postGateIds(mod).has(activity.activityId) ? null : (
+              <p class="focus-next">
+                <StatusGlyph type="gate" tone={unitGate(mod).passed ? "done" : "todo"} size={16} />
+                <span>Prepares for: Unit {unitNumber} Gate</span>
+              </p>
             )}
-          </ul>
-          {isGate || postGateIds(mod).has(activity.activityId) ? null : (
-            <p class="focus-next">
-              <StatusGlyph type="gate" tone={unitGate(mod).passed ? "done" : "todo"} size={16} />
-              <span>Prepares for: Unit {unitNumber} Gate</span>
-            </p>
-          )}
-        </section>
-
-        {isLab ? null : (
-          <section class="inspector-section inspector-time-section" aria-labelledby={`${INSPECTOR_ID}-time`}>
-            <h3 id={`${INSPECTOR_ID}-time`}>Time &amp; duration</h3>
-            <table class="meta-table">
-              <caption class="st-sr">Activity details</caption>
-              <tbody>
-                <tr>
-                  <th scope="row">
-                    <span class="meta-key">
-                      <SfIcon name="clock" />
-                      Duration
-                    </span>
-                  </th>
-                  <td>{effortWords(activity.durationTriplet)}</td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <span class="meta-key">
-                      <SfIcon name="learn" />
-                      Unit total
-                    </span>
-                  </th>
-                  <td>
-                    {effortWords(mod.durationTriplet)}
-                    {uProg.left > 0 ? ` (${uProg.left}m remaining)` : " (complete)"}
-                  </td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <span class="meta-key">
-                      <SfIcon name="rigor" />
-                      Rigor
-                    </span>
-                  </th>
-                  <td>{rigor}</td>
-                </tr>
-                <tr>
-                  <th scope="row">
-                    <span class="meta-key">
-                      <SfIcon name="pin" />
-                      Type
-                    </span>
-                  </th>
-                  <td>{activity.required ? "Required" : "Optional"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-        )}
+          </div>
+        </details>
 
         <section class="inspector-section inspector-order-section" aria-labelledby={`${INSPECTOR_ID}-order`}>
           <h3 id={`${INSPECTOR_ID}-order`}>

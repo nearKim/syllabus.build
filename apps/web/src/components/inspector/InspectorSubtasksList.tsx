@@ -78,6 +78,7 @@ export function InspectorSubtasksList({
         const url = card.canonicalUrl && isSafeResourceUrl(card.canonicalUrl) ? card.canonicalUrl : null;
         return {
           subtaskId: subtask.subtaskId,
+          collapsible: false,
           kindLabel: category,
           icon: category === "YouTube" ? "youtube" as const : categoryIcon(category),
           title: url ? (
@@ -115,9 +116,9 @@ export function InspectorSubtasksList({
         };
       }
       case "concept-check":
-        return { subtaskId: subtask.subtaskId, kindLabel: "Practice quiz", icon: "quiz" as const, title: "Concept check", details: conceptCheckWorkspace, action: null };
+        return { subtaskId: subtask.subtaskId, collapsible: true, kindLabel: "Practice quiz", icon: "quiz" as const, title: "Concept check", details: conceptCheckWorkspace, action: null };
       case "criterion":
-        return { subtaskId: subtask.subtaskId, kindLabel: "Criterion", icon: "resources" as const, title: <MathText text={subtask.text} />, details: null, action: null };
+        return { subtaskId: subtask.subtaskId, collapsible: false, kindLabel: "Criterion", icon: "resources" as const, title: <MathText text={subtask.text} />, details: null, action: null };
     }
   });
 
@@ -130,8 +131,17 @@ export function InspectorSubtasksList({
       </h3>
       {subtasks.length > 0 ? (
         <ul class="subtask-list" role="list">
-          {subtasks.map(({ subtaskId, kindLabel, icon, title, details, action }, idx) => {
+          {subtasks.map(({ subtaskId, collapsible, kindLabel, icon, title, details, action }, idx) => {
             const done = subtaskDone(subtaskId);
+            const label = (
+              <>
+                <span class="subtask-kind" data-kind={icon} title={kindLabel}>
+                  <SfIcon name={icon} />
+                  <span class="st-sr">{kindLabel}: </span>
+                </span>
+                <span>{title}</span>
+              </>
+            );
             return (
               <li key={subtaskId} class="subtask" data-done={String(done)}>
                 <button
@@ -147,17 +157,23 @@ export function InspectorSubtasksList({
                   <SfIcon name="check" size={15} />
                 </button>
                 <div class="subtask-body">
-                  <div class="subtask-heading">
-                    <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
-                      <span class="subtask-kind" data-kind={icon} title={kindLabel}>
-                        <SfIcon name={icon} />
-                        <span class="st-sr">{kindLabel}: </span>
-                      </span>
-                      <span>{title}</span>
-                    </p>
-                    {action}
-                  </div>
-                  {details}
+                  {collapsible ? (
+                    <details id={`${INSPECTOR_ID}-practice`} class="inspector-disclosure subtask-practice" data-preserve-open="">
+                      <summary id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">
+                        {label}
+                        <SfIcon name="chevron-down" />
+                      </summary>
+                      <div class="subtask-practice-content">{details}</div>
+                    </details>
+                  ) : (
+                    <>
+                      <div class="subtask-heading">
+                        <p id={`${INSPECTOR_ID}-subtask-${idx}`} class="subtask-title">{label}</p>
+                        {action}
+                      </div>
+                      {details}
+                    </>
+                  )}
                 </div>
               </li>
             );
@@ -166,31 +182,6 @@ export function InspectorSubtasksList({
       ) : (
         <p class="meta-text">No study materials attached to this step yet.</p>
       )}
-      <div class="subtask-edit-actions">
-        <button
-          type="button"
-          class="btn-secondary"
-          data-action="open-resource-editor"
-          data-editor-mode="ingest"
-          data-syllabus-id={syllabusId}
-          data-module-id={mod.moduleId}
-          data-activity-id={id}
-        >
-          <SfIcon name="plus" />
-          Add resource
-        </button>
-        <button
-          type="button"
-          class="subtask-edit-step"
-          data-action="open-syllabus-editor"
-          data-syllabus-edit-mode="edit-activity"
-          data-module-id={mod.moduleId}
-          data-activity-id={id}
-        >
-          <SfIcon name="edit" />
-          Edit step
-        </button>
-      </div>
     </section>
   );
 }

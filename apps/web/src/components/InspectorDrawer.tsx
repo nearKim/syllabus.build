@@ -171,9 +171,41 @@ export function InspectorDrawer({
         <h2 id={`${INSPECTOR_ID}-title`} tabIndex={-1} autofocus>
           <MathText text={activity.title} />
         </h2>
-        <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">
-          <SfIcon name="close" />
-        </button>
+        <div class="inspector-header-actions">
+          <details class="inspector-edit-menu">
+            <summary>
+              <SfIcon name="edit" />
+              Edit
+              <SfIcon name="chevron-down" />
+            </summary>
+            <div class="inspector-edit-options">
+              <button
+                type="button"
+                data-action="open-syllabus-editor"
+                data-syllabus-edit-mode="edit-activity"
+                data-module-id={mod.moduleId}
+                data-activity-id={id}
+              >
+                <SfIcon name="edit" />
+                Edit step
+              </button>
+              <button
+                type="button"
+                data-action="open-resource-editor"
+                data-editor-mode="ingest"
+                data-syllabus-id={syllabusId}
+                data-module-id={mod.moduleId}
+                data-activity-id={id}
+              >
+                <SfIcon name="plus" />
+                Add resource
+              </button>
+            </div>
+          </details>
+          <button type="button" class="inspector-close" data-action="close-study-detail" aria-label="Close details">
+            <SfIcon name="close" />
+          </button>
+        </div>
         <div class="inspector-pills">
           <div class="segmented status-control" role="group" aria-label="Activity status">
             {SETTABLE_STATUSES.map((choice) => (

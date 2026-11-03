@@ -150,7 +150,8 @@ ${fallbackScript}
   function openDialogScroll() {
     const open = new Map();
     root.querySelectorAll("dialog[open]").forEach((dialog) => {
-      open.set(dialog.id, { top: (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop, activityId: dialog.dataset.activityId });
+      const expanded = Array.from(dialog.querySelectorAll('details[data-preserve-open][open]'), (detail) => detail.id);
+      open.set(dialog.id, { top: (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop, activityId: dialog.dataset.activityId, expanded });
     });
     return open;
   }
@@ -162,6 +163,11 @@ ${fallbackScript}
       const before = previous.get(dialog.id);
       if (before) dialog.setAttribute("data-instant", "");
       dialog.showModal();
+      if (before && before.activityId === dialog.dataset.activityId) {
+        dialog.querySelectorAll('details[data-preserve-open]').forEach((detail) => {
+          detail.open = before.expanded.includes(detail.id);
+        });
+      }
       (dialog.querySelector("[data-scroll-region]") || dialog).scrollTop = before && before.activityId === dialog.dataset.activityId ? before.top : 0;
     });
   }

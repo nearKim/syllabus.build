@@ -83,6 +83,9 @@ export function mountSyllabusWebApp(
     const settingsSection = (rootElement.querySelector?.('input[name="settings-section"]:checked') as { value?: string } | null | undefined)?.value;
     const shown = rootElement.querySelector?.("dialog[open]") as MountedDialog | null | undefined;
     const shownTop = shown?.scrollTop ?? 0;
+    const expanded = new Set(
+      (Array.from(rootElement.querySelectorAll?.('details[data-preserve-open][open]') ?? []) as HTMLDetailsElement[]).map((detail) => detail.id),
+    );
     const focused = focusedControlSelector();
     rootElement.innerHTML = controller.renderHtml();
     const nextSettingsSection = action === "open-ai-settings" ? "ai" : settingsSection;
@@ -95,6 +98,11 @@ export function mountSyllabusWebApp(
     const marked = rootElement.querySelector?.('dialog[data-open="true"]') as MountedDialog | null | undefined;
     if (marked && typeof marked.showModal === "function" && !marked.open) marked.showModal();
     if (marked && shown && marked.id === shown.id) {
+      if (marked.getAttribute?.("data-activity-id") === shown.getAttribute?.("data-activity-id")) {
+        for (const detail of Array.from(rootElement.querySelectorAll?.('details[data-preserve-open]') ?? []) as HTMLDetailsElement[]) {
+          detail.open = expanded.has(detail.id);
+        }
+      }
       marked.scrollTop = shownTop;
       if (focused) marked.querySelector?.(focused)?.focus?.();
     }

@@ -421,9 +421,11 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   assert.equal(/Open study material|Curator Verified|source-action-btn/.test(material), false);
   assert.match(material, /class="subtask-resource-edit" aria-label="Edit resource: Reviewed Open Monograph:[^"]+" title="Edit resource" data-action="open-resource-editor" data-editor-mode="edit" data-resource-id="synthetic-resource-tokenization-v1"/);
   assert.equal(/subtask-management|subtask-resource-management|<summary>Manage<\/summary>/.test(theory), false);
-  const actions = theory.match(/<div class="subtask-edit-actions">[\s\S]*?<\/div>/)?.[0] ?? "";
-  assert.match(actions, /class="btn-secondary"[^>]*data-action="open-resource-editor"[^>]*data-editor-mode="ingest"[\s\S]*?<svg[^>]*>[\s\S]*?<\/svg>Add resource<\/button>/);
-  assert.match(actions, /class="subtask-edit-step"[^>]*data-action="open-syllabus-editor"[\s\S]*?<svg[^>]*>[\s\S]*?<\/svg>Edit step<\/button>/);
+  const header = theory.match(/<header class="inspector-head">[\s\S]*?<\/header>/)?.[0] ?? "";
+  assert.match(header, /<details class="inspector-edit-menu"><summary>[\s\S]*?Edit[\s\S]*?<\/summary>/);
+  assert.match(header, /data-action="open-resource-editor"[^>]*data-editor-mode="ingest"[\s\S]*?<\/svg>Add resource<\/button>/);
+  assert.match(header, /data-action="open-syllabus-editor"[\s\S]*?<\/svg>Edit step<\/button>/);
+  assert.equal(/subtask-edit-actions|data-editor-mode="ingest"|data-syllabus-edit-mode="edit-activity"/.test(theory.slice(theory.indexOf('<div class="inspector-scroll"'))), false);
   assert.equal(drawerFor("activity-review", "module-attention").includes(":material:"), false, "no material subtask without material");
 
   // The study focus comes first, then the subtasks with a done count. Each row has one circle, so the numbered spine is gone.
@@ -433,10 +435,14 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   // An activity with no material and no distinct prompt starts at the concept check.
   const review = drawerFor("activity-review", "module-attention");
   assert.match(review, /<ul class="subtask-list" role="list"><li class="subtask" data-done="false"><button [^>]*data-subtask-id="activity-review:concept-check">[\s\S]*?data-kind="quiz" title="Practice quiz">[\s\S]*?<span>Concept check<\/span>/);
-  assert.match(theory, /<h3 id="learn-detail-inspector-focus">What this builds<\/h3>[\s\S]*?Analyze BPE and Unigram tokenization sequence lengths[\s\S]*?Prepares for: Unit 1 Gate/);
+  assert.match(theory, /<details id="learn-detail-inspector-outcomes" class="inspector-disclosure inspector-outcomes" data-preserve-open><summary>[\s\S]*?<span>Learning outcomes<\/span>[\s\S]*?Analyze BPE and Unigram tokenization sequence lengths[\s\S]*?Prepares for: Unit 1 Gate/);
   assert.match(theory, /<h3 id="learn-detail-inspector-order">Unit 1 learning order \(0\/3 done\)<\/h3>[\s\S]*?aria-current="step"/);
   assert.match(theory, /<h3 id="learn-detail-inspector-time">Time &amp; duration<\/h3>[\s\S]*?Unit total<\/span><\/th><td>[^<]*\([0-9]+m remaining\)<\/td>/);
-  assert.match(quiz, /<h3 id="learn-detail-inspector-focus">What this checks<\/h3>/);
+  assert.match(quiz, /<span>Assessed objectives<\/span>/);
+  const sectionOrder = ["prompt", "time", "subtasks"].map((name) => theory.indexOf(`aria-labelledby="learn-detail-inspector-${name}"`));
+  assert.ok(sectionOrder.every((position) => position >= 0));
+  assert.deepEqual([...sectionOrder].sort((a, b) => a - b), sectionOrder);
+  assert.match(review, /<details id="learn-detail-inspector-practice" class="inspector-disclosure subtask-practice" data-preserve-open><summary/);
   // Every activity drawer (including concept-check activities) has at most ONE primary CTA button (.btn-primary).
   for (const drawer of [theory, coding, quiz]) {
     assert.equal(drawer.match(/class="btn-primary/g)?.length ?? 0, 1, "only one primary button in the drawer");
@@ -1183,6 +1189,41 @@ test("Dialogs pin an icon close button and a right-aligned footer, and a re-rend
   next.scrollTop = 0;
   listeners.click({ target: { closest: () => ({ dataset: { action: "select-all-adopt-modules" } }) } });
   assert.deepEqual([next.open, next.scrollTop], [true, 0]);
+});
+
+test("an expanded quiz stays open during practice and resets when the activity changes", () => {
+  let html = "";
+  let dialog = null;
+  let disclosure = null;
+  const root = {
+    get innerHTML() { return html; },
+    set innerHTML(value) {
+      html = value;
+      const activityId = drawerOf(value).match(/data-activity-id="([^"]+)"/)?.[1];
+      dialog = {
+        id: "learn-detail-inspector", open: false, scrollTop: 0,
+        getAttribute: (name) => name === "data-activity-id" ? activityId : null,
+        showModal() { this.open = true; },
+      };
+      disclosure = { id: "learn-detail-inspector-practice", open: false };
+    },
+    querySelector: (selector) => selector === "dialog[open]" ? (dialog?.open ? dialog : null)
+      : selector === 'dialog[data-open="true"]' ? dialog : null,
+    querySelectorAll: (selector) => selector === 'details[data-preserve-open][open]' ? (disclosure?.open ? [disclosure] : [])
+      : selector === 'details[data-preserve-open]' ? [disclosure] : [],
+  };
+  const app = mountSyllabusWebApp(root, { selectedActivityId: "activity-example", studyDetailOpen: true });
+  assert.equal(disclosure.open, false);
+  disclosure.open = true;
+  app.applyUiAction("request-hint");
+  assert.equal(disclosure.open, true);
+  assert.ok(root.innerHTML.includes("<strong>Hint.</strong>"));
+  disclosure.open = false;
+  app.applyUiAction("study-worked-solution");
+  assert.equal(disclosure.open, false, "a closed disclosure stays closed on re-render");
+  disclosure.open = true;
+  app.selectPlanActivity("activity-quiz", "module-attention");
+  assert.equal(disclosure.open, false, "another activity starts collapsed");
 });
 
 test("Share with Community previews the public projection, then publishes it to Explore and Profile & settings", () => {

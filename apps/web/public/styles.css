@@ -8044,6 +8044,69 @@ dialog.inspector::backdrop {
   line-height: 1.28;
 }
 
+dialog[data-inspector-mode="activity"] .inspector-head h2 {
+  grid-column: 1 / -1;
+}
+
+.inspector-header-actions {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.inspector-edit-menu {
+  position: relative;
+}
+
+.inspector-edit-menu > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--layout-touch-target-min);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-control);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.inspector-edit-menu > summary:hover,
+.inspector-edit-menu[open] > summary {
+  background: var(--tint-8);
+  color: var(--color-text-primary);
+}
+
+.inspector-edit-options {
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 0;
+  z-index: 2;
+  display: grid;
+  min-width: 180px;
+  padding: var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sheet);
+}
+
+.inspector-edit-options button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-inline: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: start;
+}
+
+.inspector-edit-options button:hover {
+  background: var(--tint-8);
+}
+
 .inspector-close {
   grid-column: 2;
   grid-row: 1 / span 2;
@@ -8259,6 +8322,10 @@ dialog.inspector::backdrop {
   inset: -12px;
 }
 
+.subtask:has(.subtask-practice) > .subtask-check {
+  margin-block-start: calc((var(--layout-touch-target-min) - 20px) / 2);
+}
+
 .subtask-check .sf-icon {
   width: 12px;
   height: 12px;
@@ -8288,10 +8355,6 @@ dialog.inspector::backdrop {
 .subtask-body > * {
   min-width: 0;
   margin: 0;
-}
-
-.subtask-body > .study-workspace {
-  margin-top: var(--space-2);
 }
 
 .subtask-title {
@@ -8371,29 +8434,47 @@ dialog.inspector::backdrop {
   text-underline-offset: 3px;
 }
 
-.subtask-edit-actions {
+.inspector-disclosure > summary {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2) var(--space-4);
-  margin-inline-start: 32px;
-}
-
-.subtask-edit-step {
-  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 0 var(--space-2);
-  border: 0;
-  background: transparent;
-  font-size: 13px;
+  min-height: var(--layout-touch-target-min);
+  cursor: pointer;
+  list-style: none;
+}
+
+.inspector-disclosure > summary > .sf-icon:last-child {
+  margin-inline-start: auto;
   color: var(--color-text-secondary);
 }
 
-.subtask-edit-step:hover {
-  color: var(--color-text-primary);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+.inspector-disclosure[open] > summary > .sf-icon:last-child,
+.inspector-edit-menu[open] > summary > .sf-icon:last-child {
+  rotate: 180deg;
+}
+
+.inspector-disclosure > summary::-webkit-details-marker,
+.inspector-edit-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.subtask-practice-content {
+  display: grid;
+  gap: var(--space-3);
+  padding-block-start: var(--space-2);
+}
+
+.subtask-practice-content > p {
+  margin: 0;
+}
+
+.inspector-outcomes > summary {
+  font-weight: 600;
+}
+
+.inspector-outcomes-content {
+  padding-block-start: var(--space-3);
+  padding-inline-start: 24px;
 }
 
 .subtask-meta {
@@ -8782,7 +8863,7 @@ dialog.inspector::backdrop {
   font-weight: 500;
 }
 
-/* What this builds: the objectives behind the step, and the gate it prepares for */
+/* Learning outcomes: the objectives behind the step, and the gate it prepares for */
 .focus-list,
 .lab-deliverables {
   margin: 0;
@@ -8900,6 +8981,21 @@ dialog.inspector::backdrop {
   font-size: 14px;
   font-weight: 600;
   color: var(--color-text-primary);
+}
+
+.inspector-time-section .meta-table tbody {
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+}
+
+.inspector-time-section .meta-table tr {
+  grid-template-columns: 100px minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.inspector-time-section .meta-table td {
+  font-weight: 400;
 }
 
 .meta-key {
