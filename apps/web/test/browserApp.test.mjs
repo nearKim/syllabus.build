@@ -454,8 +454,8 @@ test("the drawer leads with the material and plain guidance, without jargon or a
   const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
   assert.match(css, /dialog\.inspector\s*\{[^}]*width:\s*min\(560px,\s*100vw\);/s);
   assert.match(css, /@media \(min-width: 872px\)\s*\{\s*\.mobile-step-nav\s*\{\s*display:\s*none;/);
-  assert.match(css, /\.status-control\s*\{[^}]*flex:\s*1 1 100%;/s);
-  assert.match(css, /\.status-control \.seg-btn\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--color-text-primary\);[^}]*color:\s*var\(--color-surface\);/s);
+  assert.match(css, /\.status-control\s*\{[^}]*flex:\s*0 1 300px;/s);
+  assert.match(css, /\.status-control \.seg-btn\[aria-pressed="true"\]\s*\{[^}]*background:\s*var\(--color-surface\);[^}]*color:\s*var\(--color-text-primary\);/s);
   // The global button rule has a 44px minimum, so the 20px subtask circle must reset it.
   assert.match(css, /\n\.subtask-check \{[^}]*width: 20px;[^}]*min-width: 0;[^}]*min-height: 0;/);
 
@@ -635,7 +635,7 @@ test("checked subtasks set the activity status, and the status control sets the 
   assert.deepEqual([guest.app.getState().openDialogId, guest.app.getState().completedSubtaskIds], ["dialog-auth", []]);
 });
 
-test("the status control sets three states, celebrates Done, and then offers the next step", () => {
+test("the status control sets three states and then offers the next step", () => {
   const { root, click } = mountWithClicks({ selectedActivityId: "activity-theory", studyDetailOpen: true });
   const drawer = () => drawerOf(root.innerHTML);
   const control = () => drawer().match(/<div class="segmented status-control" role="group" aria-label="Activity status">([\s\S]*?)<\/div>/)?.[1] ?? "";
@@ -643,7 +643,6 @@ test("the status control sets three states, celebrates Done, and then offers the
   assert.deepEqual([...control().matchAll(/data-action="set-activity-status" data-activity-id="activity-theory" data-status="([a-z_]+)"/g)].map((match) => match[1]), ["not_started", "in_progress", "completed"]);
   assert.deepEqual(pressed(), ["Not started"]);
   assert.match(drawer(), /<button type="button" class="btn-primary" data-action="complete-activity" data-activity-id="activity-theory"[^>]*>Mark as Done<span aria-hidden="true">✓<\/span>/);
-  assert.equal(drawer().includes("status-celebration"), false);
 
   click({ action: "set-activity-status", activityId: "activity-theory", status: "in_progress" });
   assert.deepEqual(pressed(), ["In progress"]);
@@ -652,7 +651,7 @@ test("the status control sets three states, celebrates Done, and then offers the
 
   click({ action: "set-activity-status", activityId: "activity-theory", status: "completed" });
   assert.deepEqual(pressed(), ["Done"]);
-  assert.match(control(), /class="seg-btn status-celebration" data-action="set-activity-status" data-activity-id="activity-theory" data-status="completed" aria-pressed="true"/);
+  assert.match(control(), /class="seg-btn" data-action="set-activity-status" data-activity-id="activity-theory" data-status="completed" aria-pressed="true"/);
   assert.ok(root.innerHTML.includes('data-self-reported-count="1"') && root.innerHTML.includes('data-study-minutes="15"'));
   const next = drawer().match(/<button type="button" class="btn-primary next-step" data-action="([^"]+)" data-activity-id="([^"]+)" data-module-id="([^"]+)"><span class="next-step-text">Go to next step: Worked Example: Attention Scaling Factor <span class="math-inline" data-opaque-surface="true" data-latex="\\frac\{1\}\{\\sqrt\{d_k\}\}"><math [\s\S]*?<\/math><\/span><\/span><span aria-hidden="true">→<\/span><\/button>/);
   assert.ok(next, "Done turns the primary button into the next step");
@@ -674,8 +673,6 @@ test("the status control sets three states, celebrates Done, and then offers the
   assert.match(drawer(), />Worked Example: Attention Scaling Factor <span class="math-inline" data-opaque-surface="true" data-latex="\\frac\{1\}\{\\sqrt\{d_k\}\}"><math [\s\S]*?<\/math><\/span><\/h2>/);
   assert.ok(drawer().includes('data-open="true"'));
 
-  const css = fs.readFileSync(path.join(PUBLIC_DIR, "styles.css"), "utf8");
-  assert.match(css, /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.status-celebration\s*\{[^}]*animation:\s*status-ring/);
 });
 
 test("a coding activity's drawer is a lab sheet: brief, specs, checklist, then the lab specification", () => {

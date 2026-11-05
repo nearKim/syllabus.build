@@ -199,7 +199,7 @@ export function InspectorDrawer({
               <button
                 key={choice}
                 type="button"
-                class={`seg-btn${choice === "completed" && status === "completed" ? " status-celebration" : ""}`}
+                class="seg-btn"
                 data-action="set-activity-status"
                 data-activity-id={id}
                 data-status={choice}

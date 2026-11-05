@@ -8129,7 +8129,7 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
   margin: 0;
 }
 
-/* Header controls: full-width status selection and gate proficiency. */
+/* Header controls: compact activity status and separate gate proficiency. */
 .inspector-pills {
   display: flex;
   flex-wrap: wrap;
@@ -8142,69 +8142,24 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
 .status-control {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  flex: 1 1 100%;
+  flex: 0 1 300px;
   max-width: 100%;
+  padding: 2px;
 }
 
 .status-control .seg-btn {
-  min-height: 48px;
+  min-height: var(--layout-touch-target-min);
   padding-inline: var(--space-2);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--color-text-secondary);
 }
 
 .status-control .seg-btn[aria-pressed="true"] {
-  background: var(--color-text-primary);
-  color: var(--color-surface);
-  box-shadow: none;
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px var(--color-border-control);
   font-weight: 600;
-}
-
-.status-control .seg-btn[data-status="completed"][aria-pressed="true"] {
-  background: var(--color-success-text);
-  color: var(--color-surface);
-  box-shadow: none;
-}
-
-/* Done: one emerald ring pulse and one light sweep, only when motion is allowed. Nothing loops.
-   Under Reduce motion, the app setting or the system one, Done gets the status-fade color fade instead. */
-@media (prefers-reduced-motion: no-preference) {
-  .status-celebration {
-    position: relative;
-    overflow: hidden;
-    animation: status-ring 900ms var(--ease-out) 1;
-  }
-
-  .status-celebration::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(105deg, transparent 30%, rgb(255 255 255 / 0.45) 50%, transparent 70%);
-    translate: -100% 0;
-    animation: status-sweep 900ms var(--ease-out) 120ms 1 both;
-    pointer-events: none;
-  }
-}
-
-@keyframes status-ring {
-  from {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-success-text) 45%, transparent);
-  }
-
-  to {
-    box-shadow: 0 0 0 10px transparent;
-  }
-}
-
-@keyframes status-sweep {
-  from {
-    translate: -100% 0;
-  }
-
-  to {
-    translate: 100% 0;
-  }
 }
 
 .proficiency-pill {
@@ -9273,7 +9228,7 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
 
 /* Reduced motion, reduced transparency, and forced colors.
    Reduce motion stops movement, not feedback. Nothing moves, scales, slides, or loops. Color and opacity keep
-   their short fades, so state changes still read, and Done gets one color fade instead of the ring and sweep. */
+   their short fades, so state changes still read. */
 [data-reduce-motion="true"] *,
 [data-reduce-motion="true"] *::before,
 [data-reduce-motion="true"] *::after,
@@ -9281,10 +9236,6 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
   animation: none !important;
   transition-property: color, background-color, border-color, outline-color, opacity, fill, stroke !important;
   scroll-behavior: auto !important;
-}
-
-[data-reduce-motion="true"] .status-celebration {
-  animation: status-fade 700ms var(--ease-out) 1 !important;
 }
 
 [data-reduce-motion="true"] :active {
@@ -9305,18 +9256,8 @@ dialog[data-inspector-mode="activity"] .inspector-head h2 {
     scroll-behavior: auto !important;
   }
 
-  .status-celebration {
-    animation: status-fade 700ms var(--ease-out) 1 !important;
-  }
-
   :active {
     transform: none !important;
-  }
-}
-
-@keyframes status-fade {
-  from {
-    background-color: color-mix(in srgb, var(--color-success-text) 24%, var(--color-success-surface));
   }
 }
 
