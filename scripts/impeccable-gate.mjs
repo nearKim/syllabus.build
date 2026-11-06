@@ -8,7 +8,7 @@ import { mountSyllabusWebApp } from "../apps/web/src/browserApp.ts";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const stylesPath = path.join(repoRoot, "apps/web/public/styles.css");
-const impeccableBin = path.join(repoRoot, ".claude/skills/impeccable/scripts/impeccable");
+const impeccableBin = path.join(os.homedir(), ".agents/skills/impeccable/scripts/impeccable");
 
 function resolveCssVariables(rawCss) {
   const rootMatch = rawCss.match(/:root(?:,\s*\[data-theme="light"\])?\s*\{([^}]*)\}/);
